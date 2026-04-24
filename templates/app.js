@@ -254,15 +254,11 @@ function addDifficultyLayer() {
             "icon-rotation-alignment": "viewport",
             "icon-allow-overlap": false,
             "icon-ignore-placement": false,
-            // Collision pad ≈ diamond half-size. Shared source means
-            // arrows + diamonds place along the *same* line, but each
-            // layer runs its own `symbol-spacing` (400 vs 500), so
-            // anchors land in a beat pattern — closest pairs on the
-            // same way are ~50 px apart. A padding of 30 gives each
-            // symbol a ~75 px collision radius, big enough to catch
-            // near-miss pairs without over-suppressing at label
-            // crossings or route intersections.
-            "icon-padding": 30,
+            // Modest pad is enough now that all decor layers share
+            // one feature per physical way — anchors land on
+            // identical line coordinates, so even a small collision
+            // box catches arrow+diamond conflicts reliably.
+            "icon-padding": 4,
             "visibility": difficultyToggleOn() ? "visible" : "none",
         },
     });
@@ -423,15 +419,12 @@ function addArrowsLayer() {
             "icon-allow-overlap": false,
             // true = arrows don't block trail-name label placement.
             "icon-ignore-placement": true,
-            // Arrows are added after difficulty, so `allow-overlap:
-            // false` means each arrow checks prior diamonds (and
-            // labels). Anchors on shared lines don't align: arrows
-            // at symbol-spacing 400 vs diamonds at 500 produce a
-            // 50-250 px beat pattern. A 30 px pad gives arrows a
-            // ~75 px collision radius — wide enough to suppress the
-            // near-50 px near-misses that were rendering on top of
-            // diamonds at Shelden and DTE.
-            "icon-padding": 30,
+            // Small default pad is enough now that arrows, diamonds,
+            // and trail-name labels all share a single source and
+            // single feature per way — their line-placement anchors
+            // align on identical coordinates, so collision catches
+            // conflicts deterministically.
+            "icon-padding": 4,
         },
     });
 }
