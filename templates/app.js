@@ -1217,6 +1217,44 @@ function updateMarkerProximity() {
 
     filterMarkers(trailMarkerMarkers, mkOn);
     filterMarkers(featureMarkers, ftOn);
+
+    // Re-evaluate the Features peek button after every proximity pass.
+    // If the current visible-routes set leaves zero features within
+    // POI_PROXIMITY_METERS of any trail, the button is a dead control —
+    // hide it. It comes back the moment a route change brings a
+    // near-trail feature into scope.
+    updateFeatureButtonVisibility();
+}
+
+// True iff at least one `poi_type: "feature"` POI is within
+// POI_PROXIMITY_METERS of a currently-visible trail. Independent of
+// the Features toggle state (we ask "would anything show if it were
+// on?", not "is anything showing now?").
+function hasVisibleFeatures() {
+    if (!poisData || !routesData) return false;
+    for (const f of poisData.features) {
+        if (f.properties.poi_type !== "feature") continue;
+        const [lng, lat] = f.geometry.coordinates;
+        if (distanceToVisibleTrails(lng, lat) <= POI_PROXIMITY_METERS) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Show/hide the Features peek button based on (a) the YAML gate,
+// (b) whether the build emitted any feature POIs at all, and (c)
+// whether the proximity filter would currently let any of them
+// render. Called on initial POI load and after every route-
+// visibility change. The button is `.hidden` when dead so the
+// peek row collapses cleanly; persisted aria-pressed state is
+// untouched, so toggling features back on once a near-trail
+// feature reappears just works.
+function updateFeatureButtonVisibility() {
+    const btn = document.getElementById("toggle-features");
+    if (!btn) return;
+    const show = CONFIG.showFeatures && hasVisibleFeatures();
+    btn.classList.toggle("hidden", !show);
 }
 
 // ============================================================
@@ -2472,11 +2510,18 @@ async function loadPOIs() {
         hidePeekBtn("toggle-trailheads");
     }
 
+    // Features are gated by both data-presence AND proximity: a build
+    // can emit `tourism=attraction` POIs that all sit > POI_PROXIMITY_METERS
+    // off the trail (Shelden's "Shelden Estate Wall" / "Old Tennis Court"
+    // are ~12 m and ~33 m off, respectively), in which case the runtime
+    // proximity filter hides every marker — the toggle would just be a
+    // dead control. We always create the markers so they can pop in if
+    // a route change later brings them into scope; updateFeatureButtonVisibility()
+    // is the source of truth for whether the button shows.
     if (CONFIG.showFeatures && ftCount > 0) {
         addFeatureMarkers(ftDefault);
-    } else {
-        hidePeekBtn("toggle-features");
     }
+    updateFeatureButtonVisibility();
 }
 
 // ============================================================
