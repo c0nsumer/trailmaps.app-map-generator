@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Trail Map</title>
+
+    <!-- Icons start -->
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="manifest" href="icons/site.webmanifest">
+    <link rel="mask-icon" href="icons/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
+    <!-- Icons end -->
+
+    <!-- Vendor libraries (bundled locally for offline support) -->
+    <link rel="stylesheet" href="vendor/maplibre-gl.css">
+    <script src="vendor/maplibre-gl.js"></script>
+    <script src="vendor/pmtiles.js"></script>
+    <script src="vendor/basemaps.js"></script>
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="map"></div>
+
+    <!-- Logo overlay -->
+    <div id="logo-overlay">
+        <img src="logo.webp" alt="Trail system logo">
+    </div>
+
+    <!-- Off-screen location indicator (managed by app.js) -->
+    <div id="off-screen-indicator" class="off-screen-indicator hidden" aria-hidden="true"></div>
+
+    <!-- Highlight chip — floating at top of map when a route or trail is highlighted -->
+    <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
+        <span class="highlight-chip-swatch" aria-hidden="true"></span>
+        <span class="highlight-chip-label">Highlighting</span>
+        <svg class="highlight-chip-close" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <line x1="2" y1="2" x2="12" y2="12"/>
+            <line x1="12" y1="2" x2="2" y2="12"/>
+        </svg>
+    </button>
+
+    <!-- Bottom sheet — replaces the old hamburger panel.
+         Two states: peek (always visible, ~56-64px tall) and expanded
+         (slides up to ~70% viewport). Controlled by app.js. -->
+    <div id="bottom-sheet" class="bottom-sheet" role="region" aria-label="Map controls" style="visibility: hidden">
+        <div class="sheet-handle" id="sheet-handle" role="button" tabindex="0" aria-label="Open or close map controls" aria-expanded="false">
+            <span class="sheet-handle-bar" aria-hidden="true"></span>
+        </div>
+
+        <div class="sheet-peek" id="sheet-peek">
+            <div class="sheet-peek-title" id="sheet-peek-title">&nbsp;</div>
+            <div class="sheet-peek-row" id="sheet-peek-row" role="group" aria-label="Quick toggles">
+                <button class="peek-icon peek-season" id="toggle-season" type="button" aria-pressed="true" aria-label="Toggle season">
+                    <span class="layer-swatch season-swatch" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/><line x1="2.85" y1="2.85" x2="4.1" y2="4.1"/><line x1="11.9" y1="11.9" x2="13.15" y2="13.15"/><line x1="2.85" y1="13.15" x2="4.1" y2="11.9"/><line x1="11.9" y1="4.1" x2="13.15" y2="2.85"/></g></svg></span>
+                    <span class="peek-icon-label" id="toggle-season-label">Summer</span>
+                </button>
+                <button class="peek-icon" id="toggle-parking" data-poi="parking" type="button" aria-pressed="true" aria-label="Show parking">
+                    <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
+                    <span class="peek-icon-label">Parking</span>
+                </button>
+                <button class="peek-icon" id="toggle-trailheads" data-poi="trailheads" type="button" aria-pressed="true" aria-label="Show trailheads">
+                    <span class="layer-swatch trailhead-swatch" aria-hidden="true">TH</span>
+                    <span class="peek-icon-label">Trailheads</span>
+                </button>
+                <button class="peek-icon" id="toggle-features" data-poi="features" type="button" aria-pressed="true" aria-label="Show features">
+                    <span class="layer-swatch feature-swatch" aria-hidden="true"></span>
+                    <span class="peek-icon-label">Features</span>
+                </button>
+                <button class="peek-icon" id="toggle-difficulty" data-poi="difficulty" type="button" aria-pressed="true" aria-label="Show difficulty">
+                    <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
+                    <span class="peek-icon-label">Difficulty</span>
+                </button>
+                <button class="peek-icon" id="toggle-markers" data-poi="markers" type="button" aria-pressed="true" aria-label="Show markers">
+                    <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
+                    <span class="peek-icon-label">Markers</span>
+                </button>
+                <button class="peek-icon" id="toggle-locate" type="button" aria-pressed="false" aria-label="Locate me">
+                    <span class="layer-swatch locate-swatch" aria-hidden="true"><svg class="locate-icon" viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle class="locate-dot" cx="8" cy="8" r="2.2" fill="currentColor"/><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/></g></svg></span>
+                    <span class="peek-icon-label">Locate</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="sheet-expanded" id="sheet-expanded" aria-hidden="true">
+            <!-- Find a route or trail -->
+            <section class="sheet-section" id="finder-section">
+                <h3 class="sheet-section-title">Find a route or trail</h3>
+                <div class="finder">
+                    <div class="finder-search">
+                        <input type="search" id="finder-input" class="finder-input"
+                            placeholder="Search routes &amp; trails" aria-label="Search routes and trails"
+                            autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="finder-list" id="finder-list" role="listbox" aria-label="Routes and trails">
+                        <!-- Rows rendered by app.js -->
+                    </div>
+                    <p class="finder-empty hidden" id="finder-empty">No matches.</p>
+                </div>
+            </section>
+
+            <!-- Map options -->
+            <section class="sheet-section" id="sheet-options-section">
+                <h3 class="sheet-section-title">Map options</h3>
+                <div class="sheet-row sheet-row-segmented" id="label-field">
+                    <div class="sheet-field-label" id="label-group-label">Show Labels</div>
+                    <div class="sheet-segmented" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
+                        <button type="button" class="sheet-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
+                        <button type="button" class="sheet-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
+                        <button type="button" class="sheet-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
+                    </div>
+                </div>
+                <div class="sheet-row hidden" id="emergency-access-row">
+                    <label class="sheet-toggle">
+                        <input type="checkbox" id="toggle-emergency-routes">
+                        <span class="sheet-toggle-track" aria-hidden="true"></span>
+                        <span class="sheet-toggle-text">
+                            <span class="sheet-toggle-title">
+                                <span class="layer-swatch emergency-swatch" aria-hidden="true">!</span>
+                                Show Emergency Access Routes
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="sheet-row sheet-row-field hidden" id="basemap-field">
+                    <label class="sheet-field-label" for="basemap-select">Basemap</label>
+                    <select id="basemap-select" class="sheet-select"></select>
+                </div>
+            </section>
+
+            <!-- PWA start -->
+            <section class="sheet-section sheet-section-action hidden" id="sheet-install-section">
+                <button id="install-btn" class="sheet-action-row hidden" type="button">
+                    <span class="sheet-action-icon" aria-hidden="true">&#x21E9;</span>
+                    <span class="sheet-action-text">
+                        <span class="sheet-action-title">Install as app</span>
+                        <span class="sheet-action-help">Add to your home screen for offline use.</span>
+                    </span>
+                </button>
+                <div id="ios-install-hint" class="sheet-install-hint hidden">
+                    <p>To install: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
+                </div>
+            </section>
+            <!-- PWA end -->
+
+            <section class="sheet-section sheet-section-action">
+                <button id="about-btn" class="sheet-action-row" type="button">
+                    <span class="sheet-action-icon" aria-hidden="true">&#9432;</span>
+                    <span class="sheet-action-text">
+                        <span class="sheet-action-title">About this map</span>
+                    </span>
+                </button>
+            </section>
+        </div>
+    </div>
+
+    <!-- About modal -->
+    <div id="about-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
+        <div class="about-modal-backdrop"></div>
+        <div class="about-modal-content">
+            <button class="about-modal-close" aria-label="Close">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <line x1="2" y1="2" x2="12" y2="12"/>
+                    <line x1="12" y1="2" x2="2" y2="12"/>
+                </svg>
+            </button>
+            <h2 id="about-modal-title"></h2>
+            <div id="about-modal-body"></div>
+            <div id="about-modal-tail"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <!-- SW start -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+    </script>
+    <!-- SW end -->
+</body>
+</html>

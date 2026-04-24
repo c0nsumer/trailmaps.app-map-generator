@@ -1,0 +1,13 @@
+build/
+cache/
+*.pmtiles
+__pycache__/
+*.pyc
+.venv/
+configs/*
+!configs/example/
+*.code-workspace
+TODO.txt
+personal_todo.txt
+.DS_Store
+.claude/

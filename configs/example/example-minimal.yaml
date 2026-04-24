@@ -1,0 +1,96 @@
+name: My Trails
+slug: my-trails
+title: "My Trails Map"
+# OSM relation ID anchoring this map. May be a super-relation (its
+# member relations become routes) or a single route relation (used
+# directly as the only route). See README "Concepts" for terminology
+# and "Config Reference -> Data Sources" for how to find the ID.
+root_relation_id: 12345678
+
+# --- Data sources ---
+# osm_file: osm.osm
+# extra_relations: []
+# clipped_relations: []
+# winter_relations: []
+# summer_relations: []
+# emergency_access_relations: []
+# custom_routes: []
+
+# --- Per-route style overrides ---
+# color_by: relation
+# default_trail_color: "#808080"
+# dashed_relations: {}
+# relation_colors: {}
+# default_direction_schedule: {}
+# direction_schedules: {}
+
+# --- Marker colours ---
+# marker_color: "#795548"
+# marker_text_color: "white"
+# marker_border_color: "white"
+# parking_color: "#2980b9"
+# parking_text_color: "white"
+# parking_border_color: "white"
+# trailhead_color: "#27ae60"
+# trailhead_text_color: "white"
+# trailhead_border_color: "white"
+# feature_color: "#8e44ad"
+# feature_ring_color: "#ffffff"
+
+# --- View geometry ---
+# bbox: [-87.66, 46.47, -87.59, 46.53]
+# pan_padding: 0.5
+# center: [-87.635, 46.495]
+# zoom: 14
+# min_zoom: 10
+# max_zoom: 18
+# basemap_maxzoom: 15
+# terrain_maxzoom: 13
+
+# --- PWA ---
+# pwa: true
+
+# --- Build-time data gates ---
+# show_markers: true
+# show_parking: true
+# show_trailheads: true
+# show_features: true
+# show_terrain: true
+# show_difficulty: false
+# show_routes: true
+# show_trails: true
+# suppress_path_labels: false
+# suppress_basemap_pois: false
+
+# --- Display ---
+# default_labels: routes
+# map_dim_on_highlight: true
+# url_hash: true
+
+# --- Base layers ---
+# base_layers: []
+
+# --- Branding ---
+# logo: logo.webp
+# icon: icon.png
+
+# --- User-supplied points ---
+# trailheads: []
+# parking: []
+
+# --- About ---
+# about:
+#   description: |
+#     Description text.
+#   more_information:
+#     - label: ""
+#       url: ""
+#   author:
+#     name: ""
+#     url: ""
+#   extra_links:
+#     - label: ""
+#       url: ""
+
+# --- Output ---
+# output_dir: build/my-trails

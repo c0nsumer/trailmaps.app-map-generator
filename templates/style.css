@@ -1,0 +1,1411 @@
+/* MTB Trail Map Framework — Styles
+ *
+ * Light theme only. No dark-mode rules — rendering is the same regardless
+ * of OS preference. Tweaks tuned for mobile-first (one-thumb operation,
+ * 44 px tap targets, safe-area insets) with desktop layered on top.
+ */
+
+:root {
+    --sheet-bg: rgba(255, 255, 255, 0.98);
+    --sheet-text: #222;
+    --sheet-text-muted: #666;
+    --sheet-border: #d8d8d8;
+    --sheet-shadow: rgba(0, 0, 0, 0.18);
+    --sheet-hover: rgba(0, 0, 0, 0.05);
+    --sheet-divider: #ececec;
+    --link-color: #2980b9;
+    --accent: #2980b9;
+    --accent-strong: #1f6391;
+    --emergency-color: #c0392b;
+    --highlight-amber: #ffb700;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--sheet-text);
+    background: #f7f7f7;
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ----- Logo overlay (bottom-left, above sheet peek) ----------------
+ *
+ * Mobile: peek spans full width, so the logo must sit above it.
+ * `--peek-height` is published from app.js from the peek's actual
+ * rendered height (title + icon row + handle + padding). The old
+ * hard-coded 72 px was left over from a slimmer peek and clipped the
+ * logo after the title was added. 6 px gap keeps it off the border.
+ * Desktop rule below tucks it in the corner instead. */
+#logo-overlay {
+    position: absolute;
+    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px);
+    left: 16px;
+    z-index: 2;
+    pointer-events: none;
+    transition: bottom 0.2s ease-out;
+}
+
+#logo-overlay img {
+    max-width: 200px;
+    max-height: 80px;
+    width: auto;
+    height: auto;
+    opacity: 0.92;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+}
+
+/* When the bottom sheet is expanded, slide the logo above the expanded
+ * area so it doesn't disappear behind the sheet. */
+body.sheet-open #logo-overlay {
+    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px);
+    opacity: 0.6;
+}
+
+/* ----- Highlight chip (top of map, when a route/trail is highlighted) */
+.highlight-chip {
+    position: absolute;
+    top: calc(12px + var(--safe-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    background: var(--sheet-bg);
+    border: 1px solid var(--sheet-border);
+    border-radius: 999px;
+    box-shadow: 0 3px 10px var(--sheet-shadow);
+    padding: 6px 12px 6px 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sheet-text);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+}
+
+.highlight-chip-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--highlight-amber);
+    border: 1.5px solid white;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+}
+
+.highlight-chip-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60vw;
+}
+
+.highlight-chip-close {
+    color: var(--sheet-text-muted);
+    flex-shrink: 0;
+}
+
+.highlight-chip:hover .highlight-chip-close,
+.highlight-chip:focus-visible .highlight-chip-close {
+    color: var(--sheet-text);
+}
+
+/* ----- Bottom sheet -------------------------------------------------- */
+.bottom-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: var(--sheet-bg);
+    border-top: 1px solid var(--sheet-border);
+    box-shadow: 0 -2px 12px var(--sheet-shadow);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transform: translateY(0);
+    transition: transform 0.22s ease-out;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 60px);
+    overflow: hidden;
+    padding-bottom: var(--safe-bottom);
+}
+
+.bottom-sheet.is-open {
+    /* Expanded covers up to ~72% of viewport height (still leaves the map
+     * visible above for context). */
+    max-height: calc(72vh + var(--safe-bottom));
+}
+
+.sheet-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 16px;
+    cursor: grab;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    /* Cede all touch-gesture ownership to JS so Chrome Android / Firefox
+     * don't consume the pointer drag as a page scroll. */
+    touch-action: none;
+}
+
+.sheet-handle:active {
+    cursor: grabbing;
+}
+
+.sheet-handle-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: #cfcfcf;
+}
+
+/* ----- Sheet peek (always visible) ----------------------------------
+ *
+ * Single row of icon toggles. Whole peek (outside individual button hit
+ * targets) is tappable to expand the sheet — the tap handler lives on
+ * #sheet-peek in app.js. */
+.sheet-peek {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    padding: 2px 10px 10px 10px;
+    flex-shrink: 0;
+    cursor: pointer;
+    /* Whole peek area is a drag surface — JS owns the gesture, so the
+     * browser must not scroll in response to the same touch. Icons
+     * below re-enable tap via touch-action: manipulation. */
+    touch-action: none;
+}
+
+/* Icon buttons must remain tappable — touch-action: manipulation is
+ * enough to allow taps without letting the browser steal drag. */
+.sheet-peek .peek-icon,
+.sheet-peek select,
+.sheet-peek input {
+    touch-action: manipulation;
+}
+
+/* Map title — shown above the peek icon row, replaces the old
+ * hamburger header. Uses the sheet's primary text colour so it reads
+ * as the map's name rather than a section label. */
+.sheet-peek-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--sheet-text);
+    text-align: center;
+    padding: 0 8px 4px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.sheet-peek-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 480px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+/* ----- Peek icon buttons -------------------------------------------
+ *
+ * Stacked swatch + label, ~48×52 tap target. aria-pressed drives the
+ * on/off state. On: saturated swatch + coloured label. Off: outline-
+ * only swatch + diagonal slash + muted label — three independent
+ * cues so the state survives greyscale, sunlight, and common
+ * color-vision variants. */
+.peek-icon {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 3px;
+    flex: 0 0 auto;
+    /* Every peek button is a fixed-width grid cell — the row is a
+     * uniform rail instead of a ragged-content layout. 64px fits the
+     * widest natural label ("Trailheads" / "Difficulty") with a few
+     * pixels of breathing room; shorter labels sit centered in the
+     * cell. Also means Season's Summer↔Winter swap can't shift the
+     * row's layout. */
+    width: 64px;
+    padding: 2px 4px 4px 4px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--sheet-text);
+    font: inherit;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background 0.12s, border-color 0.12s;
+}
+
+.peek-icon:hover {
+    background: var(--sheet-hover);
+}
+
+.peek-icon:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.peek-icon-label {
+    font-size: 11px;
+    line-height: 1.1;
+    font-weight: 500;
+    color: var(--sheet-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 56px;
+}
+
+/* Swatches inside peek icons sit a touch larger than in expanded rows
+ * so the mini markers read clearly. */
+.peek-icon .layer-swatch {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+    overflow: visible;
+}
+
+/* Feature / Difficulty / Season swatches all inherit the base
+ * .peek-icon .layer-swatch size (24×24 desktop, 22×22 mobile) so the
+ * row aligns in a clean grid. The distinctive shape content (purple
+ * dot, black diamond, sun/snow) sits inside the chip via ::before
+ * or inline SVG rather than replacing the chip itself. */
+
+/* Off state — three independent signals: outline-only swatch, grey
+ * label, diagonal slash. Works on B&W displays and for color-vision
+ * variants that flatten red/green. */
+.peek-icon[aria-pressed="false"] .layer-swatch {
+    background: transparent !important;
+    border: 1.5px solid #9aa0a6 !important;
+    color: #9aa0a6 !important;
+    box-shadow: none !important;
+}
+
+.peek-icon[aria-pressed="false"] .peek-icon-label {
+    color: #9aa0a6;
+}
+
+.peek-icon[aria-pressed="false"] .layer-swatch::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -2px;
+    right: -2px;
+    height: 1.5px;
+    background: #9aa0a6;
+    transform: translateY(-50%) rotate(-45deg);
+    transform-origin: center;
+    pointer-events: none;
+}
+
+/* Season swatch — inherits the base 24×24 rounded-rect chip from
+ * .layer-swatch (added to the span in index.html) so it sits in
+ * line with every other peek-row icon. The accent-blue fill + white
+ * SVG glyph (sun/snow — swapped at runtime from app.js) gives it a
+ * distinct identity without breaking the shared chip geometry. */
+.peek-season .season-swatch {
+    /* Summer = warm forest green. Winter override is applied
+     * inline from app.js (see reflectSeason) as a cold slate-blue.
+     * Keeping them distinct evokes the season without relying on
+     * just the sun/snow glyph. */
+    background: #2e7d32;
+    color: white;
+}
+
+/* Season cycles — never renders the off slash / outline treatment. */
+.peek-icon.peek-season[aria-pressed="false"] .season-swatch::after {
+    content: none;
+}
+
+/* ----- Sheet expanded area ----------------------------------------- */
+.sheet-expanded {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 14px 16px 14px;
+    -webkit-overflow-scrolling: touch;
+    /* Hidden by default; revealed when .is-open is set on the parent. */
+    display: none;
+}
+
+.bottom-sheet.is-open .sheet-expanded,
+.bottom-sheet.is-dragging .sheet-expanded {
+    /* is-dragging is set by app.js only while a pointer drag is
+     * active from the closed state; without it, max-height has no
+     * content to reveal and the drag is a no-op (most visible in
+     * Firefox). flex-shrink on .sheet-expanded means max-height on
+     * the parent still clips it correctly during the drag. */
+    display: block;
+}
+
+.sheet-section {
+    border-top: 1px solid var(--sheet-divider);
+    padding: 12px 0;
+}
+
+.sheet-section:first-child {
+    border-top: none;
+    padding-top: 8px;
+}
+
+.sheet-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
+    margin: 0 0 8px 0;
+}
+
+.sheet-row {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 4px 0;
+}
+
+.sheet-row-stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.sheet-row-help {
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+    line-height: 1.35;
+    margin: 0 4px;
+}
+
+.sheet-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ----- Sheet toggle row (POI + emergency rows in expanded sheet) ---- */
+.sheet-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background 0.1s;
+}
+
+.sheet-toggle:hover {
+    background: var(--sheet-hover);
+}
+
+.sheet-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.sheet-toggle-track {
+    width: 38px;
+    height: 22px;
+    border-radius: 11px;
+    background: #ccc;
+    position: relative;
+    transition: background 0.18s;
+    flex-shrink: 0;
+    order: 2;
+}
+
+.sheet-toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.18s;
+}
+
+.sheet-toggle input:checked + .sheet-toggle-track {
+    background: var(--accent);
+}
+
+.sheet-toggle input:checked + .sheet-toggle-track::after {
+    transform: translateX(16px);
+}
+
+.sheet-toggle-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    order: 1;
+    min-width: 0;
+}
+
+.sheet-toggle-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--sheet-text);
+}
+
+.sheet-toggle-help {
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+    line-height: 1.3;
+}
+
+/* ----- Sheet field rows (Labels / Basemap selects) ----------------- */
+.sheet-row-field {
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.sheet-field-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sheet-text);
+}
+
+.sheet-select {
+    flex: 0 1 auto;
+    padding: 8px 28px 8px 10px;
+    border: 1px solid var(--sheet-border);
+    border-radius: 6px;
+    background: white;
+    color: var(--sheet-text);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    min-height: 36px;
+}
+
+/* ----- Segmented control (Labels row: Routes / Trails / None) ------
+ * Replaces a native <select> with a three-button group for cases where
+ * a tap-sized, glanceable control beats a dropdown. Uses a radiogroup
+ * under the hood (aria-checked on each button) for accessibility. */
+.sheet-row-segmented {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.sheet-segmented {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--sheet-border);
+    border-radius: 6px;
+    overflow: hidden;
+    background: white;
+}
+
+.sheet-segmented-btn {
+    flex: 1 1 0;
+    min-height: 36px;
+    padding: 8px 10px;
+    background: white;
+    color: var(--sheet-text);
+    font: inherit;
+    font-size: 14px;
+    border: none;
+    border-left: 1px solid var(--sheet-border);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+}
+
+.sheet-segmented-btn:first-child {
+    border-left: none;
+}
+
+.sheet-segmented-btn[aria-checked="true"] {
+    background: var(--sheet-text);
+    color: white;
+}
+
+.sheet-segmented-btn:not([aria-checked="true"]):hover {
+    background: var(--sheet-hover);
+}
+
+/* ----- Action rows (Install / About) ------------------------------- */
+.sheet-section-action {
+    border-top: 1px solid var(--sheet-divider);
+    padding: 4px 0;
+}
+
+.sheet-action-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 52px;
+    padding: 8px 4px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: var(--sheet-text);
+    transition: background 0.1s;
+}
+
+.sheet-action-row:hover {
+    background: var(--sheet-hover);
+}
+
+.sheet-action-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--sheet-hover);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: var(--sheet-text);
+    flex-shrink: 0;
+}
+
+.sheet-action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.sheet-action-title {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.sheet-action-help {
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+    line-height: 1.3;
+}
+
+.sheet-install-hint {
+    padding: 4px 8px 8px 8px;
+    font-size: 13px;
+    color: var(--sheet-text);
+    line-height: 1.4;
+}
+
+/* ----- Layer swatches (POI marker color cues in toggle rows) ------- */
+.layer-swatch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: white;
+    border: 1.5px solid white;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.marker-swatch {
+    background: var(--marker-color, #795548);
+    color: var(--marker-text-color, #fff);
+    border: 1.5px solid var(--marker-border-color, #fff);
+}
+
+/* Emergency route-bucket swatch — still used on the Map-options
+ * Emergency Access row even though POI markers are merged. */
+.emergency-swatch {
+    background: #c0392b;
+}
+
+.parking-swatch {
+    background: var(--parking-color, #2980b9);
+    color: var(--parking-text-color, #fff);
+    border: 1.5px solid var(--parking-border-color, #fff);
+}
+
+.trailhead-swatch {
+    background: var(--trailhead-color, #27ae60);
+    color: var(--trailhead-text-color, #fff);
+    border: 1.5px solid var(--trailhead-border-color, #fff);
+    font-size: 9px;
+}
+
+/* Locate swatch — mirrors the MapLibre native GeolocateControl state
+ * machine pixel-for-pixel: same hex colors (#33b5e5 tracking blue,
+ * #e58978 active-error salmon, #e54e33 background-error red,
+ * #333 idle, #999 disabled, red strikethrough on denied), same
+ * iconography (ring + N/S/E/W ticks + center dot; dot disappears in
+ * "background" states to signal "tracking but panned away"), same
+ * 2-second linear spin during acquisition. State classes
+ * (locate-state-*) are stamped onto #toggle-locate by a
+ * MutationObserver in app.js that mirrors the hidden native
+ * control's classes — the native GeolocateControl is still added
+ * to the map because its FSM is the source of truth, we just hide
+ * the button (see .maplibregl-ctrl-geolocate below). */
+.locate-swatch {
+    background: #fff;
+    color: #333;
+    border: 1.5px solid #ccc;
+    box-shadow: none;
+}
+
+/* Override the peek-icon default off-state (outline + slash + grey
+ * label) for Locate — MapLibre's idle state is white bg + dark
+ * crosshair, not a slashed swatch. Our locate-state-* classes below
+ * drive the actual appearance. */
+#toggle-locate[aria-pressed="false"] .layer-swatch {
+    background: #fff !important;
+    border: 1.5px solid #ccc !important;
+    color: #333 !important;
+    box-shadow: none !important;
+}
+#toggle-locate[aria-pressed="false"] .layer-swatch::after {
+    content: none;
+}
+#toggle-locate[aria-pressed="false"] .peek-icon-label {
+    color: var(--sheet-text);
+}
+
+/* --- State: idle (default, no tracking) --- */
+#toggle-locate.locate-state-idle .locate-swatch {
+    color: #333;
+}
+
+/* --- State: waiting (GPS acquisition in progress) --- */
+#toggle-locate.locate-state-waiting .locate-icon {
+    animation: mtb-locate-spin 2s linear infinite;
+    transform-origin: center;
+}
+
+/* --- State: active (tracking + camera following) --- */
+#toggle-locate.locate-state-active .locate-swatch {
+    color: #33b5e5;
+}
+
+/* --- State: background (tracking, user panned away → no center dot) --- */
+#toggle-locate.locate-state-background .locate-swatch {
+    color: #33b5e5;
+}
+#toggle-locate.locate-state-background .locate-dot {
+    display: none;
+}
+
+/* --- State: active-error (tracking, transient error) --- */
+#toggle-locate.locate-state-active-error .locate-swatch {
+    color: #e58978;
+}
+
+/* --- State: background-error (tracking + panned + error) --- */
+#toggle-locate.locate-state-background-error .locate-swatch {
+    color: #e54e33;
+}
+#toggle-locate.locate-state-background-error .locate-dot {
+    display: none;
+}
+
+/* --- State: disabled (permission denied / geolocation unavailable) --- */
+#toggle-locate.locate-state-disabled .locate-swatch {
+    color: #999;
+}
+#toggle-locate.locate-state-disabled .locate-swatch::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 15%;
+    right: 15%;
+    height: 2px;
+    background: red;
+    transform: translateY(-50%) rotate(-45deg);
+    transform-origin: center;
+    border-radius: 1px;
+    pointer-events: none;
+}
+#toggle-locate.locate-state-disabled .peek-icon-label {
+    color: #999;
+}
+
+@keyframes mtb-locate-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(1turn); }
+}
+
+/* Feature swatch — the chip itself gets the same outer treatment as
+ * Parking / Markers / Trailheads: a visible 1.5px border and the
+ * subtle dark halo inherited from .layer-swatch base. What it does
+ * NOT get is a coloured (purple) chip fill — the space between the
+ * chip's border and the inner dot's white ring stays transparent so
+ * the ring actually reads against the sheet background, the way
+ * it does against map tiles on the map. The ::before reproduces
+ * the on-map feature marker (see .feature-marker-icon below):
+ * 12×12 purple circle, 2px white ring, soft drop shadow. */
+.feature-swatch {
+    background: transparent;
+    /* border + box-shadow (halo) inherited from .layer-swatch base. */
+}
+.feature-swatch::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    background: var(--feature-color, #8e44ad);
+    border: 2px solid var(--feature-ring-color, #fff);
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    transform: translate(-50%, -50%);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+/* Difficulty swatch — standard white chip with a small black
+ * rotated-square diamond drawn by ::before. Matches the IMBA
+ * black-diamond icon shape (see drawDifficultyShape in app.js)
+ * while keeping the outer chip identical to other peek icons so
+ * the off-state slash lands in the same geometric position. The
+ * chip already provides the white halo via box-shadow inherited
+ * from .layer-swatch, so the ::before shape doesn't need its own. */
+.difficulty-swatch {
+    background: #fff;
+}
+.difficulty-swatch::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    background: #111;
+    border: 1px solid #000;
+    transform: translate(-50%, -50%) rotate(45deg);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+/* Off-state: the base .peek-icon[aria-pressed="false"] .layer-swatch
+ * rule already greys the chip and draws the slash. Also hollow out
+ * the inner ::before shapes (purple dot, black diamond) so they
+ * match the outline-only motif instead of staying full-colour. */
+.peek-icon[aria-pressed="false"] .feature-swatch::before {
+    background: transparent;
+    border: 1.5px solid #9aa0a6;
+    box-shadow: none;
+}
+.peek-icon[aria-pressed="false"] .difficulty-swatch::before {
+    background: transparent;
+    border-color: #9aa0a6;
+}
+
+/* ----- Finder ------------------------------------------------------- */
+.finder {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.finder-search {
+    position: relative;
+}
+
+.finder-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--sheet-border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 14px;
+    background: white;
+    color: var(--sheet-text);
+    min-height: 40px;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.finder-input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+}
+
+.finder-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 38vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--sheet-divider);
+    border-radius: 8px;
+}
+
+.finder-section-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
+    padding: 8px 12px 4px 12px;
+    background: #fafafa;
+    border-bottom: 1px solid var(--sheet-divider);
+}
+
+.finder-section-header:first-child {
+    border-top: none;
+}
+
+.finder-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: none;
+    border-top: 1px solid var(--sheet-divider);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: var(--sheet-text);
+    width: 100%;
+    min-height: 44px;
+    transition: background 0.1s;
+}
+
+.finder-row:hover,
+.finder-row:focus-visible {
+    background: var(--sheet-hover);
+    outline: none;
+}
+
+.finder-row.is-active {
+    background: rgba(41, 128, 185, 0.08);
+}
+
+.finder-row-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 4px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    background: #888;
+    /* Subtle outline so light-coloured swatches (e.g. white trail
+     * colours) remain visible against the list's white background. */
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.finder-row-trail-mark {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--highlight-amber);
+    border: 1.5px solid white;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    flex-shrink: 0;
+}
+
+.finder-row-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.finder-row-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--sheet-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.finder-row-meta {
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.finder-empty {
+    padding: 16px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--sheet-text-muted);
+}
+
+/* ----- About modal -------------------------------------------------- */
+.about-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.about-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.about-modal-content {
+    position: relative;
+    background: var(--sheet-bg);
+    color: var(--sheet-text);
+    border: 1px solid var(--sheet-border);
+    border-radius: 10px;
+    box-shadow: 0 6px 24px var(--sheet-shadow);
+    max-width: 480px;
+    width: calc(100vw - 32px);
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 20px 24px 24px 24px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.about-modal-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--sheet-text);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.about-modal-close:hover {
+    background: var(--sheet-hover);
+}
+
+.about-modal-content h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 28px 14px 0;
+    color: var(--sheet-text);
+}
+
+.about-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin: 0 28px 14px 0;
+}
+
+.about-modal-header h2 {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.about-modal-logo {
+    flex: 0 0 auto;
+    max-width: 140px;
+    max-height: 56px;
+    width: auto;
+    height: auto;
+}
+
+.about-modal-content h3 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sheet-text-muted);
+    margin: 14px 0 4px 0;
+}
+
+.about-modal-content p {
+    margin: 0 0 4px 0;
+    white-space: pre-wrap;
+    color: var(--sheet-text);
+}
+
+.about-modal-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 4px 0;
+}
+
+.about-modal-content li {
+    margin: 2px 0;
+}
+
+.about-modal-content a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.about-modal-content a:hover {
+    text-decoration: underline;
+}
+
+.about-modal-version {
+    color: var(--sheet-text);
+    opacity: 0.8;
+    margin: 0 0 4px 0;
+}
+
+/* ----- MapLibre control overrides ---------------------------------- */
+.maplibregl-ctrl-group {
+    background: var(--sheet-bg) !important;
+    border: 1px solid var(--sheet-border) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 6px var(--sheet-shadow) !important;
+    overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+    background-color: transparent !important;
+    border-bottom: 1px solid var(--sheet-border) !important;
+}
+
+.maplibregl-ctrl-group button:last-child {
+    border-bottom: none !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+    background-color: var(--sheet-hover) !important;
+}
+
+.maplibregl-ctrl-attrib {
+    background: var(--sheet-bg) !important;
+    color: var(--sheet-text) !important;
+    font-size: 10px !important;
+}
+
+/* Native MapLibre geolocate control is hidden — its function has
+ * been promoted to the peek menu's Locate button, which calls
+ * geolocate.trigger() directly. The control is still added to the
+ * map because that's what wires up its event handlers / state
+ * machine; we just don't want the redundant top-left button. */
+.maplibregl-ctrl-geolocate {
+    display: none !important;
+}
+
+.maplibregl-ctrl-attrib a {
+    color: var(--sheet-text) !important;
+}
+
+/* Push the bottom-right attribution above the sheet peek so it doesn't
+ * disappear behind it. Uses the JS-published --peek-height (see
+ * app.js / #logo-overlay comment) instead of a fixed 72 px. Desktop
+ * override below drops it back to the corner. */
+.maplibregl-ctrl-bottom-right {
+    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px) !important;
+}
+
+/* ----- Feature markers --------------------------------------------- */
+.feature-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateY(-7px);
+    pointer-events: none;
+}
+
+.feature-marker-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--feature-ring-color, #fff);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+}
+
+.feature-marker-label {
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: #1e1e1e;
+    text-align: center;
+    white-space: nowrap;
+    text-shadow:
+        -1px -1px 0 rgba(255, 255, 255, 0.9),
+         1px -1px 0 rgba(255, 255, 255, 0.9),
+        -1px  1px 0 rgba(255, 255, 255, 0.9),
+         1px  1px 0 rgba(255, 255, 255, 0.9),
+         0   -1px 0 rgba(255, 255, 255, 0.9),
+         0    1px 0 rgba(255, 255, 255, 0.9),
+        -1px  0   0 rgba(255, 255, 255, 0.9),
+         1px  0   0 rgba(255, 255, 255, 0.9);
+}
+
+/* ----- Popups ------------------------------------------------------ */
+.maplibregl-popup-content {
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 14px 10px 14px;
+    border-radius: 8px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+    background: #fff;
+    color: #333;
+}
+
+.maplibregl-popup-tip {
+    border-top-color: #fff;
+}
+
+.maplibregl-popup-close-button {
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px 6px;
+    right: 0;
+    top: 0;
+    color: inherit;
+}
+
+.popup-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.popup-hr {
+    margin: 4px 0;
+    border: none;
+    border-top: 1px solid #ccc;
+}
+
+.popup-routes {
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.popup-directions {
+    display: inline-block;
+    margin-top: 6px;
+    color: var(--link-color);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.popup-directions:hover {
+    text-decoration: underline;
+}
+
+/* ----- Geolocate user dot ------------------------------------------ */
+.maplibregl-user-location-accuracy-circle {
+    background-color: rgba(52, 152, 219, 0.15) !important;
+}
+
+.maplibregl-user-location-dot {
+    background-color: #3498db !important;
+}
+
+/* Push the user-location marker (dot + accuracy circle) above POI
+ * markers in the DOM overlay. MapLibre renders each location element
+ * inside its own .maplibregl-marker wrapper; raising that wrapper's
+ * z-index keeps the blue dot visible even when a parking / trailhead
+ * / feature marker sits at the same spot. */
+.maplibregl-marker:has(> .maplibregl-user-location-dot),
+.maplibregl-marker:has(> .maplibregl-user-location-accuracy-circle) {
+    z-index: 2;
+}
+
+/* ----- Spotlight dim (map_dim_on_highlight) ------------------------
+ * POI markers that aren't adjacent to the highlighted route/trail are
+ * faded. The fade is driven by an INLINE style set in app.js
+ * (updateMarkerDimState), not a CSS class — marker elements already
+ * carry inline cssText from `markerStyle`, so keeping the fade on the
+ * same style layer avoids any specificity/override surprises. */
+
+/* ----- Off-screen location indicator ------------------------------- */
+.location-indicator,
+.off-screen-indicator {
+    position: absolute;
+    z-index: 3;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.location-indicator-arrow {
+    font-size: 22px;
+    line-height: 1;
+    color: #3498db;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.location-indicator-dist {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 2px 7px 0;
+    height: 18px;
+    border-radius: 9px;
+    white-space: nowrap;
+}
+
+/* ----- Toasts ------------------------------------------------------ */
+.map-toast {
+    position: fixed;
+    bottom: calc(80px + var(--safe-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    z-index: 10;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+}
+
+.map-toast.visible { opacity: 1; }
+.map-toast.hidden  { opacity: 0; }
+
+/* ----- Mobile / narrow viewport tweaks ----------------------------- */
+@media (max-width: 480px) {
+    #logo-overlay img {
+        max-width: 130px;
+        max-height: 48px;
+    }
+
+    /* Tighten the peek row on narrow screens so 6 buttons fit iPhone SE
+     * (~288 px usable) without clipping. */
+    .sheet-peek {
+        padding: 2px 6px 8px 6px;
+    }
+
+    .sheet-peek-row {
+        gap: 2px;
+    }
+
+    .peek-icon {
+        /* Uniform fixed-width cells, tuned for 10px mobile label.
+         * 56px fits "Trailheads" / "Difficulty" at 10px without
+         * ellipsis. */
+        width: 56px;
+        padding: 2px 3px 4px 3px;
+    }
+
+    .peek-icon-label {
+        font-size: 10px;
+        max-width: 52px;
+    }
+
+    .peek-icon .layer-swatch {
+        width: 22px;
+        height: 22px;
+    }
+
+    .about-modal-content {
+        padding: 16px 18px 20px 18px;
+        max-height: 85vh;
+    }
+
+    .about-modal-content h2 {
+        font-size: 16px;
+    }
+}
+
+/* ----- Desktop-only roomier layout --------------------------------- */
+@media (min-width: 768px) {
+    .bottom-sheet {
+        max-width: 480px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        border-top-left-radius: 14px;
+        border-top-right-radius: 14px;
+        border-left: 1px solid var(--sheet-border);
+        border-right: 1px solid var(--sheet-border);
+    }
+
+    .bottom-sheet.is-open {
+        max-height: calc(80vh + var(--safe-bottom));
+    }
+
+    /* On desktop the peek bar is centered at max-width 480 px, so the
+     * bottom-left and bottom-right corners of the viewport are free.
+     * Drop the logo and attribution back into those corners instead
+     * of floating them above the peek's top edge. */
+    #logo-overlay,
+    body.sheet-open #logo-overlay {
+        bottom: calc(12px + var(--safe-bottom));
+    }
+
+    .maplibregl-ctrl-bottom-right {
+        bottom: calc(12px + var(--safe-bottom)) !important;
+    }
+}

@@ -1,0 +1,739 @@
+#!/usr/bin/env python3
+"""Strict validator/linter for mtb-map-framework YAML configs.
+
+Run automatically at the top of `build.py`, or standalone:
+
+    python scripts/validate_config.py configs/ramba/ramba.yaml [configs/dte/dte.yaml ...]
+
+Catches the kinds of mistakes the build pipeline silently swallows:
+unknown top-level keys (typos like `Default_Direction_Schedule`), wrong
+types, out-of-range enum values, illegal cross-references between keys,
+malformed colors, malformed bboxes, missing required keys, and missing
+asset files.
+
+All errors are collected then reported together — the goal is "fix the
+config in one pass" rather than "fix one error, rerun, fix the next".
+Exit code is 0 on success, 1 on any error. Warnings (e.g. file-not-found
+for assets that may be populated later) print but do not fail the build.
+"""
+
+import difflib
+import os
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+# ----------------------------------------------------------------------
+# Schema
+# ----------------------------------------------------------------------
+
+# Top-level keys that are required. Empty values still fail.
+REQUIRED_KEYS = {"name", "slug", "root_relation_id"}
+
+# All known top-level keys with expected Python types. None means "no type
+# check" (handled by a custom validator below). Using tuples for "any of".
+#
+# Keep this list in sync with:
+#   - scripts/build.py CONFIG_SPEC
+#   - scripts/build.py inject_config_into_template() custom-logic block
+#   - scripts/fetch_trails.py / fetch_pois.py / fetch_basemap.py /
+#     fetch_terrain.py / generate_icons.py config.get() lookups
+KNOWN_KEYS = {
+    # Identity / required
+    "name":                          str,
+    "slug":                          str,
+    "title":                         str,
+    "root_relation_id":              int,
+
+    # Map view / geometry
+    "bbox":                          list,
+    "pan_bbox":                      list,
+    "pan_padding":                   (int, float),
+    "center":                        list,
+    "zoom":                          (int, float),
+    "min_zoom":                      (int, float),
+    "max_zoom":                      (int, float),
+    "basemap_maxzoom":               (int, float),
+    "terrain_maxzoom":               (int, float),
+
+    # Data sources
+    "osm_file":                      str,
+    "extra_relations":               list,
+    "clipped_relations":             list,
+    "winter_relations":              list,
+    "summer_relations":              list,
+    "emergency_access_relations":    list,
+    "custom_routes":                 list,
+
+    # Per-relation overrides (dicts keyed by integer relation IDs)
+    "relation_colors":               dict,
+    "dashed_relations":              dict,
+    "default_direction_schedule":    dict,
+    "direction_schedules":           dict,
+
+    # Display options
+    "default_labels":                str,
+    "color_by":                      str,
+    "default_trail_color":           (str, dict),
+    "marker_color":                  str,
+    "marker_text_color":             str,
+    "marker_border_color":           str,
+    "parking_color":                 str,
+    "parking_text_color":            str,
+    "parking_border_color":          str,
+    "trailhead_color":               str,
+    "trailhead_text_color":          str,
+    "trailhead_border_color":        str,
+    "feature_color":                 str,
+    "feature_ring_color":            str,
+
+    # Show/hide toggles (gate data-fetching and build-time asset gen;
+    # UI visibility lives in localStorage). show_markers covers the
+    # merged guideposts + emergency-access-point layer.
+    "show_markers":                  bool,
+    "show_features":                 bool,
+    "show_parking":                  bool,
+    "show_trailheads":               bool,
+    "show_terrain":                  bool,
+    "show_difficulty":               bool,
+    "show_routes":                   bool,
+    "show_trails":                   bool,
+    "suppress_path_labels":          bool,
+    "suppress_basemap_pois":         bool,
+    "map_dim_on_highlight":          bool,
+    "url_hash":                      bool,
+
+    # User-supplied feature data
+    "trailheads":                    list,
+    "parking":                       list,
+    "base_layers":                   list,
+
+    # Branding / chrome
+    "logo":                          str,
+    "icon":                          str,
+    "about":                         dict,
+    "pwa":                           bool,
+
+    # Output
+    "output_dir":                    str,
+}
+
+VALID_LABELS = {"routes", "trails", "none"}
+VALID_COLOR_BY = {"relation", "trail"}
+VALID_DAYS = {"sunday", "monday", "tuesday", "wednesday",
+              "thursday", "friday", "saturday",
+              # Parity tokens: reverse on even or odd calendar dates
+              # (getDate()%2). Must stay in sync with build.py's VALID_DAYS
+              # and app.js todaysReverseRoutes().
+              "even_days", "odd_days"}
+
+HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+# Colors can also be CSS named colors. We don't enumerate the full set —
+# instead we accept anything matching a tame ASCII identifier alongside
+# the hex form. This is permissive on purpose: CSS color names are stable
+# and a typo like "wite" would render as transparent at the browser, not
+# crash the build. The hex check above is the high-value catch.
+NAMED_COLOR_RE = re.compile(r"^[a-zA-Z]+$")
+
+# Valid GeoJSON geometry types for custom_routes.
+VALID_CUSTOM_GEOMETRY_TYPES = {"LineString", "MultiLineString"}
+
+
+# ----------------------------------------------------------------------
+# Result helpers
+# ----------------------------------------------------------------------
+
+class _Report:
+    """Collect errors and warnings during a single validation run."""
+
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+
+    def err(self, where, msg):
+        self.errors.append(f"  [error] {where}: {msg}")
+
+    def warn(self, where, msg):
+        self.warnings.append(f"  [warn]  {where}: {msg}")
+
+
+# ----------------------------------------------------------------------
+# Type & value helpers
+# ----------------------------------------------------------------------
+
+def _type_name(t):
+    if isinstance(t, tuple):
+        return " or ".join(_type_name(x) for x in t)
+    return {int: "int", float: "float", str: "str",
+            bool: "bool", list: "list", dict: "dict"}.get(t, t.__name__)
+
+
+def _check_type(report, where, value, expected):
+    """Type-check that handles the bool-is-int gotcha.
+
+    YAML loads `true`/`false` as Python bool, which is a subclass of int.
+    A field declared `int` should NOT accept a bool, so we filter it
+    explicitly. The reverse isn't a concern (bool fields never get ints).
+    """
+    if isinstance(value, bool) and expected is not bool and (
+        not isinstance(expected, tuple) or bool not in expected
+    ):
+        report.err(where, f"expected {_type_name(expected)}, got bool")
+        return False
+    if not isinstance(value, expected):
+        report.err(where,
+                   f"expected {_type_name(expected)}, "
+                   f"got {type(value).__name__}")
+        return False
+    return True
+
+
+def _is_color(value):
+    if not isinstance(value, str):
+        return False
+    return bool(HEX_COLOR_RE.match(value) or NAMED_COLOR_RE.match(value))
+
+
+# ----------------------------------------------------------------------
+# Per-key validators
+# ----------------------------------------------------------------------
+
+def _validate_unknown_keys(report, config):
+    """Catch typos in top-level keys via fuzzy match against KNOWN_KEYS."""
+    for key in config.keys():
+        if key in KNOWN_KEYS:
+            continue
+        # Internal fields populated by the build pipeline shouldn't error
+        # if they leak in (defensive — users won't write these).
+        if key.startswith("_"):
+            continue
+        suggestions = difflib.get_close_matches(key, KNOWN_KEYS.keys(), n=2)
+        hint = f" — did you mean {' or '.join(repr(s) for s in suggestions)}?" \
+               if suggestions else ""
+        report.err(key, f"unknown top-level key{hint}")
+
+
+def _validate_required(report, config):
+    for key in REQUIRED_KEYS:
+        if key not in config or config[key] in (None, ""):
+            report.err(key, "required key is missing or empty")
+
+
+def _validate_types(report, config):
+    for key, value in config.items():
+        if key not in KNOWN_KEYS or value is None:
+            continue
+        expected = KNOWN_KEYS[key]
+        _check_type(report, key, value, expected)
+
+
+def _validate_enums(report, config):
+    if "default_labels" in config and config["default_labels"] not in VALID_LABELS:
+        report.err("default_labels",
+                   f"must be one of {sorted(VALID_LABELS)}, "
+                   f"got {config['default_labels']!r}")
+
+    if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
+        report.err("color_by",
+                   f"must be one of {sorted(VALID_COLOR_BY)}, "
+                   f"got {config['color_by']!r}")
+
+
+def _validate_geometry(report, config):
+    """Bbox / center / zoom sanity. Loose ranges so users with edge-case
+    setups (Antarctica, antimeridian crossings, etc.) aren't blocked."""
+    for bbox_key in ("bbox", "pan_bbox"):
+        if bbox_key in config and isinstance(config[bbox_key], list):
+            b = config[bbox_key]
+            if len(b) != 4:
+                report.err(bbox_key, f"must be 4 values [w,s,e,n], got {len(b)}")
+            elif not all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                         for x in b):
+                report.err(bbox_key, "all 4 values must be numbers")
+            else:
+                w, s, e, n = b
+                if not (-180 <= w <= 180 and -180 <= e <= 180):
+                    report.err(bbox_key, f"longitudes must be in [-180,180]: {b}")
+                if not (-90 <= s <= 90 and -90 <= n <= 90):
+                    report.err(bbox_key, f"latitudes must be in [-90,90]: {b}")
+                if w >= e:
+                    report.err(bbox_key, f"west ({w}) must be < east ({e})")
+                if s >= n:
+                    report.err(bbox_key, f"south ({s}) must be < north ({n})")
+
+    # pan_padding: negative values would shrink maxBounds below bbox which
+    # makes no sense; huge values (>5) mean the pan envelope is 10× the
+    # trail extent, almost certainly a typo. Warn rather than error so
+    # power users can override for special cases.
+    if "pan_padding" in config and isinstance(config["pan_padding"], (int, float)) \
+            and not isinstance(config["pan_padding"], bool):
+        pp = config["pan_padding"]
+        if pp < 0:
+            report.err("pan_padding",
+                       f"must be >= 0 (0 = no pan room beyond bbox), got {pp}")
+        elif pp > 5:
+            report.warn("pan_padding",
+                        f"unusually large ({pp}); pan envelope will be ~{1+2*pp:.0f}x "
+                        "the bbox extent and basemap PMTiles will balloon to match")
+
+    if "center" in config and isinstance(config["center"], list):
+        c = config["center"]
+        if len(c) != 2:
+            report.err("center", f"must be 2 values [lon,lat], got {len(c)}")
+        elif not all(isinstance(x, (int, float)) and not isinstance(x, bool)
+                     for x in c):
+            report.err("center", "both values must be numbers")
+        else:
+            lon, lat = c
+            if not -180 <= lon <= 180:
+                report.err("center", f"longitude must be in [-180,180]: {lon}")
+            if not -90 <= lat <= 90:
+                report.err("center", f"latitude must be in [-90,90]: {lat}")
+
+    for k in ("zoom", "min_zoom", "max_zoom", "basemap_maxzoom", "terrain_maxzoom"):
+        if k in config and isinstance(config[k], (int, float)) \
+                and not isinstance(config[k], bool):
+            if not 0 <= config[k] <= 22:
+                report.err(k, f"zoom must be in [0,22], got {config[k]}")
+
+    if "min_zoom" in config and "max_zoom" in config:
+        try:
+            if config["min_zoom"] > config["max_zoom"]:
+                report.err("min_zoom",
+                           f"min_zoom ({config['min_zoom']}) "
+                           f"> max_zoom ({config['max_zoom']})")
+        except TypeError:
+            pass  # already reported as a type error above
+
+
+def _validate_colors(report, config):
+    color_keys = ("marker_color", "marker_text_color", "marker_border_color",
+                  "parking_color", "parking_text_color", "parking_border_color",
+                  "trailhead_color", "trailhead_text_color", "trailhead_border_color",
+                  "feature_color", "feature_ring_color")
+    for k in color_keys:
+        if k in config and not _is_color(config[k]):
+            report.err(k, f"not a valid color: {config[k]!r} "
+                          f"(expected #RRGGBB, #RGB, #RRGGBBAA, or a CSS color name)")
+
+    dtc = config.get("default_trail_color")
+    if dtc is not None:
+        if isinstance(dtc, str):
+            if not _is_color(dtc):
+                report.err("default_trail_color",
+                           f"not a valid color: {dtc!r}")
+        elif isinstance(dtc, dict):
+            if "color" in dtc and not _is_color(dtc["color"]):
+                report.err("default_trail_color.color",
+                           f"not a valid color: {dtc['color']!r}")
+
+    rc = config.get("relation_colors")
+    if isinstance(rc, dict):
+        for rid, color in rc.items():
+            if not _is_color(color):
+                report.err(f"relation_colors[{rid}]",
+                           f"not a valid color: {color!r}")
+
+
+def _validate_relation_id_dicts(report, config):
+    """Keys of *_relations dicts must be int (or int-coercible str)."""
+    for key in ("relation_colors", "dashed_relations",
+                "direction_schedules"):
+        d = config.get(key)
+        if not isinstance(d, dict):
+            continue
+        for rid in d.keys():
+            if isinstance(rid, int) and not isinstance(rid, bool):
+                continue
+            if isinstance(rid, str) and rid.lstrip("-").isdigit():
+                continue
+            report.err(f"{key}", f"key {rid!r} is not an OSM relation ID (int)")
+
+    for key in ("extra_relations", "clipped_relations", "winter_relations",
+                "summer_relations", "emergency_access_relations"):
+        lst = config.get(key)
+        if not isinstance(lst, list):
+            continue
+        for i, rid in enumerate(lst):
+            if isinstance(rid, int) and not isinstance(rid, bool):
+                continue
+            report.err(f"{key}[{i}]",
+                       f"must be an OSM relation ID (int), got {rid!r}")
+
+
+def _validate_weekdays(report, config):
+    """Validate any reverse_days lists. Mirrors build.py's normalise_days()
+    accept-prefix logic so the validator agrees with the runtime."""
+
+    def _check_days(where, days):
+        if not isinstance(days, list):
+            report.err(where, f"reverse_days must be a list, got {type(days).__name__}")
+            return
+        for d in days:
+            dl = str(d).strip().lower()
+            match = next((full for full in VALID_DAYS
+                          if full == dl or (len(dl) >= 3 and full.startswith(dl))),
+                         None)
+            if match is None:
+                report.err(where,
+                           f"unknown day token {d!r}; valid: {sorted(VALID_DAYS)}")
+
+    dds = config.get("default_direction_schedule")
+    if isinstance(dds, dict) and "reverse_days" in dds:
+        _check_days("default_direction_schedule.reverse_days",
+                    dds["reverse_days"])
+
+    ds = config.get("direction_schedules")
+    if isinstance(ds, dict):
+        for rid, spec in ds.items():
+            if not isinstance(spec, dict):
+                report.err(f"direction_schedules[{rid}]",
+                           f"expected dict, got {type(spec).__name__}")
+                continue
+            if "reverse_days" in spec:
+                _check_days(f"direction_schedules[{rid}].reverse_days",
+                            spec["reverse_days"])
+
+
+def _validate_dashed_relations(report, config):
+    dr = config.get("dashed_relations")
+    if not isinstance(dr, dict):
+        return
+    for rid, spec in dr.items():
+        where = f"dashed_relations[{rid}]"
+        if isinstance(spec, list):
+            for i, n in enumerate(spec):
+                if not isinstance(n, (int, float)) or isinstance(n, bool):
+                    report.err(f"{where}[{i}]",
+                               f"dash pattern values must be numbers, got {n!r}")
+        elif isinstance(spec, dict):
+            if "pattern" in spec:
+                p = spec["pattern"]
+                if not isinstance(p, list) or not all(
+                    isinstance(n, (int, float)) and not isinstance(n, bool)
+                    for n in p
+                ):
+                    report.err(f"{where}.pattern",
+                               f"must be a list of numbers, got {p!r}")
+            if "cap" in spec and spec["cap"] not in ("butt", "round", "square"):
+                report.err(f"{where}.cap",
+                           f"must be one of [butt, round, square], "
+                           f"got {spec['cap']!r}")
+        else:
+            report.err(where,
+                       f"expected list or dict, got {type(spec).__name__}")
+
+
+def _validate_point_lists(report, config):
+    """trailheads / parking are list-of-dicts with name + coordinates."""
+    for key in ("trailheads", "parking"):
+        lst = config.get(key)
+        if not isinstance(lst, list):
+            continue
+        for i, item in enumerate(lst):
+            where = f"{key}[{i}]"
+            if not isinstance(item, dict):
+                report.err(where, f"expected dict, got {type(item).__name__}")
+                continue
+            if "coordinates" not in item:
+                report.err(where, "missing required 'coordinates' [lon, lat]")
+            else:
+                c = item["coordinates"]
+                if not (isinstance(c, list) and len(c) == 2
+                        and all(isinstance(x, (int, float))
+                                and not isinstance(x, bool) for x in c)):
+                    report.err(f"{where}.coordinates",
+                               f"must be [lon, lat] numbers, got {c!r}")
+                else:
+                    lon, lat = c
+                    if not -180 <= lon <= 180:
+                        report.err(f"{where}.coordinates",
+                                   f"longitude must be in [-180,180]: {lon}")
+                    if not -90 <= lat <= 90:
+                        report.err(f"{where}.coordinates",
+                                   f"latitude must be in [-90,90]: {lat}")
+            if "name" in item and not isinstance(item["name"], str):
+                report.err(f"{where}.name",
+                           f"must be a string, got {type(item['name']).__name__}")
+
+
+def _validate_paths(report, config, config_dir):
+    """Asset path existence. logo / icon / osm_file and every
+    custom_routes[].geometry path are checked via os.path.isfile. Relative
+    paths resolve against ``config_dir`` (the directory holding the YAML
+    file) — every per-map asset lives next to its config. Missing paths
+    are errors; surfacing them here gives a clear single message naming
+    the config and field rather than an opaque build failure."""
+    def _full(p):
+        if os.path.isabs(p):
+            return p
+        return os.path.join(config_dir, p) if config_dir else p
+
+    for key in ("logo", "icon", "osm_file"):
+        p = config.get(key)
+        if not p:
+            continue
+        full = _full(p)
+        if not os.path.isfile(full):
+            report.err(key, f"file not found: {p} (resolved to {full})")
+
+    cr = config.get("custom_routes")
+    if isinstance(cr, list):
+        for i, entry in enumerate(cr):
+            if not isinstance(entry, dict):
+                continue
+            p = entry.get("geometry")
+            if not isinstance(p, str) or not p:
+                continue
+            full = _full(p)
+            if not os.path.isfile(full):
+                report.err(f"custom_routes[{i}].geometry",
+                           f"file not found: {p} (resolved to {full})")
+
+
+def _validate_custom_routes(report, config):
+    """Validate custom_routes entries.
+
+    Each entry is a dict with:
+      - required: id (string), name (string), color (valid color),
+                  geometry (string path)
+      - optional: summer, winter, emergency (bool; default
+                  summer=true if all three omitted), dashed (bool),
+                  description (string), trail_name_field (string)
+
+    Cross-checks:
+      - ids are unique across custom_routes
+      - ids don't collide (stringified) with any OSM relation id in
+        extra_relations / clipped_relations / winter_relations /
+        summer_relations / emergency_access_relations
+      - at least one of summer/winter/emergency resolves to true
+    """
+    cr = config.get("custom_routes")
+    if cr is None:
+        return
+    if not isinstance(cr, list):
+        # already reported as a type error by _validate_types
+        return
+
+    # Collect OSM relation ids (stringified) from relation-id lists for
+    # collision checks.
+    osm_ids = set()
+    for key in ("extra_relations", "clipped_relations", "winter_relations",
+                "summer_relations", "emergency_access_relations"):
+        lst = config.get(key)
+        if isinstance(lst, list):
+            for rid in lst:
+                if isinstance(rid, int) and not isinstance(rid, bool):
+                    osm_ids.add(str(rid))
+    root = config.get("root_relation_id")
+    if isinstance(root, int) and not isinstance(root, bool):
+        osm_ids.add(str(root))
+
+    seen_ids = set()
+    for i, entry in enumerate(cr):
+        where = f"custom_routes[{i}]"
+        if not isinstance(entry, dict):
+            report.err(where, f"expected dict, got {type(entry).__name__}")
+            continue
+
+        # Required: id
+        cid = entry.get("id")
+        if not isinstance(cid, str) or not cid:
+            report.err(f"{where}.id", "required: non-empty string")
+        else:
+            if cid in seen_ids:
+                report.err(f"{where}.id",
+                           f"duplicate id {cid!r} "
+                           f"(already used by an earlier custom_routes entry)")
+            else:
+                seen_ids.add(cid)
+            # Collision with OSM relation ids — compare stringified.
+            if cid in osm_ids:
+                report.err(f"{where}.id",
+                           f"id {cid!r} collides with an OSM relation id "
+                           f"used elsewhere in this config")
+            # Reject ids that parse as ints (would collide with any OSM
+            # relation with that numeric id).
+            if cid.lstrip("-").isdigit():
+                report.err(f"{where}.id",
+                           f"id {cid!r} is purely numeric; custom-route ids "
+                           f"must be non-numeric to avoid colliding with OSM "
+                           f"relation ids")
+
+        # Required: name
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            report.err(f"{where}.name", "required: non-empty string")
+
+        # Required: color
+        color = entry.get("color")
+        if color is None:
+            report.err(f"{where}.color", "required: hex or CSS named color")
+        elif not _is_color(color):
+            report.err(f"{where}.color",
+                       f"not a valid color: {color!r}")
+
+        # Required: geometry (path existence checked in _validate_paths)
+        geom = entry.get("geometry")
+        if not isinstance(geom, str) or not geom:
+            report.err(f"{where}.geometry",
+                       "required: path to a GeoJSON file "
+                       "(LineString or MultiLineString)")
+
+        # Bucket flags. Default: if all three omitted, summer=true.
+        flags_present = any(k in entry for k in ("summer", "winter", "emergency"))
+        for flag_key in ("summer", "winter", "emergency"):
+            if flag_key in entry and not isinstance(entry[flag_key], bool):
+                report.err(f"{where}.{flag_key}",
+                           f"must be bool, got {type(entry[flag_key]).__name__}")
+
+        if flags_present:
+            resolved = [entry.get(k, False) is True for k in
+                        ("summer", "winter", "emergency")]
+            if not any(resolved):
+                report.err(f"{where}",
+                           "at least one of summer/winter/emergency must be "
+                           "true (an all-false custom route would never render)")
+
+        # Optional bool
+        if "dashed" in entry and not isinstance(entry["dashed"], bool):
+            report.err(f"{where}.dashed",
+                       f"must be bool, got {type(entry['dashed']).__name__}")
+
+        # Optional strings
+        for sk in ("description", "trail_name_field"):
+            if sk in entry and not isinstance(entry[sk], str):
+                report.err(f"{where}.{sk}",
+                           f"must be string, got {type(entry[sk]).__name__}")
+
+        # Reject unknown keys in the custom route entry (catch typos).
+        allowed = {"id", "name", "color", "geometry", "summer", "winter",
+                   "emergency", "dashed", "description", "trail_name_field"}
+        for k in entry.keys():
+            if k not in allowed:
+                suggestions = difflib.get_close_matches(k, allowed, n=2)
+                hint = (f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
+                        if suggestions else "")
+                report.err(f"{where}.{k}",
+                           f"unknown key in custom_routes entry{hint}")
+
+
+def _validate_about(report, config):
+    about = config.get("about")
+    if about is None:
+        return
+    if not isinstance(about, dict):
+        report.err("about", f"expected dict, got {type(about).__name__}")
+        return
+    if "description" in about and not isinstance(about["description"], str):
+        report.err("about.description",
+                   f"must be a string, got {type(about['description']).__name__}")
+    for key in ("more_information", "extra_links"):
+        if key not in about:
+            continue
+        v = about[key]
+        if not isinstance(v, list):
+            report.err(f"about.{key}",
+                       f"must be a list, got {type(v).__name__}")
+            continue
+        for i, link in enumerate(v):
+            if not isinstance(link, dict) or "label" not in link or "url" not in link:
+                report.err(f"about.{key}[{i}]",
+                           "each entry must be {label, url}")
+    if "author" in about:
+        a = about["author"]
+        if not isinstance(a, dict) or "name" not in a:
+            report.err("about.author",
+                       "must be {name, [url]}")
+
+
+def _validate_slug(report, config):
+    slug = config.get("slug")
+    if isinstance(slug, str) and not re.match(r"^[a-z0-9_-]+$", slug):
+        report.err("slug",
+                   f"must match [a-z0-9_-]+ (lowercase, no spaces): got {slug!r}")
+
+
+# ----------------------------------------------------------------------
+# Public entry point
+# ----------------------------------------------------------------------
+
+def validate_config(config, *, config_path=None, project_root=None):
+    """Validate a loaded config dict.
+
+    Returns (errors, warnings) — both lists of pre-formatted strings.
+    Caller decides whether warnings should print or be silent.
+
+    ``config_path`` (or ``config["_config_dir"]`` set by build.py's
+    ``load_config``) is used as the base for resolving user-supplied
+    asset paths (logo, icon, osm_file, custom_routes[].geometry). The
+    ``project_root`` parameter is retained for backwards compat but no
+    longer used for asset-path resolution.
+    """
+    if not isinstance(config, dict):
+        return ([f"  [error] root: YAML did not parse to a mapping/dict "
+                 f"(got {type(config).__name__})"], [])
+
+    # Derive the config's directory from (in order): an explicit
+    # config_path arg, the _config_dir stashed by build.py's load_config,
+    # or None (which disables the path-exists check since we can't tell
+    # where to look).
+    if config_path:
+        config_dir = os.path.dirname(os.path.abspath(config_path))
+    else:
+        config_dir = config.get("_config_dir")
+
+    report = _Report()
+    _validate_unknown_keys(report, config)
+    _validate_required(report, config)
+    _validate_types(report, config)
+    _validate_enums(report, config)
+    _validate_geometry(report, config)
+    _validate_colors(report, config)
+    _validate_relation_id_dicts(report, config)
+    _validate_weekdays(report, config)
+    _validate_dashed_relations(report, config)
+    _validate_point_lists(report, config)
+    _validate_paths(report, config, config_dir)
+    _validate_custom_routes(report, config)
+    _validate_about(report, config)
+    _validate_slug(report, config)
+    return report.errors, report.warnings
+
+
+def validate_config_file(path):
+    """Load + validate a single YAML file. Returns (errors, warnings)."""
+    try:
+        with open(path) as f:
+            config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        return ([f"  [error] root: YAML parse error: {e}"], [])
+    except OSError as e:
+        return ([f"  [error] root: cannot open {path}: {e}"], [])
+    return validate_config(config, config_path=path)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: validate_config.py <config.yaml> [<config.yaml> ...]",
+              file=sys.stderr)
+        sys.exit(2)
+
+    overall_errors = 0
+    for path in sys.argv[1:]:
+        errors, warnings = validate_config_file(path)
+        status = "FAIL" if errors else "OK"
+        print(f"{status}: {path}")
+        for line in errors:
+            print(line)
+        for line in warnings:
+            print(line)
+        overall_errors += len(errors)
+
+    sys.exit(1 if overall_errors else 0)
+
+
+if __name__ == "__main__":
+    main()

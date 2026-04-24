@@ -1,0 +1,5 @@
+requests>=2.31
+pyyaml>=6.0
+Pillow>=10.0
+pmtiles>=3.5.0
+mapbox-vector-tile>=2.1.0
