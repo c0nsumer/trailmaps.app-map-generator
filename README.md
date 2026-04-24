@@ -290,6 +290,7 @@ These gate **data fetching and build-time asset generation**, not UI visibility.
 | `show_parking` | No | `true` | When false, parking markers from the config are not rendered |
 | `show_trailheads` | No | `true` | When false, trailhead markers from the config are not rendered |
 | `show_features` | No | `true` | When false, skips the Overpass query for `tourism=attraction` feature nodes |
+| `poi_proximity_m` | No | `50` | Distance in meters from the nearest visible trail within which a feature or trail-marker POI is allowed to render. Tight values (~10 m) hide POIs that aren't directly on the trail; loose values (~75 m+) include nearby attractions but risk surfacing bbox-incidental POIs. The peek-bar Features toggle auto-hides if no feature POI passes this distance check. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted |
 | `show_difficulty` | No | `false` | When true, generates the IMBA difficulty sprite and enables the in-UI toggle; when false, no sprite is generated and no difficulty symbols appear. The toggle defaults **on** when enabled and persists state via localStorage. |
 | `show_routes` | No | `true` | When false, hides the Routes section of the Finder and removes "Routes" from the Labels dropdown. Useful for maps that have no curated route relations. |

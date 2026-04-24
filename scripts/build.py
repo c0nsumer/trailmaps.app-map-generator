@@ -917,6 +917,16 @@ def inject_config_into_template(template_content, config, trails_geojson):
         ("show_terrain",            "showTerrain",          True),
         ("show_difficulty",         "showDifficulty",       False),
 
+        # Distance (meters) from the nearest visible trail within which a
+        # trail-marker or feature POI is allowed to render. Tight values
+        # (~10 m) hide POIs that aren't directly on the trail; loose
+        # values (~75 m+) include nearby attractions but risk surfacing
+        # bbox-incidental POIs. Default 50 surfaces typical
+        # `tourism=attraction` features (often 10-50 m off-trail) while
+        # keeping the filter useful. The Features peek toggle auto-hides
+        # if no feature POI passes this check.
+        ("poi_proximity_m",         "poiProximityMeters",   50),
+
         # UI gates for the Finder + Labels dropdown. Some systems have no
         # curated routes (trails only) or treat routes and trails as the
         # same set; turning one off hides the matching Finder section and

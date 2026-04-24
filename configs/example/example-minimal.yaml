@@ -55,6 +55,7 @@ root_relation_id: 12345678
 # show_parking: true
 # show_trailheads: true
 # show_features: true
+# poi_proximity_m: 50
 # show_terrain: true
 # show_difficulty: false
 # show_routes: true

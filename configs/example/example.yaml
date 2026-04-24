@@ -315,6 +315,16 @@ root_relation_id: 12345678
 # Default: true.
 # show_features: true
 
+# Distance (meters) from the nearest visible trail within which a
+# feature or trail-marker POI is allowed to render. Tight values
+# (~10 m) hide POIs that aren't directly on the trail; loose values
+# (~75 m+) include nearby attractions but risk surfacing
+# bbox-incidental POIs. Default 50 m surfaces typical
+# `tourism=attraction` features (often 10-50 m off the centerline)
+# while keeping the filter useful. The Features peek toggle
+# auto-hides if no feature POI passes this distance check.
+# poi_proximity_m: 50
+
 # Generate terrain.pmtiles for hillshade overlay. Set false for flat
 # areas or to reduce build size. Default: true.
 # show_terrain: true

@@ -1085,13 +1085,22 @@ function difficultyCasingExpr() {
 // ============================================================
 // Proximity filtering helpers
 // ============================================================
-const POI_PROXIMITY_METERS = 10; // hard-coded; no longer configurable
+// Distance (meters) from the nearest visible trail within which a
+// trail_marker or feature POI is allowed to render. Features tagged
+// `tourism=attraction` in OSM often sit 10-50 m off the trail (scenic
+// viewpoints, old structures, named rocks) — 50 m is a permissive
+// default that surfaces them while still filtering out incidental
+// bbox POIs that aren't actually trail-adjacent. Configurable per-map
+// via the `poi_proximity_m` YAML key.
+const POI_PROXIMITY_METERS = CONFIG.poiProximityMeters ?? 50;
 
-// Threshold for "on or adjacent to the highlighted route" during the
-// spotlight dim. Wider than POI_PROXIMITY_METERS because parking lots
-// and trailheads are user-supplied at lot-entrance coordinates that sit
-// 50-200m from the signed trail itself — they're "adjacent" even though
-// the strict POI-on-trail check would drop them.
+// Threshold (meters) for "on the highlighted route" during the
+// spotlight dim. Intentionally tight — when a single route/trail is
+// highlighted, only POIs that sit essentially on its geometry stay at
+// full brightness; everything else (parking lots, trailheads, POIs on
+// adjacent trails) dims to 25 % opacity so the highlighted feature
+// reads as a clean spotlight. Not user-configurable; this is a UI
+// polish knob, not a data-visibility knob like POI_PROXIMITY_METERS.
 const HIGHLIGHT_POI_PROXIMITY_METERS = 10;
 
 function pointToSegmentDistance(px, py, ax, ay, bx, by) {

@@ -104,6 +104,7 @@ KNOWN_KEYS = {
     "suppress_basemap_pois":         bool,
     "map_dim_on_highlight":          bool,
     "url_hash":                      bool,
+    "poi_proximity_m":               (int, float),
 
     # User-supplied feature data
     "trailheads":                    list,
@@ -277,6 +278,22 @@ def _validate_geometry(report, config):
             report.warn("pan_padding",
                         f"unusually large ({pp}); pan envelope will be ~{1+2*pp:.0f}x "
                         "the bbox extent and basemap PMTiles will balloon to match")
+
+    # poi_proximity_m: distance (meters) from the nearest visible trail
+    # within which a feature/trail-marker POI is allowed to render.
+    # Negative is nonsense; very large values defeat the filter and may
+    # surface bbox-incidental POIs the trail map shouldn't claim.
+    if "poi_proximity_m" in config \
+            and isinstance(config["poi_proximity_m"], (int, float)) \
+            and not isinstance(config["poi_proximity_m"], bool):
+        pm = config["poi_proximity_m"]
+        if pm < 0:
+            report.err("poi_proximity_m",
+                       f"must be >= 0 (meters from nearest visible trail), got {pm}")
+        elif pm > 500:
+            report.warn("poi_proximity_m",
+                        f"unusually large ({pm} m); the proximity filter is "
+                        "effectively disabled and unrelated bbox POIs may render")
 
     if "center" in config and isinstance(config["center"], list):
         c = config["center"]
