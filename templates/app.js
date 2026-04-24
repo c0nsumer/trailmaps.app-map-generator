@@ -232,9 +232,16 @@ function addDifficultyLayer() {
         layout: {
             "symbol-placement": "line",
             // Spacing along the line (pixels). Larger = fewer diamonds.
-            // 500 reads as "one or two per trail segment at mid zoom"
-            // rather than a bead-strung dot pattern.
-            "symbol-spacing": 500,
+            // 800 is deliberately 2× the arrow layer's symbol-spacing
+            // (400) — on the shared trail-centerlines source, a 2:1
+            // ratio makes diamond anchors coincide with every-other
+            // arrow anchor, so MapLibre's collision suppresses the
+            // overlapping arrow at those positions with only
+            // `icon-padding: 4`. In-between arrow anchors sit ~400 px
+            // from the nearest diamond — well clear. Different-ratio
+            // spacings (e.g. 400/500) produce beat-pattern overlaps
+            // that padding alone can't reliably catch.
+            "symbol-spacing": 800,
             "icon-image": [
                 "match", ["get", "imba_difficulty"],
                 "0", "imba-0",
@@ -402,7 +409,10 @@ function addArrowsLayer() {
             "symbol-placement": "line",
             // Spacing along the line (pixels). Larger = fewer arrows.
             // 400 keeps directionality readable without arrows every
-            // few meters on a curvy trail.
+            // few meters on a curvy trail. The difficulty layer uses
+            // 800 (2× this) so their anchors interleave cleanly on
+            // the shared centerlines source — see the comment in
+            // addDifficultyLayer for why the ratio matters.
             "symbol-spacing": 400,
             "icon-image": ARROW_ICON_ID,
             // Arrows are always on; scaled down ~30 % from the previous
