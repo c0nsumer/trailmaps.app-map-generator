@@ -66,7 +66,7 @@ root_relation_id: 12345678
 # --- Display ---
 # default_labels: routes
 # map_dim_on_highlight: true
-# url_hash: true
+# url_hash: false
 
 # --- Base layers ---
 # base_layers: []

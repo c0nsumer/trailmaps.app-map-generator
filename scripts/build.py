@@ -954,7 +954,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
         # screenshots / screen-shares. Set false to drop the hash
         # entirely (URL stays clean, no persistence across reload, no
         # shareable deep-links).
-        ("url_hash",                "urlHash",              True),
+        ("url_hash",                "urlHash",              False),
 
         # Marker colours (kept per user request; some systems have
         # branded marker palettes aligned with their trail colours).

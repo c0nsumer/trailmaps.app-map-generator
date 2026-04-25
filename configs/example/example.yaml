@@ -375,9 +375,10 @@ root_relation_id: 12345678
 # restore that position on reload. Enables "share this view" links and
 # reload-preserves-position, at the cost of leaking the last-viewed
 # location in the address bar, screenshots, and screen-shares. Set
-# false for a clean URL with no shareable deep-links — on return visits
-# the map always opens framed on `bbox`. Default: true.
-# url_hash: true
+# true to opt in to the hash and shareable deep-links — on return
+# visits the map opens framed on the hash position instead of `bbox`.
+# Default: false.
+# url_hash: false
 
 
 # =============================================================================

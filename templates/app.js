@@ -961,8 +961,9 @@ async function init() {
         attributionControl: false,
         // URL hash (#zoom/lat/lon) — makes views shareable and reload-
         // preserved, but leaks last-viewed location via URL / screen-
-        // share. Controlled per-map via CONFIG.urlHash; default true
-        // for backward compatibility with existing deployments.
+        // share. Controlled per-map via CONFIG.urlHash; default false
+        // (URL stays clean). Opt in per-map by setting `url_hash: true`
+        // in the YAML.
         hash: CONFIG.urlHash,
     };
 
