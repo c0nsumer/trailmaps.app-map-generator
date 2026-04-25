@@ -2852,8 +2852,20 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
         const marker = new maplibregl.Marker({ element: el }).setLngLat(coords);
 
         if (popupHtmlFn) {
-            const popup = new maplibregl.Popup({ offset: 14, maxWidth: popupMaxWidth, closeButton: false })
-                .setHTML(popupHtmlFn(props, coords));
+            // focusAfterOpen: false — MapLibre's default is to move
+            // keyboard focus into the first focusable element of the
+            // popup ("Get Directions" link), which renders the
+            // browser's native focus ring around it. We're a tap-
+            // driven trail map, not a keyboard-navigated form, so the
+            // ring is just visual noise. Skipping the auto-focus
+            // leaves keyboard focus where the user left it (typically
+            // on the marker element itself, or nowhere on touch).
+            const popup = new maplibregl.Popup({
+                offset: 14,
+                maxWidth: popupMaxWidth,
+                closeButton: false,
+                focusAfterOpen: false,
+            }).setHTML(popupHtmlFn(props, coords));
             marker.setPopup(popup);
         }
 
@@ -3729,7 +3741,11 @@ function setupInteractions() {
                 html += routeItems;
             }
 
-            new maplibregl.Popup({ maxWidth: "220px", closeButton: false })
+            new maplibregl.Popup({
+                maxWidth: "220px",
+                closeButton: false,
+                focusAfterOpen: false,
+            })
                 .setLngLat(e.lngLat)
                 .setHTML(html)
                 .addTo(map);
