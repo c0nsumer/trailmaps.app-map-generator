@@ -194,81 +194,8 @@ function registerDifficultyIcons() {
     }
 }
 
-function buildDifficultyFilter() {
-    // Runs on the trail-centerlines source, which only contains
-    // features for physical ways with at least one visible route —
-    // so no route_id / visibility check is needed here, only the
-    // valid-rating gate.
-    const validImba = ["in", ["get", "imba_difficulty"], ["literal", ["0", "1", "2", "3", "4", "5"]]];
-    // When the spotlight dim is active, restrict difficulty icons to the
-    // highlighted route (or trail) so the non-highlighted areas read as
-    // clean dim — IMBA diamonds otherwise punch through the tint.
-    if (highlightDimActive()) {
-        if (highlight.kind === "route") {
-            return ["all", validImba, ["in", highlight.key, ["get", "shared_routes"]]];
-        }
-        return ["all", validImba, ["==", ["get", "trail_name"], highlight.key]];
-    }
-    return validImba;
-}
-
-function updateDifficultyFilter() {
-    if (map.getLayer("trail-difficulty")) {
-        map.setFilter("trail-difficulty", buildDifficultyFilter());
-    }
-}
-
 function difficultyToggleOn() {
     return LS.get("mtb.difficulty", true) === true;
-}
-
-function addDifficultyLayer() {
-    if (!map.getSource("trail-centerlines")) return;
-    map.addLayer({
-        id: "trail-difficulty",
-        type: "symbol",
-        source: "trail-centerlines",
-        filter: buildDifficultyFilter(),
-        layout: {
-            "symbol-placement": "line",
-            // Spacing along the line (pixels). Larger = fewer diamonds.
-            // 800 is deliberately 2× the arrow layer's symbol-spacing
-            // (400) — on the shared trail-centerlines source, a 2:1
-            // ratio makes diamond anchors coincide with every-other
-            // arrow anchor, so MapLibre's collision suppresses the
-            // overlapping arrow at those positions with only
-            // `icon-padding: 4`. In-between arrow anchors sit ~400 px
-            // from the nearest diamond — well clear. Different-ratio
-            // spacings (e.g. 400/500) produce beat-pattern overlaps
-            // that padding alone can't reliably catch.
-            "symbol-spacing": 800,
-            "icon-image": [
-                "match", ["get", "imba_difficulty"],
-                "0", "imba-0",
-                "1", "imba-1",
-                "2", "imba-2",
-                "3", "imba-3",
-                "4", "imba-4",
-                "5", "imba-5",
-                "",
-            ],
-            "icon-size": [
-                "interpolate", ["linear"], ["zoom"],
-                12, 0.5,
-                14, 0.7,
-                18, 1.0,
-            ],
-            "icon-rotation-alignment": "viewport",
-            "icon-allow-overlap": false,
-            "icon-ignore-placement": false,
-            // Modest pad is enough now that all decor layers share
-            // one feature per physical way — anchors land on
-            // identical line coordinates, so even a small collision
-            // box catches arrow+diamond conflicts reliably.
-            "icon-padding": 4,
-            "visibility": difficultyToggleOn() ? "visible" : "none",
-        },
-    });
 }
 
 // ============================================================
@@ -355,88 +282,607 @@ function todaysReverseRoutes() {
     return out;
 }
 
-// Compute eagerly so addArrowsLayer() (called during initial trail load)
-// gets the right rotation expression on first paint.
+// Recomputed on day-tick (see setInterval in setupBottomSheet); each
+// arrow's rotation is baked into its feature properties at decoration
+// build time, so a change here forces a full updateDecorationsSource().
 let reverseRoutesToday = todaysReverseRoutes();
 
-function buildArrowRotation() {
-    // Default: arrow follows the way's digitised direction (rotation 0).
-    // For ways belonging to a relation whose reverse_days includes today,
-    // flip 180°. shared_routes is the per-feature array of relation IDs.
-    const reverseIds = [...reverseRoutesToday];
-    if (reverseIds.length === 0) return 0;
-    const checks = reverseIds.map((id) => ["in", id, ["get", "shared_routes"]]);
-    return ["case",
-        checks.length === 1 ? checks[0] : ["any", ...checks], 180,
-        0,
-    ];
+// ============================================================
+// Decoration system — pre-deconflicted Point features that replace
+// the old per-layer `symbol-placement: line` setup. MapLibre places
+// line symbols PER TILE: the same feature gets re-anchored inside
+// each tile bucket independently, so cross-layer alignment (arrows
+// over diamonds over labels) breaks at tile seams regardless of
+// `symbol-spacing` math. Pre-computing the decoration positions in
+// JS, then rendering them as point features with `icon-allow-overlap:
+// true`, sidesteps the entire collision pipeline — the layout we
+// compute is exactly what the user sees.
+//
+// One source (`trail-decorations`), four kinds (trail_name,
+// route_name, diamond, arrow), each with `min_zoom` for tiered
+// density. Layer filter: `kind == X && min_zoom <= zoom`.
+// ============================================================
+
+const EARTH_RADIUS_M = 6378137;
+
+function haversineMeters(lng1, lat1, lng2, lat2) {
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const dφ = (lat2 - lat1) * Math.PI / 180;
+    const dλ = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dφ / 2) ** 2
+            + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+    return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
 }
 
-function updateArrowsRotation() {
-    if (map.getLayer("trail-arrows")) {
-        map.setLayoutProperty("trail-arrows", "icon-rotate", buildArrowRotation());
+// Initial bearing from (lng1,lat1) toward (lng2,lat2), degrees CW from north.
+function bearingDeg(lng1, lat1, lng2, lat2) {
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const dλ = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(dλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2)
+            - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+// Map a trail bearing to the rotation the east-pointing arrow icon
+// needs so it points along the line (and adds 180° on reverse-day
+// schedules).
+function arrowRotateForBearing(bearing, reverse) {
+    const b = reverse ? bearing + 180 : bearing;
+    return ((b - 90) % 360 + 360) % 360;
+}
+
+// Decompose a polyline into segments with bearings + cumulative arc
+// length. Returns { segments: [{lng1,lat1,lng2,lat2,lengthM,bearing,
+// arcStart}], totalLength: number }. Zero-length segments are
+// dropped; the resulting `arcStart` reflects only the kept segments.
+function computeWaySegments(coords) {
+    const segments = [];
+    let arcStart = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+        const [lng1, lat1] = coords[i];
+        const [lng2, lat2] = coords[i + 1];
+        const lengthM = haversineMeters(lng1, lat1, lng2, lat2);
+        if (lengthM === 0) continue;
+        segments.push({
+            lng1, lat1, lng2, lat2, lengthM,
+            bearing: bearingDeg(lng1, lat1, lng2, lat2),
+            arcStart,
+        });
+        arcStart += lengthM;
     }
+    return { segments, totalLength: arcStart };
 }
 
-// Filter shape used by addArrowsLayer + updateArrowsFilter. The
-// arrow layer renders on the trail-centerlines source, which already
-// has one feature per physical way — so the base filter just needs
-// to keep oneway ways.
-function buildArrowBaseFilter() {
-    return ["in", ["get", "oneway"], ["literal", ["yes", "reversible"]]];
-}
-
-function addArrowsLayer() {
-    if (!map.getSource("trail-centerlines")) return;
-    if (map.getLayer("trail-arrows")) {
-        // After a basemap rebuild the layer comes back via the serialised
-        // style — refresh rotation but no icon swap is needed (single icon).
-        updateArrowsRotation();
-        return;
+// Linear interpolation along the polyline at arc distance `arc`.
+// Returns {lng, lat, bearing} or null if `arc` is out of range.
+function pointAtArcLength(segments, totalLength, arc) {
+    if (arc < 0 || arc > totalLength || segments.length === 0) return null;
+    for (const seg of segments) {
+        if (arc <= seg.arcStart + seg.lengthM) {
+            const t = seg.lengthM === 0 ? 0
+                : (arc - seg.arcStart) / seg.lengthM;
+            return {
+                lng: seg.lng1 + t * (seg.lng2 - seg.lng1),
+                lat: seg.lat1 + t * (seg.lat2 - seg.lat1),
+                bearing: seg.bearing,
+            };
+        }
     }
+    const last = segments[segments.length - 1];
+    return { lng: last.lng2, lat: last.lat2, bearing: last.bearing };
+}
+
+// Footprint radii (meters) used for placement collision suppression.
+// Calibrated to zoom 15 (~3.5 m/px at lat 42°) — at higher zooms the
+// icons shrink in metric terms; at lower zooms they grow but the
+// tiered min_zoom keeps fewer items on screen, so a static radius
+// works across the visible range.
+const DECOR_RADIUS_M = {
+    label:    60,  // text along trail axis (legacy point placement)
+    diamond:  35,
+    arrow:    30,
+    obstacle: 30,  // POI / parking / trailhead / feature markers
+    // Min distance from a line-placed label's support polyline to a
+    // DOM marker center. Sized to keep the rendered glyph row clear
+    // of the marker icon at typical viewing zoom (14-15). DOM markers
+    // are invisible to MapLibre's WebGL collision pipeline, so we
+    // chop the label support line in JS instead.
+    label_line_clearance: 50,
+};
+
+// Snapshot the on-map POI markers so the decoration placer skips
+// their footprint. Markers are DOM overlays (above the WebGL canvas),
+// not WebGL features, so MapLibre's collision can't see them — we
+// have to pre-exclude. `_map` check skips markers detached by the
+// proximity filter (they're hidden right now).
+function gatherObstacles() {
+    const out = [];
+    const r = DECOR_RADIUS_M.obstacle;
+    for (const arr of [trailMarkerMarkers, parkingMarkers,
+                       trailheadMarkers, featureMarkers]) {
+        for (const m of arr) {
+            if (m._map !== map) continue;
+            const ll = m.getLngLat();
+            out.push({ lngLat: [ll.lng, ll.lat], radiusM: r });
+        }
+    }
+    return out;
+}
+
+function placedCollides(lng, lat, radiusM, placed) {
+    for (const p of placed) {
+        const d = haversineMeters(lng, lat, p.lngLat[0], p.lngLat[1]);
+        if (d < radiusM + p.radiusM) return true;
+    }
+    return false;
+}
+
+// Split a way's coords into safe sub-LineStrings that stay at least
+// `radius` meters from every obstacle's center. Used to keep curve-
+// following labels (symbol-placement: line) from rendering through
+// DOM marker icons, which are outside MapLibre's WebGL collision
+// pipeline. A coord vertex is "blocked" if it sits inside any
+// obstacle's exclusion disc; runs of consecutive non-blocked vertices
+// (length >= 2) become individual LineStrings. We don't bother
+// interpolating new vertices at the disc boundary — vertex spacing on
+// trail data is already fine enough that the small over/under-clip is
+// invisible at viewing zooms.
+function clipCoordsAroundObstacles(coords, obstacles, radius) {
+    if (!obstacles.length || coords.length < 2) return [coords];
+    const runs = [];
+    let runStart = null;
+    for (let i = 0; i < coords.length; i++) {
+        const [lng, lat] = coords[i];
+        let blocked = false;
+        for (const obs of obstacles) {
+            if (haversineMeters(lng, lat, obs.lngLat[0], obs.lngLat[1])
+                < radius) {
+                blocked = true;
+                break;
+            }
+        }
+        if (!blocked) {
+            if (runStart === null) runStart = i;
+        } else if (runStart !== null) {
+            if (i - runStart >= 2) runs.push(coords.slice(runStart, i));
+            runStart = null;
+        }
+    }
+    if (runStart !== null && coords.length - runStart >= 2) {
+        runs.push(coords.slice(runStart));
+    }
+    return runs;
+}
+
+// Canonical-owner ways = one entry per physical way that has at
+// least one currently-visible route, owned by the lowest-ranked
+// visible route_id (so siblings on shared ways collapse to one).
+// The geometry is kept as a segment array (with bearings + cumulative
+// arc lengths) so the placer can drop decorations at exact arc
+// distances along the way.
+function collectCanonicalWays() {
+    if (!routesData) return [];
+
+    const allRouteIds = Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE);
+    const globalRank = new Map();
+    allRouteIds.forEach((id, i) => globalRank.set(id, i));
+
+    const ways = [];
+    for (const f of routesData.features) {
+        const props = f.properties;
+        const routeId = props.route_id;
+        const shared = props.shared_routes || [routeId];
+        const visibleShared = shared
+            .filter((id) => visibleRoutes.has(id))
+            .sort((a, b) => globalRank.get(a) - globalRank.get(b));
+        if (visibleShared.length === 0) continue;
+        if (visibleShared[0] !== routeId) continue;
+
+        const coords = f.geometry.type === "LineString"
+            ? f.geometry.coordinates
+            : f.geometry.coordinates.flat();
+        const { segments, totalLength } = computeWaySegments(coords);
+        if (segments.length === 0) continue;
+
+        const soloRouteName = visibleShared.length === 1
+            ? (props.route_name || "") : "";
+        const soloRouteId = visibleShared.length === 1 ? routeId : "";
+
+        ways.push({
+            segments,
+            totalLength,
+            coords,
+            trailName: props.trail_name || "",
+            imba: props.imba_difficulty || "",
+            oneway: props.oneway || "",
+            routeId,
+            sharedRoutes: shared,
+            soloRouteName,
+            soloRouteId,
+        });
+    }
+    return ways;
+}
+
+// Try to place a decoration of `kind` at the first candidate arc
+// position that clears all already-placed items. extraPropsFn
+// receives the chosen point (with .bearing) and returns the
+// kind-specific properties to merge into the feature.
+function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
+                            decorations, placed, extraPropsFn) {
+    const radius = (kind === "diamond") ? DECOR_RADIUS_M.diamond
+                 : (kind === "arrow")   ? DECOR_RADIUS_M.arrow
+                 :                         DECOR_RADIUS_M.label;
+    for (const arc of candidateArcs) {
+        if (arc < 0 || arc > way.totalLength) continue;
+        const pt = pointAtArcLength(way.segments, way.totalLength, arc);
+        if (!pt) continue;
+        if (placedCollides(pt.lng, pt.lat, radius, placed)) continue;
+        const extra = extraPropsFn ? extraPropsFn(pt) : {};
+        decorations.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
+            properties: {
+                kind,
+                min_zoom: minZoom,
+                ...extra,
+            },
+        });
+        placed.push({ lngLat: [pt.lng, pt.lat], radiusM: radius });
+        return true;
+    }
+    return false;
+}
+
+// Build the full decoration FeatureCollection for the current visible
+// route set. Order matters:
+//   Pass 1 — labels (LineString features rendered via symbol-placement:
+//            line so text follows the trail curve; not pre-deconflicted)
+//   Pass 2 — tier-0 mandatory icons (2 diamonds + 2 arrows per
+//            applicable way, ensures even short trails get markings)
+//   Pass 3 — tier-1 (zoom>=13) icons every 400m
+//   Pass 4 — tier-2 (zoom>=15) icons every 200m (fills tier-1 gaps)
+// Each icon-tier's candidates are deconflicted against everything
+// already placed, including obstacle markers gathered up front.
+function computeDecorations() {
+    const decorations = [];
+    const placed = gatherObstacles();
+    const ways = collectCanonicalWays();
+
+    // Process longer ways first so their labels claim space before
+    // shorter ways' labels — short trails are more likely to drop
+    // their label, which is the desired tradeoff.
+    ways.sort((a, b) => b.totalLength - a.totalLength);
+
+    const reverseSet = reverseRoutesToday;
+
+    // ---- Pass 1: labels (one or more LineString runs per way;
+    //      MapLibre's symbol-placement:line auto-curves text along the
+    //      trail). The way coords are clipped around DOM markers so
+    //      labels never cross a marker icon. Diamonds and arrows
+    //      placed in later passes don't need JS clipping — they're
+    //      WebGL features and the label layer's text-allow-overlap:
+    //      false + the icon layers' icon-ignore-placement: false make
+    //      MapLibre's per-tile collision drop overlapping labels
+    //      automatically. ----
+    for (const way of ways) {
+        const runs = clipCoordsAroundObstacles(way.coords, placed,
+            DECOR_RADIUS_M.label_line_clearance);
+        if (way.trailName) {
+            for (const run of runs) {
+                decorations.push({
+                    type: "Feature",
+                    geometry: { type: "LineString", coordinates: run },
+                    properties: {
+                        kind: "trail_name",
+                        min_zoom: 0,
+                        text: way.trailName,
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    },
+                });
+            }
+        }
+        if (way.soloRouteName) {
+            for (const run of runs) {
+                decorations.push({
+                    type: "Feature",
+                    geometry: { type: "LineString", coordinates: run },
+                    properties: {
+                        kind: "route_name",
+                        min_zoom: 0,
+                        text: way.soloRouteName,
+                        solo_route_id: way.soloRouteId,
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    },
+                });
+            }
+        }
+    }
+
+    // ---- Pass 2: tier-0 mandatory decor — 2 diamonds + 2 arrows per
+    //      applicable way so even short trails get clear markings. ----
+    for (const way of ways) {
+        const L = way.totalLength;
+        const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
+        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const reverse = reverseSet.has(way.routeId)
+            || way.sharedRoutes.some((id) => reverseSet.has(id));
+
+        if (hasDiamond) {
+            // Two anchors: ~quarter and ~three-quarter, each with
+            // local fallbacks if the primary slot collides.
+            const anchors = [
+                [L * 0.25, L * 0.15, L * 0.35, L * 0.10],
+                [L * 0.75, L * 0.85, L * 0.65, L * 0.90],
+            ];
+            for (const cand of anchors) {
+                tryPlaceDecoration(way, cand, "diamond", 0,
+                    decorations, placed, () => ({
+                        imba_difficulty: way.imba,
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+        if (hasArrow) {
+            const anchors = [
+                [L * 0.50, L * 0.40, L * 0.60, L * 0.45],
+                [L * 0.85, L * 0.80, L * 0.90, L * 0.75],
+            ];
+            for (const cand of anchors) {
+                tryPlaceDecoration(way, cand, "arrow", 0,
+                    decorations, placed, (pt) => ({
+                        rotation: arrowRotateForBearing(pt.bearing, reverse),
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+    }
+
+    // ---- Pass 3: tier-1 (zoom>=13) — diamonds every 400m, arrows
+    //      phase-shifted by 200m. The tier-0 anchors at L*0.25/0.75
+    //      establish the pattern; this sweep fills the gaps. ----
+    for (const way of ways) {
+        const L = way.totalLength;
+        const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
+        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const reverse = reverseSet.has(way.routeId)
+            || way.sharedRoutes.some((id) => reverseSet.has(id));
+
+        if (hasDiamond) {
+            for (let arc = 400; arc < L; arc += 400) {
+                tryPlaceDecoration(way, [arc], "diamond", 13,
+                    decorations, placed, () => ({
+                        imba_difficulty: way.imba,
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+        if (hasArrow) {
+            for (let arc = 200; arc < L; arc += 400) {
+                tryPlaceDecoration(way, [arc], "arrow", 13,
+                    decorations, placed, (pt) => ({
+                        rotation: arrowRotateForBearing(pt.bearing, reverse),
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+    }
+
+    // ---- Pass 4: tier-2 (zoom>=15) — fill in at half the tier-1
+    //      spacing so close-in views get a denser pattern. Most arcs
+    //      coincide with tier-1 placements and get rejected by the
+    //      collision check; the remaining ones land in the gaps. ----
+    for (const way of ways) {
+        const L = way.totalLength;
+        const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
+        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const reverse = reverseSet.has(way.routeId)
+            || way.sharedRoutes.some((id) => reverseSet.has(id));
+
+        if (hasDiamond) {
+            for (let arc = 200; arc < L; arc += 200) {
+                tryPlaceDecoration(way, [arc], "diamond", 15,
+                    decorations, placed, () => ({
+                        imba_difficulty: way.imba,
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+        if (hasArrow) {
+            for (let arc = 100; arc < L; arc += 200) {
+                tryPlaceDecoration(way, [arc], "arrow", 15,
+                    decorations, placed, (pt) => ({
+                        rotation: arrowRotateForBearing(pt.bearing, reverse),
+                        trail_name: way.trailName,
+                        shared_routes: way.sharedRoutes,
+                    }));
+            }
+        }
+    }
+
+    return { type: "FeatureCollection", features: decorations };
+}
+
+// Refresh the trail-decorations source. Cheap to recompute (~ms for
+// most maps); called on initial load, route-visibility change, marker
+// proximity change, and day-tick (when reverseRoutesToday flips).
+function updateDecorationsSource() {
+    const src = map.getSource("trail-decorations");
+    if (src) src.setData(computeDecorations());
+}
+
+// Add the four decor layers — kind-filtered with a tier gate
+// (`min_zoom <= zoom`) so density grows with zoom.
+//
+// Icons (diamond, arrow) use `icon-allow-overlap: true` because their
+// positions were already deconflicted in computeDecorations and we
+// want exactly the placements we chose. They use `icon-ignore-
+// placement: false` so they DO register in MapLibre's collision index
+// — which lets the label layers see them and shift labels out of the
+// way. Net: icons sit where JS put them; labels avoid icons.
+//
+// Labels (trail_name, route_name) use the default `text-allow-overlap:
+// false` so they curve along the trail (symbol-placement: line) and
+// MapLibre's per-tile collision drops labels that would overlap each
+// other or any registered icon. The label LineStrings are pre-clipped
+// in computeDecorations to skip past DOM markers (which live outside
+// the WebGL collision pipeline).
+function addDecorationLayers() {
+    if (map.getLayer("decor-trail-name")) return;
+
     map.addLayer({
-        id: "trail-arrows",
+        id: "decor-trail-name",
         type: "symbol",
-        // Centerlines source = one feature per physical way, same as
-        // trail-difficulty and trail-centerline-labels. Sharing both
-        // the source AND the feature geometry is what makes MapLibre's
-        // collision detection reliable for symbols at the same line
-        // position — prior splits (separate source / sibling offset
-        // features) let coincident symbols slip through.
-        source: "trail-centerlines",
-        filter: buildArrowBaseFilter(),
+        source: "trail-decorations",
+        filter: ["all",
+            ["==", ["get", "kind"], "trail_name"],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ],
         layout: {
             "symbol-placement": "line",
-            // Spacing along the line (pixels). Larger = fewer arrows.
-            // 400 keeps directionality readable without arrows every
-            // few meters on a curvy trail. The difficulty layer uses
-            // 800 (2× this) so their anchors interleave cleanly on
-            // the shared centerlines source — see the comment in
-            // addDifficultyLayer for why the ratio matters.
-            "symbol-spacing": 400,
-            "icon-image": ARROW_ICON_ID,
-            // Arrows are always on; scaled down ~30 % from the previous
-            // 0.7/1.0/1.4 sizing so they read as a subtle directional cue
-            // rather than competing with the casings.
-            "icon-size": [
-                "interpolate", ["linear"], ["zoom"],
-                12, 0.5,
-                14, 0.7,
-                18, 1.0,
-            ],
-            "icon-rotate": buildArrowRotation(),
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": false,
-            // true = arrows don't block trail-name label placement.
-            "icon-ignore-placement": true,
-            // Small default pad is enough now that arrows, diamonds,
-            // and trail-name labels all share a single source and
-            // single feature per way — their line-placement anchors
-            // align on identical coordinates, so collision catches
-            // conflicts deterministically.
-            "icon-padding": 4,
+            "text-field": ["get", "text"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"],
+                10, 10, 14, 13, 18, 16],
+            "text-max-angle": 45,
+            "text-padding": 3,
+            "symbol-spacing": 250,
+            "text-optional": true,
+            "visibility": labelMode === "trails" ? "visible" : "none",
+        },
+        paint: {
+            "text-color": "#1a1a1a",
+            "text-halo-color": "rgba(255,255,255,0.9)",
+            "text-halo-width": 2,
         },
     });
+
+    map.addLayer({
+        id: "decor-route-name",
+        type: "symbol",
+        source: "trail-decorations",
+        filter: ["all",
+            ["==", ["get", "kind"], "route_name"],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ],
+        layout: {
+            "symbol-placement": "line",
+            "text-field": ["get", "text"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"],
+                10, 10, 14, 13, 18, 16],
+            "text-max-angle": 45,
+            "text-padding": 3,
+            "symbol-spacing": 250,
+            "text-optional": true,
+            "visibility": labelMode === "routes" ? "visible" : "none",
+        },
+        paint: {
+            "text-color": "#1a1a1a",
+            "text-halo-color": "rgba(255,255,255,0.9)",
+            "text-halo-width": 2,
+        },
+    });
+
+    if (CONFIG.showDifficulty) {
+        map.addLayer({
+            id: "decor-diamond",
+            type: "symbol",
+            source: "trail-decorations",
+            filter: ["all",
+                ["==", ["get", "kind"], "diamond"],
+                ["<=", ["get", "min_zoom"], ["zoom"]],
+            ],
+            layout: {
+                "symbol-placement": "point",
+                "icon-image": [
+                    "match", ["get", "imba_difficulty"],
+                    "0", "imba-0",
+                    "1", "imba-1",
+                    "2", "imba-2",
+                    "3", "imba-3",
+                    "4", "imba-4",
+                    "5", "imba-5",
+                    "",
+                ],
+                "icon-size": ["interpolate", ["linear"], ["zoom"],
+                    12, 0.5, 14, 0.7, 18, 1.0],
+                "icon-rotation-alignment": "viewport",
+                // Always draw, even if a label tries to occupy the same
+                // pixels (we deconflicted the diamonds in JS so they're
+                // exactly where we want them).
+                "icon-allow-overlap": true,
+                // BUT do register the diamond's footprint in the
+                // collision index, so labels (text-allow-overlap:false)
+                // shift along their support line to dodge it.
+                "icon-ignore-placement": false,
+                "visibility": difficultyToggleOn() ? "visible" : "none",
+            },
+        });
+    }
+
+    map.addLayer({
+        id: "decor-arrow",
+        type: "symbol",
+        source: "trail-decorations",
+        filter: ["all",
+            ["==", ["get", "kind"], "arrow"],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ],
+        layout: {
+            "symbol-placement": "point",
+            "icon-image": ARROW_ICON_ID,
+            "icon-size": ["interpolate", ["linear"], ["zoom"],
+                12, 0.5, 14, 0.7, 18, 1.0],
+            "icon-rotate": ["get", "rotation"],
+            "icon-rotation-alignment": "map",
+            "icon-allow-overlap": true,
+            // Register in the collision index so labels avoid us; see
+            // the matching comment on decor-diamond above.
+            "icon-ignore-placement": false,
+        },
+    });
+}
+
+// Build kind-filter + (optionally) highlight-filter for a decor layer.
+// The kind/min_zoom gate is non-negotiable; under spotlight dim we AND
+// in a shared_routes / trail_name match so non-highlighted decor goes
+// dark with the rest of the map.
+function buildDecorFilter(kind) {
+    const base = ["all",
+        ["==", ["get", "kind"], kind],
+        ["<=", ["get", "min_zoom"], ["zoom"]],
+    ];
+    if (!highlightDimActive()) return base;
+    if (highlight.kind === "route") {
+        return ["all", ...base.slice(1),
+            ["in", highlight.key, ["get", "shared_routes"]]];
+    }
+    return ["all", ...base.slice(1),
+        ["==", ["get", "trail_name"], highlight.key]];
+}
+
+// Refresh the diamond + arrow filters in response to highlight state
+// changes. Label visibility (and route_name's solo-route filter) is
+// handled in updateLabels(); see that function for the additional
+// dim-aware logic.
+function updateDecorationsHighlight() {
+    if (map.getLayer("decor-diamond")) {
+        map.setFilter("decor-diamond", buildDecorFilter("diamond"));
+    }
+    if (map.getLayer("decor-arrow")) {
+        map.setFilter("decor-arrow", buildDecorFilter("arrow"));
+    }
 }
 
 // ============================================================
@@ -1227,6 +1673,14 @@ function updateMarkerProximity() {
     filterMarkers(trailMarkerMarkers, mkOn);
     filterMarkers(featureMarkers, ftOn);
 
+    // Markers are obstacles for the decoration placer (gatherObstacles
+    // walks the four marker arrays). When any marker is added/removed
+    // here, recompute the decorations so arrows/diamonds/labels skip
+    // the new POI footprints (or reclaim space when a marker drops).
+    if (map && map.getSource("trail-decorations")) {
+        updateDecorationsSource();
+    }
+
     // Re-evaluate the Features peek button after every proximity pass.
     // If the current visible-routes set leaves zero features within
     // POI_PROXIMITY_METERS of any trail, the button is a dead control —
@@ -1316,16 +1770,15 @@ async function loadTrails() {
         data: computeLabelData(),
     });
 
-    // Add centerlines source — one feature per physical way, carrying
-    // the intrinsic trail properties (trail_name, imba_difficulty,
-    // oneway). Used by trail-arrows, trail-difficulty, and the
-    // trail-name label layer. Having all three decor layers on a
-    // single source with a single feature per way ensures their
-    // line-placement anchors align on identical coordinates so
-    // MapLibre's collision reliably suppresses coincident symbols.
-    map.addSource("trail-centerlines", {
+    // Decoration source — pre-deconflicted Point features (trail
+    // names, route names, IMBA diamonds, direction arrows). All
+    // placement decisions happen in JS at compute time, so the four
+    // decor layers can render with `*-allow-overlap: true` and skip
+    // MapLibre's per-tile collision pipeline. See computeDecorations()
+    // for the placement algorithm.
+    map.addSource("trail-decorations", {
         type: "geojson",
-        data: computeTrailCenterlines(),
+        data: computeDecorations(),
     });
 
     // Continuation arrowheads for clipped relations
@@ -1624,9 +2077,9 @@ async function loadTrails() {
 
     // Route-name labels — one layer per route so each follows its
     // own offset line. Only rendered when labelMode === "routes";
-    // trail-name labels render from the centerlines source below so
-    // each trail name appears exactly once per physical way regardless
-    // of how many routes share it.
+    // trail-name labels render from the trail-decorations source via
+    // decor-trail-name so each trail name appears exactly once per
+    // physical way regardless of how many routes share it.
     for (let li = 0; li < sortedRoutes.length; li++) {
         const [routeId] = sortedRoutes[li];
 
@@ -1672,90 +2125,17 @@ async function loadTrails() {
         });
     }
 
-    // Trail-name label — a single layer on the centerlines source so
-    // each trail appears exactly once, regardless of shared routes.
-    // Rendering it right here puts it in the same stacking position
-    // as the per-route label layers (above highlights, below decor
-    // symbols). Difficulty + arrows are added after and therefore
-    // collision-win over long labels.
-    map.addLayer({
-        id: "trail-centerline-labels",
-        type: "symbol",
-        source: "trail-centerlines",
-        filter: ["!=", ["get", "trail_name"], ""],
-        layout: {
-            "symbol-placement": "line",
-            "text-field": ["get", "trail_name"],
-            "text-font": ["Noto Sans Regular"],
-            "text-size": [
-                "interpolate", ["linear"], ["zoom"],
-                10, 10,
-                14, 13,
-                18, 16,
-            ],
-            "text-max-angle": 45,
-            "text-allow-overlap": false,
-            "text-ignore-placement": false,
-            "text-padding": 3,
-            "text-optional": true,
-            "symbol-spacing": 150,
-            "visibility": labelMode === "trails" ? "visible" : "none",
-        },
-        paint: {
-            "text-color": "#1a1a1a",
-            "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
-        },
-    });
-
-    // Solo-way route-name label — runs on the same centerlines source
-    // as arrows / difficulty / trail-name so MapLibre's collision
-    // sees everything on one line as one ordered group. This only
-    // carries features for ways with exactly one visible route
-    // (solo_route_name is populated in computeTrailCenterlines);
-    // shared ways still put their per-route labels on the offset
-    // trails-labels source, since those need N distinct displaced
-    // copies — something a single centerline feature can't represent.
-    map.addLayer({
-        id: "trail-centerline-route-labels",
-        type: "symbol",
-        source: "trail-centerlines",
-        filter: ["!=", ["get", "solo_route_name"], ""],
-        layout: {
-            "symbol-placement": "line",
-            "text-field": ["get", "solo_route_name"],
-            "text-font": ["Noto Sans Regular"],
-            "text-size": [
-                "interpolate", ["linear"], ["zoom"],
-                10, 10,
-                14, 13,
-                18, 16,
-            ],
-            "text-max-angle": 45,
-            "text-allow-overlap": false,
-            "text-ignore-placement": false,
-            "text-padding": 3,
-            "text-optional": true,
-            "symbol-spacing": 150,
-            "visibility": labelMode === "routes" ? "visible" : "none",
-        },
-        paint: {
-            "text-color": "#1a1a1a",
-            "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
-        },
-    });
-
-    // Difficulty symbols — above labels + highlights.
+    // Decoration layers — IMBA diamonds and direction arrows are
+    // pre-deconflicted Point features (rendered with icon-allow-overlap
+    // so placements computed in JS are exactly what's drawn). Trail and
+    // route name labels are LineString features with symbol-placement:
+    // line so text follows the trail curve; their per-tile collision
+    // (text-allow-overlap: false) handles label-vs-label overlap.
     if (CONFIG.showDifficulty) {
         registerDifficultyIcons();
-        addDifficultyLayer();
     }
-
-    // Direction arrows on one-way trails — added last so they render
-    // on top of labels, difficulty, and the highlight ribbon.
     registerArrowIcons();
-    addArrowsLayer();
+    addDecorationLayers();
 }
 
 function updateLabels() {
@@ -1763,10 +2143,11 @@ function updateLabels() {
 
     // Per-route route-name label layers — each scoped to one route via
     // its baseline filter. Source data (computeLabelData) only carries
-    // shared-way features now; solo-way labels live on the centerline
-    // layer below. Visible only in "routes" mode; trail highlights
-    // hide them all (route names don't correspond to a particular
-    // trail), and route highlights keep only the matching layer.
+    // shared-way features now; solo-way labels live on the
+    // decor-route-name layer (trail-decorations source). Visible only
+    // in "routes" mode; trail highlights hide them all (route names
+    // don't correspond to a particular trail), and route highlights
+    // keep only the matching layer.
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `trail-label-${routeId}`;
         if (!map.getLayer(layerId)) continue;
@@ -1782,56 +2163,59 @@ function updateLabels() {
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
     }
 
-    // Solo-way route-name labels on the centerline source — one
-    // feature per way with exactly one visible route, labelled with
-    // that route's name. Visible only in "routes" mode. Under dim:
-    // route highlight narrows to that route; trail highlight hides
-    // all route names (same semantics as the per-route layers above).
-    // The base filter (solo_route_name non-empty) stays layered into
-    // every highlight-case filter.
-    if (map.getLayer("trail-centerline-route-labels")) {
-        const SOLO_BASE = ["!=", ["get", "solo_route_name"], ""];
+    // Solo-way route-name labels on the trail-decorations source —
+    // one LineString feature per way with exactly one visible route,
+    // labelled with that route's name. Visible only in "routes" mode.
+    // Under dim: route highlight narrows to that route; trail
+    // highlight hides all route names (same semantics as the per-route
+    // layers above). Kind/min_zoom gate stays layered into every
+    // highlight-case filter.
+    if (map.getLayer("decor-route-name")) {
+        const KIND_GATE = [
+            ["==", ["get", "kind"], "route_name"],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ];
         let visible = labelMode === "routes";
-        let filter = SOLO_BASE;
+        let filter = ["all", ...KIND_GATE];
         if (visible && dim) {
             if (highlight.kind === "route") {
-                filter = ["all",
-                    SOLO_BASE,
-                    ["==", ["get", "solo_route_id"], highlight.key],
-                ];
+                filter = ["all", ...KIND_GATE,
+                    ["==", ["get", "solo_route_id"], highlight.key]];
             } else {
                 visible = false;
             }
         }
-        map.setLayoutProperty("trail-centerline-route-labels",
+        map.setLayoutProperty("decor-route-name",
             "visibility", visible ? "visible" : "none");
-        if (visible) map.setFilter("trail-centerline-route-labels", filter);
+        if (visible) map.setFilter("decor-route-name", filter);
     }
 
-    // Single centerline trail-name label layer — one feature per
-    // physical way, so each trail name appears exactly once regardless
-    // of how many routes share the way. Visible only in "trails" mode.
-    // Under dim: filter to the highlighted route's shared-ways (route
-    // highlight) or the highlighted trail_name (trail highlight).
-    // Base filter (trail_name non-empty) is layered into every case.
-    if (map.getLayer("trail-centerline-labels")) {
-        const TRAIL_BASE = ["!=", ["get", "trail_name"], ""];
+    // Trail-name label layer on the trail-decorations source — one
+    // feature per physical way. Visible only in "trails" mode.
+    // Under dim: filter to the highlighted route's shared-ways
+    // (route highlight) or the highlighted trail_name (trail
+    // highlight). Kind/min_zoom gate stays layered into every case.
+    if (map.getLayer("decor-trail-name")) {
+        const KIND_GATE = [
+            ["==", ["get", "kind"], "trail_name"],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ];
         const visible = labelMode === "trails";
-        map.setLayoutProperty("trail-centerline-labels", "visibility",
+        map.setLayoutProperty("decor-trail-name", "visibility",
             visible ? "visible" : "none");
         if (visible) {
             if (dim) {
                 if (highlight.kind === "route") {
-                    map.setFilter("trail-centerline-labels",
-                        ["all", TRAIL_BASE,
+                    map.setFilter("decor-trail-name",
+                        ["all", ...KIND_GATE,
                             ["in", highlight.key, ["get", "shared_routes"]]]);
                 } else {
-                    map.setFilter("trail-centerline-labels",
-                        ["all", TRAIL_BASE,
+                    map.setFilter("decor-trail-name",
+                        ["all", ...KIND_GATE,
                             ["==", ["get", "trail_name"], highlight.key]]);
                 }
             } else {
-                map.setFilter("trail-centerline-labels", TRAIL_BASE);
+                map.setFilter("decor-trail-name", ["all", ...KIND_GATE]);
             }
         }
     }
@@ -1957,79 +2341,6 @@ function computeOffsetsAndFilter() {
     return { type: "FeatureCollection", features: features };
 }
 
-// Per-way "centerline" features for decor layers (direction arrows,
-// difficulty diamonds, trail-name labels). These properties are
-// intrinsic to the physical way — they don't belong to any specific
-// route variant — so rendering them from per-route offset copies was
-// the source of pile-ups (two offset siblings' line-placement anchors
-// landing at slightly different screen pixels, defeating collision).
-//
-// This function emits exactly ONE feature per physical way with its
-// raw un-offset geometry. Arrows + diamonds + trail names all read
-// from this single source, so their line-placement anchors align
-// identically and MapLibre's intra-feature collision is deterministic.
-//
-// Canonical owner = the feature whose route_id is the lowest-sorted
-// visible route in shared_routes. Features for non-canonical owners
-// are skipped (they'd be exact duplicates, since raw coords are
-// identical across siblings pre-offset).
-function computeTrailCenterlines() {
-    if (!routesData) return { type: "FeatureCollection", features: [] };
-
-    const allRouteIds = Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE);
-    const globalRank = new Map();
-    allRouteIds.forEach((id, i) => globalRank.set(id, i));
-
-    const features = [];
-    for (const f of routesData.features) {
-        const props = f.properties;
-        const routeId = props.route_id;
-        const shared = props.shared_routes || [routeId];
-        const visibleShared = shared
-            .filter((id) => visibleRoutes.has(id))
-            .sort((a, b) => globalRank.get(a) - globalRank.get(b));
-
-        // Way has no currently-visible routes → no decor.
-        if (visibleShared.length === 0) continue;
-        // Not the canonical owner → skip (siblings share raw coords).
-        if (visibleShared[0] !== routeId) continue;
-
-        // Solo way = exactly one visible route on this way. On such
-        // ways we carry the route's name + id forward so a dedicated
-        // centerline-route-label layer can render the route label
-        // here rather than on the per-route offset source. Putting
-        // the route label on the same source as arrows / difficulty /
-        // trail names means MapLibre's collision runs one coherent
-        // pass — no more near-coincident anchors from different
-        // sources competing for the same pixel.
-        const soloRouteName = visibleShared.length === 1
-            ? (props.route_name || "") : "";
-        const soloRouteId = visibleShared.length === 1 ? routeId : "";
-
-        features.push({
-            type: "Feature",
-            geometry: f.geometry,
-            properties: {
-                trail_name: props.trail_name || "",
-                imba_difficulty: props.imba_difficulty || "",
-                oneway: props.oneway || "",
-                shared_routes: shared,
-                // The canonical owner's route_id — used by
-                // buildArrowRotation's reverse-day check alongside
-                // shared_routes (routes in direction_schedules flip
-                // the arrow 180°).
-                route_id: routeId,
-                // Solo-way route label fields (empty string on shared
-                // ways — their labels still render on trails-labels).
-                solo_route_name: soloRouteName,
-                solo_route_id: soloRouteId,
-            },
-        });
-    }
-
-    return { type: "FeatureCollection", features };
-}
-
 function computeLabelData() {
     if (!routesData) return { type: "FeatureCollection", features: [] };
 
@@ -2071,12 +2382,12 @@ function computeLabelData() {
             };
         })
         // Drop solo ways — their route-name labels are emitted by the
-        // trail-centerline-route-labels layer on the centerlines source
-        // so arrows / difficulty / trail names / route names all live
-        // in one collision pass. Shared ways (>=2 visible routes) still
-        // go here because each route variant needs its own offset-
-        // displaced label feature; the centerline source can only carry
-        // one route label per way.
+        // decor-route-name layer on the trail-decorations source so
+        // arrows / difficulty / trail names / route names all share
+        // one deconflicted placement pass. Shared ways (>=2 visible
+        // routes) still go here because each route variant needs its
+        // own offset-displaced label feature; trail-decorations only
+        // carries one route label per way.
         .filter((f) => f.properties.shared_count > 1);
 
     return { type: "FeatureCollection", features: features };
@@ -2148,11 +2459,12 @@ function updateTrailDisplay() {
     const labelSource = map.getSource("trails-labels");
     if (labelSource) labelSource.setData(computeLabelData());
 
-    // Centerlines feed the decor layers (arrows, difficulty, trail
-    // names). Recompute on every visibility change so ways whose only
-    // visible route just toggled off drop out.
-    const centerlineSource = map.getSource("trail-centerlines");
-    if (centerlineSource) centerlineSource.setData(computeTrailCenterlines());
+    // Decorations (arrows, diamonds, trail/route name labels) are
+    // pre-deconflicted Point features. Recompute on every visibility
+    // change so ways whose only visible route just toggled off drop
+    // out — and so the obstacle / way-length set the placer sees
+    // matches the new state.
+    updateDecorationsSource();
 
     for (const routeId of Object.keys(CONFIG.routes)) {
         const visible = visibleRoutes.has(routeId);
@@ -2167,17 +2479,11 @@ function updateTrailDisplay() {
         }
     }
 
-    // Arrow + difficulty + trail-name label layers render on the
-    // trail-centerlines source, which we just refreshed above. Their
-    // feature set (one per currently-visible physical way) flows
-    // through the source's setData — no separate layer-update calls.
     recomputeClipEndpointVisibility();
 
-    // applyDimState() rebuilds labels / difficulty / arrows-filter /
+    // applyDimState() rebuilds labels / decoration filters /
     // clip-arrow visibility in a single pass, respecting whether the
-    // spotlight dim is currently active. It's a superset of the plain
-    // updateDifficultyFilter() call it replaces, so the no-dim case is
-    // still O(n_routes) and cheap.
+    // spotlight dim is currently active.
     applyDimState();
 }
 
@@ -2237,28 +2543,6 @@ function highlightDimActive() {
     return CONFIG.mapDimOnHighlight !== false && highlight != null;
 }
 
-// Narrow trail-arrows to only arrows belonging to the highlighted
-// route/trail when the dim is on. The arrow layer's base filter
-// (is_canonical_arrow) is always required — the layer is on the
-// shared `trails` source, which contains every route's features,
-// not just oneway canonicals. So the highlight filter is layered
-// ON TOP of the base, never replacing it.
-function updateArrowsFilter() {
-    if (!map.getLayer("trail-arrows")) return;
-    const base = buildArrowBaseFilter();
-    if (!highlightDimActive()) {
-        map.setFilter("trail-arrows", base);
-        return;
-    }
-    if (highlight.kind === "route") {
-        map.setFilter("trail-arrows",
-            ["all", base, ["in", highlight.key, ["get", "shared_routes"]]]);
-    } else {
-        map.setFilter("trail-arrows",
-            ["all", base, ["==", ["get", "trail_name"], highlight.key]]);
-    }
-}
-
 // Per-route clip-arrow visibility. Clip-arrow layers are route-scoped
 // (one layer per route), so this is straight visibility toggling.
 // Trail highlights hide every clip-arrow since they're a route-level
@@ -2289,8 +2573,7 @@ function applyDimState() {
             active ? "visible" : "none");
     }
     updateLabels();
-    updateDifficultyFilter();
-    updateArrowsFilter();
+    updateDecorationsHighlight();
     updateClipArrowsDim();
     updateMarkerDimState();
 }
@@ -3029,51 +3312,64 @@ function setupBottomSheet() {
     }
 
     // Trail markers — merged guideposts + emergency access points.
-    // Proximity-filtered, same as features.
+    // Proximity-filtered, same as features. updateMarkerProximity()
+    // already triggers a decoration recompute (markers are obstacles
+    // for arrow/diamond placement); the off-branch needs to do the
+    // same explicitly because it bypasses proximity entirely.
     wirePeekToggle("toggle-markers", "mtb.poi.markers", true, (on) => {
         if (on) {
             updateMarkerProximity();
         } else {
             for (const m of trailMarkerMarkers) m.remove();
+            updateDecorationsSource();
         }
     });
 
     // Features — proximity-filtered.
     wirePeekToggle("toggle-features", "mtb.poi.features", true, (on) => {
-        if (on) updateMarkerProximity();
-        else for (const m of featureMarkers) m.remove();
+        if (on) {
+            updateMarkerProximity();
+        } else {
+            for (const m of featureMarkers) m.remove();
+            updateDecorationsSource();
+        }
     });
 
-    // Parking / trailheads — always shown when on (no proximity filter).
+    // Parking / trailheads — always shown when on (no proximity
+    // filter). Toggling either flips the obstacle set, so recompute
+    // decorations after the marker visibility flips.
     wirePeekToggle("toggle-parking", "mtb.poi.parking", true, (on) => {
         for (const m of parkingMarkers) {
             if (on) m.addTo(map);
             else m.remove();
         }
+        updateDecorationsSource();
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads", true, (on) => {
         for (const m of trailheadMarkers) {
             if (on) m.addTo(map);
             else m.remove();
         }
+        updateDecorationsSource();
     });
 
-    // Difficulty — drives the IMBA sprite layer. Uses aria-pressed semantics
-    // to match the other peek icons.
+    // Difficulty — drives the decor-diamond layer. Uses aria-pressed
+    // semantics to match the other peek icons.
     const difficultyBtn = document.getElementById("toggle-difficulty");
     if (CONFIG.showDifficulty && difficultyBtn) {
         const initial = LS.get("mtb.difficulty", true);
         difficultyBtn.setAttribute("aria-pressed", initial ? "true" : "false");
-        if (map.getLayer("trail-difficulty")) {
-            map.setLayoutProperty("trail-difficulty", "visibility", initial ? "visible" : "none");
+        if (map.getLayer("decor-diamond")) {
+            map.setLayoutProperty("decor-diamond", "visibility",
+                initial ? "visible" : "none");
         }
         difficultyBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             const next = difficultyBtn.getAttribute("aria-pressed") !== "true";
             difficultyBtn.setAttribute("aria-pressed", next ? "true" : "false");
             LS.set("mtb.difficulty", next);
-            if (map.getLayer("trail-difficulty")) {
-                map.setLayoutProperty("trail-difficulty", "visibility",
+            if (map.getLayer("decor-diamond")) {
+                map.setLayoutProperty("decor-diamond", "visibility",
                     next ? "visible" : "none");
             }
         });
@@ -3212,13 +3508,17 @@ function setupBottomSheet() {
     window.addEventListener("orientationchange", publishPeekHeight);
 
     // ----- Day-of-week recheck for direction schedules -----
+    // Each arrow's rotation is baked into its feature properties at
+    // decoration-build time, so a flip in `reverseRoutesToday` forces
+    // a full source recompute (cheap — we already do it on every
+    // visibility change).
     setInterval(() => {
         const next = todaysReverseRoutes();
         const changed = next.size !== reverseRoutesToday.size
             || [...next].some((id) => !reverseRoutesToday.has(id));
         if (changed) {
             reverseRoutesToday = next;
-            updateArrowsRotation();
+            updateDecorationsSource();
         }
     }, 5 * 60 * 1000);
 }
@@ -3532,14 +3832,16 @@ function rebuildBasemapLayers() {
     suppressPathLabels();
     suppressBasemapPois();
 
-    // Re-register difficulty/arrow icons if lost during style rebuild
+    // Re-register difficulty/arrow icons if lost during style rebuild.
+    // The decoration layers themselves come back via the serialised
+    // style (setStyle preserves overlayLayers); icons need to be
+    // re-uploaded if dropped.
     if (CONFIG.showDifficulty && !map.hasImage("imba-0")) {
         registerDifficultyIcons();
     }
     if (!map.hasImage(ARROW_ICON_ID)) {
         registerArrowIcons();
     }
-    addArrowsLayer();
 }
 
 // ============================================================
