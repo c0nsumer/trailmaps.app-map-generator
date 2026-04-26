@@ -28,6 +28,25 @@
     box-sizing: border-box;
 }
 
+/* Honour the user's OS-level "Reduce motion" preference (WCAG 2.1
+ * SC 2.3.3 — Animation from Interactions). When set, drop animations
+ * to near-zero so vestibular-sensitive users don't get vertigo from
+ * the locate-button spinner, sheet drag/snap, toast fades, or
+ * highlight-chip transitions. Setting to 0.01ms (rather than 0)
+ * keeps the timing-aware JS that reads transitionend events working.
+ *
+ * The map itself (basemap pan/zoom under the user's finger) is not
+ * an animation in this sense and isn't covered by the spec; that
+ * stays responsive as before. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 html,
 body {
     overflow: hidden;
@@ -272,8 +291,17 @@ body.sheet-open #logo-overlay {
     transition: background 0.12s, border-color 0.12s;
 }
 
-.peek-icon:hover {
-    background: var(--sheet-hover);
+/* Hover background only fires on actual hover-capable devices (mouse,
+ * stylus). Without the @media gate, mobile tap-then-release leaves
+ * :hover sticky until the next tap elsewhere — which on Chrome/Firefox
+ * Android shows a visible gray-bg "flash" of the just-tapped icon
+ * (and reads as the lower part of the peek bar lighting up). Touch
+ * devices get no hover affordance at all, which is the right call:
+ * they have no concept of hover state. */
+@media (hover: hover) {
+    .peek-icon:hover {
+        background: var(--sheet-hover);
+    }
 }
 
 .peek-icon:focus-visible {
@@ -282,7 +310,11 @@ body.sheet-open #logo-overlay {
 }
 
 .peek-icon-label {
-    font-size: 11px;
+    /* Bumped from 11px → 13px (desktop) and 10px → 12px (mobile, see
+     * the @media block below) for better legibility in bright sun on
+     * phone screens. Ellipsis handles the longer labels ("Trailheads",
+     * "Difficulty") on narrow mobile cells. */
+    font-size: 13px;
     line-height: 1.1;
     font-weight: 500;
     color: var(--sheet-text);
@@ -640,6 +672,63 @@ body.sheet-open #logo-overlay {
     font-size: 13px;
     color: var(--sheet-text);
     line-height: 1.4;
+}
+
+/* Install button — replaces the generic ⇩ glyph with the actual app
+ * icon (apple-touch-icon, 180×180) at thumbnail size, plus a small
+ * "+" badge in the bottom-right. The visual reads as "add THIS app",
+ * showing the user exactly what their home screen will look like
+ * after install. Uses the same icon Android/iOS will use post-install
+ * so there's no surprise. */
+.install-btn .install-btn-icon {
+    /* Override the inherited .sheet-action-icon-style here in case a
+     * future selector accidentally matches. */
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    background: transparent;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.install-btn .install-btn-icon img {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+    /* The android-chrome icon preserves source-image alpha (no white
+     * composite at build time), so a transparent source would show
+     * the page through the icon. A soft neutral background fills any
+     * transparent regions — close enough to the indeterminate
+     * background a real Android launcher renders behind the icon. */
+    background: #f0f0f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.install-btn .install-btn-icon::after {
+    /* SVG cross instead of "+" text — most sans-serif glyphs render
+     * the plus with a typographic centre that's above the visual
+     * centre, so flex-centering it makes the badge look top-heavy.
+     * Pure geometry has no such bias. Inline SVG via background-
+     * image keeps the change to one rule and stays crisp at any DPI. */
+    content: "";
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: var(--accent);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'><line x1='6' y1='2' x2='6' y2='10'/><line x1='2' y1='6' x2='10' y2='6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 10px 10px;
+    /* White ring separates the badge from the icon underneath, so it
+     * stays legible on any icon — light, dark, busy, monochrome. */
+    box-shadow: 0 0 0 2px var(--sheet-bg), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* ----- Layer swatches (POI marker color cues in toggle rows) ------- */
@@ -1292,14 +1381,16 @@ body.sheet-open #logo-overlay {
     user-select: none;
 }
 
-.location-indicator-arrow {
+.location-indicator-arrow,
+.off-screen-indicator-arrow {
     font-size: 22px;
     line-height: 1;
     color: #3498db;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-.location-indicator-dist {
+.location-indicator-dist,
+.off-screen-indicator-dist {
     display: inline-flex;
     align-items: center;
     font-size: 11px;
@@ -1314,21 +1405,32 @@ body.sheet-open #logo-overlay {
 }
 
 /* ----- Toasts ------------------------------------------------------ */
+/* Centered both axes — the previous bottom-anchored placement left
+ * the toast competing with the peek bar (and getting clipped or
+ * partially covered on phones). Center is more visible and away
+ * from any UI surface. Drops `white-space: nowrap` so longer messages
+ * wrap to multiple lines instead of overflowing off the viewport. */
 .map-toast {
     position: fixed;
-    bottom: calc(80px + var(--safe-bottom));
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
     color: white;
-    padding: 10px 20px;
-    border-radius: 8px;
+    padding: 12px 18px;
+    border-radius: 10px;
     font-size: 14px;
     font-family: inherit;
+    line-height: 1.35;
+    text-align: center;
+    /* Cap width so wrapping kicks in cleanly. min() picks whichever
+     * is smaller: 90vw (works at narrow phone widths) or 360px (a
+     * nice paragraph-width on tablet/desktop). */
+    max-width: min(90vw, 360px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     z-index: 10;
     pointer-events: none;
     transition: opacity 0.3s;
-    white-space: nowrap;
 }
 
 .map-toast.visible { opacity: 1; }
@@ -1360,7 +1462,7 @@ body.sheet-open #logo-overlay {
     }
 
     .peek-icon-label {
-        font-size: 10px;
+        font-size: 12px;
         max-width: 52px;
     }
 

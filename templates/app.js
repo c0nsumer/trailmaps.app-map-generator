@@ -303,6 +303,26 @@ let reverseRoutesToday = todaysReverseRoutes();
 // density. Layer filter: `kind == X && min_zoom <= zoom`.
 // ============================================================
 
+// String enums for decoration kinds (the `kind` property on every
+// trail-decorations feature) and POI types (the `poi_type` property
+// on every pois.geojson feature). Centralised so a typo anywhere
+// produces a missing-property reference at evaluation time instead
+// of silently filtering nothing. The values are the literal strings
+// MapLibre filters and the build-time POI emitter compare against —
+// if you change a value here you must also update fetch_pois.py.
+const KIND = Object.freeze({
+    TRAIL_NAME: "trail_name",
+    ROUTE_NAME: "route_name",
+    DIAMOND:    "diamond",
+    ARROW:      "arrow",
+});
+const POI = Object.freeze({
+    TRAIL_MARKER: "trail_marker",
+    PARKING:      "parking",
+    TRAILHEAD:    "trailhead",
+    FEATURE:      "feature",
+});
+
 const EARTH_RADIUS_M = 6378137;
 
 function haversineMeters(lng1, lat1, lng2, lat2) {
@@ -398,7 +418,21 @@ const DECOR_RADIUS_M = {
 // not WebGL features, so MapLibre's collision can't see them — we
 // have to pre-exclude. `_map` check skips markers detached by the
 // proximity filter (they're hidden right now).
+//
+// Cached at module scope: a single user gesture (season toggle,
+// emergency mode flip) often triggers several updateDecorationsSource
+// calls in a row, all asking for the same obstacle set. invalidate-
+// ObstaclesCache() must be called at every site that adds/removes a
+// marker (initial creation, updateMarkerProximity, peek-toggle
+// handlers) — otherwise stale obstacles will let labels/arrows
+// render through markers that have just appeared/disappeared.
+let _obstaclesCache = null;
+function invalidateObstaclesCache() {
+    _obstaclesCache = null;
+}
+
 function gatherObstacles() {
+    if (_obstaclesCache !== null) return _obstaclesCache;
     const out = [];
     const r = DECOR_RADIUS_M.obstacle;
     for (const arr of [trailMarkerMarkers, parkingMarkers,
@@ -409,6 +443,7 @@ function gatherObstacles() {
             out.push({ lngLat: [ll.lng, ll.lat], radiusM: r });
         }
     }
+    _obstaclesCache = out;
     return out;
 }
 
@@ -513,9 +548,9 @@ function collectCanonicalWays() {
 // kind-specific properties to merge into the feature.
 function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                             decorations, placed, extraPropsFn) {
-    const radius = (kind === "diamond") ? DECOR_RADIUS_M.diamond
-                 : (kind === "arrow")   ? DECOR_RADIUS_M.arrow
-                 :                         DECOR_RADIUS_M.label;
+    const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
+                 : (kind === KIND.ARROW)   ? DECOR_RADIUS_M.arrow
+                 :                           DECOR_RADIUS_M.label;
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
         const pt = pointAtArcLength(way.segments, way.totalLength, arc);
@@ -577,7 +612,7 @@ function computeDecorations() {
                     type: "Feature",
                     geometry: { type: "LineString", coordinates: run },
                     properties: {
-                        kind: "trail_name",
+                        kind: KIND.TRAIL_NAME,
                         min_zoom: 0,
                         text: way.trailName,
                         trail_name: way.trailName,
@@ -592,7 +627,7 @@ function computeDecorations() {
                     type: "Feature",
                     geometry: { type: "LineString", coordinates: run },
                     properties: {
-                        kind: "route_name",
+                        kind: KIND.ROUTE_NAME,
                         min_zoom: 0,
                         text: way.soloRouteName,
                         solo_route_id: way.soloRouteId,
@@ -621,7 +656,7 @@ function computeDecorations() {
                 [L * 0.75, L * 0.85, L * 0.65, L * 0.90],
             ];
             for (const cand of anchors) {
-                tryPlaceDecoration(way, cand, "diamond", 0,
+                tryPlaceDecoration(way, cand, KIND.DIAMOND, 0,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -635,7 +670,7 @@ function computeDecorations() {
                 [L * 0.85, L * 0.80, L * 0.90, L * 0.75],
             ];
             for (const cand of anchors) {
-                tryPlaceDecoration(way, cand, "arrow", 0,
+                tryPlaceDecoration(way, cand, KIND.ARROW, 0,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
@@ -657,7 +692,7 @@ function computeDecorations() {
 
         if (hasDiamond) {
             for (let arc = 400; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], "diamond", 13,
+                tryPlaceDecoration(way, [arc], KIND.DIAMOND, 13,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -667,7 +702,7 @@ function computeDecorations() {
         }
         if (hasArrow) {
             for (let arc = 200; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], "arrow", 13,
+                tryPlaceDecoration(way, [arc], KIND.ARROW, 13,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
@@ -690,7 +725,7 @@ function computeDecorations() {
 
         if (hasDiamond) {
             for (let arc = 200; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], "diamond", 15,
+                tryPlaceDecoration(way, [arc], KIND.DIAMOND, 15,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -700,7 +735,7 @@ function computeDecorations() {
         }
         if (hasArrow) {
             for (let arc = 100; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], "arrow", 15,
+                tryPlaceDecoration(way, [arc], KIND.ARROW, 15,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
@@ -745,7 +780,7 @@ function addDecorationLayers() {
         type: "symbol",
         source: "trail-decorations",
         filter: ["all",
-            ["==", ["get", "kind"], "trail_name"],
+            ["==", ["get", "kind"], KIND.TRAIL_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
         ],
         layout: {
@@ -772,7 +807,7 @@ function addDecorationLayers() {
         type: "symbol",
         source: "trail-decorations",
         filter: ["all",
-            ["==", ["get", "kind"], "route_name"],
+            ["==", ["get", "kind"], KIND.ROUTE_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
         ],
         layout: {
@@ -800,7 +835,7 @@ function addDecorationLayers() {
             type: "symbol",
             source: "trail-decorations",
             filter: ["all",
-                ["==", ["get", "kind"], "diamond"],
+                ["==", ["get", "kind"], KIND.DIAMOND],
                 ["<=", ["get", "min_zoom"], ["zoom"]],
             ],
             layout: {
@@ -836,7 +871,7 @@ function addDecorationLayers() {
         type: "symbol",
         source: "trail-decorations",
         filter: ["all",
-            ["==", ["get", "kind"], "arrow"],
+            ["==", ["get", "kind"], KIND.ARROW],
             ["<=", ["get", "min_zoom"], ["zoom"]],
         ],
         layout: {
@@ -878,10 +913,10 @@ function buildDecorFilter(kind) {
 // dim-aware logic.
 function updateDecorationsHighlight() {
     if (map.getLayer("decor-diamond")) {
-        map.setFilter("decor-diamond", buildDecorFilter("diamond"));
+        map.setFilter("decor-diamond", buildDecorFilter(KIND.DIAMOND));
     }
     if (map.getLayer("decor-arrow")) {
-        map.setFilter("decor-arrow", buildDecorFilter("arrow"));
+        map.setFilter("decor-arrow", buildDecorFilter(KIND.ARROW));
     }
 }
 
@@ -917,11 +952,77 @@ let parkingMarkers = [];
 let trailheadMarkers = [];
 let featureMarkers = [];
 let userLocation = null; // [lng, lat] from geolocate control
+// MapLibre GeolocateControl handle; assigned in init(). Hoisted to module
+// scope so the off-screen indicator's click handler (defined at module
+// scope in updateLocationIndicator) can resume tracking via .trigger()
+// when the user taps it.
+let geolocateControl = null;
+// GeolocateControl + off-screen indicator state: see the
+// state-machine docblock above the GeolocateControl creation in
+// init() for the full story (state diagram, transition table, what
+// each flag is for, and where each gets set vs consumed).
+let _showToastOnNextFix = false;
+let _suppressOffScreenToast = false;
+let _firstGeolocateMoveAfterTrigger = false;
+let _followUserOnGeolocate = false;
 
 // ============================================================
 // Initialization
 // ============================================================
+// Required CONFIG fields, checked at boot. If the build produces a
+// CONFIG missing any of these (e.g. the template substitution broke,
+// or a required YAML key was removed without updating CONFIG_SPEC),
+// the app refuses to start with a clear error in the console + a
+// visible message on the map div, instead of failing later with an
+// opaque `Cannot read property of undefined` somewhere downstream.
+const REQUIRED_CONFIG_KEYS = [
+    "name", "slug", "title",
+    "bbox", "panBbox", "center",
+    "minZoom", "maxZoom",
+    "routes",
+];
+
+function validateConfigShape() {
+    if (typeof CONFIG !== "object" || CONFIG === null) {
+        throw new Error("CONFIG is missing or not an object — check that the build's template substitution succeeded.");
+    }
+    const missing = REQUIRED_CONFIG_KEYS.filter((k) =>
+        CONFIG[k] === undefined || CONFIG[k] === null);
+    if (missing.length > 0) {
+        throw new Error(
+            `CONFIG missing required key(s): ${missing.join(", ")}. ` +
+            `Re-run the build (scripts/build.py) to regenerate.`);
+    }
+    // Bbox arrays must have 4 numbers; an off-by-one here breaks
+    // maxBounds and fitBoundsOptions in opaque ways downstream.
+    for (const k of ["bbox", "panBbox"]) {
+        if (!Array.isArray(CONFIG[k]) || CONFIG[k].length !== 4
+            || !CONFIG[k].every((n) => typeof n === "number")) {
+            throw new Error(
+                `CONFIG.${k} must be a 4-number array [w, s, e, n]; ` +
+                `got ${JSON.stringify(CONFIG[k])}.`);
+        }
+    }
+}
+
 async function init() {
+    try {
+        validateConfigShape();
+    } catch (e) {
+        // Surface the error visibly on the map div so it's not buried
+        // in DevTools — operators deploying a broken build will see
+        // this immediately.
+        console.error(e);
+        const container = document.getElementById("map");
+        if (container) {
+            container.innerHTML =
+                `<div style="padding:24px;font-family:system-ui;color:#b00">` +
+                `<strong>Map failed to start.</strong><br>` +
+                `<code style="white-space:pre-wrap">${e.message}</code></div>`;
+        }
+        return;
+    }
+
     // Register PMTiles protocol
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
@@ -993,32 +1094,169 @@ async function init() {
     // corner for a cleaner map. GeolocateControl IS added (hidden via
     // CSS) because we still need its event/state machine; the peek
     // menu's Locate button drives it via geolocate.trigger().
+    //
+    // ============================================================
+    // GeolocateControl + off-screen indicator state machine
+    // ============================================================
+    // MapLibre's GeolocateControl owns the actual GPS tracking state.
+    // We don't replace it — we hide its DOM control via CSS, drive
+    // it through .trigger(), and modify its camera behaviour.
+    //
+    // MapLibre states (read from the native button's class list):
+    //
+    //          ┌──────────┐
+    //          │   IDLE   │ ◄────┐
+    //          └────┬─────┘      │
+    //         click │            │
+    //               ▼            │
+    //          ┌──────────┐      │ click → IDLE
+    //          │ WAITING  │      │
+    //          └────┬─────┘      │
+    //         first │            │
+    //         fix   ▼            │
+    //          ┌──────────┐      │
+    //          │  ACTIVE  │ ─────┤
+    //          └────┬─────┘      │
+    //         user  │  ▲         │
+    //         pan   │  │ click   │
+    //               ▼  │         │
+    //          ┌──────────┐      │ click → IDLE
+    //          │BACKGROUND│ ─────┘
+    //          └──────────┘
+    //
+    // Stock MapLibre camera behaviour at each transition:
+    //   IDLE → ACTIVE         easeTo(user, fitBoundsOptions) — pan + zoom
+    //   ACTIVE per-fix        easeTo(user) — just pan
+    //   ACTIVE → BACKGROUND   no camera move (user is in control)
+    //   BACKGROUND fix update no camera move (dot moves, not the map)
+    //   BACKGROUND → ACTIVE   easeTo(user) — re-center, no zoom
+    //
+    // Our modifications (vs stock):
+    //   - Suppress the IDLE → ACTIVE auto-zoom (preserve user's view)
+    //   - Suppress per-fix easeTo by default; allow only when
+    //     follow-me opt-in is on
+    //   - Allow the BACKGROUND → ACTIVE re-engagement easeTo
+    //   - Manual pan exits follow-me (active → background-effective)
+    //
+    // Where each modification lives:
+    //   - Locate-button click handler: reads pre-click state, sets
+    //     flags BEFORE calling trigger() — single decision point
+    //   - Off-screen indicator click handler: own flyTo path; sets
+    //     flags before triggering re-engage
+    //   - `movestart` filter: consumes flags to allow / cancel the
+    //     geolocate-source camera moves
+    //   - mirrorLocateState: clears userLocation when state goes
+    //     idle / disabled (handles the "tracking actually ended"
+    //     transition without depending on which event fires)
+    //
+    // We deliberately do NOT use `trackuserlocationstart` to arm
+    // flags — MapLibre 5.x fires it for IDLE → WAITING but NOT for
+    // BACKGROUND → ACTIVE re-engagement (that one fires
+    // userlocationfocus instead). Driving flag setup off click
+    // handlers (synchronous, sees the pre-click state) is reliable
+    // across MapLibre versions and across all the ways the user
+    // can engage tracking.
+    //
+    // Flags driving the modifications:
+    //
+    //   _firstGeolocateMoveAfterTrigger
+    //     Cancel the next geolocate-source movestart (the IDLE →
+    //     ACTIVE fitBounds-zoom). Set true on idle→active click,
+    //     false on background→active click. Consumed once.
+    //
+    //   _followUserOnGeolocate
+    //     Allow per-fix easeTo updates through the movestart filter
+    //     so the map auto-follows the user. Set true on any →
+    //     active click. Cleared by user manual pan.
+    //
+    //   _showToastOnNextFix
+    //     "On the next geolocate / userlocationfocus event, if the
+    //     user is off-screen, show a hint toast suggesting they tap
+    //     the blue ▲ indicator." Set true on idle→active (user
+    //     just enabled tracking; might not realise their position
+    //     is off the trail bbox). Set false on background→active
+    //     (user knows what they want — to be re-centered).
+    //     Consumed once.
+    //
+    //   _suppressOffScreenToast
+    //     Hard-suppress the off-screen toast for the indicator
+    //     click path; that path triggers events that would
+    //     otherwise fire the toast circularly. Set in indicator
+    //     click; cleared in moveend (or 2 s safety timeout).
+    //
+    //   userLocation
+    //     Cached [lng, lat] from the latest geolocate event.
+    //     Cleared by mirrorLocateState when state goes idle /
+    //     disabled, hiding the indicator without depending on
+    //     which event MapLibre fires for that transition.
+    // ============================================================
     const geolocate = new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
+        positionOptions: {
+            enableHighAccuracy: true,
+            // Without an explicit timeout, watchPosition hangs forever
+            // when the OS / browser can't acquire a fix — most often
+            // seen on desktop macOS browsers when Location Services
+            // is off, the browser-level permission is revoked, or
+            // CoreLocation can't reach Apple's Wi-Fi positioning
+            // service. The spinner just spins; the user has no
+            // signal anything is wrong. 15 s is generous for normal
+            // Wi-Fi positioning and short enough to feel responsive
+            // when something's broken.
+            timeout: 15000,
+        },
         trackUserLocation: true,
     });
     map.addControl(geolocate, "top-left");
-
-    // Set on user-initiated tracking starts (button clicks), consumed by
-    // the next geolocate or userlocationfocus event.
-    let _showToastOnNextFix = false;
+    geolocateControl = geolocate;  // expose to updateLocationIndicator
+    attachOffScreenIndicatorHandler();
 
     const maybeShowOffScreenToast = () => {
+        // Suppress entirely when the user's recent action was clicking
+        // the indicator itself — the toast would be circular advice.
+        // Also consume the flag so a LATER geolocate event (after
+        // moveend has cleared the suppress flag) doesn't belatedly
+        // fire the toast: the indicator click triggered a GPS fix, the
+        // fix arrives after moveend, suppress is now false, flag is
+        // still true → toast. Consuming here closes that race.
+        if (_suppressOffScreenToast) {
+            _showToastOnNextFix = false;
+            return;
+        }
         if (!_showToastOnNextFix || !userLocation) return;
         _showToastOnNextFix = false;
         const pt = map.project(userLocation);
         const cv = map.getCanvas();
         if (pt.x < 0 || pt.x > cv.clientWidth || pt.y < 0 || pt.y > cv.clientHeight) {
-            showToast("Your location is currently off-screen — tap the indicator to center the map");
+            showToast("Your location is off-screen — tap the blue ▲ at the map edge to center on it.");
         }
     };
 
-    // Intercept the auto pan/zoom GeolocateControl triggers via fitBounds.
-    // Defer to a microtask, which drains after easeTo finishes setup but
-    // before any rAF fires — cancelling the animation before a single
-    // frame draws.
+    // movestart filter for geolocate-sourced camera moves. Three branches:
+    //
+    //  1. Move is user-initiated (no geolocateSource): they want to look
+    //     around, exit follow-me mode. Don't cancel — the user IS the
+    //     camera now.
+    //  2. Move is the FIRST geolocate-source move after entering active
+    //     tracking (the fitBounds-zoom yank): always cancel. Defer to a
+    //     microtask, which drains after easeTo finishes setup but before
+    //     any rAF fires — cancelling the animation before a frame draws.
+    //  3. Move is a SUBSEQUENT geolocate-source ease (per-fix follow-me
+    //     update): allow if the user has opted into follow mode (set
+    //     true in the Locate-button click handler, cleared by branch 1).
+    //     Otherwise cancel as before.
     map.on("movestart", (e) => {
-        if (!e.geolocateSource) return;
+        if (!e.geolocateSource) {
+            _followUserOnGeolocate = false;
+            return;
+        }
+        if (_firstGeolocateMoveAfterTrigger) {
+            _firstGeolocateMoveAfterTrigger = false;
+            queueMicrotask(() => map.stop());
+            return;
+        }
+        if (_followUserOnGeolocate) {
+            return;  // allow follow-me ease through
+        }
         queueMicrotask(() => map.stop());
     });
 
@@ -1028,8 +1266,24 @@ async function init() {
         maybeShowOffScreenToast();
     });
 
-    geolocate.on("trackuserlocationstart", () => {
-        _showToastOnNextFix = true;
+    // NOTE: no trackuserlocationstart handler. MapLibre 5.x doesn't
+    // fire it for BACKGROUND → ACTIVE re-engagement (that's
+    // userlocationfocus instead), so it's an unreliable hook. All
+    // flag setup happens in the Locate-button click handler below
+    // (see the state-machine docblock above the GeolocateControl).
+
+    geolocate.on("trackuserlocationend", () => {
+        _firstGeolocateMoveAfterTrigger = false;
+        _followUserOnGeolocate = false;
+        // NOTE: don't clear userLocation here. Despite the event name
+        // sounding terminal, MapLibre 5.x fires trackuserlocationend
+        // on ACTIVE_LOCK → BACKGROUND too (i.e. when the user just
+        // panned away during tracking — they're STILL being tracked,
+        // just not auto-followed). Clearing userLocation here made
+        // the indicator vanish forever after the first manual pan.
+        // userLocation is cleared in mirrorLocateState() instead,
+        // which reads the actual button state class and only acts on
+        // the true off / disabled transitions.
     });
 
     geolocate.on("userlocationfocus", () => {
@@ -1042,7 +1296,24 @@ async function init() {
         geolocate.trigger();
         showToast(`You are outside the ${CONFIG.name} area`);
     });
-    geolocate.on("trackuserlocationend", () => updateLocationIndicator());
+
+    // Surface geolocation failures so they don't silently leave the
+    // Locate button in a broken-looking state. MapLibre's button
+    // already changes to its error class (which we mirror), but a
+    // toast tells the user what to do about it.
+    geolocate.on("error", (e) => {
+        const code = e && e.code;
+        if (code === 1) {
+            // PERMISSION_DENIED
+            showToast("Location permission denied. Allow location access in your browser's site settings, then tap Locate again.");
+        } else if (code === 3) {
+            // TIMEOUT
+            showToast("Couldn't get your location. On desktop, check that macOS Location Services is enabled for this browser.");
+        } else {
+            // POSITION_UNAVAILABLE or unknown
+            showToast("Couldn't determine your location. Try again, or check your device's location settings.");
+        }
+    });
 
     // Wire the peek menu's Locate button to the GeolocateControl and
     // mirror its FULL state machine (idle / waiting / active /
@@ -1095,10 +1366,55 @@ async function init() {
             state === "active-error" ||
             state === "background-error";
         locateBtn.setAttribute("aria-pressed", tracking ? "true" : "false");
+        // When tracking is truly off (idle = user toggled Locate
+        // off; disabled = no permission / no GPS), clear the cached
+        // fix so the off-screen indicator hides itself. Doing this
+        // here (rather than in the geolocate event handlers) catches
+        // every off-transition without conflating it with the
+        // active → background transition that just means "user
+        // panned but is still being tracked".
+        if (state === "idle" || state === "disabled") {
+            userLocation = null;
+            updateLocationIndicator();
+        }
     }
     if (locateBtn) {
         locateBtn.addEventListener("click", (e) => {
             e.stopPropagation();
+            // Read the current state BEFORE trigger() runs and set
+            // the flags it'll need. trigger() may fire camera moves
+            // and dispatch events synchronously, so the flags must
+            // already be in place. See the state-machine docblock
+            // above for the full rationale.
+            const cls = nativeLocateBtn ? nativeLocateBtn.classList : null;
+            const inBackground = cls && cls.contains(
+                "maplibregl-ctrl-geolocate-background");
+            const inTrackingState = cls && (
+                cls.contains("maplibregl-ctrl-geolocate-active") ||
+                cls.contains("maplibregl-ctrl-geolocate-waiting") ||
+                cls.contains("maplibregl-ctrl-geolocate-active-error") ||
+                cls.contains("maplibregl-ctrl-geolocate-background-error"));
+            if (inBackground) {
+                // BACKGROUND → ACTIVE re-engagement. Stock-like
+                // re-centering: allow MapLibre's easeTo through, no
+                // hint toast (the user is being centered right now).
+                _firstGeolocateMoveAfterTrigger = false;
+                _showToastOnNextFix = false;
+                _followUserOnGeolocate = true;
+            } else if (!inTrackingState) {
+                // IDLE / DISABLED → ACTIVE (initial enable). Original
+                // framework intent: don't yank the camera with the
+                // fitBounds-zoom; arm the hint toast so the user
+                // knows to tap the indicator if their dot is off-
+                // screen.
+                _firstGeolocateMoveAfterTrigger = true;
+                _showToastOnNextFix = true;
+                _followUserOnGeolocate = true;
+            }
+            // else: ACTIVE / WAITING / *_ERROR → trigger() goes to
+            //   IDLE. mirrorLocateState handles userLocation cleanup
+            //   and the indicator hides itself; no flag setup needed.
+            //
             // trigger() returns false only during initial permission
             // query; in that case clicking again once permission
             // resolves will work. No explicit retry needed.
@@ -1118,15 +1434,34 @@ async function init() {
         }
     }
 
+    // NOTE: no auto-locate on load. Even with permission already
+    // granted, automatically calling geolocate.trigger() would put
+    // the GPS into high-accuracy continuous mode (we set
+    // enableHighAccuracy: true above), which is a meaningful battery
+    // drain on a multi-hour ride. Tracking is strictly user-initiated
+    // — they tap the Locate button when they want it.
+
+    // Refresh the off-screen indicator on every visible-area change.
+    // `move` covers pan + zoom + pitch + rotate in MapLibre, but we
+    // also wire `zoom` + `resize` defensively — pinch-zoom centered
+    // on the screen has been observed to not always fire `move`
+    // (depending on MapLibre version + touch-event ordering), and
+    // resize doesn't fire `move` at all. Without these, the user can
+    // zoom in until their dot leaves the viewport but the indicator
+    // doesn't appear until the next pan. All three feed the same rAF
+    // debounce so multiple events per frame collapse to one update.
     let rafPending = false;
-    map.on("move", () => {
+    const scheduleIndicatorUpdate = () => {
         if (rafPending) return;
         rafPending = true;
         requestAnimationFrame(() => {
             rafPending = false;
             updateLocationIndicator();
         });
-    });
+    };
+    map.on("move", scheduleIndicatorUpdate);
+    map.on("zoom", scheduleIndicatorUpdate);
+    map.on("resize", scheduleIndicatorUpdate);
 
     const attrControl = new maplibregl.AttributionControl({ compact: true });
     map.addControl(attrControl, "bottom-right");
@@ -1678,6 +2013,7 @@ function updateMarkerProximity() {
     // walks the four marker arrays). When any marker is added/removed
     // here, recompute the decorations so arrows/diamonds/labels skip
     // the new POI footprints (or reclaim space when a marker drops).
+    invalidateObstaclesCache();
     if (map && map.getSource("trail-decorations")) {
         updateDecorationsSource();
     }
@@ -1690,14 +2026,14 @@ function updateMarkerProximity() {
     updateFeatureButtonVisibility();
 }
 
-// True iff at least one `poi_type: "feature"` POI is within
+// True iff at least one POI.FEATURE POI is within
 // POI_PROXIMITY_METERS of a currently-visible trail. Independent of
 // the Features toggle state (we ask "would anything show if it were
 // on?", not "is anything showing now?").
 function hasVisibleFeatures() {
     if (!poisData || !routesData) return false;
     for (const f of poisData.features) {
-        if (f.properties.poi_type !== "feature") continue;
+        if (f.properties.poi_type !== POI.FEATURE) continue;
         const [lng, lat] = f.geometry.coordinates;
         if (distanceToVisibleTrails(lng, lat) <= POI_PROXIMITY_METERS) {
             return true;
@@ -1744,16 +2080,34 @@ function getDashColors(routeInfo) {
 // Trail data loading
 // ============================================================
 async function loadTrails() {
-    const resp = await fetch("trails.geojson");
-    routesData = await resp.json();
+    // trails.geojson is required — if it 404s or fails to parse, the
+    // app has nothing to render. Fail loudly with a visible message
+    // instead of letting downstream addSource calls die opaquely.
+    try {
+        const resp = await fetch("trails.geojson");
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        }
+        routesData = await resp.json();
+    } catch (e) {
+        console.error("loadTrails: trails.geojson failed to load:", e);
+        showToast("Map data failed to load. Try reloading the page.");
+        throw e;  // halt init — there's nothing useful to render
+    }
 
     // Optional sibling file: continuation arrowhead points at bbox-edge
-    // endpoints of clipped relations.
-    try {
-        const clipResp = await fetch("clip_endpoints.geojson");
-        if (clipResp.ok) clipEndpointsData = await clipResp.json();
-    } catch (_) {
-        clipEndpointsData = null;
+    // endpoints of clipped relations. Build-time flag tells us whether
+    // the file actually exists in this build (most maps don't have
+    // clipped_relations); skip the fetch entirely when it doesn't, so
+    // the network log isn't littered with 404s from an unconditional
+    // probe-fetch.
+    if (CONFIG.hasClipEndpoints) {
+        try {
+            const clipResp = await fetch("clip_endpoints.geojson");
+            if (clipResp.ok) clipEndpointsData = await clipResp.json();
+        } catch (_) {
+            clipEndpointsData = null;
+        }
     }
 
     // Initial visibility from bucket model + persisted state
@@ -2173,7 +2527,7 @@ function updateLabels() {
     // highlight-case filter.
     if (map.getLayer("decor-route-name")) {
         const KIND_GATE = [
-            ["==", ["get", "kind"], "route_name"],
+            ["==", ["get", "kind"], KIND.ROUTE_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
         ];
         let visible = labelMode === "routes";
@@ -2198,7 +2552,7 @@ function updateLabels() {
     // highlight). Kind/min_zoom gate stays layered into every case.
     if (map.getLayer("decor-trail-name")) {
         const KIND_GATE = [
-            ["==", ["get", "kind"], "trail_name"],
+            ["==", ["get", "kind"], KIND.TRAIL_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
         ];
         const visible = labelMode === "trails";
@@ -2758,18 +3112,38 @@ function buildTrailIndex() {
 // POI loading
 // ============================================================
 async function loadPOIs() {
-    const resp = await fetch("pois.geojson");
-    poisData = await resp.json();
+    // pois.geojson is optional in spirit — if it fails, the map still
+    // works without POI markers. Fall back to an empty collection and
+    // toast a warning; downstream count-based gating (`hasTrailMarkers`,
+    // `hasParking`, etc.) auto-hides the relevant peek buttons.
+    try {
+        const resp = await fetch("pois.geojson");
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        }
+        poisData = await resp.json();
+    } catch (e) {
+        console.warn("loadPOIs: pois.geojson failed to load:", e);
+        showToast("POI data failed to load — markers won't show.");
+        poisData = { type: "FeatureCollection", features: [] };
+    }
 
     // Count features by type in a single pass. Trail markers merge
     // guideposts + emergency access points into one category.
-    const poiCounts = { trail_marker: 0, parking: 0, trailhead: 0, feature: 0 };
+    const poiCounts = {
+        [POI.TRAIL_MARKER]: 0,
+        [POI.PARKING]: 0,
+        [POI.TRAILHEAD]: 0,
+        [POI.FEATURE]: 0,
+    };
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
         if (t in poiCounts) poiCounts[t]++;
     }
-    const { trail_marker: tmCount, parking: pkCount,
-            trailhead: thCount, feature: ftCount } = poiCounts;
+    const tmCount = poiCounts[POI.TRAIL_MARKER];
+    const pkCount = poiCounts[POI.PARKING];
+    const thCount = poiCounts[POI.TRAILHEAD];
+    const ftCount = poiCounts[POI.FEATURE];
 
     // Read persisted toggle state (default on for everything that has data).
     const mkDefault = LS.get("mtb.poi.markers", true);
@@ -2873,6 +3247,9 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
         if (addToMap) marker.addTo(map);
         targetArray.push(marker);
     }
+    // The obstacles cache reads .getLngLat() / ._map from each marker;
+    // adding/removing markers invalidates the snapshot.
+    invalidateObstaclesCache();
 }
 
 // Single helper covering the merged trail-marker POI category — OSM
@@ -2880,7 +3257,7 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 // style. Shown/hidden together via the "Markers" peek toggle.
 function addTrailMarkers(addToMap) {
     createPoiMarkers({
-        poiType: "trail_marker",
+        poiType: POI.TRAIL_MARKER,
         className: "trail-marker",
         markerStyle: `min-width:20px;height:20px;padding:0 4px;background:${CONFIG.markerColor};color:${CONFIG.markerTextColor};border-radius:4px;border:2px solid ${CONFIG.markerBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;line-height:1;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.3);box-sizing:border-box;`,
         // Fall back to "#" when OSM carries neither ref nor name —
@@ -2895,7 +3272,7 @@ function addTrailMarkers(addToMap) {
 
 function addParkingMarkers(addToMap) {
     createPoiMarkers({
-        poiType: "parking",
+        poiType: POI.PARKING,
         className: "parking-marker",
         markerStyle: `width:24px;height:24px;background:${CONFIG.parkingColor};color:${CONFIG.parkingTextColor};border-radius:4px;border:2px solid ${CONFIG.parkingBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
         labelFn: () => "P",
@@ -2912,7 +3289,7 @@ function addParkingMarkers(addToMap) {
 
 function addTrailheadMarkers(addToMap) {
     createPoiMarkers({
-        poiType: "trailhead",
+        poiType: POI.TRAILHEAD,
         className: "trailhead-marker",
         markerStyle: `width:28px;height:24px;background:${CONFIG.trailheadColor};color:${CONFIG.trailheadTextColor};border-radius:4px;border:2px solid ${CONFIG.trailheadBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
         labelFn: () => "TH",
@@ -2935,7 +3312,7 @@ const FEATURE_COLOR = CONFIG.featureColor || "#8e44ad";
 
 function addFeatureMarkers(addToMap) {
     createPoiMarkers({
-        poiType: "feature",
+        poiType: POI.FEATURE,
         className: "feature-marker",
         markerStyle: null,
         contentFn: (el, props) => {
@@ -3331,9 +3708,10 @@ function setupBottomSheet() {
     // same explicitly because it bypasses proximity entirely.
     wirePeekToggle("toggle-markers", "mtb.poi.markers", true, (on) => {
         if (on) {
-            updateMarkerProximity();
+            updateMarkerProximity();  // already invalidates cache
         } else {
             for (const m of trailMarkerMarkers) m.remove();
+            invalidateObstaclesCache();
             updateDecorationsSource();
         }
     });
@@ -3341,9 +3719,10 @@ function setupBottomSheet() {
     // Features — proximity-filtered.
     wirePeekToggle("toggle-features", "mtb.poi.features", true, (on) => {
         if (on) {
-            updateMarkerProximity();
+            updateMarkerProximity();  // already invalidates cache
         } else {
             for (const m of featureMarkers) m.remove();
+            invalidateObstaclesCache();
             updateDecorationsSource();
         }
     });
@@ -3356,6 +3735,7 @@ function setupBottomSheet() {
             if (on) m.addTo(map);
             else m.remove();
         }
+        invalidateObstaclesCache();
         updateDecorationsSource();
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads", true, (on) => {
@@ -3363,6 +3743,7 @@ function setupBottomSheet() {
             if (on) m.addTo(map);
             else m.remove();
         }
+        invalidateObstaclesCache();
         updateDecorationsSource();
     });
 
@@ -3880,6 +4261,19 @@ if (CONFIG.pwa) {
     }
 
     window.addEventListener("beforeinstallprompt", (e) => {
+        // preventDefault() suppresses Chrome's mini-infobar (Android)
+        // and the auto-prompt — we own the install entry point via
+        // the peek-bar Install row instead. The URL-bar install icon
+        // (omnibox) still shows on every page load when the manifest
+        // meets install criteria; that's a separate browser UI we
+        // don't control.
+        //
+        // TODO (near production release): revisit whether to drop the
+        // preventDefault() so first-time visitors on Android also see
+        // Chrome's mini-infobar as a discovery hint. The infobar has
+        // a ~90-day dismissal cooldown so it's not spammy, and the
+        // peek-bar Install row would still be there as a permanent
+        // entry point for subsequent visits.
         e.preventDefault();
         deferredInstallPrompt = e;
         revealInstallSection(true, false);
@@ -3918,15 +4312,13 @@ if (CONFIG.pwa) {
 // ============================================================
 // Off-screen location indicator
 // ============================================================
+// Distance helper that takes [lng, lat] tuples instead of four scalars
+// — the off-screen indicator code naturally has lngLat objects/arrays
+// from MapLibre. Delegates to the canonical haversineMeters defined
+// near the decoration system (Earth radius 6378137, WGS-84 equatorial).
 function haversineDistance(lngLat1, lngLat2) {
-    const toRad = (d) => d * Math.PI / 180;
-    const R = 6371000; // Earth radius in meters
-    const dLat = toRad(lngLat2[1] - lngLat1[1]);
-    const dLng = toRad(lngLat2[0] - lngLat1[0]);
-    const a = Math.sin(dLat / 2) ** 2 +
-              Math.cos(toRad(lngLat1[1])) * Math.cos(toRad(lngLat2[1])) *
-              Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return haversineMeters(lngLat1[0], lngLat1[1],
+                           lngLat2[0], lngLat2[1]);
 }
 
 function formatDistance(meters) {
@@ -3935,6 +4327,93 @@ function formatDistance(meters) {
         return `${Math.round(meters * 3.28084)} ft`;
     }
     return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+}
+
+// Wire the off-screen indicator's click. Called once from init() after
+// the GeolocateControl is set up; the indicator element itself is
+// pre-rendered in index.html so we can attach the listener at boot
+// without waiting for it to first appear.
+function attachOffScreenIndicatorHandler() {
+    const el = document.getElementById("off-screen-indicator");
+    if (!el) return;
+    el.addEventListener("click", () => {
+        if (!userLocation) return;
+
+        // Dismiss any toast currently visible. Most likely it's the
+        // "tap the blue ▲" hint from the prior Locate-button tap;
+        // leaving it up while the user actually performs the action
+        // reads as "still buggy". The 4-s auto-fade would otherwise
+        // outlive the click that addressed it.
+        dismissToast();
+
+        // Suppress the "your location is off-screen" toast for any
+        // geolocate / userlocationfocus events that fire while we're
+        // panning. The flag is checked first in maybeShowOffScreenToast
+        // and also consumes _showToastOnNextFix there to close the
+        // race where a fresh GPS fix arrives after moveend clears
+        // suppress. Cleared on moveend (and by a safety timeout).
+        _suppressOffScreenToast = true;
+        const safetyTimer = setTimeout(() => {
+            _suppressOffScreenToast = false;
+        }, 2000);
+
+        // Pan to the cached fix. If userLocation sits at or beyond the
+        // edge of panBbox, MapLibre clamps the map center to keep the
+        // viewport inside maxBounds — the user ends up at the viewport
+        // edge rather than dead centre. We detect that post-pan and
+        // show a clearer one-shot toast explaining why.
+        //
+        // trigger() to resume active follow-me tracking is DEFERRED to
+        // moveend (below). Calling it here in parallel with flyTo
+        // would race the movestart handler: trigger()'s auto-pan
+        // fires movestart-with-geolocateSource, the cancel handler
+        // map.stop()s, and our flyTo dies as collateral. By the time
+        // moveend fires, our flyTo has already completed; trigger()'s
+        // initial fitBounds is then the no-op MapLibre wants (we're
+        // already at the user) and the cancel handler harmlessly
+        // suppresses it.
+        map.once("moveend", () => {
+            clearTimeout(safetyTimer);
+            _suppressOffScreenToast = false;
+            const pt = map.project(userLocation);
+            const cv = map.getCanvas();
+            const offScreenAfterPan =
+                pt.x < 0 || pt.x > cv.clientWidth ||
+                pt.y < 0 || pt.y > cv.clientHeight;
+            if (offScreenAfterPan) {
+                showToast(
+                    `Your location is at or beyond the edge of the ` +
+                    `${CONFIG.name} area — the map can't pan further.`);
+            }
+
+            // Resume follow-me tracking. We're already at the user's
+            // position (the flyTo above just got us there), so any
+            // auto-pan MapLibre wants to do is a no-op — but we do
+            // want subsequent per-fix easeTo updates to keep us
+            // tracking. Set the same flags the Locate-button click
+            // handler sets for a re-engagement, then trigger() if
+            // we're not already active. (No trackuserlocationstart
+            // handler arms these any more; the click handler is the
+            // single source of truth — see the state-machine
+            // docblock at the GeolocateControl creation.)
+            if (geolocateControl) {
+                const native = document.querySelector(".maplibregl-ctrl-geolocate");
+                const isActive = native && native.classList
+                    .contains("maplibregl-ctrl-geolocate-active");
+                if (!isActive) {
+                    _firstGeolocateMoveAfterTrigger = false;
+                    _showToastOnNextFix = false;
+                    _followUserOnGeolocate = true;
+                    geolocateControl.trigger();
+                } else {
+                    // Already active. Re-arm follow in case a manual
+                    // pan earlier in this session cleared the flag.
+                    _followUserOnGeolocate = true;
+                }
+            }
+        });
+        map.flyTo({ center: userLocation, duration: 500 });
+    });
 }
 
 function updateLocationIndicator() {
@@ -3948,41 +4427,67 @@ function updateLocationIndicator() {
     const canvas = map.getCanvas();
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
-    const margin = 40;
 
-    if (point.x >= margin && point.x <= w - margin &&
-        point.y >= margin && point.y <= h - margin) {
+    // Inset rectangle the indicator is allowed to occupy. The bottom
+    // edge pulls up by the peek-bar height + safe-area inset because
+    // the bottom sheet overlays the canvas's bottom strip. Without
+    // this reserve, the indicator sits behind the peek bar — the user
+    // gets the "tap the blue ▲" toast with no visible triangle to
+    // tap. The logo overlay (bottom-left) is transparent, so an
+    // indicator landing on top of it is fine; we don't reserve for
+    // it. Reading peek-height live means sheet resize / orientation
+    // change is reflected without a separate notification.
+    const cs = getComputedStyle(document.documentElement);
+    const peekH = parseFloat(cs.getPropertyValue("--peek-height")) || 72;
+    const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
+    const edgeMargin = 48;
+    const xLeft = edgeMargin;
+    const xRight = w - edgeMargin;
+    const yTop = edgeMargin;
+    const yBottom = h - peekH - safeBottom - edgeMargin;
+
+    // Degenerate rectangle (canvas too short for the reserve) — skip.
+    if (xRight <= xLeft || yBottom <= yTop) {
         if (el) el.classList.add("hidden");
         return;
     }
 
-    if (!el) {
-        el = document.createElement("div");
-        el.id = "off-screen-indicator";
-        el.className = "off-screen-indicator";
-        document.getElementById("map").appendChild(el);
-        el.addEventListener("click", () => {
-            if (userLocation) {
-                map.flyTo({ center: userLocation, duration: 500 });
-            }
-        });
-    } else {
-        el.classList.remove("hidden");
+    // Hide the indicator when the user is inside the visible-and-
+    // unobstructed rectangle. Same threshold as the clamp below, so
+    // the show/hide and clamp behaviors stay aligned.
+    if (point.x >= xLeft && point.x <= xRight &&
+        point.y >= yTop && point.y <= yBottom) {
+        if (el) el.classList.add("hidden");
+        return;
     }
+
+    // The element is pre-rendered in index.html, so el is always
+    // truthy here. The click listener is attached once at app init
+    // (see attachOffScreenIndicatorHandler below) — historically the
+    // listener was attached inside an `if (!el)` block here, which
+    // never ran because the element pre-existed, leaving taps dead.
+    el.classList.remove("hidden");
 
     const cx = w / 2;
     const cy = h / 2;
     const angle = Math.atan2(point.y - cy, point.x - cx);
 
-    const edgeMargin = 48;
-    const maxX = w / 2 - edgeMargin;
-    const maxY = h / 2 - edgeMargin;
-    const scale = Math.min(
-        Math.abs(maxX / Math.cos(angle)) || Infinity,
-        Math.abs(maxY / Math.sin(angle)) || Infinity,
-    );
-    const x = cx + Math.cos(angle) * scale;
-    const y = cy + Math.sin(angle) * scale;
+    // Travel from (cx, cy) along the angle until we hit the inset
+    // rectangle's nearest edge. For each axis, compute the parametric
+    // t at which that edge is crossed; take the minimum positive t.
+    // This handles asymmetric margins cleanly (the bottom reserve
+    // makes yBottom asymmetric from yTop), unlike the previous
+    // half-extent math which assumed equal margins on every side.
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const eps = 1e-6;
+    let t = Infinity;
+    if (cosA > eps)  t = Math.min(t, (xRight - cx) / cosA);
+    if (cosA < -eps) t = Math.min(t, (xLeft  - cx) / cosA);
+    if (sinA > eps)  t = Math.min(t, (yBottom - cy) / sinA);
+    if (sinA < -eps) t = Math.min(t, (yTop    - cy) / sinA);
+    const x = cx + cosA * t;
+    const y = cy + sinA * t;
 
     const degrees = (angle * 180 / Math.PI) + 90;
 
@@ -4015,6 +4520,18 @@ function showToast(message) {
         el.classList.remove("visible");
         el.classList.add("hidden");
     }, 4000);
+}
+
+// Hide any visible toast immediately. Used by interactions that act on
+// the toast's instruction (e.g. tapping the off-screen indicator after
+// being told to do so) — without this, the user sees their action AND
+// the same nagging toast for up to 4 s, which reads as "didn't work".
+function dismissToast() {
+    const el = document.getElementById("map-toast");
+    if (!el) return;
+    clearTimeout(el._timeout);
+    el.classList.remove("visible");
+    el.classList.add("hidden");
 }
 
 // ============================================================
