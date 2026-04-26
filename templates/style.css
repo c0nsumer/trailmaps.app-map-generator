@@ -53,6 +53,14 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--sheet-text);
     background: #f7f7f7;
+    /* Suppress the Chrome/Safari mobile default tap-highlight (a
+     * brief translucent gray rectangle painted over the tapped
+     * element). Our UI controls communicate tap feedback through
+     * aria-pressed state changes, sheet open/close animations, and
+     * the highlight chip — the gray flash is redundant. Inherits
+     * to all children. Override on specific content links if needed
+     * (none currently). */
+    -webkit-tap-highlight-color: transparent;
 }
 
 #map {
@@ -1393,12 +1401,17 @@ body.sheet-open #logo-overlay {
 .off-screen-indicator-dist {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     font-size: 11px;
     font-weight: 600;
     line-height: 1;
     color: #fff;
     background: rgba(0, 0, 0, 0.55);
-    padding: 2px 7px 0;
+    /* Symmetric padding — flex's align-items: center handles the
+     * vertical centering. The previous `padding: 2px 7px 0` (top
+     * inset, no bottom) was an old workaround that overcorrected
+     * and pushed the digits up off-center. */
+    padding: 0 8px;
     height: 18px;
     border-radius: 9px;
     white-space: nowrap;
