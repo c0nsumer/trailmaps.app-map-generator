@@ -1,5 +1,37 @@
-requests>=2.31
-pyyaml>=6.0
-Pillow>=10.0
-pmtiles>=3.5.0
-mapbox-vector-tile>=2.1.0
+# mtb-map-framework Python dependencies — pinned for reproducible builds.
+#
+# Tested with Python 3.9-3.14. The only direct deps are the first five
+# below; everything else is a pinned transitive (captured via
+# `pip freeze`) so a fresh `pip install -r requirements.txt` six months
+# from now produces the same dependency graph and the same build output
+# regardless of upstream releases.
+#
+# To upgrade:
+#   .venv/bin/pip install -U <pkg> && .venv/bin/pip freeze > requirements.txt
+# Then build all maps and confirm no regressions before committing the
+# updated lockfile.
+#
+# OS-level dependencies (NOT installed by pip):
+#   - pmtiles CLI (Go binary) — for basemap/terrain PMTiles extraction.
+#     Install via Homebrew: `brew install pmtiles` (macOS), or build from
+#     https://github.com/protomaps/go-pmtiles releases.
+#   - libjpeg / libtiff (system libs Pillow links against) — usually
+#     present by default on macOS; on Debian/Ubuntu run
+#     `apt install libjpeg-dev libtiff5-dev zlib1g-dev`.
+
+# Direct dependencies
+requests==2.33.1
+PyYAML==6.0.3
+Pillow==12.2.0
+pmtiles==3.7.0
+mapbox-vector-tile==2.2.0
+
+# Transitive (pinned for reproducibility — do not remove)
+certifi==2026.2.25
+charset-normalizer==3.4.7
+idna==3.11
+numpy==2.4.4
+protobuf==6.33.6
+pyclipper==1.4.0
+shapely==2.1.2
+urllib3==2.6.3

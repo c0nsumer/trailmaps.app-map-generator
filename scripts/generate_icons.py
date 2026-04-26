@@ -19,13 +19,19 @@ try:
 except ImportError:
     Image = None
 
-# Icon sizes to generate: (filename, width, height, composite_on_white)
+# Icon sizes to generate: (filename, width, height, composite_on_white).
+# The 192 + 512 pair satisfies Chrome's WebAPK install criteria for
+# Android — without 512x512, Chrome can fall back to a "shortcut"
+# install that has weaker integration (e.g. shows the package name
+# rather than the app name in the uninstall toast). 256 is kept for
+# legacy reasons; some older docs/configurations reference it.
 ICON_SIZES = [
     ("icons/apple-touch-icon.png", 180, 180, True),
     ("icons/favicon-32x32.png", 32, 32, False),
     ("icons/favicon-16x16.png", 16, 16, False),
     ("icons/android-chrome-192x192.png", 192, 192, False),
     ("icons/android-chrome-256x256.png", 256, 256, False),
+    ("icons/android-chrome-512x512.png", 512, 512, False),
     ("icons/mstile-150x150.png", 150, 150, False),
 ]
 
@@ -106,11 +112,34 @@ def generate_safari_pinned_tab(source_img, output_dir):
 
 
 def generate_manifest(config, output_dir):
-    """Generate a PWA web manifest with app name from config."""
+    """Generate a PWA web manifest with app name from config.
+
+    The manifest drives Chrome's WebAPK install on Android — Android's
+    uninstall toast and home-screen label both come from these fields.
+    Notably:
+
+    - `name` (full app name) shows in the install prompt and the
+      uninstall confirmation toast.
+    - `short_name` shows under the home-screen icon.
+    - `id` gives the PWA a stable identity. Without it, the identity
+      derives from `start_url`, which can drift if the deploy path
+      changes (`/test/<slug>/` → `/<slug>/`), making Android treat the
+      "moved" install as a brand-new app. We pin id to the absolute
+      slug-rooted path so it stays stable across deploy moves.
+    - The 192 + 512 icon pair is required for a real WebAPK install.
+      Without 512, Chrome silently degrades to a bare home-screen
+      shortcut and Android shows the package name in the uninstall
+      toast (the "Uninstalled com.android..." behaviour).
+    """
+    slug = config.get("slug", "map")
+    name = config.get("name", "Map")
+    title = config.get("title", "Trail Map")
     manifest = {
-        "name": config.get("title", "Trail Map"),
-        "short_name": config.get("name", "Map"),
+        "name": title,
+        "short_name": name,
+        "id": f"/{slug}/",
         "start_url": "../",
+        "scope": "../",
         "display": "standalone",
         "background_color": "#ffffff",
         "theme_color": "#ffffff",
@@ -119,11 +148,19 @@ def generate_manifest(config, output_dir):
                 "src": "android-chrome-192x192.png",
                 "sizes": "192x192",
                 "type": "image/png",
+                "purpose": "any",
             },
             {
                 "src": "android-chrome-256x256.png",
                 "sizes": "256x256",
                 "type": "image/png",
+                "purpose": "any",
+            },
+            {
+                "src": "android-chrome-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any",
             },
         ],
     }

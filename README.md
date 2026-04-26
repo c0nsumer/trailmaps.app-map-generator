@@ -85,7 +85,7 @@ Drag the handle up/down, tap the peek area, swipe down to close, or press Escape
 
 ### Prerequisites
 
-- Python 3.8+ with `pip install -r requirements.txt`
+- Python 3.9 or newer (tested through 3.14) with `pip install -r requirements.txt` (versions are pinned for reproducible builds; see the file header for upgrade notes)
 - [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI (`go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest`)
 - Self-hosted [Protomaps basemap assets](https://github.com/protomaps/basemaps-assets/releases) (fonts + sprites) in `assets/`
 - Optional: [`potrace`](http://potrace.sourceforge.net/) for Safari pinned tab SVG icon generation

@@ -14,10 +14,22 @@ const CACHE_NAME = `trail-map-${SW_CONFIG.CACHE_VERSION}`;
 // Install — precache all build output
 // ============================================================
 self.addEventListener("install", (event) => {
+    // Force every precache fetch to bypass the browser HTTP cache via
+    // `cache: "reload"`. Without this, cache.addAll's internal fetches
+    // respect the browser's HTTP cache — and Caddy serves most assets
+    // with max-age=86400, so for up to 24 h after a deploy the SW
+    // would re-cache the STALE app.js / style.css / data files it
+    // already had. Result: CACHE_VERSION ticks, SW activates, but the
+    // newly-cached contents are still yesterday's bytes. Reload mode
+    // costs one full re-download per cache version bump, which is
+    // exactly when you want a fresh fetch.
+    const requests = SW_CONFIG.PRECACHE_URLS.map(
+        (url) => new Request(url, { cache: "reload" })
+    );
     event.waitUntil(
         caches
             .open(CACHE_NAME)
-            .then((cache) => cache.addAll(SW_CONFIG.PRECACHE_URLS))
+            .then((cache) => cache.addAll(requests))
             .then(() => self.skipWaiting())
     );
 });

@@ -303,9 +303,33 @@ def generate_service_worker(config, output_dir):
             if fname.endswith(".pmtiles"):
                 pmtiles_files.append(rel)
 
-    # Compute cache version from content hash for reliable cache busting
-    hash_input = "\n".join(sorted(precache_urls)) + "\n" + config.get("_data_date", "")
-    cache_version = hashlib.sha256(hash_input.encode()).hexdigest()[:12]
+    # Compute cache version from actual file CONTENTS, not just the
+    # filename list. The earlier "filenames + data_date" approach
+    # missed the most common case: editing app.js / style.css /
+    # index.html without touching trails or POIs left the cache version
+    # unchanged, so the service worker happily served the stale cached
+    # JS/CSS to every previously-installed visitor — fixes "appeared
+    # to do nothing" until they manually cleared site data.
+    #
+    # Hashing every file's bytes adds ~1-2 s for a typical 24 MB build
+    # and guarantees correctness: any change anywhere in the output
+    # tree (code, data, assets) produces a fresh CACHE_VERSION, which
+    # the SW activate handler uses to evict the old cache and reload.
+    hasher = hashlib.sha256()
+    for url in sorted(precache_urls):
+        if url == "./":
+            continue
+        path = os.path.join(output_dir, url)
+        if not os.path.isfile(path):
+            continue
+        hasher.update(url.encode())
+        hasher.update(b"\0")
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        hasher.update(b"\n")
+    hasher.update((config.get("_data_date", "") or "").encode())
+    cache_version = hasher.hexdigest()[:12]
 
     sw_config = {
         "CACHE_VERSION": cache_version,
@@ -436,6 +460,65 @@ def expand_bbox_for_pan(bbox, pan_padding):
         round(bbox[2] + pad, 4),
         round(bbox[3] + pad, 4),
     ]
+
+
+# ---------------------------------------------------------------------
+# PMTiles cache invalidation
+# ---------------------------------------------------------------------
+# basemap.pmtiles and terrain.pmtiles are large (~5-30 MB each) and slow
+# to extract (Mapterhorn / Protomaps planet pulls). We previously cached
+# them by output-path existence only — change `pan_bbox`, `pan_padding`,
+# or `*_maxzoom` and the *old* PMTiles silently stayed because the file
+# was still there.
+#
+# Fix: write a small `<output_path>.sig` sidecar whenever a PMTiles is
+# generated, containing the (bbox, maxzoom) tuple that produced it. On
+# subsequent builds, regenerate when the sidecar is missing or doesn't
+# match the requested signature. `--force` still wipes everything; this
+# just turns "different bbox now" from a silent staleness bug into an
+# automatic rebuild.
+
+def _bbox_signature(bbox, maxzoom):
+    """Stable text signature for an (bbox, maxzoom) extraction request."""
+    return f"bbox={','.join(f'{v:.4f}' for v in bbox)};maxzoom={maxzoom}"
+
+
+def _signature_path(output_path):
+    return output_path + ".sig"
+
+
+def _load_signature(output_path):
+    sig_path = _signature_path(output_path)
+    if not os.path.exists(sig_path):
+        return None
+    try:
+        with open(sig_path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def _save_signature(output_path, signature):
+    try:
+        with open(_signature_path(output_path), "w") as f:
+            f.write(signature + "\n")
+    except OSError as e:
+        print(f"  WARNING: could not write {_signature_path(output_path)}: {e}")
+
+
+def _pmtiles_needs_regen(output_path, bbox, maxzoom):
+    """True if the cached PMTiles is missing OR its (bbox, maxzoom)
+    signature doesn't match what's being requested. Returns a tuple
+    (needs_regen: bool, reason: str | None) so the caller can log why."""
+    if not os.path.exists(output_path):
+        return True, "file missing"
+    expected = _bbox_signature(bbox, maxzoom)
+    actual = _load_signature(output_path)
+    if actual is None:
+        return True, "signature sidecar missing (legacy build)"
+    if actual != expected:
+        return True, f"signature changed (was {actual!r}, want {expected!r})"
+    return False, None
 
 
 def _enrich_trails_geojson(config, trails_geojson, project_root):
@@ -662,6 +745,114 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     return changed
 
 
+# Declarative config spec: (yaml_key, js_key, default).
+# Hoisted to module scope so validate_config.py's `--check-spec` drift
+# lint can import it. Simple entries flow through `inject_config_into
+# _template` automatically; the keys with custom logic (routes,
+# directionSchedules, baseLayers, customRoutes, defaultTrailColor,
+# about, logoUrl) are handled in a separate block right after the
+# loop and intentionally do NOT appear in CONFIG_SPEC. The set
+# `validate_config.HANDLED_SPECIALLY` lists those YAML keys so the
+# drift lint accepts the omission.
+#
+# The runtime persists user-facing toggle states (POI visibility,
+# season mode, Emergency, labels, Difficulty) in localStorage under
+# `mtb.*` keys — there are no `*_default_on` config knobs. House
+# defaults live in app.js. The `show_*` fields below gate *data
+# fetching* and *build-time asset generation* (e.g. show_markers:
+# false skips the Overpass query entirely; show_difficulty: false
+# skips IMBA sprite generation), not UI visibility.
+CONFIG_SPEC = [
+    # Identity
+    ("name",                    "name",                 None),
+    ("slug",                    "slug",                 None),
+    ("title",                   "title",                None),
+
+    # View geometry.
+    # `bbox` still frames the trails for the initial view fit.
+    # `pan_bbox` is the looser envelope used for maxBounds (the pan
+    # wall) and gets precomputed from `bbox` + `pan_padding` above.
+    ("bbox",                    "bbox",                 None),
+    ("pan_bbox",                "panBbox",              None),
+    ("center",                  "center",               None),
+    ("zoom",                    "zoom",                 14),
+    ("min_zoom",                "minZoom",              10),
+    ("max_zoom",                "maxZoom",              18),
+
+    # Build-time data gates (skip fetching / sprite-gen when False).
+    # `show_markers` merges guideposts + emergency access points into
+    # one "trail marker" category — they render identically now.
+    ("show_markers",            "showMarkers",          True),
+    ("show_features",           "showFeatures",         True),
+    ("show_parking",            "showParking",          True),
+    ("show_trailheads",         "showTrailheads",       True),
+    ("show_terrain",            "showTerrain",          True),
+    ("show_difficulty",         "showDifficulty",       False),
+
+    # Distance (meters) from the nearest visible trail within which a
+    # trail-marker or feature POI is allowed to render. Tight values
+    # (~10 m) hide POIs that aren't directly on the trail; loose
+    # values (~75 m+) include nearby attractions but risk surfacing
+    # bbox-incidental POIs. Default 50 surfaces typical
+    # `tourism=attraction` features (often 10-50 m off-trail) while
+    # keeping the filter useful. The Features peek toggle auto-hides
+    # if no feature POI passes this check.
+    ("poi_proximity_m",         "poiProximityMeters",   50),
+
+    # UI gates for the Finder + Labels dropdown. Some systems have no
+    # curated routes (trails only) or treat routes and trails as the
+    # same set; turning one off hides the matching Finder section and
+    # Labels option.
+    ("show_routes",             "showRoutes",           True),
+    ("show_trails",             "showTrails",           True),
+
+    # Display
+    ("default_labels",          "defaultLabels",        "routes"),
+    ("color_by",                "colorBy",              "relation"),
+    ("suppress_path_labels",    "suppressPathLabels",   False),
+    ("suppress_basemap_pois",   "suppressBasemapPois",  False),
+    # When true (the default), highlighting a route or trail dims
+    # everything else on the map (basemap tint + non-highlighted
+    # labels/arrows/difficulty hidden + POI markers faded) so the
+    # highlighted feature reads as a spotlight. Set false per-map to
+    # keep every route visible at full brightness behind the
+    # highlight ribbon.
+    ("map_dim_on_highlight",    "mapDimOnHighlight",    True),
+
+    # When true (the default), MapLibre writes `#zoom/lat/lon` to
+    # the URL hash as the user pans/zooms, and honours any hash on
+    # page load. Makes views shareable and survives reload, at the
+    # cost of leaking last-viewed location in the address bar /
+    # screenshots / screen-shares. Set false to drop the hash
+    # entirely (URL stays clean, no persistence across reload, no
+    # shareable deep-links).
+    ("url_hash",                "urlHash",              False),
+
+    # Marker colours (kept per user request; some systems have
+    # branded marker palettes aligned with their trail colours).
+    # parking/trailhead/feature colours flow to CSS custom
+    # properties on :root so the peek-bar swatch, the on-map
+    # marker, and the popup badge all stay in lockstep.
+    ("marker_color",            "markerColor",          "#795548"),
+    ("marker_text_color",       "markerTextColor",      "white"),
+    ("marker_border_color",     "markerBorderColor",    "white"),
+    ("parking_color",           "parkingColor",         "#2980b9"),
+    ("parking_text_color",      "parkingTextColor",     "white"),
+    ("parking_border_color",    "parkingBorderColor",   "white"),
+    ("trailhead_color",         "trailheadColor",       "#27ae60"),
+    ("trailhead_text_color",    "trailheadTextColor",   "white"),
+    ("trailhead_border_color",  "trailheadBorderColor", "white"),
+    ("feature_color",           "featureColor",         "#8e44ad"),
+    ("feature_ring_color",      "featureRingColor",     "#ffffff"),
+
+    # PWA
+    ("pwa",                     "pwa",                  True),
+
+    # User-supplied
+    ("parking",                 "parking",              []),
+]
+
+
 def inject_config_into_template(template_content, config, trails_geojson):
     """Replace the CONFIG placeholder in templates with actual config data."""
     # Extract route metadata from the trails GeoJSON
@@ -879,107 +1070,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
         if route_id in effective_schedules:
             route_info["hasDirectionSchedule"] = True
 
-    # Declarative config spec: (yaml_key, js_key, default)
-    # Simple entries are built automatically; keys needing custom logic
-    # are added separately below.
-    #
-    # The runtime persists user-facing toggle states (POI visibility,
-    # season mode, Emergency, labels, Difficulty) in localStorage under
-    # `mtb.*` keys — there are no `*_default_on` config knobs. House
-    # defaults live in app.js. The `show_*` fields below gate *data
-    # fetching* and *build-time asset generation* (e.g. show_markers:
-    # false skips the Overpass query entirely; show_difficulty: false
-    # skips IMBA sprite generation), not UI visibility.
-    CONFIG_SPEC = [
-        # Identity
-        ("name",                    "name",                 None),
-        ("slug",                    "slug",                 None),
-        ("title",                   "title",                None),
-
-        # View geometry.
-        # `bbox` still frames the trails for the initial view fit.
-        # `pan_bbox` is the looser envelope used for maxBounds (the pan
-        # wall) and gets precomputed from `bbox` + `pan_padding` above.
-        ("bbox",                    "bbox",                 None),
-        ("pan_bbox",                "panBbox",              None),
-        ("center",                  "center",               None),
-        ("zoom",                    "zoom",                 14),
-        ("min_zoom",                "minZoom",              10),
-        ("max_zoom",                "maxZoom",              18),
-
-        # Build-time data gates (skip fetching / sprite-gen when False).
-        # `show_markers` merges guideposts + emergency access points into
-        # one "trail marker" category — they render identically now.
-        ("show_markers",            "showMarkers",          True),
-        ("show_features",           "showFeatures",         True),
-        ("show_parking",            "showParking",          True),
-        ("show_trailheads",         "showTrailheads",       True),
-        ("show_terrain",            "showTerrain",          True),
-        ("show_difficulty",         "showDifficulty",       False),
-
-        # Distance (meters) from the nearest visible trail within which a
-        # trail-marker or feature POI is allowed to render. Tight values
-        # (~10 m) hide POIs that aren't directly on the trail; loose
-        # values (~75 m+) include nearby attractions but risk surfacing
-        # bbox-incidental POIs. Default 50 surfaces typical
-        # `tourism=attraction` features (often 10-50 m off-trail) while
-        # keeping the filter useful. The Features peek toggle auto-hides
-        # if no feature POI passes this check.
-        ("poi_proximity_m",         "poiProximityMeters",   50),
-
-        # UI gates for the Finder + Labels dropdown. Some systems have no
-        # curated routes (trails only) or treat routes and trails as the
-        # same set; turning one off hides the matching Finder section and
-        # Labels option.
-        ("show_routes",             "showRoutes",           True),
-        ("show_trails",             "showTrails",           True),
-
-        # Display
-        ("default_labels",          "defaultLabels",        "routes"),
-        ("color_by",                "colorBy",              "relation"),
-        ("suppress_path_labels",    "suppressPathLabels",   False),
-        ("suppress_basemap_pois",   "suppressBasemapPois",  False),
-        # When true (the default), highlighting a route or trail dims
-        # everything else on the map (basemap tint + non-highlighted
-        # labels/arrows/difficulty hidden + POI markers faded) so the
-        # highlighted feature reads as a spotlight. Set false per-map to
-        # keep every route visible at full brightness behind the
-        # highlight ribbon.
-        ("map_dim_on_highlight",    "mapDimOnHighlight",    True),
-
-        # When true (the default), MapLibre writes `#zoom/lat/lon` to
-        # the URL hash as the user pans/zooms, and honours any hash on
-        # page load. Makes views shareable and survives reload, at the
-        # cost of leaking last-viewed location in the address bar /
-        # screenshots / screen-shares. Set false to drop the hash
-        # entirely (URL stays clean, no persistence across reload, no
-        # shareable deep-links).
-        ("url_hash",                "urlHash",              False),
-
-        # Marker colours (kept per user request; some systems have
-        # branded marker palettes aligned with their trail colours).
-        # parking/trailhead/feature colours flow to CSS custom
-        # properties on :root so the peek-bar swatch, the on-map
-        # marker, and the popup badge all stay in lockstep.
-        ("marker_color",            "markerColor",          "#795548"),
-        ("marker_text_color",       "markerTextColor",      "white"),
-        ("marker_border_color",     "markerBorderColor",    "white"),
-        ("parking_color",           "parkingColor",         "#2980b9"),
-        ("parking_text_color",      "parkingTextColor",     "white"),
-        ("parking_border_color",    "parkingBorderColor",   "white"),
-        ("trailhead_color",         "trailheadColor",       "#27ae60"),
-        ("trailhead_text_color",    "trailheadTextColor",   "white"),
-        ("trailhead_border_color",  "trailheadBorderColor", "white"),
-        ("feature_color",           "featureColor",         "#8e44ad"),
-        ("feature_ring_color",      "featureRingColor",     "#ffffff"),
-
-        # PWA
-        ("pwa",                     "pwa",                  True),
-
-        # User-supplied
-        ("parking",                 "parking",              []),
-    ]
-
     config_obj = {}
     for yaml_key, js_key, default in CONFIG_SPEC:
         if default is None:
@@ -1019,6 +1109,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
     config_obj["buildDate"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     config_obj["dataDate"] = config.get("_data_date", "")
+    config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
     config_obj["about"] = config.get("about") or None
 
     # Logo: derived from `logo:` if set, else falls back to `icon:`. Processed
@@ -1322,6 +1413,15 @@ def main():
         os.path.getmtime(trails_path)
     ).strftime("%Y-%m-%d %H:%M")
 
+    # Tell the runtime whether clip_endpoints.geojson exists in this
+    # build. fetch_trails only writes the file when there are clipped
+    # relations whose endpoints fall inside the bbox (most maps don't
+    # have any), so a runtime probe-fetch produced a noisy 404 on
+    # those maps. Reading the file's existence here lets the runtime
+    # skip the fetch entirely.
+    config["_has_clip_endpoints"] = os.path.exists(
+        os.path.join(output_dir, "clip_endpoints.geojson"))
+
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, and append any
     # user-defined custom_routes. Idempotent — safe to re-run against
@@ -1383,26 +1483,44 @@ def main():
 
     # Step 3: Fetch basemap
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
+    basemap_bbox = config.get("pan_bbox") or config["bbox"]
+    basemap_maxzoom = config.get("basemap_maxzoom", 15)
+    basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom)
     if args.skip_basemap:
         print("Basemap: Skipped (--skip-basemap)")
-    elif args.force or not os.path.exists(basemap_path):
-        fetch_basemap(config, basemap_path)
     else:
-        size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-        print(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
+        needs_regen, reason = _pmtiles_needs_regen(
+            basemap_path, basemap_bbox, basemap_maxzoom)
+        if args.force or needs_regen:
+            if not args.force and reason:
+                print(f"Basemap: regenerating ({reason})")
+            fetch_basemap(config, basemap_path)
+            _save_signature(basemap_path, basemap_sig)
+        else:
+            size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
+            print(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
     print()
 
     # Step 4: Fetch terrain
     terrain_path = os.path.join(output_dir, "terrain.pmtiles")
+    terrain_bbox = config.get("pan_bbox") or config["bbox"]
+    terrain_maxzoom = config.get("terrain_maxzoom", 12)
+    terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom)
     if not config.get("show_terrain", True):
         print("Terrain: Disabled in config (show_terrain: false)")
     elif args.skip_terrain:
         print("Terrain: Skipped (--skip-terrain)")
-    elif args.force or not os.path.exists(terrain_path):
-        fetch_terrain(config, terrain_path)
     else:
-        size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
-        print(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+        needs_regen, reason = _pmtiles_needs_regen(
+            terrain_path, terrain_bbox, terrain_maxzoom)
+        if args.force or needs_regen:
+            if not args.force and reason:
+                print(f"Terrain: regenerating ({reason})")
+            if fetch_terrain(config, terrain_path):
+                _save_signature(terrain_path, terrain_sig)
+        else:
+            size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
+            print(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
     print()
 
     # Step 5: Copy templates and assets

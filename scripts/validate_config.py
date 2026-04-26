@@ -121,6 +121,52 @@ KNOWN_KEYS = {
     "output_dir":                    str,
 }
 
+# Keys that intentionally DO NOT flow through CONFIG_SPEC into the runtime
+# JS CONFIG object. Each is consumed entirely at build time by one of the
+# fetch_* scripts or by build.py's bbox math, and the runtime has no use
+# for the value. The drift lint (`assert_spec_coverage`) accepts these as
+# legitimate omissions.
+BUILD_ONLY_KEYS = {
+    # OSM data fetching (fetch_trails.py, fetch_pois.py, osm_parser.py)
+    "osm_file",
+    "root_relation_id",
+    "extra_relations",
+    "clipped_relations",
+    "winter_relations",
+    "summer_relations",
+    "emergency_access_relations",
+    # Style overrides folded into per-route metadata at build time
+    # (relation_colors / dashed_relations / *_direction_schedule are
+    # consumed in inject_config_into_template's pre-pass and emerge
+    # in CONFIG.routes / CONFIG.directionSchedules).
+    "relation_colors",
+    "dashed_relations",
+    "default_direction_schedule",
+    "direction_schedules",
+    # Build-time bbox / tile-extract knobs
+    "pan_padding",        # consumed by expand_bbox_for_pan; runtime sees pan_bbox
+    "basemap_maxzoom",    # consumed by fetch_basemap.py
+    "terrain_maxzoom",    # consumed by fetch_terrain.py
+    # User-supplied points consumed by fetch_pois.py and baked into
+    # pois.geojson; the runtime reads pois.geojson, not CONFIG.trailheads.
+    "trailheads",
+    # Build output destination
+    "output_dir",
+}
+
+# Keys whose YAML name doesn't match a CONFIG_SPEC entry directly because
+# build.py's inject_config_into_template runs custom logic on them before
+# emitting a derived field (or set of fields) into CONFIG. Listed here so
+# the drift lint accepts them as covered.
+HANDLED_SPECIALLY = {
+    "base_layers",          # → CONFIG.baseLayers
+    "custom_routes",        # → CONFIG.customRoutes (subset of fields)
+    "default_trail_color",  # → CONFIG.defaultTrailColor + dash + cap
+    "about",                # → CONFIG.about (object passed through)
+    "logo",                 # → CONFIG.logoUrl (after asset pipeline)
+    "icon",                 # → fallback for logoUrl
+}
+
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
 VALID_DAYS = {"sunday", "monday", "tuesday", "wednesday",
@@ -732,14 +778,66 @@ def validate_config_file(path):
     return validate_config(config, config_path=path)
 
 
+def assert_spec_coverage():
+    """Drift check: every key the validator KNOWS about must be accounted
+    for either in CONFIG_SPEC (flows automatically into the JS runtime),
+    BUILD_ONLY_KEYS (intentionally consumed only at build time), or
+    HANDLED_SPECIALLY (built into the runtime via custom logic).
+
+    Catches the common failure where a new config key is added with a
+    validator entry but never reaches the frontend — silent breakage that
+    used to ship to production. Run via `validate_config.py --check-spec`
+    and any time CONFIG_SPEC or KNOWN_KEYS changes.
+    """
+    # Lazy import: build.py imports validate_config at top, so a top-level
+    # `from build import CONFIG_SPEC` would be a circular import. The
+    # function-level import only runs when the lint is invoked, by which
+    # time both modules are fully loaded.
+    from build import CONFIG_SPEC
+
+    spec_keys = {yaml_key for yaml_key, _, _ in CONFIG_SPEC}
+    accounted = spec_keys | BUILD_ONLY_KEYS | HANDLED_SPECIALLY
+    missing = set(KNOWN_KEYS) - accounted
+    extra_spec = spec_keys - set(KNOWN_KEYS)
+
+    problems = []
+    if missing:
+        problems.append(
+            f"KNOWN_KEYS not covered: {sorted(missing)}\n"
+            f"  Add to CONFIG_SPEC if the runtime needs it,\n"
+            f"  to BUILD_ONLY_KEYS if it's consumed only at build time,\n"
+            f"  or to HANDLED_SPECIALLY if inject_config_into_template "
+            f"transforms it before emitting."
+        )
+    if extra_spec:
+        problems.append(
+            f"CONFIG_SPEC has keys not in KNOWN_KEYS: {sorted(extra_spec)}\n"
+            f"  Add them to KNOWN_KEYS so the validator can type-check them."
+        )
+
+    if problems:
+        for p in problems:
+            print(f"  [error] spec-coverage: {p}", file=sys.stderr)
+        return False
+    print(f"  spec coverage OK ({len(spec_keys)} in CONFIG_SPEC, "
+          f"{len(BUILD_ONLY_KEYS)} build-only, "
+          f"{len(HANDLED_SPECIALLY)} handled specially)")
+    return True
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("usage: validate_config.py <config.yaml> [<config.yaml> ...]",
+    args = sys.argv[1:]
+    if not args:
+        print("usage: validate_config.py [--check-spec] "
+              "<config.yaml> [<config.yaml> ...]",
               file=sys.stderr)
         sys.exit(2)
 
+    if args[0] == "--check-spec":
+        sys.exit(0 if assert_spec_coverage() else 1)
+
     overall_errors = 0
-    for path in sys.argv[1:]:
+    for path in args:
         errors, warnings = validate_config_file(path)
         status = "FAIL" if errors else "OK"
         print(f"{status}: {path}")

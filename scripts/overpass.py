@@ -36,6 +36,17 @@ REQUEST_TIMEOUT = 120  # seconds per HTTP request
 # attempts, plus per-request timeouts.
 RETRY_BACKOFF = [5, 10, 20, 40, 60, 90, 120, 120, 120]
 
+# How many empty responses we tolerate before treating the query result
+# as legitimately empty (e.g. a typo'd relation ID, or a relation that
+# really has no member ways). Empty-but-successful responses look like
+# transient server failures to the retry loop, so without a separate
+# limit a bad relation ID would burn the full MAX_RETRIES schedule (~14
+# min) before failing. Two attempts is enough to ride out a brief server
+# hiccup; after that, we accept the empty payload, log a warning, and
+# let the caller deal with it (typically: build an empty trails.geojson
+# the user notices is empty when they open the map).
+EMPTY_RETRY_LIMIT = 2
+
 # Maximum acceptable replication lag for an Overpass mirror's snapshot,
 # measured by the response's `osm3s.timestamp_osm_base` vs. wall clock.
 # Overpass mirrors replicate independently and can fall days behind without
@@ -136,6 +147,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
 
     server = _server_name(OVERPASS_API)
     last_error = None
+    empty_attempts = 0
     for attempt in range(MAX_RETRIES):
         try:
             print(f"  Querying {server}{label_suffix}... "
@@ -150,8 +162,29 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             data = resp.json()
 
             if require_elements and not data.get("elements"):
+                # Empty response is ambiguous — it may be a transient
+                # server hiccup, OR the query is correctly formed but
+                # matches no data (e.g. typo'd relation ID, deleted
+                # relation). Retry up to EMPTY_RETRY_LIMIT to ride out
+                # the hiccup case; after that, accept the empty payload
+                # and let the caller decide what to do.
+                empty_attempts += 1
+                if empty_attempts > EMPTY_RETRY_LIMIT:
+                    print(f"  WARNING: {server} returned 0 elements "
+                          f"{empty_attempts} times in a row.")
+                    print(f"           This usually means the query is "
+                          f"correct but no data exists — check your "
+                          f"relation IDs for typos.")
+                    print(f"           Continuing with empty data; "
+                          f"downstream may produce an empty map.")
+                    _check_snapshot_freshness(data, server)
+                    if cp:
+                        with open(cp, "w") as f:
+                            json.dump(data, f)
+                    return data
                 raise EmptyResponseError(
-                    "0 elements returned (server may be overloaded)"
+                    f"0 elements returned (attempt {empty_attempts}/"
+                    f"{EMPTY_RETRY_LIMIT + 1}; may be transient)"
                 )
 
             _check_snapshot_freshness(data, server)
