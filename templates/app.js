@@ -2777,24 +2777,48 @@ async function loadTrails() {
     }
 
     // ----- Highlight layers (above trail fills, below labels + arrows) -----
-    // Four layers per highlight kind (route / trail): outline, glow,
-    // stroke, core. Rendered above the fills so they read as a
-    // "highlighted ribbon", but below labels + difficulty + arrows so
-    // those stay readable / visible when a route or trail is
-    // highlighted. All start with a no-match filter;
-    // highlightRoute()/highlightTrail() swap in the real filter and
-    // set the dynamic colour.
+    // Two layers per highlight kind (route / trail): outline + stroke.
+    // Rendered above the fills so they read as a "highlighted ribbon",
+    // but below labels + difficulty + arrows so those stay readable /
+    // visible when a route or trail is highlighted. All start with a
+    // no-match filter; highlightRoute()/highlightTrail() swap in the
+    // real filter and set the dynamic colour.
+    //
+    // History: this used to be a four-layer sandwich (outline, blurred
+    // glow, stroke, white core). The glow was removed first — its
+    // additive alpha created bright spikes at sharp switchback bends.
+    // The white core was dropped when the route stroke switched to the
+    // route's NATIVE colour (was amber) — with native colour, the white
+    // core blurred into light-coloured routes (yellow, cream) and its
+    // zoom-dependent width meant the inner-stripe effect was visible
+    // only at high zoom. The remaining black-outline + colour-stroke
+    // pair gets the structural emphasis from sheer thickness (~2× the
+    // unhighlighted fill width) plus the always-on black silhouette
+    // against any basemap; the spotlight dim (mapDimOnHighlight) does
+    // the rest of the visibility work by receding everything else.
     const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
     const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
 
-    // Four-layer highlight (bottom → top):
-    //   outline:  thick black (silhouette — pops against any basemap/trail)
-    //   glow:     blurred amber (soft halo)
-    //   stroke:   opaque amber (identity colour)
-    //   core:     thin white (inner highlight — pulls it forward)
-    // Combined, the highlighted line reads as a dark-bordered amber
-    // ribbon with a bright centre — unmistakable against peach, slate,
-    // amber, yellow, or sandy basemap tiles and in bright sunlight.
+    // Two-layer route highlight (bottom → top):
+    //   outline:  thick silhouette around the highlight ribbon. Colour
+    //             is bidirectional (black for light routes, white for
+    //             dark) — set by highlightRoute() to mirror the
+    //             unhighlighted casing's edge direction so the route's
+    //             "edge" reads consistently in both states. Initial
+    //             #000 here is a fail-safe; real highlights overwrite
+    //             on every selection.
+    //   stroke:   opaque, painted with the route's native colour by
+    //             highlightRoute(). Width ~2× the unhighlighted fill so
+    //             the highlight reads as "this route, scaled up."
+    // line-color-transition: { duration: 0 } on every highlight layer.
+    // MapLibre's default line-color transition is 300ms; without
+    // overriding it, every setPaintProperty('line-color', ...) on a
+    // highlight layer animates from its previous value to the new
+    // one over 300ms. When the filter then activates the layer, the
+    // user sees the color mid-animation — that's the "flash" from
+    // amber (or the previous route's color) to the target. Setting
+    // duration: 0 makes the colour change instantaneous, so by the
+    // time the filter exposes the layer it's already at the target.
     map.addLayer({
         id: "route-highlight-outline",
         type: "line",
@@ -2802,44 +2826,37 @@ async function loadTrails() {
         filter: NONE_FILTER_ROUTE,
         paint: {
             "line-color": "#000",
+            "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
             "line-opacity": 1,
             "line-offset": makeOffsetExpr(),
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
-    // NOTE: there was a `route-highlight-glow` layer here (blurred,
-    // semi-transparent, wide amber stroke) to give the ribbon a halo.
-    // It's been removed because the blur + additive alpha created
-    // visible bright spikes at sharp switchback bends. The spotlight
-    // dim (mapDimOnHighlight) does enough work to make the ribbon pop
-    // on its own; the glow was redundant.
     map.addLayer({
         id: "route-highlight-stroke",
         type: "line",
         source: "trails",
         filter: NONE_FILTER_ROUTE,
         paint: {
+            // Initial fill is amber as a fail-safe in case the dynamic
+            // setPaintProperty in highlightRoute() never fires (e.g.,
+            // a CONFIG.routes lookup miss). Real highlights overwrite
+            // this with effectiveRouteColor(info) on every selection.
             "line-color": "#ffb700",
+            "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
             "line-opacity": 1,
             "line-offset": makeOffsetExpr(),
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
-    map.addLayer({
-        id: "route-highlight-core",
-        type: "line",
-        source: "trails",
-        filter: NONE_FILTER_ROUTE,
-        paint: {
-            "line-color": "#ffffff",
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 2, 18, 3.5],
-            "line-opacity": 0.85,
-            "line-offset": makeOffsetExpr(),
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
+    // Two-layer trail highlight (bottom → top):
+    //   outline:  thick black (silhouette)
+    //   stroke:   highlighter yellow (#FFEC00) — see highlightTrail().
+    //             Trails span multiple routes so they have no native
+    //             colour; the highlighter yellow is the framework's
+    //             "no colour of its own" emphasis state.
     map.addLayer({
         id: "trail-highlight-outline",
         type: "line",
@@ -2847,37 +2864,23 @@ async function loadTrails() {
         filter: NONE_FILTER_TRAIL,
         paint: {
             "line-color": "#000",
+            "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
             "line-opacity": 1,
             "line-offset": makeOffsetExpr(),
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
-    // `trail-highlight-glow` was removed for the same reason as
-    // `route-highlight-glow` — blur + additive alpha produced bright
-    // spikes at sharp bends. See note above the stroke layer.
     map.addLayer({
         id: "trail-highlight-stroke",
         type: "line",
         source: "trails",
         filter: NONE_FILTER_TRAIL,
         paint: {
-            "line-color": "#ffb700",
+            "line-color": "#FFEC00",
+            "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
             "line-opacity": 1,
-            "line-offset": makeOffsetExpr(),
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
-    map.addLayer({
-        id: "trail-highlight-core",
-        type: "line",
-        source: "trails",
-        filter: NONE_FILTER_TRAIL,
-        paint: {
-            "line-color": "#ffffff",
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 2, 18, 3.5],
-            "line-opacity": 0.85,
             "line-offset": makeOffsetExpr(),
         },
         layout: { "line-cap": "round", "line-join": "round" },
@@ -3300,22 +3303,29 @@ function updateTrailDisplay() {
 // Layer groups — the dark outline + amber glow + amber stroke render
 // as a single unit. All three layers take the same filter; only the
 // stroke and glow take the dynamic colour (the outline stays dark).
-// Four layers each (bottom → top): outline, glow, stroke, core.
-// Only the stroke takes the route's accent colour; the black outline
-// and the white core never change colour — that's what gives the
-// highlight its "dark-bordered bright ribbon" look against any
-// background. (A wider blurred "glow" layer used to sit between the
-// outline and stroke; it was removed because the blur created bright
-// spikes at sharp switchback bends.)
+// Two layers each (bottom → top): outline + stroke.
+//   outline: always black, never recoloured — silhouettes against any
+//            basemap/trail.
+//   stroke:  recoloured per highlight via setPaintProperty. For routes
+//            it takes the route's native colour (the chip + ribbon
+//            agree on identity); for trails it takes the framework's
+//            "highlighter yellow" #FFEC00 (trails span multiple routes
+//            so they have no single native colour to inherit).
+//
+// History: an earlier four-layer sandwich (outline + blurred glow +
+// stroke + white core) lived here. Both the glow (bright spikes at
+// switchbacks) and the white core (zoom-dependent visibility, blurred
+// against light-coloured routes after the route-native-colour switch)
+// have been removed. The current pair gets the "highlighted" read
+// from sheer thickness vs. the unhighlighted fill plus the always-on
+// black silhouette; the spotlight dim does the rest.
 const ROUTE_HIGHLIGHT_LAYERS = [
     "route-highlight-outline",
     "route-highlight-stroke",
-    "route-highlight-core",
 ];
 const TRAIL_HIGHLIGHT_LAYERS = [
     "trail-highlight-outline",
     "trail-highlight-stroke",
-    "trail-highlight-core",
 ];
 const ROUTE_TINTED_HIGHLIGHT_LAYERS = [
     "route-highlight-stroke",
@@ -3390,23 +3400,54 @@ function highlightRoute(routeId) {
     if (!info) return;
     highlight = { kind: "route", key: routeId };
 
-    // Amber, not the route's native colour — keeps "highlighted" as an
-    // unambiguous UI state regardless of how close the route's own
-    // colour is to the rest of the map. (The chip shows the route's
-    // native colour for attribution.)
-    const amber = "#ffb700";
+    // Highlight the route in its OWN colour, not a non-native accent
+    // colour. Routes have an identity (a chip swatch, a peek-icon
+    // colour, OSM's `colour` tag); the highlight inherits that
+    // identity by colouring the stroke with effectiveRouteColor().
+    // Structural emphasis comes from the layered architecture: a
+    // thick black outline beneath, the route-coloured stroke at ~2x
+    // the unhighlighted fill width, and the spotlight dim receding
+    // every other layer. Together they unmistakably signal "this
+    // route is selected" without recolouring the route itself.
+    const color = effectiveRouteColor(info);
+    // Outline picks dark vs light by the route's luminance, mirroring
+    // the bidirectional logic in casingColor / contrastingHaloColor —
+    // so the highlighted ribbon's edge tracks the unhighlighted
+    // casing's edge for the same route. Without this, a dark-coloured
+    // route like Iron Ore Heritage Trail (`#65442D`) had a translucent
+    // LIGHT casing in normal display but a SOLID BLACK outline once
+    // highlighted, making the edge look darker on selection — the
+    // opposite of what "highlighted" should communicate. Solid
+    // (non-translucent) so the outline still silhouettes against any
+    // basemap; just the colour direction follows the same threshold
+    // as the rest of the route's edge styling.
+    const outlineColor = colorLuminance(color) > CONTRAST_LUM_THRESHOLD
+        ? "#000000"
+        : "#ffffff";
     const routeFilter = ["==", ["get", "route_id"], routeId];
+    // Set paint BEFORE flipping the filter. setFilter activates the
+    // layer (or switches it to a new route's geometry); whatever
+    // line-color is currently set paints for one frame before any
+    // subsequent setPaintProperty takes effect. That produced a
+    // visible "flash" of either the hardcoded fail-safe colour (first
+    // highlight) or the previous route's colour (when switching
+    // between routes) before the new colour landed. Setting paint
+    // first means the filter activation already finds the right
+    // colour in place. Same applies to the outline below.
+    for (const layerId of ROUTE_TINTED_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, "line-color", color);
+        }
+    }
+    if (map.getLayer("route-highlight-outline")) {
+        map.setPaintProperty("route-highlight-outline",
+            "line-color", outlineColor);
+    }
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, routeFilter);
         }
     }
-    for (const layerId of ROUTE_TINTED_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, "line-color", amber);
-        }
-    }
-    const color = effectiveRouteColor(info);
     // Clear trail highlights (single-highlight invariant)
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
@@ -3421,6 +3462,7 @@ function highlightRoute(routeId) {
     // distance/elevation values as the Finder rows; routeStatsText
     // returns "" when neither stat is enabled or available, in which
     // case the chip just shows label + color (current behavior).
+    // Chip and ribbon now share the same colour by construction.
     const indexEntry = routeIndex.find((r) => r.id === routeId);
     showHighlightChip({
         label: info.name,
@@ -3435,16 +3477,25 @@ function highlightRoute(routeId) {
 function highlightTrail(trailName) {
     highlight = { kind: "trail", key: trailName };
 
-    const amber = "#ffb700";
+    // Trails span multiple routes — no single native colour to
+    // inherit. Use highlighter yellow (#FFEC00, Stabilo Boss territory)
+    // as the framework's "no colour of its own" emphasis state. Reads
+    // unmistakably as "selected" without claiming the trail belongs to
+    // any one route.
+    const highlighter = "#FFEC00";
     const trailFilter = ["==", ["get", "trail_name"], trailName];
+    // Paint before filter — same flash-prevention pattern as
+    // highlightRoute(). Less critical here since trail-highlight-stroke
+    // is always #FFEC00 either way, but kept symmetric with the route
+    // path for consistency and defensive against future changes.
+    for (const layerId of TRAIL_TINTED_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, "line-color", highlighter);
+        }
+    }
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, trailFilter);
-        }
-    }
-    for (const layerId of TRAIL_TINTED_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, "line-color", amber);
         }
     }
     // Clear route highlights
@@ -3455,7 +3506,7 @@ function highlightTrail(trailName) {
     }
 
     fitToRouteOrTrail({ trailName });
-    showHighlightChip({ label: trailName, color: amber });
+    showHighlightChip({ label: trailName, color: highlighter });
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
