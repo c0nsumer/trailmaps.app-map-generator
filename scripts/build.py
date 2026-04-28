@@ -1419,6 +1419,118 @@ def print_summary(output_dir):
     print("=" * 60)
 
 
+def _print_dry_run_summary(config, args, output_dir, cache_dir):
+    """Print what the build WOULD do, then exit 0.
+
+    Runs after validate_config has accepted the YAML but before any
+    Overpass query / tile fetch / file write. Useful for catching
+    config errors and previewing the build's external footprint
+    without committing to a long run.
+    """
+    print(f"Dry run for: {config['title']}")
+    print(f"  slug:        {config['slug']}")
+    print(f"  output_dir:  {output_dir}")
+    print(f"  cache_dir:   {cache_dir}")
+    print()
+
+    # load_config resolves logo/icon/osm_file/custom_routes[].geometry
+    # to absolute paths. For display we want the bare filename (matches
+    # what the user wrote in the YAML) and only fall back to the full
+    # path if the file's missing.
+    def _display_path(abs_path):
+        return os.path.basename(abs_path) if os.path.isfile(abs_path) \
+            else f"{os.path.basename(abs_path)}  → MISSING (looked for {abs_path})"
+
+    # ---- OSM data source ----
+    print("OSM data source:")
+    if config.get("osm_file"):
+        print(f"  Local OSM file: {_display_path(config['osm_file'])}")
+    else:
+        print("  Overpass API")
+        print(f"    root_relation_id: {config['root_relation_id']}")
+        for key in ("extra_relations", "clipped_relations",
+                    "winter_relations", "summer_relations",
+                    "emergency_access_relations"):
+            ids = config.get(key) or []
+            if ids:
+                print(f"    {key}: {ids}")
+        custom = config.get("custom_routes") or []
+        if custom:
+            print(f"    custom_routes ({len(custom)}):")
+            for entry in custom:
+                geom = entry.get("geometry") or ""
+                if not geom:
+                    print(f"      - id={entry.get('id')}: NO GEOMETRY PATH")
+                    continue
+                print(f"      - id={entry.get('id')} geometry={_display_path(geom)}")
+    print()
+
+    # ---- POI fetching ----
+    print("POI fetching (gated by show_* keys):")
+    for key, default in (("show_markers", True), ("show_features", True),
+                         ("show_parking", True), ("show_trailheads", True)):
+        on = bool(config.get(key, default))
+        print(f"  {key}: {'YES' if on else 'no'}")
+    if config.get("show_trailheads", True):
+        th = config.get("trailheads") or []
+        if th:
+            print(f"    trailheads from config: {len(th)} point(s)")
+    if config.get("show_parking", True):
+        pk = config.get("parking") or []
+        if pk:
+            print(f"    parking from config: {len(pk)} point(s)")
+    print()
+
+    # ---- Tile generation ----
+    print("Tile generation:")
+    if args.skip_basemap:
+        print("  basemap: SKIPPED (--skip-basemap)")
+    else:
+        bm_zoom = config.get("basemap_maxzoom", 15)
+        print(f"  basemap: pan_bbox extracted to maxzoom {bm_zoom}")
+    if args.skip_terrain or not config.get("show_terrain", True):
+        reason = ("--skip-terrain" if args.skip_terrain
+                  else "show_terrain: false")
+        print(f"  terrain: SKIPPED ({reason})")
+    else:
+        tr_zoom = config.get("terrain_maxzoom", 12)
+        print(f"  terrain: pan_bbox extracted to maxzoom {tr_zoom}")
+    print()
+
+    # ---- Route stats ----
+    want_dist = bool(config.get("show_route_distance"))
+    want_elev = bool(config.get("show_route_elevation"))
+    if want_dist or want_elev:
+        print("Per-route stats:")
+        if want_dist:
+            print("  distance: computed (haversine, no API)")
+        if want_elev:
+            print("  elevation gain + loss: opentopodata.org SRTM30m "
+                  "(network calls, ~5-20 per typical map)")
+        print()
+
+    # ---- Branding assets ----
+    print("Branding assets:")
+    for key in ("logo", "icon"):
+        path = config.get(key) or ""
+        if not path:
+            print(f"  {key}: (none)")
+        else:
+            print(f"  {key}: {_display_path(path)}")
+    print()
+
+    # ---- PWA / sharing ----
+    print("Runtime features:")
+    print(f"  pwa: {bool(config.get('pwa', True))}")
+    print(f"  pwa_install_prompt: {bool(config.get('pwa_install_prompt', False))}")
+    print(f"  share_button: {bool(config.get('share_button', True))}")
+    print(f"  url_hash: {bool(config.get('url_hash', False))}")
+    print(f"  distance_units: {config.get('distance_units', 'mi')}")
+    print()
+
+    print("Dry run complete — no files written, no network calls made.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
@@ -1426,6 +1538,9 @@ def main():
     parser.add_argument("--trails", action="store_true", help="Re-fetch only trail data (uses Overpass cache)")
     parser.add_argument("--skip-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--skip-basemap", action="store_true", help="Skip basemap extraction")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Validate config and print what would be fetched / generated, then exit. "
+                             "No Overpass calls, no tile downloads, no file writes.")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -1446,6 +1561,14 @@ def main():
 
     output_dir = os.path.join(project_root, config.get("output_dir", os.path.join("build", config["slug"])))
     cache_dir = os.path.join(project_root, "cache")
+
+    # --dry-run: print what would happen, exit before any work.
+    # Runs AFTER validate_config so any schema/value errors still abort
+    # with a non-zero exit; runs BEFORE os.makedirs so dry-run leaves
+    # zero filesystem footprint (no empty output_dir created).
+    if args.dry_run:
+        _print_dry_run_summary(config, args, output_dir, cache_dir)
+        return
 
     os.makedirs(output_dir, exist_ok=True)
 
