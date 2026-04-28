@@ -2173,21 +2173,45 @@ function effectiveRouteColor(routeInfo) {
     return CONFIG.defaultTrailColor;
 }
 
+// Shared threshold for "is this route's color light or dark?" — used
+// by every layer that picks a contrasting outline (casing on the
+// trail line, halo on the clip-arrow symbol, default-color fallback
+// in difficulty-mode casings). 0.5 is the natural midpoint of
+// perceived luminance via the standard 0.299·R + 0.587·G + 0.114·B
+// formula. Keeping all bidirectional decisions on the same threshold
+// means a route's casing and its clip-arrow's halo always go the
+// same direction (both dark or both light), so a dark-colored trail
+// gets a visible casing AND a visible arrow halo on any basemap.
+const CONTRAST_LUM_THRESHOLD = 0.5;
+
+// Bidirectional casing color for trail lines. Light routes get a
+// translucent-dark casing (definition against light basemap); dark
+// routes get a translucent-light casing (visibility on dark basemap
+// or against the route's own dark fill). Both at 0.6 alpha; the
+// trail-casing layer further multiplies by line-opacity 0.5, so the
+// effective rendered alpha is ~0.3 either direction.
+//
+// Previous logic returned `#000000` solid black for any route below
+// the 0.7 luminance threshold — invisible against dark backgrounds
+// for any route with a dark color. This unification with
+// contrastingHaloColor (same threshold, same bidirectional pattern)
+// fixes that latent bug.
 function casingColor(routeInfo) {
     const lum = colorLuminance(effectiveRouteColor(routeInfo));
-    if (lum > 0.7) return "rgba(0,0,0,0.6)";
-    return "#000000";
+    return lum > CONTRAST_LUM_THRESHOLD
+        ? "rgba(0,0,0,0.6)"            // dark casing for light routes
+        : "rgba(255,255,255,0.6)";     // light casing for dark routes
 }
 
 // Bidirectional halo color for route-colored symbols (clip arrows
 // today; future symbols can reuse). Light routes get a dark halo so
 // the symbol stays visible against light basemap; dark routes get a
 // light halo so the symbol doesn't blend into similar dark
-// surroundings (or into the route's own dark fill). Threshold 0.5 is
-// the natural midpoint of perceived luminance.
+// surroundings (or into the route's own dark fill). Same threshold
+// as casingColor so both decisions stay aligned.
 function contrastingHaloColor(routeInfo) {
     const lum = colorLuminance(effectiveRouteColor(routeInfo));
-    return lum > 0.5
+    return lum > CONTRAST_LUM_THRESHOLD
         ? "rgba(0,0,0,0.85)"
         : "rgba(255,255,255,0.85)";
 }
@@ -2223,8 +2247,17 @@ function difficultyColorExpr() {
     ];
 }
 
-// Casing-color expression for difficulty mode (light theme)
+// Casing-color expression for difficulty mode (light theme).
+// Per-rating overrides are explicit, hand-tuned to the IMBA fill
+// colors — kept as-is. The fallback (unrated trails painted in
+// CONFIG.defaultTrailColor) goes through the same bidirectional
+// logic as casingColor() so the casing for an unrated dark default
+// trail color doesn't disappear.
 function difficultyCasingExpr() {
+    const defaultLum = colorLuminance(CONFIG.defaultTrailColor);
+    const defaultCasing = defaultLum > CONTRAST_LUM_THRESHOLD
+        ? "rgba(0,0,0,0.6)"
+        : "rgba(255,255,255,0.6)";
     return [
         "match", ["get", "imba_difficulty"],
         "0", "rgba(0,0,0,0.6)",     // white fill → dark casing
@@ -2233,7 +2266,7 @@ function difficultyCasingExpr() {
         "3", "rgba(255,255,255,0.6)", // black fill → light casing
         "4", "rgba(255,255,255,0.6)", // black fill → light casing
         "5", "#000000",              // orange fill → black casing
-        colorLuminance(CONFIG.defaultTrailColor) > 0.7 ? "rgba(0,0,0,0.6)" : "#000000",
+        defaultCasing,               // unrated → derive from defaultTrailColor
     ];
 }
 
