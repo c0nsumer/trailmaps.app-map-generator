@@ -35,6 +35,21 @@ self.addEventListener("install", (event) => {
 });
 
 // ============================================================
+// Message handler — supports B.7 "Reload" toast button
+// ============================================================
+// When the user taps "Reload" on the update toast, the page posts
+// {type: "SKIP_WAITING"} to this worker (the waiting one). We call
+// skipWaiting() so this version becomes active; the page then
+// observes `controllerchange` on navigator.serviceWorker and reloads
+// itself. Without this handshake, the new SW would stay in the
+// "waiting" state until every page using the old SW closed.
+self.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "SKIP_WAITING") {
+        self.skipWaiting();
+    }
+});
+
+// ============================================================
 // Activate — clean up old caches
 // ============================================================
 self.addEventListener("activate", (event) => {

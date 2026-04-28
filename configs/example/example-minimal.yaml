@@ -49,6 +49,14 @@ root_relation_id: 12345678
 
 # --- PWA ---
 # pwa: true
+# Surface PWA install affordances on platforms that support them.
+# When true: Chrome's native mini-infobar shows AND our custom Install
+# button (in the expanded sheet) is visible alongside it; iOS Safari
+# users see manual Add-to-Home-Screen instructions. When false
+# (default): the beforeinstallprompt handler is not registered at all
+# — silences Chrome's "page must call prompt()" console warning — and
+# the custom Install button is hidden everywhere.
+# pwa_install_prompt: false
 
 # --- Build-time data gates ---
 # show_markers: true
@@ -62,11 +70,33 @@ root_relation_id: 12345678
 # show_trails: true
 # suppress_path_labels: false
 # suppress_basemap_pois: false
+# Per-route stats in the Finder + highlight chip. Distance is cheap
+# (haversine sum at build time, no data dependency). Elevation gain
+# + loss come from opentopodata.org's free SRTM30m endpoint at build
+# time (cached in cache/route_stats/, ~5–20 API calls per typical
+# map); the build auto-retries on rate limits and degrades to
+# no-data on persistent failure rather than failing. Independent of
+# show_terrain — elevation stats and the hillshade layer come from
+# different data paths and can be toggled separately.
+# show_route_distance: false
+# show_route_elevation: false
 
 # --- Display ---
 # default_labels: routes
 # map_dim_on_highlight: true
 # url_hash: false
+# Units used for ALL distance and elevation values shown in the app —
+# off-screen-indicator distance pill, route stats in the Finder,
+# highlight chip, any future distance display. The underlying data is
+# always meters; this only affects render-time formatting. Values:
+# "mi" → ft + decimal mi (and ft for elevation gain) — default.
+# "km" → m + decimal km (and m for elevation gain) — metric regions.
+# distance_units: mi
+# Share button in the expanded sheet. Generates a shareable URL of
+# the current view + highlighted route/trail and surfaces it via the
+# Web Share API (or clipboard fallback). Default true. Set false for
+# private/family maps where you don't want the affordance.
+# share_button: true
 
 # --- Base layers ---
 # base_layers: []

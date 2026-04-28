@@ -942,7 +942,7 @@ let emergencyOn = LS.get("mtb.emergencyOn", false);
 let highlight = null; // { kind: "route"|"trail", key: string } | null
 
 // Indexes derived once at startup
-let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom }]
+let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM, elevationGainM, elevationLossM }]
 let trailIndex = []; // [{ name, routeIds: [string] }]
 
 // Marker arrays — trailMarkerMarkers covers the merged guidepost +
@@ -1005,6 +1005,189 @@ function validateConfigShape() {
     }
 }
 
+// Module-scope holding pen for a parsed share-link state. Set by
+// consumeShareHash() before map construction; consumed by the post-
+// trails-load handler to apply the highlight (and discarded after).
+let _pendingShareHighlight = null;
+
+// Apply a highlight that was parsed from an incoming share link.
+// Called once, after trails + indexes are loaded. The view portion
+// (zoom / center) of the share link is already in effect via map
+// construction options. Best-effort: silently no-ops if the
+// referenced route or trail no longer exists in the data (so a stale
+// link doesn't render an error).
+function applyPendingShareHighlight() {
+    const h = _pendingShareHighlight;
+    _pendingShareHighlight = null;
+    if (!h || !h.kind || !h.key) return;
+    if (h.kind === "route") {
+        // h.key is the OSM relation ID (or custom-route ID), matching
+        // the keys of CONFIG.routes. Verify before calling.
+        if (CONFIG.routes && CONFIG.routes[h.key]) {
+            highlightRoute(h.key);
+        }
+    } else if (h.kind === "trail") {
+        // h.key is the trail name as-stored on each feature's
+        // trail_name property. highlightTrail does its own matching.
+        // Sanity-check that at least one feature carries the name so
+        // we don't surface an empty highlight.
+        if (trailIndex.some((t) => t.name === h.key)) {
+            highlightTrail(h.key);
+        }
+    }
+}
+
+// Build the "#share=..." URL for the current map view + active
+// highlight. Used by the Share button. Format mirrors what
+// consumeShareHash() parses on the receiving side. Coordinates
+// rounded to 5 decimals (~1.1 m precision; well under what the user
+// can perceive on the map and short enough to keep the URL compact).
+function buildShareUrl() {
+    const c = map.getCenter();
+    const zoom = map.getZoom().toFixed(2).replace(/\.?0+$/, "");
+    const lat = c.lat.toFixed(5);
+    const lon = c.lng.toFixed(5);
+    let path = `share=${zoom}/${lat}/${lon}`;
+    if (highlight && highlight.kind === "route" && highlight.key) {
+        path += `/r/${encodeURIComponent(highlight.key)}`;
+    } else if (highlight && highlight.kind === "trail" && highlight.key) {
+        path += `/t/${encodeURIComponent(highlight.key)}`;
+    }
+    const url = new URL(window.location.href);
+    url.hash = path;
+    return url.toString();
+}
+
+// Build the human-readable share-sheet title — appears as email
+// subject in Mail-style apps and as the share-sheet header in iOS
+// /Android UIs. Most messaging apps actually rely on OG tags fetched
+// from the URL itself for their preview cards, so this is mostly a
+// helpful default for email.
+function buildShareTitle() {
+    const baseTitle = CONFIG.title || CONFIG.name || "Trail Map";
+    if (highlight && highlight.kind === "route" && highlight.key
+            && CONFIG.routes && CONFIG.routes[highlight.key]) {
+        return `${baseTitle} — ${CONFIG.routes[highlight.key].name}`;
+    }
+    if (highlight && highlight.kind === "trail" && highlight.key) {
+        return `${baseTitle} — ${highlight.key}`;
+    }
+    return baseTitle;
+}
+
+// Share-button click handler. Tries Web Share API first (native
+// share sheet on mobile, gives the user real choice — Messages /
+// Mail / AirDrop / clipboard / etc.); falls back to clipboard with
+// a toast confirmation when Web Share isn't available (most
+// desktop browsers) or the user dismissed it.
+async function shareCurrentView() {
+    const url = buildShareUrl();
+    const title = buildShareTitle();
+    if (navigator.share) {
+        try {
+            await navigator.share({ title, url });
+            return;
+        } catch (e) {
+            // AbortError = user dismissed the share sheet without
+            // picking a target. That's a deliberate action, not a
+            // failure — don't fall through to clipboard (would feel
+            // like the app is overruling them).
+            if (e && e.name === "AbortError") return;
+            // Other errors (e.g. permission denied, NotAllowedError
+            // when called outside a user gesture in some browsers):
+            // fall through to clipboard so the user still gets a
+            // working path.
+        }
+    }
+    fallbackCopyShareUrl(url);
+}
+
+function fallbackCopyShareUrl(url) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url)
+            .then(() => showToast("View URL copied — paste anywhere to share."))
+            .catch(() => showToast("Couldn't copy URL — try again or use the URL bar."));
+    } else {
+        // Very old browser path. Use the legacy execCommand fallback
+        // via a hidden textarea (works in IE / pre-clipboard-API
+        // contexts). Rarely hit in practice.
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = url;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "absolute";
+            ta.style.left = "-9999px";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            showToast("View URL copied — paste anywhere to share.");
+        } catch (e) {
+            showToast("Couldn't copy URL — try again or use the URL bar.");
+        }
+    }
+}
+
+// Reveal + wire up the Share button. Called from setupBottomSheet
+// during boot. Does nothing when share_button: false at build time
+// (the section is stripped from index.html, button doesn't exist).
+function setupShareButton() {
+    const section = document.getElementById("sheet-share-section");
+    const btn = document.getElementById("share-btn");
+    if (!section || !btn) return;
+    section.classList.remove("hidden");
+    btn.addEventListener("click", shareCurrentView);
+}
+
+// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>]" hash and
+// return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
+// null if no share hash is present / parseable. Side effect: strips
+// the hash from the URL via history.replaceState so that
+//   (a) the share-link doesn't persist in the address bar,
+//   (b) MapLibre's own hash machinery (when CONFIG.urlHash=true)
+//       starts fresh from the current state instead of competing
+//       with our share format,
+//   (c) a refresh doesn't re-trigger the share path with stale data.
+//
+// Format chosen for: human-readable, URL-encoded for safety,
+// distinguishable from MapLibre's "#zoom/lat/lon" so the two
+// conventions can coexist.
+function consumeShareHash() {
+    const raw = (window.location.hash || "").replace(/^#/, "");
+    if (!raw.startsWith("share=")) return null;
+    const body = raw.slice("share=".length);
+    const parts = body.split("/");
+    if (parts.length < 3) return null;
+    const zoom = parseFloat(parts[0]);
+    const lat = parseFloat(parts[1]);
+    const lon = parseFloat(parts[2]);
+    if (!Number.isFinite(zoom) || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+    }
+    let highlight = null;
+    if (parts.length >= 5) {
+        const kindCode = parts[3];
+        const keyEnc = parts.slice(4).join("/"); // tolerate slashes in names
+        const key = decodeURIComponent(keyEnc);
+        if (kindCode === "r") highlight = { kind: "route", key };
+        else if (kindCode === "t") highlight = { kind: "trail", key };
+    }
+    // Strip the hash regardless of url_hash setting; MapLibre will
+    // start writing fresh hash if urlHash is true.
+    try {
+        const url = new URL(window.location.href);
+        url.hash = "";
+        window.history.replaceState(null, "", url.toString());
+    } catch (e) {
+        // Best-effort; some embedded contexts disallow history mutation.
+    }
+    return {
+        center: [lon, lat],
+        zoom,
+        highlight,
+    };
+}
+
 async function init() {
     try {
         validateConfigShape();
@@ -1033,22 +1216,35 @@ async function init() {
     // Build transformRequest for base layers that require auth headers
     const headersByDomain = buildHeaderMap();
 
+    // Detect a "#share=..." URL (from the Share button on another
+    // session) BEFORE map construction. If present, we use its center
+    // /zoom as the initial view and stash any highlight for application
+    // after trails load. The share hash is also stripped from the URL
+    // here — it's a one-shot view restoration, not ambient state.
+    const shareState = consumeShareHash();
+    if (shareState && shareState.highlight) {
+        _pendingShareHighlight = shareState.highlight;
+    }
+
     // Create map
     //
-    // `bounds` uses the tight CONFIG.bbox so the initial view frames
-    // the trails snugly. `maxBounds` uses CONFIG.panBbox (built from
-    // bbox + pan_padding) so the user has room to pan for context —
-    // maxBounds clamps the map CENTER, not the viewport edge, and the
-    // basemap/terrain PMTiles are extracted to match panBbox so real
-    // tiles fill the full pannable envelope.
+    // Default: `bounds` uses the tight CONFIG.bbox so the initial
+    // view frames the trails snugly. `maxBounds` uses CONFIG.panBbox
+    // (built from bbox + pan_padding) so the user has room to pan
+    // for context — maxBounds clamps the map CENTER, not the
+    // viewport edge, and the basemap/terrain PMTiles are extracted
+    // to match panBbox so real tiles fill the full pannable
+    // envelope.
+    //
+    // Share-link override: when a #share=zoom/lat/lon hash was
+    // consumed above, we use explicit center+zoom instead of bounds
+    // so the recipient lands on the exact view the sharer captured.
+    // maxBounds still applies; if the shared view is somehow
+    // outside panBbox (shouldn't happen on the same map version)
+    // MapLibre will clamp it to the wall.
     const mapOptions = {
         container: "map",
         style: style,
-        bounds: [
-            [CONFIG.bbox[0], CONFIG.bbox[1]],
-            [CONFIG.bbox[2], CONFIG.bbox[3]],
-        ],
-        fitBoundsOptions: { padding: 50 },
         minZoom: CONFIG.minZoom,
         maxZoom: CONFIG.maxZoom,
         maxBounds: [
@@ -1064,9 +1260,21 @@ async function init() {
         // preserved, but leaks last-viewed location via URL / screen-
         // share. Controlled per-map via CONFIG.urlHash; default false
         // (URL stays clean). Opt in per-map by setting `url_hash: true`
-        // in the YAML.
+        // in the YAML. The Share button (B.3) generates one-shot share
+        // links via a separate "#share=..." format that's read on load
+        // regardless of urlHash setting and then stripped.
         hash: CONFIG.urlHash,
     };
+    if (shareState) {
+        mapOptions.center = shareState.center;
+        mapOptions.zoom = shareState.zoom;
+    } else {
+        mapOptions.bounds = [
+            [CONFIG.bbox[0], CONFIG.bbox[1]],
+            [CONFIG.bbox[2], CONFIG.bbox[3]],
+        ];
+        mapOptions.fitBoundsOptions = { padding: 50 };
+    }
 
     if (Object.keys(headersByDomain).length > 0) {
         mapOptions.transformRequest = (url) => {
@@ -1482,6 +1690,15 @@ async function init() {
             promoteBasemapLabels();
             suppressPathLabels();
             suppressBasemapPois();
+            // Apply share-link highlight, if any. Done here (after
+            // both trails and route/trail indexes are built) so we
+            // can resolve route IDs / trail names against real data.
+            // Best-effort — silently skip if the referenced route or
+            // trail no longer exists (e.g. the map has been rebuilt
+            // since the link was shared and the relation changed).
+            if (_pendingShareHighlight) {
+                applyPendingShareHighlight();
+            }
         } finally {
             const sheet = document.getElementById("bottom-sheet");
             if (sheet) sheet.style.visibility = "";
@@ -1493,6 +1710,87 @@ async function init() {
 
     // About This Map modal
     initAbout();
+
+    // First-visit welcome modal (A.2). Self-suppresses after the first
+    // dismiss via localStorage flag. Per-map flag (key includes slug) so
+    // a user who's seen one map's welcome still sees another map's.
+    initWelcomeModal();
+}
+
+// ============================================================
+// First-visit welcome modal (A.2)
+// ============================================================
+//
+// Bridges the gap between landing on the map and understanding the
+// peek bar / routes-vs-trails distinction / where the About button
+// lives. Shown ONCE per map per browser; dismissal stored in
+// localStorage under `mtb.welcomed:<slug>`. Subsequent visits skip
+// it entirely (no flicker).
+//
+// The body copy is built from CONFIG so it reflects the actual
+// features available on the current map (routes vs trails sections,
+// share button, install affordance) rather than describing things
+// that aren't there.
+function initWelcomeModal() {
+    const modal = document.getElementById("welcome-modal");
+    if (!modal) return;
+    const slug = CONFIG.slug || "default";
+    const flagKey = `mtb.welcomed:${slug}`;
+    if (LS.get(flagKey) === "true") return;
+
+    const titleEl = document.getElementById("welcome-modal-title");
+    const bodyEl = document.getElementById("welcome-modal-body");
+    const closeBtn = document.getElementById("welcome-modal-close");
+    const cta = document.getElementById("welcome-modal-cta");
+
+    if (titleEl) titleEl.textContent = `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`;
+
+    // Build body copy reflecting the map's actual features.
+    const showRoutes = CONFIG.showRoutes !== false;
+    const showTrails = CONFIG.showTrails !== false;
+    const finderLine = (showRoutes && showTrails)
+        ? "Search <strong>routes</strong> (named loops) or <strong>trails</strong> (the segments that make them up) from the bottom sheet."
+        : showRoutes
+            ? "Search <strong>routes</strong> (named loops) from the bottom sheet."
+            : showTrails
+                ? "Search <strong>trails</strong> from the bottom sheet."
+                : null;
+
+    const bullets = [];
+    bullets.push("Tap any icon in the bottom <strong>peek bar</strong> to toggle markers, parking, terrain, or your location.");
+    bullets.push("Drag the peek bar up to see all controls — base layers, features, and the trail finder.");
+    if (finderLine) bullets.push(finderLine);
+    bullets.push("Tap <strong>About this map</strong> in the expanded sheet for sources, attribution, and contact info.");
+    if (CONFIG.shareButton) {
+        bullets.push("Found a great view? Tap <strong>Share this view</strong> to send a link with the current zoom and any highlighted route.");
+    }
+
+    if (bodyEl) {
+        bodyEl.innerHTML = "<ul>" +
+            bullets.map((b) => `<li>${b}</li>`).join("") + "</ul>";
+    }
+
+    function dismissWelcome() {
+        LS.set(flagKey, "true");
+        modal.classList.add("hidden");
+    }
+
+    if (closeBtn) closeBtn.addEventListener("click", dismissWelcome);
+    if (cta) cta.addEventListener("click", dismissWelcome);
+
+    // Escape key dismisses too — matches About modal behavior so the
+    // keyboard pattern is consistent.
+    function onKeydown(e) {
+        if (e.key === "Escape" && !modal.classList.contains("hidden")) {
+            dismissWelcome();
+        }
+    }
+    document.addEventListener("keydown", onKeydown);
+
+    // Show the modal. Done after a tick so the bottom-sheet visibility
+    // toggle has settled (otherwise on slow paint the modal can flash
+    // with nothing behind it).
+    requestAnimationFrame(() => modal.classList.remove("hidden"));
 }
 
 // ============================================================
@@ -1817,6 +2115,19 @@ function casingColor(routeInfo) {
     const lum = colorLuminance(effectiveRouteColor(routeInfo));
     if (lum > 0.7) return "rgba(0,0,0,0.6)";
     return "#000000";
+}
+
+// Bidirectional halo color for route-colored symbols (clip arrows
+// today; future symbols can reuse). Light routes get a dark halo so
+// the symbol stays visible against light basemap; dark routes get a
+// light halo so the symbol doesn't blend into similar dark
+// surroundings (or into the route's own dark fill). Threshold 0.5 is
+// the natural midpoint of perceived luminance.
+function contrastingHaloColor(routeInfo) {
+    const lum = colorLuminance(effectiveRouteColor(routeInfo));
+    return lum > 0.5
+        ? "rgba(0,0,0,0.85)"
+        : "rgba(255,255,255,0.85)";
 }
 
 // Per-layer icon-color for clip-arrow layers at SHARED endpoints
@@ -2292,11 +2603,27 @@ async function loadTrails() {
     // Pass 3: continuation arrowheads at clipped-relation bbox endpoints.
     if (map.getSource("clip-endpoints")) {
         for (const [routeId, routeInfo] of sortedRoutes) {
+            // Per-endpoint color logic, paired:
+            //   visible_count >= 2 (multi-route convergence) →
+            //     fill black (composited alpha via sharedArrowColor)
+            //     with a light halo so the dark arrow stays readable
+            //     against dark basemap backgrounds.
+            //   single route →
+            //     fill with the route's actual color, halo bidirectional
+            //     (contrastingHaloColor) so light-colored routes get a
+            //     dark outline and dark-colored routes get a light one.
+            //     Mirrors the trail line casings' contrast logic.
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
                 sharedArrowColor(),
-                casingColor(routeInfo),
+                effectiveRouteColor(routeInfo),
+            ];
+            const haloCol = [
+                "case",
+                [">=", ["get", "visible_count"], 2],
+                "rgba(255,255,255,0.85)",   // light halo on dark shared fill
+                contrastingHaloColor(routeInfo),
             ];
             map.addLayer({
                 id: `clip-arrow-${routeId}`,
@@ -2312,12 +2639,43 @@ async function loadTrails() {
                     "icon-anchor": "bottom",
                     "icon-allow-overlap": true,
                     "icon-ignore-placement": true,
+                    // Clip-continuation arrows now use the same
+                    // arrowhead-with-notch shape as on-trail direction
+                    // arrows (drawArrow in this file) so the visual
+                    // vocabulary stays consistent. The SDF asset's
+                    // gradient (radius=2/3) leaves room for a thin
+                    // halo without eroding too much of the body.
+                    // Sized so the visible filled arrowhead reads
+                    // slightly larger than an on-trail direction
+                    // arrow — clip-continuation indicators benefit
+                    // from extra visual weight since they signal
+                    // "trail leaves the map" rather than ongoing
+                    // direction.
                     "icon-size": ["interpolate", ["linear"], ["zoom"],
-                        12, 2.0, 14, 2.5, 18, 3.5],
+                        12, 1.2, 14, 1.65, 18, 2.4],
+                    // Push the arrowhead away from the trail's
+                    // clipped end so it doesn't crowd the line where
+                    // it meets the bbox edge. Offset is in pre-
+                    // rotation icon space (Y is "up" in the asset's
+                    // tip-up frame), then rotates with the bearing —
+                    // so the arrow ends up shifted "outward" along
+                    // the trail's continuation direction. Scales with
+                    // icon-size.
+                    "icon-offset": [0, -2],
                 },
                 paint: {
                     "icon-color": iconCol,
                     "icon-opacity": 1.0,
+                    // Thin contrasting outline for visual definition
+                    // against busy basemap/terrain backgrounds, and
+                    // (more critically) so dark-colored routes have a
+                    // light edge instead of disappearing into similar
+                    // dark surroundings. Halo width is in logical
+                    // pixels and renders within the SDF's gradient
+                    // zone outside the filled body.
+                    "icon-halo-color": haloCol,
+                    "icon-halo-width": 1.2,
+                    "icon-halo-blur": 0,
                 },
             });
         }
@@ -2965,8 +3323,16 @@ function highlightRoute(routeId) {
     // Fit bounds to the route
     fitToRouteOrTrail({ routeId });
 
-    // Show chip
-    showHighlightChip({ label: info.name, color });
+    // Show chip with per-route stats. routeIndex carries the same
+    // distance/elevation values as the Finder rows; routeStatsText
+    // returns "" when neither stat is enabled or available, in which
+    // case the chip just shows label + color (current behavior).
+    const indexEntry = routeIndex.find((r) => r.id === routeId);
+    showHighlightChip({
+        label: info.name,
+        color,
+        stats: indexEntry ? routeStatsText(indexEntry) : "",
+    });
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
@@ -3054,13 +3420,27 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color }) {
+function showHighlightChip({ label, color, stats }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
     const labelEl = chip.querySelector(".highlight-chip-label");
+    const statsEl = chip.querySelector(".highlight-chip-stats");
     if (swatch) swatch.style.background = color;
     if (labelEl) labelEl.textContent = label;
+    // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
+    // routeStatsText() — empty string or missing means hide the span
+    // entirely. Trail highlights pass nothing (per-route stats don't
+    // apply to trail segments since trail names span multiple routes).
+    if (statsEl) {
+        if (stats) {
+            statsEl.textContent = stats;
+            statsEl.classList.remove("hidden");
+        } else {
+            statsEl.textContent = "";
+            statsEl.classList.add("hidden");
+        }
+    }
     chip.classList.remove("hidden");
 }
 
@@ -3083,6 +3463,18 @@ function buildRouteIndex() {
             winter: !!info.winter,
             emergency: !!info.emergency,
             isCustom: !!info.isCustom,
+            // Per-route stats from compute_route_stats.py. Any may
+            // be absent: distance is gated by show_route_distance,
+            // elevation by show_route_elevation + a successful
+            // opentopodata fetch at build time. Gain and loss are
+            // computed in the same pass, so they're either both
+            // present or both absent. Stored as integer meters in
+            // CONFIG.routes; render-time formatting uses
+            // formatDistance / formatElevationPair which respect
+            // CONFIG.distanceUnits.
+            distanceM: typeof info.distance_m === "number" ? info.distance_m : null,
+            elevationGainM: typeof info.elevation_gain_m === "number" ? info.elevation_gain_m : null,
+            elevationLossM: typeof info.elevation_loss_m === "number" ? info.elevation_loss_m : null,
         });
     }
     // Sort alphabetically by name (case-insensitive) for the list display.
@@ -3859,6 +4251,9 @@ function setupBottomSheet() {
     // ----- Finder -----
     setupFinder();
 
+    // ----- Share button (B.3) -----
+    setupShareButton();
+
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");
     if (chip) {
@@ -3989,6 +4384,21 @@ function rebuildFinderList() {
     }
 }
 
+// Build the stats string ("8.2 mi · ↑410 / ↓380 ft") for a route.
+// Returns "" when neither stat is available (gates off, build
+// couldn't fetch elevation, etc.) so the caller can decide to omit
+// the stats span entirely. Distance and elevation are independent;
+// gain and loss come together (computed in one pass).
+function routeStatsText(r) {
+    const parts = [];
+    if (typeof r.distanceM === "number") {
+        parts.push(formatDistance(r.distanceM));
+    }
+    const elev = formatElevationPair(r.elevationGainM, r.elevationLossM);
+    if (elev) parts.push(elev);
+    return parts.join(" · ");
+}
+
 function makeRouteRow(r) {
     const row = document.createElement("button");
     row.type = "button";
@@ -4013,6 +4423,14 @@ function makeRouteRow(r) {
         tag.className = "finder-row-tag";
         tag.textContent = "custom";
         row.appendChild(tag);
+    }
+
+    const stats = routeStatsText(r);
+    if (stats) {
+        const statsEl = document.createElement("span");
+        statsEl.className = "finder-row-stats";
+        statsEl.textContent = stats;
+        row.appendChild(statsEl);
     }
 
     row.addEventListener("click", () => {
@@ -4243,11 +4661,149 @@ function rebuildBasemapLayers() {
 }
 
 // ============================================================
-// PWA Install — promoted out of About into a dedicated bottom-sheet row.
-// Visible only when an install action is actually available.
+// PWA update toast (B.7) — shows an auto-dismissing toast with a
+// "Reload" button when the service worker has a new version waiting.
 // ============================================================
-if (CONFIG.pwa) {
+//
+// PWAs in standalone mode have no built-in reload affordance — the
+// user would otherwise have to swipe up from the app switcher and
+// reopen, which is meaningful friction. The Reload button calls
+// skipWaiting on the waiting SW (via postMessage) then reloads on
+// the controllerchange event, all inside the existing standalone
+// window. One tap, no app close/reopen.
+//
+// Design intentionally simple:
+//   * No dismiss button.
+//   * Toast auto-dismisses after ~15s if the user doesn't interact.
+//   * No localStorage tracking of dismissals — every page load with
+//     a waiting SW shows the toast fresh.
+//
+// Why no per-version dismissal: a user who ignores the toast still
+// gets the update naturally on next app close+reopen (browser default
+// SW lifecycle: waiting SW activates as soon as all old-SW clients
+// close). So "ignore for now" is a valid path that doesn't strand
+// them on a stale version. The toast just nudges them to update
+// sooner if they want to without leaving the app.
+//
+// CACHE_VERSION (content-hashed at build time) ticks on any deploy —
+// code, data, PMTiles, icons — so this fires for any rebuild.
+if (CONFIG.pwa && "serviceWorker" in navigator) {
+    let _hasShownUpdateToast = false;
+
+    function showSwUpdateToast(reg) {
+        // Suppress within the current page load only. A future page
+        // load that finds a waiting SW will show the toast again —
+        // there's no persistent dismissal flag.
+        if (_hasShownUpdateToast) return;
+        _hasShownUpdateToast = true;
+        showToast("Updated map available.", {
+            // 15s gives the user time to read and decide; long
+            // enough that a quick glance away doesn't miss it,
+            // short enough that the toast doesn't obstruct the
+            // map for long if ignored.
+            timeoutMs: 15000,
+            actions: [{
+                label: "Reload",
+                primary: true,
+                onClick: () => {
+                    // Reload immediately on the next controllerchange
+                    // (which fires when the waiting SW activates after
+                    // skipWaiting). Use a one-shot listener so we
+                    // don't double-reload if controllerchange fires
+                    // again later.
+                    let reloaded = false;
+                    navigator.serviceWorker.addEventListener(
+                        "controllerchange",
+                        () => {
+                            if (reloaded) return;
+                            reloaded = true;
+                            window.location.reload();
+                        },
+                        { once: true }
+                    );
+                    if (reg.waiting) {
+                        reg.waiting.postMessage({ type: "SKIP_WAITING" });
+                    } else {
+                        // Edge case: registration.waiting cleared
+                        // between toast-show and click. Just reload —
+                        // the page will pick up whatever SW is
+                        // active.
+                        window.location.reload();
+                    }
+                },
+            }],
+        });
+    }
+
+    function watchForSwUpdate(reg) {
+        // Case A: a waiting SW is already present at page load
+        // (deploy happened while a different tab was open).
+        if (reg.waiting && navigator.serviceWorker.controller) {
+            showSwUpdateToast(reg);
+        }
+        // Case B: a new SW is discovered during this session.
+        reg.addEventListener("updatefound", () => {
+            const installing = reg.installing;
+            if (!installing) return;
+            installing.addEventListener("statechange", () => {
+                // "installed" + an existing controller means this is
+                // an UPDATE (not a first install). First installs
+                // shouldn't show the reload toast — there's nothing
+                // to reload from.
+                if (installing.state === "installed"
+                        && navigator.serviceWorker.controller) {
+                    showSwUpdateToast(reg);
+                }
+            });
+        });
+    }
+
+    // Re-register on load so we capture the registration that
+    // index.html's inline script created (idempotent — same scope =
+    // same registration object). Safer than racing the inline
+    // script.
+    navigator.serviceWorker.register("sw.js").then(watchForSwUpdate)
+        .catch((e) => console.warn("SW update watcher: registration failed", e));
+}
+
+// ============================================================
+// PWA Install — promoted out of About into a dedicated bottom-sheet row.
+// Per-map opt-in via CONFIG.pwaInstallPrompt (default false). Two modes:
+//
+//   pwaInstallPrompt: false (default) — DO NOT register beforeinstallprompt
+//     at all. This silences the Chrome console warning ("Banner not
+//     shown: beforeinstallpromptevent.preventDefault() called...") that
+//     fires when a handler is registered but never calls prompt().
+//     Chrome still shows its native mini-infobar / omnibox install icon
+//     on its own (browser behavior, not ours), and Chrome's three-dot
+//     menu still has "Install app". Our custom Install button is hidden
+//     everywhere — this is the "no install promotion on this map" mode.
+//
+//   pwaInstallPrompt: true (per-map opt-in) — show-both strategy:
+//     * Register beforeinstallprompt and DO NOT preventDefault — let
+//       Chrome show its native mini-infobar (transient, one-shot per
+//       cooldown). Stash the event for our button.
+//     * Always show our custom Install button on Chrome alongside
+//       Chrome's native UI. Chrome's mini-infobar is one-shot; our
+//       button is the persistent surface for second-visit installs.
+//     * Tapping our button calls prompt() on the stashed event and
+//       awaits userChoice. After it resolves (accepted OR dismissed),
+//       the event is spent — disable the button. A future
+//       beforeinstallprompt re-arms it.
+//     * On accepted (or window 'appinstalled' event from Chrome's
+//       native UI), persist mtb.installed=true and hide the button
+//       permanently across reloads.
+//     * iOS Safari (no beforeinstallprompt) shows the manual
+//       Add-to-Home-Screen instructions instead of the prompt-button
+//       path.
+//
+// CONFIG.pwa still gates the entire block — maps without PWA support
+// at build time skip all of this.
+// ============================================================
+if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     let deferredInstallPrompt = null;
+    let installed = LS.get("mtb.installed") === "true"
+        || window.matchMedia("(display-mode: standalone)").matches;
 
     function revealInstallSection(showButton, showHint) {
         const section = document.getElementById("sheet-install-section");
@@ -4260,47 +4816,69 @@ if (CONFIG.pwa) {
         }
     }
 
-    window.addEventListener("beforeinstallprompt", (e) => {
-        // preventDefault() suppresses Chrome's mini-infobar (Android)
-        // and the auto-prompt — we own the install entry point via
-        // the peek-bar Install row instead. The URL-bar install icon
-        // (omnibox) still shows on every page load when the manifest
-        // meets install criteria; that's a separate browser UI we
-        // don't control.
-        //
-        // TODO (near production release): revisit whether to drop the
-        // preventDefault() so first-time visitors on Android also see
-        // Chrome's mini-infobar as a discovery hint. The infobar has
-        // a ~90-day dismissal cooldown so it's not spammy, and the
-        // peek-bar Install row would still be there as a permanent
-        // entry point for subsequent visits.
-        e.preventDefault();
-        deferredInstallPrompt = e;
-        revealInstallSection(true, false);
-    });
+    function setInstallButtonEnabled(enabled) {
+        const btn = document.getElementById("install-btn");
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.classList.toggle("is-disabled", !enabled);
+    }
 
+    if (!installed) {
+        window.addEventListener("beforeinstallprompt", (e) => {
+            // NOTE: deliberately NOT calling e.preventDefault(). That
+            // lets Chrome's native mini-infobar appear (free, one-shot
+            // install affordance). We also stash the event so our own
+            // Install button can call prompt() on it later — Chrome
+            // allows both UIs as long as we eventually call prompt()
+            // (which silences the "page must call prompt()" warning).
+            deferredInstallPrompt = e;
+            revealInstallSection(true, false);
+            setInstallButtonEnabled(true);
+        });
+    }
+
+    // 'appinstalled' fires regardless of which UI triggered the install
+    // (mini-infobar, omnibox icon, our button). Persist a flag so the
+    // button stays hidden on subsequent page loads even before
+    // display-mode:standalone takes effect.
     window.addEventListener("appinstalled", () => {
         deferredInstallPrompt = null;
+        installed = true;
+        LS.set("mtb.installed", "true");
         revealInstallSection(false, false);
     });
 
     document.addEventListener("DOMContentLoaded", () => {
+        if (installed) {
+            // Already installed (either via prior session or current
+            // standalone display mode). Don't surface install UI at all.
+            revealInstallSection(false, false);
+            return;
+        }
+
         const installBtn = document.getElementById("install-btn");
         if (installBtn) {
             installBtn.addEventListener("click", async () => {
                 if (!deferredInstallPrompt) return;
+                setInstallButtonEnabled(false);
                 deferredInstallPrompt.prompt();
                 const result = await deferredInstallPrompt.userChoice;
                 if (result.outcome === "accepted") {
+                    installed = true;
+                    LS.set("mtb.installed", "true");
                     revealInstallSection(false, false);
                 }
+                // Either way, the BeforeInstallPromptEvent is
+                // single-use. Discard it; if Chrome re-fires the event
+                // later (its own heuristics) the listener above will
+                // re-arm.
                 deferredInstallPrompt = null;
             });
         }
 
-        // iOS detection — show manual instructions since iOS lacks
-        // beforeinstallprompt. Only when the page is *not* already a
-        // standalone PWA (otherwise the user already installed it).
+        // iOS detection — show manual instructions since iOS Safari
+        // lacks beforeinstallprompt. Only when the page is *not* already
+        // a standalone PWA (otherwise the user already installed it).
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
         if (isIOS && !isStandalone) {
@@ -4321,12 +4899,66 @@ function haversineDistance(lngLat1, lngLat2) {
                            lngLat2[0], lngLat2[1]);
 }
 
+// Single distance formatter shared across the whole runtime: off-screen
+// indicator pill, Finder route rows, highlight chip, any future
+// distance display. Underlying values are always meters; this function
+// converts to whatever CONFIG.distanceUnits says ("mi" default, or
+// "km" for metric-region maps).
+//
+//   "mi": feet under 0.5 mi (~2640 ft), then decimal mi up to 10, then
+//         integer mi. Feet at the close range matches what off-screen-
+//         indicator users in imperial regions expect.
+//   "km": meters under 1000, then decimal km up to 10, then integer km.
 function formatDistance(meters) {
+    if (CONFIG.distanceUnits === "km") {
+        if (meters < 1000) return `${Math.round(meters)} m`;
+        const km = meters / 1000;
+        return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+    }
+    // default: mi
     const mi = meters / 1609.344;
-    if (mi < 0.1) {
+    if (mi < 0.5) {
         return `${Math.round(meters * 3.28084)} ft`;
     }
     return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+}
+
+// Elevation gain formatter — meters → ft for "mi" units, kept in m for
+// "km" units. The mixed convention matches what riders in each system
+// actually expect (US trail maps quote "412 ft of climbing"; European
+// maps quote "126 m").
+function formatElevation(meters) {
+    if (CONFIG.distanceUnits === "km") {
+        return `${Math.round(meters)} m`;
+    }
+    return `${Math.round(meters * 3.28084)} ft`;
+}
+
+// Compact paired gain/loss display for route stats. Either or both
+// values may be null (unknown / not computed). Returns "" if neither
+// is present so the caller can omit the elevation portion entirely.
+//
+// Format: "↑NNN / ↓NNN ft" — the unit is shared across both numbers
+// rather than repeated, both for compactness and to make "this is one
+// physical quantity, two facets of it" visually clear. Single-value
+// case (e.g. only gain available) collapses to "↑NNN ft" naturally.
+//
+// Why both directions: for loops gain ≈ loss; for one-way routes the
+// asymmetry is informative without us having to claim a riding
+// direction (OSM doesn't tell us, and our segment-walk gives an
+// arbitrary feature-order direction anyway). Showing both lets riders
+// who know the trail interpret correctly.
+function formatElevationPair(gainM, lossM) {
+    const haveGain = typeof gainM === "number";
+    const haveLoss = typeof lossM === "number";
+    if (!haveGain && !haveLoss) return "";
+    const isMetric = CONFIG.distanceUnits === "km";
+    const unit = isMetric ? "m" : "ft";
+    const conv = (m) => isMetric ? Math.round(m) : Math.round(m * 3.28084);
+    const parts = [];
+    if (haveGain) parts.push(`↑${conv(gainM)}`);
+    if (haveLoss) parts.push(`↓${conv(lossM)}`);
+    return `${parts.join(" / ")} ${unit}`;
 }
 
 // Wire the off-screen indicator's click. Called once from init() after
@@ -4504,7 +5136,36 @@ function updateLocationIndicator() {
 // ============================================================
 // Toast notifications
 // ============================================================
-function showToast(message) {
+// Show a toast. Three forms:
+//
+//   showToast("message")           — transient hint; auto-dismisses after 4s.
+//                                    The default for off-screen indicator
+//                                    nudges, geolocation errors, copy
+//                                    confirmations, etc.
+//
+//   showToast("message", {         — auto-dismiss with an action button.
+//       timeoutMs: 15000,            Used by the SW-update toast (B.7) so
+//       actions: [                   the user has time to read and decide
+//           {label: "Reload",        about the action; the toast still
+//            onClick: fn,            fades on its own if ignored.
+//            primary: true},
+//       ],
+//   })
+//
+//   showToast("message", {         — persistent: stays until the ✕ or an
+//       persistent: true,            action button is tapped. Reserved for
+//       actions: [...],              critical notices that must be
+//       onDismiss: fn,               acknowledged. Currently unused; kept
+//   })                               available for future callers.
+//
+// The toast element is rebuilt on each call (not just text-replaced) so
+// switching between forms works without stale buttons left behind. A
+// small ✕ dismiss is added only in persistent mode.
+function showToast(message, opts) {
+    opts = opts || {};
+    const persistent = !!opts.persistent;
+    const actions = Array.isArray(opts.actions) ? opts.actions : [];
+
     let el = document.getElementById("map-toast");
     if (!el) {
         el = document.createElement("div");
@@ -4512,14 +5173,69 @@ function showToast(message) {
         el.className = "map-toast";
         document.body.appendChild(el);
     }
-    el.textContent = message;
+    // Cancel any pending auto-dismiss from a prior toast call.
+    clearTimeout(el._timeout);
+    el._timeout = null;
+    // Rebuild contents (clear then construct fresh DOM so the toast
+    // never carries stale buttons from a previous persistent call).
+    el.textContent = "";
+    el.classList.toggle("map-toast-actionable", persistent || actions.length > 0);
+
+    const messageEl = document.createElement("span");
+    messageEl.className = "map-toast-message";
+    messageEl.textContent = message;
+    el.appendChild(messageEl);
+
+    for (const action of actions) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "map-toast-action"
+            + (action.primary ? " map-toast-action-primary" : "");
+        btn.textContent = action.label;
+        btn.addEventListener("click", () => {
+            try {
+                if (typeof action.onClick === "function") action.onClick();
+            } finally {
+                // Dismiss after action — caller can re-show if they want
+                // a different post-action state (most won't).
+                dismissToast();
+            }
+        });
+        el.appendChild(btn);
+    }
+
+    if (persistent) {
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "map-toast-close";
+        closeBtn.setAttribute("aria-label", "Dismiss");
+        closeBtn.innerHTML =
+            '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" '
+            + 'stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+            + '<line x1="2" y1="2" x2="12" y2="12"/>'
+            + '<line x1="12" y1="2" x2="2" y2="12"/></svg>';
+        closeBtn.addEventListener("click", () => {
+            if (typeof opts.onDismiss === "function") opts.onDismiss();
+            dismissToast();
+        });
+        el.appendChild(closeBtn);
+    }
+
     el.classList.remove("hidden");
     el.classList.add("visible");
-    clearTimeout(el._timeout);
-    el._timeout = setTimeout(() => {
-        el.classList.remove("visible");
-        el.classList.add("hidden");
-    }, 4000);
+
+    if (!persistent) {
+        // Default 4s for transient hints; callers can pass timeoutMs
+        // for longer dismissal — used by the SW-update toast (B.7)
+        // which needs ~15s so the user has time to read and decide
+        // about the Reload action.
+        const timeoutMs = typeof opts.timeoutMs === "number"
+            ? opts.timeoutMs : 4000;
+        el._timeout = setTimeout(() => {
+            el.classList.remove("visible");
+            el.classList.add("hidden");
+        }, timeoutMs);
+    }
 }
 
 // Hide any visible toast immediately. Used by interactions that act on
@@ -4530,6 +5246,7 @@ function dismissToast() {
     const el = document.getElementById("map-toast");
     if (!el) return;
     clearTimeout(el._timeout);
+    el._timeout = null;
     el.classList.remove("visible");
     el.classList.add("hidden");
 }

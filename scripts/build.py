@@ -828,6 +828,25 @@ CONFIG_SPEC = [
     # shareable deep-links).
     ("url_hash",                "urlHash",              False),
 
+    # Distance units for every distance/elevation display in the
+    # app: off-screen indicator pill, route stats in the Finder,
+    # highlight chip, any future distance display. The underlying
+    # data is always meters in trails.geojson; this setting only
+    # affects render-time formatting. "mi" → ft + decimal mi (and
+    # ft for elevation gain); "km" → m + decimal km (and m for
+    # elevation gain). Validator (validate_config.py) restricts the
+    # value to "mi" or "km".
+    ("distance_units",          "distanceUnits",        "mi"),
+
+    # Share button in the expanded sheet (above Install). When true
+    # (default), generates a shareable URL of the current view +
+    # highlighted route/trail and surfaces it via the Web Share API
+    # (or clipboard fallback). When false, the entire share section
+    # is stripped from index.html at build time. Set false for maps
+    # where the curator wants no share affordance (e.g. private/
+    # family maps); leave true for community/public maps.
+    ("share_button",            "shareButton",          True),
+
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).
     # parking/trailhead/feature colours flow to CSS custom
@@ -847,6 +866,16 @@ CONFIG_SPEC = [
 
     # PWA
     ("pwa",                     "pwa",                  True),
+
+    # When true, surface PWA install affordances on platforms that
+    # support them (Chrome's mini-infobar + our custom Install button
+    # via beforeinstallprompt; iOS Safari Add-to-Home-Screen
+    # instructions). Default false because not every map wants install
+    # promotion (e.g. a personal/family map). When false, the
+    # beforeinstallprompt handler is not registered at all — silencing
+    # Chrome's "page must call prompt()" warning — and the custom
+    # Install button is hidden everywhere.
+    ("pwa_install_prompt",      "pwaInstallPrompt",     False),
 
     # User-supplied
     ("parking",                 "parking",              []),
@@ -1156,6 +1185,41 @@ def copy_templates(config, output_dir, trails_geojson):
                 content,
             )
 
+            # Open Graph + Twitter Card metadata. Always-on (no gate) —
+            # benefits search engines and the Share-button preview cards
+            # equally. Values are HTML-attribute-escaped to survive
+            # quotes / ampersands in trail-system names + descriptions.
+            og_title = (config.get("title") or config.get("name") or "Trail Map")
+            about = config.get("about") or {}
+            og_description_raw = (about.get("description") or "").strip()
+            # First paragraph only (split on the first double-newline);
+            # cap at ~200 chars to avoid runaway snippet length in
+            # share previews.
+            og_description = og_description_raw.split("\n\n", 1)[0].strip()
+            if len(og_description) > 200:
+                og_description = og_description[:197].rstrip() + "..."
+            # If no description configured, fall back to the title so
+            # OG previews still have something readable instead of an
+            # empty `content=""` attribute.
+            if not og_description:
+                og_description = og_title
+            # html.escape with quote=True turns " into &quot; so the
+            # value is safe inside the `content="..."` attribute.
+            from html import escape as _html_escape
+            content = content.replace("__OG_TITLE__",
+                                      _html_escape(og_title, quote=True))
+            content = content.replace("__OG_DESCRIPTION__",
+                                      _html_escape(og_description, quote=True))
+
+            # Strip the Share button section when share_button: false.
+            # Default true — the section's `hidden` class is only used
+            # to keep the section invisible until app.js reveals it.
+            if not config.get("share_button", True):
+                content = re.sub(
+                    r'\s*<!-- Share start -->.*?<!-- Share end -->\n',
+                    '', content, flags=re.DOTALL,
+                )
+
             # Inject or remove logo. Logo source falls back to icon: when
             # logo: is omitted; raster sources are normalized to `logo.webp`
             # in copy_assets() while SVG sources are copied as `logo.svg`.
@@ -1426,14 +1490,29 @@ def main():
     # (summer/winter/emergency) on every route, and append any
     # user-defined custom_routes. Idempotent — safe to re-run against
     # a cached trails.geojson that's already been enriched.
-    if _enrich_trails_geojson(config, trails_geojson, project_root):
+    enriched = _enrich_trails_geojson(config, trails_geojson, project_root)
+
+    # Compute per-route distance/elevation stats if either gate is on.
+    # Runs after enrichment so custom_routes are included in the totals.
+    # compute_route_stats also handles cleanup when a previously-enabled
+    # gate has been turned off (strips stale fields). Idempotent.
+    from compute_route_stats import compute_and_attach as compute_route_stats
+    stats_changed = compute_route_stats(trails_geojson, config, cache_dir)
+
+    if enriched or stats_changed:
         with open(trails_path, "w") as f:
             json.dump(trails_geojson, f, separators=(",", ":"))
         custom_count = len(config.get("custom_routes") or [])
-        suffix = (f" + {custom_count} custom route{'s' if custom_count != 1 else ''}"
-                  if custom_count else "")
+        bits = []
+        if enriched:
+            bits.append("bucket flags"
+                        + (f" + {custom_count} custom route"
+                           f"{'s' if custom_count != 1 else ''}"
+                           if custom_count else ""))
+        if stats_changed:
+            bits.append("route stats")
         print(f"  Enriched {os.path.basename(trails_path)} "
-              f"with bucket flags{suffix}")
+              f"with {' and '.join(bits)}")
 
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:

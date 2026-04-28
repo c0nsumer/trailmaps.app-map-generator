@@ -105,6 +105,10 @@ KNOWN_KEYS = {
     "map_dim_on_highlight":          bool,
     "url_hash":                      bool,
     "poi_proximity_m":               (int, float),
+    "show_route_distance":           bool,
+    "show_route_elevation":          bool,
+    "distance_units":                str,
+    "share_button":                  bool,
 
     # User-supplied feature data
     "trailheads":                    list,
@@ -116,6 +120,7 @@ KNOWN_KEYS = {
     "icon":                          str,
     "about":                         dict,
     "pwa":                           bool,
+    "pwa_install_prompt":            bool,
 
     # Output
     "output_dir":                    str,
@@ -135,6 +140,13 @@ BUILD_ONLY_KEYS = {
     "winter_relations",
     "summer_relations",
     "emergency_access_relations",
+    # Route stats: gates the build-time computation in
+    # compute_route_stats.py. The values themselves flow into the
+    # runtime via per-route metadata (CONFIG.routes[id].distance_m /
+    # elevation_gain_m), not through CONFIG_SPEC. Both are pure
+    # build-time gates from the config schema's perspective.
+    "show_route_distance",
+    "show_route_elevation",
     # Style overrides folded into per-route metadata at build time
     # (relation_colors / dashed_relations / *_direction_schedule are
     # consumed in inject_config_into_template's pre-pass and emerge
@@ -169,6 +181,7 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
+VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_DAYS = {"sunday", "monday", "tuesday", "wednesday",
               "thursday", "friday", "saturday",
               # Parity tokens: reverse on even or odd calendar dates
@@ -286,6 +299,20 @@ def _validate_enums(report, config):
         report.err("color_by",
                    f"must be one of {sorted(VALID_COLOR_BY)}, "
                    f"got {config['color_by']!r}")
+
+    if "distance_units" in config and config["distance_units"] not in VALID_DISTANCE_UNITS:
+        report.err("distance_units",
+                   f"must be one of {sorted(VALID_DISTANCE_UNITS)}, "
+                   f"got {config['distance_units']!r}")
+
+    # (Historical note: an earlier draft cross-checked
+    # show_route_elevation against show_terrain because the original
+    # plan was to sample our own terrain raster for elevation gain.
+    # The shipping implementation uses opentopodata.org's free
+    # SRTM30m endpoint instead, which is independent of the
+    # hillshade layer. The two settings are now orthogonal —
+    # elevation stats can be enabled with terrain off, and vice
+    # versa. No cross-key check needed.)
 
 
 def _validate_geometry(report, config):

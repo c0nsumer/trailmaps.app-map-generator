@@ -165,6 +165,27 @@ def build_way_to_relations_map(relations, all_ways):
     return way_relations
 
 
+def _resolve_oneway(tags):
+    """Return the effective oneway value for direction-arrow purposes.
+
+    OSM uses two relevant tags:
+      * ``oneway``         — generic restriction, traditionally for vehicles
+      * ``oneway:bicycle`` — bicycle-specific override
+
+    For an MTB map, ``oneway:bicycle`` is the more authoritative signal:
+    it lets curators mark MTB-only direction without affecting hikers
+    (e.g., a flow trail that's hiked uphill but ridden downhill), or
+    suppress a generic ``oneway`` that doesn't apply to bikes.
+
+    Resolution: ``oneway:bicycle`` wins when set (any non-empty value,
+    including ``"no"``); otherwise fall back to ``oneway``. Both tags
+    share the same value vocabulary: ``""``, ``"yes"``, ``"no"``,
+    ``"-1"``, ``"reversible"``. Returns ``""`` when neither is set.
+    """
+    bike = tags.get("oneway:bicycle", "")
+    return bike if bike else tags.get("oneway", "")
+
+
 def merge_consecutive_ways(ways_dict, relation_ids_set):
     """Merge consecutive ways that share the same set of relations, name, and difficulty.
 
@@ -205,8 +226,12 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
         sig = tuple(sorted(relation_ids_set.get(way_id, set())))
         name = way.get("tags", {}).get("name", "")
         imba = way.get("tags", {}).get("mtb:scale:imba", "")
-        # "" | "yes" | "no" | "-1" | "reversible"
-        oneway = way.get("tags", {}).get("oneway", "")
+        # Resolve effective oneway state. Bicycle-specific tag takes
+        # precedence so curators can mark MTB-only direction without
+        # affecting hikers (or restrict bikes from a way that's
+        # generically two-way). Both tags follow the same value
+        # vocabulary: "" | "yes" | "no" | "-1" | "reversible".
+        oneway = _resolve_oneway(way.get("tags", {}))
         way_signatures[way_id] = (sig, name, imba, oneway)
         way_names[way_id] = name
 
@@ -654,7 +679,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             if way_id in seen_way_ids:
                 continue
             seen_way_ids.add(way_id)
-            if (way.get("tags", {}).get("oneway") != "reversible"):
+            # Use the same resolver as the merge step: oneway:bicycle
+            # takes precedence so a bike-specific reversible declaration
+            # is caught by this validation too.
+            if _resolve_oneway(way.get("tags", {})) != "reversible":
                 continue
             parent_rels = way_relations.get(way_id, set())
             if not any(_relation_is_scheduled(r) for r in parent_rels):
@@ -776,7 +804,15 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": g["coord"]},
                 "properties": {
-                    "route_ids": g["route_ids"],
+                    # Stringify route IDs to match the runtime
+                    # convention (visibleRoutes uses strings, as does
+                    # CONFIG.routes' keying). Without this, the
+                    # runtime's visible_count loop in app.js sees
+                    # ints here but compares against a Set of
+                    # strings — every match fails, every shared
+                    # endpoint reads as visible_count=0, and the
+                    # multi-route "fill black" branch never fires.
+                    "route_ids": [str(r) for r in g["route_ids"]],
                     "route_ids_str": "|" + "|".join(str(r) for r in g["route_ids"]) + "|",
                     "bearing": g["bearing"],
                 },

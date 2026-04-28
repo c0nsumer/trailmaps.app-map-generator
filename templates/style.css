@@ -149,6 +149,19 @@ body.sheet-open #logo-overlay {
     max-width: 60vw;
 }
 
+/* Per-route stats ("8.2 mi · 410 ft ↑") rendered next to the route
+   name. Muted color so the name stays the visual anchor; smaller font
+   size since the stats are reference data, not the main message.
+   Hidden via .hidden when no stats are available so the chip still
+   reads cleanly with just label + color. */
+.highlight-chip-stats {
+    color: var(--sheet-text-muted);
+    font-size: 12px;
+    font-weight: 400;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .highlight-chip-close {
     color: var(--sheet-text-muted);
     flex-shrink: 0;
@@ -1078,6 +1091,28 @@ body.sheet-open #logo-overlay {
     white-space: nowrap;
 }
 
+/* Make the route name flex-grow so the stats span gets right-aligned
+   on the row. min-width: 0 lets the ellipsis kick in for long route
+   names instead of pushing the stats off-screen. Only applies when
+   the row actually has stats (otherwise the tag/empty space fills). */
+.finder-row-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Per-route stats ("8.2 mi · 410 ft ↑") in the Finder row. Muted,
+   smaller, never wraps, never shrinks — the row truncates the route
+   name first if space is tight. */
+.finder-row-stats {
+    color: var(--sheet-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .finder-empty {
     padding: 16px 12px;
     text-align: center;
@@ -1133,6 +1168,49 @@ body.sheet-open #logo-overlay {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Welcome modal CTA — primary action button at the bottom of the
+   first-visit modal. Reuses the toast primary-action color so the
+   "tap me to confirm" affordance is consistent across the app. */
+.welcome-modal-cta {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 10px 16px;
+    background: #33b5e5;
+    color: #fff;
+    border: 1px solid #33b5e5;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.welcome-modal-cta:hover,
+.welcome-modal-cta:focus-visible {
+    background: #1ea5d8;
+    border-color: #1ea5d8;
+    outline: none;
+}
+
+/* Welcome modal body — bullet list with comfortable spacing.
+   Strong wraps in the JS-generated copy highlight key terms (peek
+   bar / routes / trails / About) so the user can scan quickly. */
+#welcome-modal-body {
+    margin: 0;
+}
+
+#welcome-modal-body ul {
+    padding-left: 20px;
+    margin: 12px 0 0 0;
+}
+
+#welcome-modal-body li {
+    margin-bottom: 10px;
+    line-height: 1.5;
 }
 
 .about-modal-close:hover {
@@ -1448,6 +1526,84 @@ body.sheet-open #logo-overlay {
 
 .map-toast.visible { opacity: 1; }
 .map-toast.hidden  { opacity: 0; }
+
+/* Persistent / actionable toast (B.7 SW update, etc.). Becomes
+ * pointer-active so the action + close buttons are clickable. Lays
+ * the message + actions + close out in a row with comfortable
+ * spacing; on narrow screens (max-width: min(90vw, 360px)), the row
+ * naturally wraps and the close button sits at the bottom-right. */
+.map-toast.map-toast-actionable {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    text-align: left;
+    padding: 10px 12px 10px 16px;
+}
+
+.map-toast-message {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Action button — pill, slightly inset from the toast's edge. The
+ * primary variant uses the same sky-blue accent as the highlight
+ * chip and Locate-active state for consistency. */
+.map-toast-action {
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 16px;
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.map-toast-action:hover,
+.map-toast-action:focus-visible {
+    background: rgba(255, 255, 255, 0.22);
+    outline: none;
+}
+
+.map-toast-action-primary {
+    background: #33b5e5;
+    border-color: #33b5e5;
+    color: #fff;
+}
+
+.map-toast-action-primary:hover,
+.map-toast-action-primary:focus-visible {
+    background: #1ea5d8;
+    border-color: #1ea5d8;
+}
+
+/* Small ✕ to dismiss the persistent toast without taking the action. */
+.map-toast-close {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    padding: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.map-toast-close:hover,
+.map-toast-close:focus-visible {
+    color: white;
+    background: rgba(255, 255, 255, 0.12);
+    outline: none;
+}
 
 /* ----- Mobile / narrow viewport tweaks ----------------------------- */
 @media (max-width: 480px) {

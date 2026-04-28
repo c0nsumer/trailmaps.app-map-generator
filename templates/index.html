@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Trail Map</title>
 
+    <!-- Open Graph + Twitter Card metadata for rich share-link previews.
+         Values substituted at build time (copy_templates). Always-on,
+         no config gate — these are harmless metadata that benefit
+         search engines as well as the Share button (B.3) flow. URLs
+         are relative; OG-tag scrapers (Facebook, WhatsApp, Telegram,
+         iMessage, Twitter) resolve them against the page URL they
+         fetched, and default og:url to the fetched URL when omitted —
+         so no canonical-URL config is needed. -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="__OG_TITLE__">
+    <meta property="og:description" content="__OG_DESCRIPTION__">
+    <meta property="og:image" content="icons/android-chrome-512x512.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="__OG_TITLE__">
+    <meta name="twitter:description" content="__OG_DESCRIPTION__">
+    <meta name="twitter:image" content="icons/android-chrome-512x512.png">
+
     <!-- Icons start -->
     <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
@@ -40,6 +57,7 @@
     <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
         <span class="highlight-chip-swatch" aria-hidden="true"></span>
         <span class="highlight-chip-label">Highlighting</span>
+        <span class="highlight-chip-stats hidden" aria-hidden="true"></span>
         <svg class="highlight-chip-close" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <line x1="2" y1="2" x2="12" y2="12"/>
             <line x1="12" y1="2" x2="2" y2="12"/>
@@ -134,6 +152,27 @@
                 </div>
             </section>
 
+            <!-- Share start -->
+            <section class="sheet-section sheet-section-action hidden" id="sheet-share-section">
+                <button id="share-btn" class="sheet-action-row" type="button">
+                    <span class="sheet-action-icon" aria-hidden="true">
+                        <!-- Share glyph: arrow from a tray. Stroke-only so it
+                             tints with currentColor, matches the About icon
+                             style. -->
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+                            <polyline points="16 6 12 2 8 6"/>
+                            <line x1="12" y1="2" x2="12" y2="15"/>
+                        </svg>
+                    </span>
+                    <span class="sheet-action-text">
+                        <span class="sheet-action-title">Share this view</span>
+                        <span class="sheet-action-help">Copy a link to the current map view, including any highlighted route or trail.</span>
+                    </span>
+                </button>
+            </section>
+            <!-- Share end -->
+
             <!-- PWA start -->
             <section class="sheet-section sheet-section-action hidden" id="sheet-install-section">
                 <button id="install-btn" class="sheet-action-row install-btn hidden" type="button">
@@ -159,6 +198,26 @@
                     </span>
                 </button>
             </section>
+        </div>
+    </div>
+
+    <!-- Welcome modal — first-visit only. Reuses about-modal styling for
+         consistency (same backdrop + content card + close button). The
+         body is built by app.js so the per-map title (CONFIG.title) and
+         features (gated by show_routes / show_trails / share_button /
+         pwa_install_prompt) are reflected in the copy. -->
+    <div id="welcome-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
+        <div class="about-modal-backdrop"></div>
+        <div class="about-modal-content">
+            <button class="about-modal-close" aria-label="Close" id="welcome-modal-close">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <line x1="2" y1="2" x2="12" y2="12"/>
+                    <line x1="12" y1="2" x2="2" y2="12"/>
+                </svg>
+            </button>
+            <h2 id="welcome-modal-title"></h2>
+            <div id="welcome-modal-body"></div>
+            <button class="welcome-modal-cta" id="welcome-modal-cta" type="button">Got it</button>
         </div>
     </div>
 
