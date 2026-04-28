@@ -1322,6 +1322,15 @@ body.sheet-open #logo-overlay {
 .maplibregl-ctrl-geolocate {
     display: none !important;
 }
+/* Hiding the button alone leaves an empty .maplibregl-ctrl-group
+ * wrapper, which has its own background + border + box-shadow and
+ * renders as a ~2px-wide light gray rounded "dot" in the top-left
+ * corner of the viewport. Hide the parent group too, but only when
+ * it contains the (hidden) geolocate button — this leaves any
+ * future top-left controls untouched. */
+.maplibregl-ctrl-group:has(> .maplibregl-ctrl-geolocate) {
+    display: none !important;
+}
 
 .maplibregl-ctrl-attrib a {
     color: var(--sheet-text) !important;
