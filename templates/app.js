@@ -2851,49 +2851,55 @@ async function loadTrails() {
     addDecorationLayers();
 }
 
+// Build a filter expression for a label layer on the trail-decorations
+// source. Always includes the KIND/zoom gate (so the layer only renders
+// features of the right kind, at zooms ≥ the feature's min_zoom);
+// callers append any highlight-narrowing filters as `extraFilters`.
+//
+// Centralising the gate prevents the three label-layer blocks below
+// from drifting in their kind/zoom logic — every label feature is
+// gated through this one place.
+function buildLabelFilter(kind, ...extraFilters) {
+    return ["all",
+        ["==", ["get", "kind"], kind],
+        ["<=", ["get", "min_zoom"], ["zoom"]],
+        ...extraFilters,
+    ];
+}
+
 function updateLabels() {
     const dim = highlightDimActive();
 
     // Per-route route-name label layers — each scoped to one route via
-    // its baseline filter. Source data (computeLabelData) only carries
-    // shared-way features now; solo-way labels live on the
-    // decor-route-name layer (trail-decorations source). Visible only
-    // in "routes" mode; trail highlights hide them all (route names
-    // don't correspond to a particular trail), and route highlights
-    // keep only the matching layer.
+    // its baseline filter (set at layer creation, not here). Source
+    // data (computeLabelData) only carries shared-way features now;
+    // solo-way labels live on the decor-route-name layer.
+    // Visible only in "routes" mode; trail highlights hide them all
+    // (route names don't correspond to a particular trail), and route
+    // highlights keep only the matching layer.
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `trail-label-${routeId}`;
         if (!map.getLayer(layerId)) continue;
 
         let visible = labelMode === "routes" && visibleRoutes.has(routeId);
         if (visible && dim) {
-            if (highlight.kind === "route") {
-                visible = routeId === highlight.key;
-            } else {
-                visible = false;
-            }
+            visible = highlight.kind === "route" && routeId === highlight.key;
         }
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
     }
 
-    // Solo-way route-name labels on the trail-decorations source —
-    // one LineString feature per way with exactly one visible route,
-    // labelled with that route's name. Visible only in "routes" mode.
-    // Under dim: route highlight narrows to that route; trail
-    // highlight hides all route names (same semantics as the per-route
-    // layers above). Kind/min_zoom gate stays layered into every
-    // highlight-case filter.
+    // Solo-way route-name labels (one LineString per way with exactly
+    // one visible route, labelled with that route's name). Visible
+    // only in "routes" mode. Under dim: route highlight narrows to
+    // that route via solo_route_id; trail highlight hides all route
+    // names (same semantics as per-route layers above).
     if (map.getLayer("decor-route-name")) {
-        const KIND_GATE = [
-            ["==", ["get", "kind"], KIND.ROUTE_NAME],
-            ["<=", ["get", "min_zoom"], ["zoom"]],
-        ];
         let visible = labelMode === "routes";
-        let filter = ["all", ...KIND_GATE];
+        let filter = buildLabelFilter(KIND.ROUTE_NAME);
         if (visible && dim) {
             if (highlight.kind === "route") {
-                filter = ["all", ...KIND_GATE,
-                    ["==", ["get", "solo_route_id"], highlight.key]];
+                filter = buildLabelFilter(KIND.ROUTE_NAME,
+                    ["==", ["get", "solo_route_id"], highlight.key]);
             } else {
                 visible = false;
             }
@@ -2903,33 +2909,26 @@ function updateLabels() {
         if (visible) map.setFilter("decor-route-name", filter);
     }
 
-    // Trail-name label layer on the trail-decorations source — one
-    // feature per physical way. Visible only in "trails" mode.
-    // Under dim: filter to the highlighted route's shared-ways
-    // (route highlight) or the highlighted trail_name (trail
-    // highlight). Kind/min_zoom gate stays layered into every case.
+    // Trail-name labels (one per physical way). Visible only in
+    // "trails" mode. Under dim: route highlight narrows to that
+    // route's shared-ways via the shared_routes array; trail
+    // highlight narrows to the matching trail_name.
     if (map.getLayer("decor-trail-name")) {
-        const KIND_GATE = [
-            ["==", ["get", "kind"], KIND.TRAIL_NAME],
-            ["<=", ["get", "min_zoom"], ["zoom"]],
-        ];
         const visible = labelMode === "trails";
         map.setLayoutProperty("decor-trail-name", "visibility",
             visible ? "visible" : "none");
         if (visible) {
-            if (dim) {
-                if (highlight.kind === "route") {
-                    map.setFilter("decor-trail-name",
-                        ["all", ...KIND_GATE,
-                            ["in", highlight.key, ["get", "shared_routes"]]]);
-                } else {
-                    map.setFilter("decor-trail-name",
-                        ["all", ...KIND_GATE,
-                            ["==", ["get", "trail_name"], highlight.key]]);
-                }
+            let filter;
+            if (dim && highlight.kind === "route") {
+                filter = buildLabelFilter(KIND.TRAIL_NAME,
+                    ["in", highlight.key, ["get", "shared_routes"]]);
+            } else if (dim && highlight.kind === "trail") {
+                filter = buildLabelFilter(KIND.TRAIL_NAME,
+                    ["==", ["get", "trail_name"], highlight.key]);
             } else {
-                map.setFilter("decor-trail-name", ["all", ...KIND_GATE]);
+                filter = buildLabelFilter(KIND.TRAIL_NAME);
             }
+            map.setFilter("decor-trail-name", filter);
         }
     }
 }
