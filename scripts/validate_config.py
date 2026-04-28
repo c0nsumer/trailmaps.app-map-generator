@@ -308,11 +308,11 @@ def _validate_enums(report, config):
     # (Historical note: an earlier draft cross-checked
     # show_route_elevation against show_terrain because the original
     # plan was to sample our own terrain raster for elevation gain.
-    # The shipping implementation uses opentopodata.org's free
-    # SRTM30m endpoint instead, which is independent of the
-    # hillshade layer. The two settings are now orthogonal —
-    # elevation stats can be enabled with terrain off, and vice
-    # versa. No cross-key check needed.)
+    # The shipping implementation uses USGS 3DEP's getSamples HTTP
+    # endpoint instead, which is independent of the hillshade layer
+    # (Mapterhorn). The two settings are orthogonal — elevation stats
+    # can be enabled with terrain off, and vice versa. No cross-key
+    # check needed.)
 
 
 def _validate_geometry(report, config):

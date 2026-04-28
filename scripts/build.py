@@ -1505,8 +1505,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         if want_dist:
             print("  distance: computed (haversine, no API)")
         if want_elev:
-            print("  elevation gain + loss: opentopodata.org SRTM30m "
-                  "(network calls, ~5-20 per typical map)")
+            print("  elevation gain + loss: USGS 3DEP getSamples "
+                  "(network calls, ~1 per route at 5m sampling)")
         print()
 
     # ---- Branding assets ----

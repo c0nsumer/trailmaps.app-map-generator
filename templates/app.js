@@ -1188,6 +1188,53 @@ function consumeShareHash() {
     };
 }
 
+// Fire-and-forget check that the basemap PMTiles server honors HTTP
+// Range requests. Logs a console.error on failure with enough detail
+// to diagnose the proxy configuration. See call site for rationale.
+async function checkPMTilesRangeSupport() {
+    const url = "basemap.pmtiles";
+    try {
+        const resp = await fetch(url, {
+            method: "GET",
+            headers: { "Range": "bytes=0-1000" },
+            // Bypass the browser's HTTP cache — we want the origin's
+            // actual response. (The service worker may still intercept
+            // and return 206 from its own cache once it's active; that
+            // produces a "false negative" on subsequent visits, which
+            // is the correct behavior — once the file is cached
+            // locally, broken-Range at the origin no longer matters.)
+            cache: "no-store",
+        });
+        const contentLength = parseInt(
+            resp.headers.get("Content-Length") || "0", 10);
+        const contentRange = resp.headers.get("Content-Range");
+        const looksOk = (
+            resp.status === 206 &&
+            contentRange &&
+            contentLength > 0 &&
+            contentLength <= 2000  // we asked for 1001 bytes; small slop for off-by-one
+        );
+        if (!looksOk) {
+            console.error(
+                "[mtb-map] HTTP Range requests not honored for " + url + ".\n" +
+                "First-visit map loads will trigger multiple full-file downloads " +
+                "(potentially 10-20× normal traffic; multi-minute load on cellular). " +
+                "After the service worker caches the file, this stops mattering — " +
+                "but every brand-new visitor pays the cost.\n" +
+                "Server returned: status=" + resp.status +
+                ", Content-Range=" + contentRange +
+                ", Content-Length=" + contentLength +
+                " (expected status=206, Content-Range present, Content-Length≤1001).\n" +
+                "Fix: configure your reverse proxy to forward the Range header and " +
+                "return 206 Partial Content. See README → Troubleshooting → " +
+                "\"PMTiles won't load offline\" entry."
+            );
+        }
+    } catch (e) {
+        // Network errors have other manifestations; don't double-alert.
+    }
+}
+
 async function init() {
     try {
         validateConfigShape();
@@ -1209,6 +1256,21 @@ async function init() {
     // Register PMTiles protocol
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
+
+    // Background diagnostic: probe the server for HTTP Range support on
+    // the basemap PMTiles. PMTiles relies on Range requests to fetch
+    // tiny byte slices (header, directory, individual tiles); a broken
+    // proxy that strips the Range header and returns 200 with the full
+    // body forces the runtime to download the whole archive (50-200MB)
+    // for every range request, blowing up first-visit load time.
+    //
+    // The service worker hides this on subsequent visits (it caches the
+    // full file once and synthesizes 206 responses from local data), so
+    // by design this check only catches the bad case on FIRST cold
+    // visit — which is exactly when it matters. Silent on success;
+    // logs a console.error with diagnostic detail on failure. No toast,
+    // no UI noise — this is curator-with-DevTools-open territory.
+    checkPMTilesRangeSupport();
 
     // Build map style (light theme only)
     const style = buildStyle();
@@ -3465,7 +3527,7 @@ function buildRouteIndex() {
             // Per-route stats from compute_route_stats.py. Any may
             // be absent: distance is gated by show_route_distance,
             // elevation by show_route_elevation + a successful
-            // opentopodata fetch at build time. Gain and loss are
+            // USGS 3DEP fetch at build time. Gain and loss are
             // computed in the same pass, so they're either both
             // present or both absent. Stored as integer meters in
             // CONFIG.routes; render-time formatting uses

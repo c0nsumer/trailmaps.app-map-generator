@@ -72,12 +72,15 @@ root_relation_id: 12345678
 # suppress_basemap_pois: false
 # Per-route stats in the Finder + highlight chip. Distance is cheap
 # (haversine sum at build time, no data dependency). Elevation gain
-# + loss come from opentopodata.org's free SRTM30m endpoint at build
-# time (cached in cache/route_stats/, ~5–20 API calls per typical
-# map); the build auto-retries on rate limits and degrades to
-# no-data on persistent failure rather than failing. Independent of
-# show_terrain — elevation stats and the hillshade layer come from
-# different data paths and can be toggled separately.
+# + loss come from USGS 3DEP's getSamples endpoint at build time —
+# 1m lidar bare-earth data where available (most US, including all
+# UP MI counties), 10m/30m fallback elsewhere. Sampled every 5m
+# along each route, cached in cache/route_stats/. The build
+# auto-retries transient errors (occasional 502s) with backoff and
+# degrades to no-data on persistent failure rather than failing.
+# Independent of show_terrain — elevation stats and the hillshade
+# layer come from different data paths and can be toggled
+# separately. US-only (non-US routes will have no elevation stats).
 # show_route_distance: false
 # show_route_elevation: false
 

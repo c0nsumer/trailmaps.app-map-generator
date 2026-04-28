@@ -7,15 +7,19 @@ Two stats, both gated by config:
                                  dependency; always runs when enabled.
 
   show_route_elevation: true  →  samples elevation along each route
-                                 via opentopodata.org's free SRTM30m
-                                 endpoint, computes positive gain.
+                                 via USGS 3DEP's getSamples endpoint
+                                 (1m lidar bare-earth where available,
+                                 10m/30m fallback elsewhere), computes
+                                 both positive elevation gain (climb)
+                                 and absolute negative gain (loss).
                                  Requires network; degrades to
                                  no-data on failure or when the
                                  endpoint is unreachable.
 
 Output: writes per-route stats into trails_geojson["metadata"]["routes"]
-[<id>] as ``distance_m`` and ``elevation_gain_m`` (integers, meters).
-The runtime reads those values and formats them per CONFIG.distanceUnits.
+[<id>] as ``distance_m``, ``elevation_gain_m``, and ``elevation_loss_m``
+(integers, meters). The runtime reads those values and formats them
+per CONFIG.distanceUnits.
 
 Caching:
   Elevation queries are cached in ``cache/route_stats/`` keyed by a
@@ -23,30 +27,44 @@ Caching:
   change route geometry hits the cache and skips the network entirely.
   Distance is cheap and not cached (it'd just add bookkeeping cost).
 
-Why opentopodata over rasterio + DEM:
-  rasterio + a DEM file gives more flexibility but adds a heavyweight
-  Python dep (rasterio, often finicky to install on macOS) and either
-  requires bundling an SRTM tile per map or matching the build's
-  fetch_terrain.py SRTM cache (which is only populated when terrain
-  uses the SRTM path, not Mapterhorn). opentopodata.org is a free,
-  rate-limited (1000 requests/day, 100 points/request) HTTP endpoint
-  that handles SRTM30m sampling for us. Typical maps need 5–20
-  requests per build. If the endpoint is ever unreachable, the build
-  proceeds without elevation — distance still works, runtime degrades
-  gracefully.
+Why USGS 3DEP (replaced opentopodata.org SRTM30m, 2026-04):
+  Side-by-side comparison across nine maps and 71 comparable routes
+  showed SRTM30m systematically over-reports elevation gain in
+  forested terrain — its C-band radar penetrates only the top of
+  forest canopy, not bare ground, so canopy-height variation is read
+  as terrain change. 3DEP serves bare-earth data (vegetation removed
+  by lidar processing) at 1m resolution everywhere this framework's
+  primary maps live, with graceful 10m / 30m fallback elsewhere in
+  the US.
+
+  3DEP has no API key, no daily quota, supports up to 2000 points
+  per request, and the only real failure mode is occasional HTTP 502
+  under service load (handled by retry-with-backoff). Out-of-coverage
+  (non-US) points return ``NoData`` and are treated as missing
+  samples — non-US trails get ``elevation_*_m`` omitted from
+  trails.geojson, and the runtime renders the route without stats.
+
+Sampling tuned to the noise threshold (the two are coupled):
+  - 25m horizontal spacing × 1m per-delta threshold detects every
+    grade ≥4%. Going denser without lowering threshold rejects
+    real mid-grade climbing signal; lowering threshold below
+    lidar's ~0.5m noise floor lets noise back in.
+  - 3-point centered moving average (75m window at 25m spacing)
+    flattens lidar's residual noise without smoothing real climbs
+    (which are typically ≥100m horizontal).
+  - 1m noise threshold matches lidar bare-earth's actual vertical
+    accuracy. Was 2m for SRTM30m's noisier output.
 
 Failure modes (all non-fatal):
-  - opentopodata API error / timeout  → log warning, skip elevation
-    for that route; trails.geojson omits elevation_gain_m.
-  - Empty route (no coords)           → skip; both stats omitted.
-  - HTTP 429 (rate limit)             → automatic retry with backoff
-    (60s, 90s, 120s) per batch. Build pauses to wait the API out
-    rather than failing or requiring a manual rerun. Only after all
-    retries are exhausted on a single batch do we give up and skip
-    remaining routes — at that point the API is genuinely
-    unavailable and continuing would just incur more waits with no
-    payoff. The cache picks up where the build left off on the next
-    run, so partial completion is still useful.
+  - 3DEP API error / timeout              → log warning, skip
+    elevation for that route; trails.geojson omits elevation_gain_m.
+  - Out-of-coverage (non-US) point        → API returns NoData;
+    treated like a missing sample.
+  - Empty route (no coords)               → skip; both stats omitted.
+  - HTTP 502/503 (transient overload)     → automatic retry with
+    backoff (60s, 90s, 120s) per batch. After all retries are
+    exhausted on a single batch, the build stops trying for the rest
+    of the routes and lets cache fill in on a later run.
 """
 
 import hashlib
@@ -143,61 +161,78 @@ def compute_distances(trails_geojson):
 # Elevation
 # ----------------------------------------------------------------------
 
-OPENTOPODATA_URL = "https://api.opentopodata.org/v1/srtm30m"
-OPENTOPODATA_BATCH = 100        # API hard limit per request
-OPENTOPODATA_TIMEOUT = 30       # seconds; the API can be slow
+# USGS 3D Elevation Program (3DEP) — public ArcGIS ImageServer that
+# serves a multi-resolution DEM mosaic (1m lidar where available,
+# falling through 10m and 30m). Free, no API key, no daily quota,
+# supports up to 2000 points per request via getSamples.
+USGS_3DEP_URL = (
+    "https://elevation.nationalmap.gov/arcgis/rest/services"
+    "/3DEPElevation/ImageServer/getSamples"
+)
+USGS_3DEP_BATCH = 2000          # service hard limit per request
+USGS_3DEP_TIMEOUT = 60          # service can be slow under load
 
-# Sampling interval matched to SRTM30m's effective resolution (~30m
-# horizontal). Sampling tighter than the DEM resolves doesn't add real
-# information — just more chances for adjacent-cell noise to integrate
-# into phantom climbing. 50m is a comfortable multiple of the cell
-# size and gives one sample per ~165 ft of trail.
-SAMPLE_INTERVAL_M = 50
+# Sampling spacing tuned to the (sampling × threshold) coupling. The
+# noise threshold is per-adjacent-sample-delta; sampling spacing
+# determines what minimum grade is detectable. With a 1m threshold:
+#
+#     min_grade = threshold / spacing
+#     50m spacing → 2% grade detectable
+#     30m spacing → 3.3% grade detectable
+#     25m spacing → 4% grade detectable
+#     10m spacing → 10% grade detectable
+#     5m  spacing → 20% grade detectable
+#
+# At 25m we capture every grade ≥4%, which covers the range a rider
+# would describe as "climbing." Gentler than 4% reads as "rolling" and
+# being filtered out is fine. Going denser than 25m with a 1m
+# threshold systematically rejects mid-grade climbing signal — every
+# per-sample delta on a 4% climb falls below threshold and gets
+# treated as noise, so a long gentle climb sums to zero gain. (This
+# is *coupled*: dense sampling requires proportionally smaller
+# threshold, but smaller threshold falls below the lidar noise floor.)
+SAMPLE_INTERVAL_M = 25
 
-# Hard cap on samples per route — bounds the API cost on long routes.
-# At 50m spacing, 400 samples covers a 20km route fully; longer routes
-# get proportionally coarser sampling, which is fine because high-
-# resolution detail on a 30km+ traverse isn't a useful signal for
+# Hard cap on samples per route — bounds API cost on long routes. At
+# 25m spacing, 2000 samples covers a 50km route fully. Routes longer
+# than 50km get proportionally coarser sampling, which is fine because
+# high-resolution detail on a 50km+ traverse isn't a useful signal for
 # riders deciding whether to commit.
-MAX_SAMPLES_PER_ROUTE = 400
+MAX_SAMPLES_PER_ROUTE = 2000
 
 # Smoothing window for the elevation profile, applied as a centered
-# moving average before differencing. Three points reduces the
-# adjacent-sample noise variance by ~1/3 (σ → σ/√3) while preserving
-# any climb that spans more than ~150m horizontally — which covers
-# every real-world MTB climb. Set to 1 to disable smoothing.
+# moving average before differencing. 3 points at 25m spacing = 75m
+# window, which flattens residual lidar noise without smoothing real
+# trail-scale climbs (which are typically ≥100m horizontal). Set to 1
+# to disable smoothing.
 ELEVATION_SMOOTH_WINDOW = 3
 
 # Minimum elevation delta between (post-smoothing) adjacent samples to
 # count as real climbing. Below this, the delta is treated as DEM
-# noise and ignored. SRTM30m's adjacent-cell noise SD is ~2-3m even
-# after smoothing; thresholding at 2m rejects most of it. Real climbs
-# at typical MTB grades (3-15%) over 50m intervals produce 1.5-7.5m
-# of vertical gain, so this threshold only loses very gentle (<4%)
-# rolling terrain — which most riders wouldn't call "climbing"
-# anyway.
-ELEVATION_NOISE_THRESHOLD_M = 2.0
+# noise and ignored. Lidar bare-earth output has a vertical noise SD of
+# ~0.3-0.5m in good terrain; thresholding at 1m rejects noise while
+# preserving real climbs. Was 2m for the noisier SRTM30m source. See
+# SAMPLE_INTERVAL_M for the (spacing × threshold) coupling that
+# determines the minimum detectable grade.
+ELEVATION_NOISE_THRESHOLD_M = 1.0
 
-INTER_REQUEST_DELAY_S = 1.0     # opentopodata's free tier asks for
-                                # ≤1 req/sec across the whole build,
-                                # not just within a single route. We
-                                # track _last_api_call at module scope
-                                # and sleep enough at the start of each
-                                # request to guarantee the spacing —
-                                # this matters because batches within
-                                # a route end up <1s apart from the
-                                # first batch of the NEXT route, which
-                                # was the original cause of mid-build
-                                # 429s after only 4-5 routes processed.
+# Inter-request delay across the entire build (not just within a single
+# route's batches). 3DEP doesn't publish a rate limit, but it's a
+# public ArcGIS service — be polite. We track _last_api_call at module
+# scope and sleep enough at the start of each request to guarantee the
+# spacing.
+INTER_REQUEST_DELAY_S = 1.0
 
-# Backoff schedule for HTTP 429 retries. opentopodata's per-second
-# rate-limit window typically clears within ~60s; the longer waits
-# are for when their daily quota or burst protection kicks in. After
-# exhausting all retries on a single batch, we accept that the API
-# is genuinely unavailable for this build and stop trying for
-# subsequent routes (the build still completes; missing routes get
-# picked up on the next build via cache).
-RETRY_BACKOFF_SECONDS = [60, 90, 120]
+# Backoff schedule for HTTP 5xx / transport-error retries. 3DEP's
+# typical failure mode is brief load-balancer 502 bursts that clear
+# in seconds, not extended outages. Start aggressive (5s, 15s) to
+# avoid stalling the build on transient blips, then escalate to
+# longer waits for genuine slow-recovery cases. After exhausting
+# all retries on a single batch, we accept the API is genuinely
+# unavailable for this build and stop trying for subsequent routes
+# (the build still completes; missing routes get picked up on the
+# next build via cache).
+RETRY_BACKOFF_SECONDS = [5, 15, 60, 120]
 
 # Module-scope timestamp of the last API call. Used by
 # _fetch_elevations_batched to enforce ≥INTER_REQUEST_DELAY_S between
@@ -274,7 +309,7 @@ def _subsample_route(coord_lines, target_interval_m, max_samples):
 
     Returns a list whose elements are either ``[lon, lat]`` pairs or
     ``None`` (segment break markers). The None markers must be
-    preserved through to ``_gain_from_samples``.
+    preserved through to ``_gain_loss_from_samples``.
     """
     if not coord_lines:
         return []
@@ -335,7 +370,7 @@ def _hash_coords(coords_with_breaks):
             h.update(b"|BREAK|")
             continue
         lon, lat = item
-        # 6 decimals = ~11 cm precision, well below SRTM's resolution
+        # 6 decimals = ~11 cm precision, well below the DEM's resolution
         h.update(f"{lon:.6f},{lat:.6f}|".encode("utf-8"))
     return h.hexdigest()[:16]
 
@@ -348,87 +383,124 @@ def _elev_cache_path(cache_dir, route_id, coord_hash):
 
 
 def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
-    """Call opentopodata.org for the valid coords, preserving break markers.
+    """Call USGS 3DEP getSamples for the valid coords, preserving break markers.
 
     Input: a list whose items are either [lon, lat] pairs or None
     (segment break markers from _subsample_route).
 
     Output: a parallel list of the same length where each [lon, lat]
     is replaced by its elevation (float meters, or None if the API
-    couldn't resolve it) and the None markers are passed through
-    unchanged.
+    couldn't resolve it — out-of-coverage points return ``NoData``)
+    and the None markers are passed through unchanged.
 
-    Raises requests.RequestException on transport-level failure;
-    raises RuntimeError on HTTP 429 so the caller can stop hammering.
-    Other HTTP errors bubble up as the caller's responsibility.
+    Raises requests.RequestException on transport-level failure
+    (after exhausting retries); raises RuntimeError on persistent
+    HTTP error so the caller can stop hammering the API.
     """
-    # Indices of the valid coords in the input list — used to splice
-    # API results back in alongside the preserved None markers.
     valid_indices = [i for i, item in enumerate(coords_with_breaks)
                      if item is not None]
     valid_coords = [coords_with_breaks[i] for i in valid_indices]
 
     global _last_api_call
-    elev_for_valid = []
-    total_batches = (len(valid_coords) + OPENTOPODATA_BATCH - 1) // OPENTOPODATA_BATCH
-    for batch_index, i in enumerate(
-            range(0, len(valid_coords), OPENTOPODATA_BATCH)):
-        batch = valid_coords[i:i + OPENTOPODATA_BATCH]
-        # opentopodata wants "lat,lon|lat,lon|..." (note: lat first).
-        locations = "|".join(f"{lat},{lon}" for lon, lat in batch)
+    elev_for_valid = [None] * len(valid_coords)
+    total_batches = (len(valid_coords) + USGS_3DEP_BATCH - 1) // USGS_3DEP_BATCH
 
-        # Per-batch retry loop with exponential-ish backoff on 429.
-        # The first attempt has index 0 (no prior backoff); subsequent
-        # attempts wait RETRY_BACKOFF_SECONDS[attempt-1] between
-        # tries. After RETRY_BACKOFF_SECONDS is exhausted, we raise
-        # RuntimeError — the caller treats this as "API genuinely
-        # unavailable, stop trying for the rest of the build, but
-        # let it complete with whatever was cached/computed."
+    for batch_index, i in enumerate(
+            range(0, len(valid_coords), USGS_3DEP_BATCH)):
+        batch = valid_coords[i:i + USGS_3DEP_BATCH]
+        # ArcGIS multipoint geometry — points in [x, y] = [lon, lat]
+        # order, EPSG:4326 (WGS84).
+        geometry = json.dumps({
+            "points": [[lon, lat] for lon, lat in batch],
+            "spatialReference": {"wkid": 4326},
+        })
+
+        # Per-batch retry loop with exponential-ish backoff on transient
+        # failures (5xx / network errors). 3DEP throws occasional 502s
+        # under service load; a 60s wait usually clears it. After
+        # exhausting all retries on a single batch we raise so the
+        # caller can stop trying for the rest of the build.
         max_attempts = len(RETRY_BACKOFF_SECONDS) + 1
         result_data = None
         for attempt in range(max_attempts):
-            # Sleep enough to guarantee ≥INTER_REQUEST_DELAY_S since
-            # the last API call ANYWHERE in this build run — across
-            # routes too, not just within one route's batches.
             elapsed = time.time() - _last_api_call
             if elapsed < INTER_REQUEST_DELAY_S:
                 time.sleep(INTER_REQUEST_DELAY_S - elapsed)
             _last_api_call = time.time()
-            resp = requests.get(
-                OPENTOPODATA_URL,
-                params={"locations": locations},
-                timeout=OPENTOPODATA_TIMEOUT,
-            )
-            if resp.status_code == 429:
+
+            try:
+                resp = requests.post(
+                    USGS_3DEP_URL,
+                    data={
+                        "geometry": geometry,
+                        "geometryType": "esriGeometryMultipoint",
+                        "returnFirstValueOnly": "true",
+                        "interpolation": "RSP_BilinearInterpolation",
+                        "f": "json",
+                    },
+                    timeout=USGS_3DEP_TIMEOUT,
+                )
+            except requests.RequestException:
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(
-                        f"{log_prefix}batch {batch_index + 1}/{total_batches} "
-                        f"rate-limited; waiting {backoff}s before retry "
-                        f"{attempt + 2}/{max_attempts}..."
-                    )
+                    print(f"{log_prefix}batch "
+                          f"{batch_index + 1}/{total_batches} transport "
+                          f"error; waiting {backoff}s before retry "
+                          f"{attempt + 2}/{max_attempts}...")
                     time.sleep(backoff)
                     continue
-                # Exhausted retries — surface to the caller so the
-                # rest of the build can stop hammering.
+                raise
+
+            if resp.status_code in (429, 500, 502, 503, 504):
+                if attempt < max_attempts - 1:
+                    backoff = RETRY_BACKOFF_SECONDS[attempt]
+                    print(f"{log_prefix}batch "
+                          f"{batch_index + 1}/{total_batches} HTTP "
+                          f"{resp.status_code}; waiting {backoff}s before "
+                          f"retry {attempt + 2}/{max_attempts}...")
+                    time.sleep(backoff)
+                    continue
                 raise RuntimeError(
-                    f"{log_prefix}opentopodata rate-limited (HTTP 429) "
-                    f"after {max_attempts} attempts; skipping remaining "
+                    f"{log_prefix}3DEP HTTP {resp.status_code} after "
+                    f"{max_attempts} attempts; skipping remaining "
                     f"elevation lookups for this build"
                 )
             resp.raise_for_status()
-            data = resp.json()
-            if data.get("status") != "OK":
+
+            try:
+                data = resp.json()
+            except ValueError:
                 raise RuntimeError(
-                    f"{log_prefix}opentopodata returned status "
-                    f"{data.get('status')!r}: {data.get('error')}"
+                    f"{log_prefix}3DEP returned non-JSON response: "
+                    f"{resp.text[:200]}"
+                )
+            if "error" in data:
+                raise RuntimeError(
+                    f"{log_prefix}3DEP error: {data['error']}"
                 )
             result_data = data
             break
 
-        for r in (result_data.get("results") or []):
-            elev = r.get("elevation")
-            elev_for_valid.append(float(elev) if elev is not None else None)
+        # Response shape: {"samples": [{"locationId": 0, "value":
+        # "287.5", "resolution": 1}, ...]}. Order may not match input
+        # order; sort by locationId before splicing back in. ``value``
+        # is a STRING (or "NoData" for out-of-coverage points).
+        samples = result_data.get("samples") or []
+        samples_sorted = sorted(samples,
+                                key=lambda s: int(s.get("locationId", 0)))
+
+        for j, s in enumerate(samples_sorted):
+            global_idx = i + j
+            if global_idx >= len(valid_coords):
+                break  # defensive — shouldn't happen
+            value = s.get("value")
+            if value is None or value == "NoData":
+                elev_for_valid[global_idx] = None
+            else:
+                try:
+                    elev_for_valid[global_idx] = float(value)
+                except (TypeError, ValueError):
+                    elev_for_valid[global_idx] = None
 
     # Splice the elevation results back in, preserving break-marker
     # positions so the gain-from-samples computation sees both the
@@ -443,14 +515,14 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
 def _smooth_elevations(elevations, window):
     """Centered moving average over the elevation profile.
 
-    Reduces SRTM's adjacent-cell noise (σ ≈ 2-3 m) before differencing,
-    which is the single biggest source of inflated elevation-gain
-    numbers. A k-point average reduces noise variance by ~1/k while
-    preserving any signal that spans more than `window` samples
-    (~150 m at the default 50 m sampling × 3-point window) — covers
-    every real-world MTB climb.
+    Reduces lidar's residual noise (σ ≈ 0.3-0.5m on 1m bare-earth
+    output) before differencing, which is the single biggest source
+    of inflated elevation-gain numbers. A k-point average reduces
+    noise variance by ~1/k while preserving any signal that spans
+    more than `window` samples (~15 m at the default 5 m sampling × 3-
+    point window) — covers every real-world MTB feature.
 
-    Preserves None values (samples opentopodata couldn't resolve)
+    Preserves None values (samples 3DEP couldn't resolve)
     rather than averaging them as zero. Endpoints use whatever window
     fits inside the array.
     """
@@ -487,9 +559,9 @@ def _gain_loss_from_samples(elevations):
     know which direction the route is intended to be ridden (we
     don't; OSM doesn't carry that signal for MTB relations).
 
-    None samples (where opentopodata didn't return an elevation,
-    e.g. a coordinate outside SRTM coverage) reset the running
-    comparison so we don't compute a fake delta across the gap.
+    None samples (where 3DEP didn't return an elevation, e.g. a
+    coordinate outside US coverage) reset the running comparison so
+    we don't compute a fake delta across the gap.
 
     Returns ``(gain_m, loss_m)`` as integer meters, both ≥ 0.
     """
@@ -515,7 +587,7 @@ def compute_elevations(trails_geojson, cache_dir):
     """Return ``{route_id: (gain_m_int, loss_m_int)}`` (sparse — missing
     entries for routes whose elevation couldn't be computed).
 
-    Uses opentopodata.org SRTM30m. Per-route results are cached to
+    Uses USGS 3DEP getSamples. Per-route results are cached to
     ``cache/route_stats/elev_<route_id>_<coord_hash>.json`` so a
     rebuild that doesn't change route geometry hits the cache and
     skips the network entirely. Cache files store BOTH gain and
@@ -523,9 +595,8 @@ def compute_elevations(trails_geojson, cache_dir):
     treated as cache misses and refetched so the runtime can
     consistently render ``↑X / ↓Y``.
 
-    On rate-limit (HTTP 429) or unrecoverable API failure, logs a
-    warning and stops trying to fetch — already-cached results still
-    flow through.
+    On unrecoverable API failure, logs a warning and stops trying to
+    fetch — already-cached results still flow through.
     """
     metadata = trails_geojson.get("metadata") or {}
     routes = metadata.get("routes") or {}
@@ -533,7 +604,7 @@ def compute_elevations(trails_geojson, cache_dir):
 
     os.makedirs(os.path.join(cache_dir, "route_stats"), exist_ok=True)
     out = {}
-    rate_limited = False
+    api_failed = False
 
     for route_id in routes.keys():
         rid_str = str(route_id)
@@ -553,9 +624,7 @@ def compute_elevations(trails_geojson, cache_dir):
                     cached = json.load(fh)
                 # Require BOTH fields for a cache hit. Old-format
                 # entries (gain only) get treated as cache miss and
-                # refetched — the route geometry is the same, so the
-                # gain value will match the cached one and we'll fill
-                # in loss too.
+                # refetched.
                 if (isinstance(cached, dict)
                         and "elevation_gain_m" in cached
                         and "elevation_loss_m" in cached):
@@ -567,8 +636,8 @@ def compute_elevations(trails_geojson, cache_dir):
             except (OSError, ValueError, TypeError):
                 pass  # corrupt cache; refetch.
 
-        if rate_limited:
-            # Don't even try once we've hit 429 in this build.
+        if api_failed:
+            # Don't even try once we've hit a hard API failure in this build.
             continue
 
         try:
@@ -588,12 +657,14 @@ def compute_elevations(trails_geojson, cache_dir):
                 print(f"  warn: couldn't write elevation cache for "
                       f"route {rid_str}: {e}")
         except RuntimeError as e:
-            # 429 or API status error — stop hitting the API.
+            # Persistent API failure — stop hitting the API for the
+            # rest of this build.
             print(f"  warn: {e}")
-            rate_limited = True
+            api_failed = True
         except requests.RequestException as e:
-            # Transport (timeout, DNS, connection refused) — log but
-            # keep going, the next route might succeed.
+            # Transport error after retries — log but keep going, the
+            # next route might succeed (a per-batch transient error
+            # could have been the cause).
             print(f"  warn: route {rid_str} elevation fetch failed: {e}")
 
     return out
@@ -653,7 +724,7 @@ def compute_and_attach(trails_geojson, config, cache_dir):
 
     if want_elevation:
         print("  computing per-route elevation gain + loss "
-              "(via opentopodata)...")
+              "(via USGS 3DEP)...")
         elevations = compute_elevations(trails_geojson, cache_dir)
         # Strip stale entries on routes whose computation failed this
         # run so the runtime doesn't keep showing yesterday's
