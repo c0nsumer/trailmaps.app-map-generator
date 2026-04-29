@@ -174,8 +174,13 @@ def extract_ways(parsed, relation_ids):
 
 
 def extract_guideposts(parsed, bbox):
-    """Extract guidepost, emergency access point, and tourism=attraction nodes
-    within a bounding box.
+    """Extract trail-relevant POI nodes within a bounding box.
+
+    Despite the legacy name, this also yields tourism=attraction,
+    amenity=toilets, and amenity=drinking_water nodes — anything the
+    Overpass query in fetch_pois_from_osm() would emit. Kept for now
+    as a single function since the local-osm-file path mirrors the
+    network path.
 
     Returns the same format as fetch_pois_from_osm():
         {"elements": [{"type": "node", "id", "lon", "lat", "tags": {}}, ...]}
@@ -194,8 +199,10 @@ def extract_guideposts(parsed, bbox):
                         and tags.get("information") == "guidepost")
         is_emergency = tags.get("highway") == "emergency_access_point"
         is_feature = tags.get("tourism") == "attraction"
+        is_toilet = tags.get("amenity") == "toilets"
+        is_water = tags.get("amenity") == "drinking_water"
 
-        if is_guidepost or is_emergency or is_feature:
+        if is_guidepost or is_emergency or is_feature or is_toilet or is_water:
             elements.append({
                 "type": "node",
                 "id": node_id,

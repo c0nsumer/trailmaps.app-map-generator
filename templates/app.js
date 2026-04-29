@@ -317,10 +317,12 @@ const KIND = Object.freeze({
     ARROW:      "arrow",
 });
 const POI = Object.freeze({
-    TRAIL_MARKER: "trail_marker",
-    PARKING:      "parking",
-    TRAILHEAD:    "trailhead",
-    FEATURE:      "feature",
+    TRAIL_MARKER:    "trail_marker",
+    PARKING:         "parking",
+    TRAILHEAD:       "trailhead",
+    FEATURE:         "feature",
+    TOILET:          "toilet",
+    DRINKING_WATER:  "drinking_water",
 });
 
 const EARTH_RADIUS_M = 6378137;
@@ -436,7 +438,8 @@ function gatherObstacles() {
     const out = [];
     const r = DECOR_RADIUS_M.obstacle;
     for (const arr of [trailMarkerMarkers, parkingMarkers,
-                       trailheadMarkers, featureMarkers]) {
+                       trailheadMarkers, featureMarkers,
+                       toiletMarkers, drinkingWaterMarkers]) {
         for (const m of arr) {
             if (m._map !== map) continue;
             const ll = m.getLngLat();
@@ -951,6 +954,8 @@ let trailMarkerMarkers = [];
 let parkingMarkers = [];
 let trailheadMarkers = [];
 let featureMarkers = [];
+let toiletMarkers = [];
+let drinkingWaterMarkers = [];
 let userLocation = null; // [lng, lat] from geolocate control
 // MapLibre GeolocateControl handle; assigned in init(). Hoisted to module
 // scope so the off-screen indicator's click handler (defined at module
@@ -2390,6 +2395,8 @@ function updateMarkerDimState() {
     apply(parkingMarkers);
     apply(trailheadMarkers);
     apply(featureMarkers);
+    apply(toiletMarkers);
+    apply(drinkingWaterMarkers);
 }
 
 function updateMarkerProximity() {
@@ -3674,6 +3681,8 @@ async function loadPOIs() {
         [POI.PARKING]: 0,
         [POI.TRAILHEAD]: 0,
         [POI.FEATURE]: 0,
+        [POI.TOILET]: 0,
+        [POI.DRINKING_WATER]: 0,
     };
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
@@ -3683,17 +3692,28 @@ async function loadPOIs() {
     const pkCount = poiCounts[POI.PARKING];
     const thCount = poiCounts[POI.TRAILHEAD];
     const ftCount = poiCounts[POI.FEATURE];
+    const wcCount = poiCounts[POI.TOILET];
+    const dwCount = poiCounts[POI.DRINKING_WATER];
 
     // Read persisted toggle state (default on for everything that has data).
     const mkDefault = LS.get("mtb.poi.markers", true);
     const pkDefault = LS.get("mtb.poi.parking", true);
     const thDefault = LS.get("mtb.poi.trailheads", true);
     const ftDefault = LS.get("mtb.poi.features", true);
+    const wcDefault = LS.get("mtb.poi.toilets", true);
+    const dwDefault = LS.get("mtb.poi.drinking_water", true);
 
     // Hide a peek-row button when its layer has no data.
     const hidePeekBtn = (id) => {
         const el = document.getElementById(id);
         if (el) el.classList.add("hidden");
+    };
+
+    // Reveal a drawer toggle row that starts hidden by default (so
+    // maps with no data for that POI type don't show a dead control).
+    const showDrawerRow = (id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("hidden");
     };
 
     // Trail markers — merged guideposts + emergency-access layer. The
@@ -3714,6 +3734,22 @@ async function loadPOIs() {
         addTrailheadMarkers(thDefault);
     } else {
         hidePeekBtn("toggle-trailheads");
+    }
+
+    // Toilets + drinking water — toggle rows start hidden in the
+    // template (most maps don't have data for either). Reveal each
+    // row only when the build emitted at least one feature for it.
+    if (CONFIG.showToilets && wcCount > 0) {
+        addToiletMarkers(wcDefault);
+        showDrawerRow("toggle-toilets");
+        const wcBtn = document.getElementById("toggle-toilets");
+        if (wcBtn) wcBtn.setAttribute("aria-pressed", wcDefault ? "true" : "false");
+    }
+    if (CONFIG.showDrinkingWater && dwCount > 0) {
+        addDrinkingWaterMarkers(dwDefault);
+        showDrawerRow("toggle-drinking-water");
+        const dwBtn = document.getElementById("toggle-drinking-water");
+        if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
     }
 
     // Features are gated by both data-presence AND proximity: a build
@@ -3840,6 +3876,65 @@ function addTrailheadMarkers(addToMap) {
         popupMaxWidth: "220px",
         addToMap,
         targetArray: trailheadMarkers,
+    });
+}
+
+// Toilet markers — OSM amenity=toilets. Always-visible (no proximity
+// filter) like parking/trailheads — these are points riders need to
+// FIND, not contextual decoration. Square swatch with a stylised
+// figure glyph; popup carries access/fee metadata when present.
+function addToiletMarkers(addToMap) {
+    const bg = CONFIG.toiletColor || "#6c5ce7";
+    const border = CONFIG.toiletBorderColor || "#fff";
+    createPoiMarkers({
+        poiType: POI.TOILET,
+        className: "toilet-marker",
+        markerStyle: `width:24px;height:24px;background:${bg};color:#fff;border-radius:4px;border:2px solid ${border};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        contentFn: (el) => {
+            // mdi:human-male-female (Apache 2.0, Pictogrammers)
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
+        },
+        popupHtmlFn: (p) => {
+            let h = `<div class="popup-title">${p.name || "Toilets"}</div>`;
+            const meta = [];
+            if (p.access && p.access !== "yes" && p.access !== "permissive") {
+                meta.push(`Access: ${p.access}`);
+            }
+            if (p.fee === "yes") meta.push("Fee required");
+            if (meta.length) {
+                h += `<div class="popup-meta">${meta.join(" · ")}</div>`;
+            }
+            return h;
+        },
+        popupMaxWidth: "220px",
+        addToMap,
+        targetArray: toiletMarkers,
+    });
+}
+
+// Drinking-water markers — OSM amenity=drinking_water. Same
+// always-visible pattern as toilets. Droplet glyph, blue swatch.
+function addDrinkingWaterMarkers(addToMap) {
+    const bg = CONFIG.drinkingWaterColor || "#3498db";
+    const border = CONFIG.drinkingWaterBorderColor || "#fff";
+    createPoiMarkers({
+        poiType: POI.DRINKING_WATER,
+        className: "drinking-water-marker",
+        markerStyle: `width:24px;height:24px;background:${bg};color:#fff;border-radius:4px;border:2px solid ${border};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        contentFn: (el) => {
+            // mdi:water (Apache 2.0, Pictogrammers)
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+        },
+        popupHtmlFn: (p) => {
+            let h = `<div class="popup-title">${p.name || "Drinking water"}</div>`;
+            if (p.seasonal && p.seasonal !== "no") {
+                h += `<div class="popup-meta">Seasonal: ${p.seasonal}</div>`;
+            }
+            return h;
+        },
+        popupMaxWidth: "220px",
+        addToMap,
+        targetArray: drinkingWaterMarkers,
     });
 }
 
@@ -4190,11 +4285,13 @@ function setupBottomSheet() {
     // made the summer/winter swatch look subtly wrong on most devices.
     // A hand-drawn SVG renders identically everywhere and picks up
     // `color: white` from the swatch via `currentColor`.
-    const SUN_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/><line x1="2.85" y1="2.85" x2="4.1" y2="4.1"/><line x1="11.9" y1="11.9" x2="13.15" y2="13.15"/><line x1="2.85" y1="13.15" x2="4.1" y2="11.9"/><line x1="11.9" y1="4.1" x2="13.15" y2="2.85"/></g></svg>';
+    // mdi:weather-sunny (Apache 2.0, Pictogrammers)
+    const SUN_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/></svg>';
     // Six-ray snowflake: three lines through the center. Tiny "V"
     // barbs at each tip give it the characteristic flake silhouette
     // rather than reading as a plain asterisk.
-    const SNOW_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="1" x2="8" y2="15"/><line x1="1.94" y1="4.5" x2="14.06" y2="11.5"/><line x1="1.94" y1="11.5" x2="14.06" y2="4.5"/><path d="M 6.5 2.5 L 8 4 L 9.5 2.5"/><path d="M 6.5 13.5 L 8 12 L 9.5 13.5"/><path d="M 3.2 3.4 L 4.5 5.5 L 2.4 5.7"/><path d="M 12.8 12.6 L 11.5 10.5 L 13.6 10.3"/><path d="M 3.2 12.6 L 4.5 10.5 L 2.4 10.3"/><path d="M 12.8 3.4 L 11.5 5.5 L 13.6 5.7"/></g></svg>';
+    // mdi:snowflake (Apache 2.0, Pictogrammers)
+    const SNOW_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.79,13.95L18.46,14.57L16.46,13.44V10.56L18.46,9.43L20.79,10.05L21.31,8.12L19.54,7.65L20,5.88L18.07,5.36L17.45,7.69L15.45,8.82L13,7.38V5.12L14.71,3.41L13.29,2L12,3.29L10.71,2L9.29,3.41L11,5.12V7.38L8.5,8.82L6.5,7.69L5.92,5.36L4,5.88L4.47,7.65L2.7,8.12L3.22,10.05L5.55,9.43L7.55,10.56V13.45L5.55,14.58L3.22,13.96L2.7,15.89L4.47,16.36L4,18.12L5.93,18.64L6.55,16.31L8.55,15.18L11,16.62V18.88L9.29,20.59L10.71,22L12,20.71L13.29,22L14.7,20.59L13,18.88V16.62L15.5,15.17L17.5,16.3L18.12,18.63L20,18.12L19.53,16.35L21.3,15.88L20.79,13.95M9.5,10.56L12,9.11L14.5,10.56V13.44L12,14.89L9.5,13.44V10.56Z"/></svg>';
     const seasonField = document.getElementById("season-field");
     const seasonSwatch = seasonField && seasonField.querySelector(".season-swatch");
     const seasonButtons = seasonField
@@ -4336,6 +4433,27 @@ function setupBottomSheet() {
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads", true, (on) => {
         for (const m of trailheadMarkers) {
+            if (on) m.addTo(map);
+            else m.remove();
+        }
+        invalidateObstaclesCache();
+        updateDecorationsSource();
+    });
+
+    // Toilets + drinking water — same always-visible pattern as
+    // parking and trailheads. wirePeekToggle skips buttons that are
+    // still hidden (no data); loadPOIs reveals them when the build
+    // produced features for that POI type.
+    wirePeekToggle("toggle-toilets", "mtb.poi.toilets", true, (on) => {
+        for (const m of toiletMarkers) {
+            if (on) m.addTo(map);
+            else m.remove();
+        }
+        invalidateObstaclesCache();
+        updateDecorationsSource();
+    });
+    wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water", true, (on) => {
+        for (const m of drinkingWaterMarkers) {
             if (on) m.addTo(map);
             else m.remove();
         }

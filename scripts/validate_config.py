@@ -96,6 +96,8 @@ KNOWN_KEYS = {
     "show_features":                 bool,
     "show_parking":                  bool,
     "show_trailheads":               bool,
+    "show_toilets":                  bool,
+    "show_drinking_water":           bool,
     "show_terrain":                  bool,
     "show_difficulty":               bool,
     "show_routes":                   bool,

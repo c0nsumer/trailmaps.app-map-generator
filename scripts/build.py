@@ -786,6 +786,8 @@ CONFIG_SPEC = [
     ("show_features",           "showFeatures",         True),
     ("show_parking",            "showParking",          True),
     ("show_trailheads",         "showTrailheads",       True),
+    ("show_toilets",            "showToilets",          True),
+    ("show_drinking_water",     "showDrinkingWater",    True),
     ("show_terrain",            "showTerrain",          True),
     ("show_difficulty",         "showDifficulty",       False),
 
@@ -1468,7 +1470,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     # ---- POI fetching ----
     print("POI fetching (gated by show_* keys):")
     for key, default in (("show_markers", True), ("show_features", True),
-                         ("show_parking", True), ("show_trailheads", True)):
+                         ("show_parking", True), ("show_trailheads", True),
+                         ("show_toilets", True), ("show_drinking_water", True)):
         on = bool(config.get(key, default))
         print(f"  {key}: {'YES' if on else 'no'}")
     if config.get("show_trailheads", True):

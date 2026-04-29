@@ -31,7 +31,18 @@ def load_config(config_path):
 
 
 def fetch_pois_from_osm(bbox, cache_dir=None):
-    """Fetch guideposts, emergency access points, and tourism attractions from Overpass API."""
+    """Fetch trail-relevant POI nodes from Overpass API.
+
+    Categories collected:
+      - guideposts (tourism=information + information=guidepost)
+      - emergency access points (highway=emergency_access_point)
+      - tourism attractions (tourism=attraction)
+      - public toilets (amenity=toilets)
+      - drinking water (amenity=drinking_water)
+
+    Each maps to a distinct ``poi_type`` in the output GeoJSON; runtime
+    toggle visibility per category.
+    """
     south, west, north, east = bbox[1], bbox[0], bbox[3], bbox[2]
     q = f"""
 [out:json][timeout:60];
@@ -39,6 +50,8 @@ def fetch_pois_from_osm(bbox, cache_dir=None):
   node["tourism"="information"]["information"="guidepost"]({south},{west},{north},{east});
   node["highway"="emergency_access_point"]({south},{west},{north},{east});
   node["tourism"="attraction"]({south},{west},{north},{east});
+  node["amenity"="toilets"]({south},{west},{north},{east});
+  node["amenity"="drinking_water"]({south},{west},{north},{east});
 );
 out center;
 """
@@ -89,6 +102,32 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads):
                     "poi_type": "feature",
                     "name": tags.get("name", ""),
                     "description": tags.get("description", ""),
+                },
+            })
+        elif tags.get("amenity") == "toilets":
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {
+                    "poi_type": "toilet",
+                    "name": tags.get("name", ""),
+                    # OSM `access` tag (yes/no/permissive/private) helps
+                    # riders know whether they can actually use it.
+                    "access": tags.get("access", ""),
+                    # OSM `fee` tag (yes/no) — same reason.
+                    "fee": tags.get("fee", ""),
+                },
+            })
+        elif tags.get("amenity") == "drinking_water":
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {
+                    "poi_type": "drinking_water",
+                    "name": tags.get("name", ""),
+                    # OSM `seasonal` tag (yes/no/summer/winter) tells
+                    # riders whether the fountain is reliably running.
+                    "seasonal": tags.get("seasonal", ""),
                 },
             })
 
@@ -162,8 +201,18 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         and e.get("tags", {}).get("highway") != "emergency_access_point"
         and e.get("tags", {}).get("information") != "guidepost"
     )
+    toilet_count = sum(
+        1 for e in osm_data.get("elements", [])
+        if e.get("tags", {}).get("amenity") == "toilets"
+    )
+    water_count = sum(
+        1 for e in osm_data.get("elements", [])
+        if e.get("tags", {}).get("amenity") == "drinking_water"
+    )
     print(f"  Found {marker_count} trail markers (guideposts + emergency access points) in OSM")
     print(f"  Found {feature_count} features (tourism=attraction) in OSM")
+    print(f"  Found {toilet_count} toilets (amenity=toilets) in OSM")
+    print(f"  Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
     print(f"  Config defines {len(config_parking)} parking areas")
     print(f"  Config defines {len(config_trailheads)} trailheads")
 
@@ -172,6 +221,10 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         print(f"  NOTE: show_markers is enabled but no guideposts or emergency access points found in data")
     if config.get("show_features", True) and feature_count == 0:
         print(f"  NOTE: show_features is enabled but no tourism=attraction nodes found in data")
+    if config.get("show_toilets", True) and toilet_count == 0:
+        print(f"  NOTE: show_toilets is enabled but no amenity=toilets nodes found in data")
+    if config.get("show_drinking_water", True) and water_count == 0:
+        print(f"  NOTE: show_drinking_water is enabled but no amenity=drinking_water nodes found in data")
     if config.get("show_parking", True) and len(config_parking) == 0:
         print(f"  NOTE: show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:

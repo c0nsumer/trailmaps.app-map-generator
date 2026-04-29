@@ -291,6 +291,8 @@ These gate **data fetching and build-time asset generation**, not UI visibility.
 | `show_parking` | No | `true` | When false, parking markers from the config are not rendered |
 | `show_trailheads` | No | `true` | When false, trailhead markers from the config are not rendered |
 | `show_features` | No | `true` | When false, skips the Overpass query for `tourism=attraction` feature nodes |
+| `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The drawer's Toilets toggle auto-hides if the build emitted no toilet features (e.g. trail systems where OSM hasn't tagged any). |
+| `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The drawer's Drinking water toggle auto-hides if the build emitted none. |
 | `poi_proximity_m` | No | `50` | Distance in meters from the nearest visible trail within which a feature or trail-marker POI is allowed to render. Tight values (~10 m) hide POIs that aren't directly on the trail; loose values (~75 m+) include nearby attractions but risk surfacing bbox-incidental POIs. The peek-bar Features toggle auto-hides if no feature POI passes this distance check. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted |
 | `show_difficulty` | No | `false` | When true, generates the IMBA difficulty sprite and enables the in-UI toggle; when false, no sprite is generated and no difficulty symbols appear. The toggle defaults **on** when enabled and persists state via localStorage. |
@@ -1170,3 +1172,16 @@ If a build takes much longer, the slowest steps are usually terrain extraction (
 5. Run `./tools/build_and_deploy.sh --validate-only <slug>` to confirm the config is clean.
 6. Run `./tools/build_and_deploy.sh --build-only <slug>` (or `python scripts/build.py configs/<slug>/<slug>.yaml`) to generate the output.
 7. Deploy `build/<slug>/` to your server.
+
+## Third-party Assets
+
+UI icons are inlined SVG paths from **[Material Design Icons](https://pictogrammers.com/library/mdi/)** (Pictogrammers community), used under the **Apache License 2.0**. Each inline SVG is annotated with an HTML comment naming its source (e.g. `<!-- mdi:magnify (Apache 2.0, Pictogrammers) -->`). No icon files are bundled — only the path data for the specific icons in use is embedded directly in the templates.
+
+Icons currently in use:
+- `mdi:magnify` — peek-bar search button
+- `mdi:crosshairs-gps` — peek-bar locate button
+- `mdi:label` — drawer Labels row
+- `mdi:weather-sunny` / `mdi:snowflake` — drawer Season toggle (swap based on selection)
+- `mdi:human-male-female` — drawer Toilets row + on-map markers
+- `mdi:water` — drawer Drinking water row + on-map markers
+- `mdi:chevron-down` — drawer accordion section headers

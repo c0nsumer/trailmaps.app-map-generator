@@ -1155,6 +1155,34 @@ body.sheet-open #logo-overlay {
     font-size: 9px;
 }
 
+/* Labels — neutral slate-grey swatch with white tag glyph. Read as
+ * "label-y" without claiming a specific layer color (since the
+ * Labels segmented control switches WHICH labels render, not a
+ * single layer toggle). */
+.label-swatch {
+    background: var(--label-color, #5d6d7e);
+    color: var(--label-text-color, #fff);
+    border: 1.5px solid var(--label-border-color, #fff);
+}
+
+/* Toilets — neutral slate to read as "facility" without competing
+ * with parking blue or trailhead green. Glyph is a stylised standing
+ * figure rendered as an SVG inside the swatch. */
+.toilet-swatch {
+    background: var(--toilet-color, #6c5ce7);
+    color: var(--toilet-text-color, #fff);
+    border: 1.5px solid var(--toilet-border-color, #fff);
+}
+
+/* Drinking water — saturated blue with a droplet glyph. Distinct
+ * enough from the parking blue (which is darker) to read as its
+ * own category at a glance. */
+.drinking-water-swatch {
+    background: var(--drinking-water-color, #3498db);
+    color: var(--drinking-water-text-color, #fff);
+    border: 1.5px solid var(--drinking-water-border-color, #fff);
+}
+
 /* Locate swatch — mirrors the MapLibre native GeolocateControl state
  * machine pixel-for-pixel: same hex colors (#33b5e5 tracking blue,
  * #e58978 active-error salmon, #e54e33 background-error red,
