@@ -1819,10 +1819,12 @@ function initWelcomeModal() {
                 : null;
 
     const bullets = [];
-    bullets.push("Tap any icon in the bottom <strong>peek bar</strong> to toggle markers, parking, terrain, or your location.");
-    bullets.push("Drag the peek bar up to see all controls — base layers, features, and the trail finder.");
-    if (finderLine) bullets.push(finderLine);
-    bullets.push("Tap <strong>About this map</strong> in the expanded sheet for sources, attribution, and contact info.");
+    bullets.push("Tap the <strong>locate icon</strong> in the bottom bar to centre the map on you.");
+    if (finderLine) {
+        bullets.push("Tap the <strong>search icon</strong> to find routes and trails by name.");
+    }
+    bullets.push("Tap or drag the bottom bar up to open <strong>Settings</strong> — toggle layer visibility, change the season, pick a basemap, and more. Settings are saved between visits.");
+    bullets.push("Tap <strong>About this map</strong> for sources, attribution, and contact info.");
     if (CONFIG.shareButton) {
         bullets.push("Found a great view? Tap <strong>Share this view</strong> to send a link with the current zoom and any highlighted route.");
     }
@@ -3884,20 +3886,38 @@ function setupBottomSheet() {
     // in the HTML and is revealed at the end of this function.
 
     // ----- Open/close behaviour -----
+    // The backdrop is a separate sibling element (sheet-backdrop) that
+    // dims the map behind the open drawer. Its .is-active class
+    // toggles in lockstep with the sheet's .is-open so the visual
+    // state stays in sync. tap-to-close on the backdrop works via
+    // the existing document-level "click outside the sheet" handler
+    // further down in this function.
+    const backdrop = document.getElementById("sheet-backdrop");
     function openSheet() {
         sheet.classList.add("is-open");
         handle.setAttribute("aria-expanded", "true");
         expanded.setAttribute("aria-hidden", "false");
+        if (backdrop) backdrop.classList.add("is-active");
     }
     function closeSheet() {
         sheet.classList.remove("is-open");
         handle.setAttribute("aria-expanded", "false");
         expanded.setAttribute("aria-hidden", "true");
+        if (backdrop) backdrop.classList.remove("is-active");
     }
     function toggleSheet() {
         if (sheet.classList.contains("is-open")) closeSheet();
         else openSheet();
     }
+
+    // Expose openSheet/closeSheet so other call sites that live outside
+    // this function's scope (the finder row clicks, the peek search
+    // button) can trigger the drawer through the canonical paths
+    // instead of toggling .is-open directly. Toggling the class
+    // directly bypasses backdrop sync — backdrop stays .is-active,
+    // intercepts all map gestures, and the user can't pan/zoom.
+    window.__openBottomSheet = openSheet;
+    window.__closeBottomSheet = closeSheet;
 
     // ----- Drag-to-open gesture -------------------------------------
     //
@@ -3959,9 +3979,27 @@ function setupBottomSheet() {
                 peekH: peekHeight(),
                 openH: getOpenHeight(),
                 moved: false,
+                draggingApplied: false,
                 pointerId: e.pointerId,
                 captureEl,
             };
+            // Capture so moves keep firing even outside the element. Use
+            // the *listener* element, not e.target — some browsers throw
+            // NotFoundError when capturing on a child text run.
+            //
+            // Note: we do NOT enter "drag mode" (pin max-height, add
+            // .is-dragging, expose .sheet-expanded) on pointerdown.
+            // A pure click that never moves shouldn't visually flash
+            // the drawer content, and on desktop the brief mid-drag
+            // exposure can read as the peek "flashing wide" before
+            // the open animation. Drag mode is deferred to the first
+            // moveDrag past TAP_MAX_DIST. See moveDrag below.
+            try { captureEl.setPointerCapture(e.pointerId); } catch (_) {}
+        }
+
+        function enterDragMode() {
+            if (!drag || drag.draggingApplied) return;
+            drag.draggingApplied = true;
             // Pin max-height to the current visual height BEFORE we
             // expose .sheet-expanded. Without this, adding
             // .is-dragging un-hides the expanded section and the
@@ -3974,7 +4012,7 @@ function setupBottomSheet() {
             // state. Disabling transition keeps the snap-back at
             // pointerup from animating from this pinned value.
             sheet.style.transition = "none";
-            sheet.style.maxHeight = (wasOpen ? drag.openH : drag.peekH) + "px";
+            sheet.style.maxHeight = (drag.wasOpen ? drag.openH : drag.peekH) + "px";
             // Expose .sheet-expanded during drag so max-height has
             // content to reveal. Without this, dragging from closed
             // state was a no-op: the CSS `.sheet-expanded { display:
@@ -3982,11 +4020,7 @@ function setupBottomSheet() {
             // of any inline max-height we set. Most visible in
             // Firefox, where the tap-fallback didn't always salvage
             // short drags. Clear in end/cancel.
-            if (!wasOpen) sheet.classList.add("is-dragging");
-            // Capture so moves keep firing even outside the element. Use
-            // the *listener* element, not e.target — some browsers throw
-            // NotFoundError when capturing on a child text run.
-            try { captureEl.setPointerCapture(e.pointerId); } catch (_) {}
+            if (!drag.wasOpen) sheet.classList.add("is-dragging");
         }
 
         function moveDrag(e) {
@@ -3994,7 +4028,17 @@ function setupBottomSheet() {
             const dy = e.clientY - drag.startY;
             drag.lastY = e.clientY;
             drag.lastT = performance.now();
-            if (Math.abs(dy) > TAP_MAX_DIST) drag.moved = true;
+            if (Math.abs(dy) > TAP_MAX_DIST) {
+                drag.moved = true;
+                // First time we cross the tap threshold, actually enter
+                // drag mode (pin max-height + expose expanded section).
+                enterDragMode();
+            }
+
+            // No-op until the user has actually moved past the tap
+            // threshold — leave the sheet at its CSS-resolved size so
+            // a static click never flashes the drawer content.
+            if (!drag.draggingApplied) return;
 
             // Derive a live height by applying the drag delta to whichever
             // state we started in. Negative dy (finger up) opens; positive
@@ -4032,9 +4076,14 @@ function setupBottomSheet() {
             const moved = drag.moved;
             drag = null;
 
-            // Tap → toggle. Use both distance AND time bounds so a slow
-            // finger that barely moved still counts as a tap.
-            if (!moved && Math.abs(dy) < TAP_MAX_DIST && dt < TAP_MAX_TIME) {
+            // Tap → toggle. A pointerup that never crossed
+            // TAP_MAX_DIST is a tap regardless of duration — desktop
+            // mouse users sometimes click and hold for a beat before
+            // releasing, and the previous TAP_MAX_TIME bound was
+            // sending those held-clicks down the snap branch where
+            // dy=0 always evaluated to closeSheet(). dt is no longer
+            // an input to tap-vs-drag classification; only motion is.
+            if (!moved && Math.abs(dy) < TAP_MAX_DIST) {
                 toggleSheet();
                 return;
             }
@@ -4146,9 +4195,11 @@ function setupBottomSheet() {
     // barbs at each tip give it the characteristic flake silhouette
     // rather than reading as a plain asterisk.
     const SNOW_SVG = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="1" x2="8" y2="15"/><line x1="1.94" y1="4.5" x2="14.06" y2="11.5"/><line x1="1.94" y1="11.5" x2="14.06" y2="4.5"/><path d="M 6.5 2.5 L 8 4 L 9.5 2.5"/><path d="M 6.5 13.5 L 8 12 L 9.5 13.5"/><path d="M 3.2 3.4 L 4.5 5.5 L 2.4 5.7"/><path d="M 12.8 12.6 L 11.5 10.5 L 13.6 10.3"/><path d="M 3.2 12.6 L 4.5 10.5 L 2.4 10.3"/><path d="M 12.8 3.4 L 11.5 5.5 L 13.6 5.7"/></g></svg>';
-    const seasonBtn = document.getElementById("toggle-season");
-    const seasonLabel = document.getElementById("toggle-season-label");
-    const seasonSwatch = seasonBtn && seasonBtn.querySelector(".season-swatch");
+    const seasonField = document.getElementById("season-field");
+    const seasonSwatch = seasonField && seasonField.querySelector(".season-swatch");
+    const seasonButtons = seasonField
+        ? Array.from(seasonField.querySelectorAll(".sheet-segmented-btn"))
+        : [];
     // CONFIG.routes and CONFIG.customRoutes are objects keyed by route id.
     // A route participates in winter mode iff its info carries `winter: true`.
     const anyRouteHas = (flag) => {
@@ -4157,11 +4208,9 @@ function setupBottomSheet() {
         return check(CONFIG.routes) || check(CONFIG.customRoutes);
     };
     const hasWinter = anyRouteHas("winter");
-    if (seasonBtn && hasWinter) {
+    if (seasonField && hasWinter && seasonButtons.length) {
         const reflectSeason = () => {
             const isSummer = seasonMode === "summer";
-            seasonBtn.setAttribute("aria-label",
-                isSummer ? "Switch to winter" : "Switch to summer");
             if (seasonSwatch) {
                 seasonSwatch.innerHTML = isSummer ? SUN_SVG : SNOW_SVG;
                 // Summer colour (warm forest green) lives in CSS; winter
@@ -4169,39 +4218,49 @@ function setupBottomSheet() {
                 // read as distinct seasonal moods beyond the glyph.
                 seasonSwatch.style.background = isSummer ? "" : "#3d6b9c";
             }
-            if (seasonLabel) seasonLabel.textContent = isSummer ? "Summer" : "Winter";
+            for (const b of seasonButtons) {
+                b.setAttribute("aria-checked",
+                    b.dataset.value === seasonMode ? "true" : "false");
+            }
         };
-        seasonBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            seasonMode = seasonMode === "summer" ? "winter" : "summer";
-            LS.set("mtb.seasonMode", seasonMode);
-            reflectSeason();
-            applyVisibilityChange();
-        });
+        for (const b of seasonButtons) {
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const next = b.dataset.value;
+                if (next === seasonMode) return;
+                seasonMode = next;
+                LS.set("mtb.seasonMode", seasonMode);
+                reflectSeason();
+                applyVisibilityChange();
+            });
+        }
         reflectSeason();
-    } else if (seasonBtn) {
-        seasonBtn.classList.add("hidden");
+    } else if (seasonField) {
+        seasonField.classList.add("hidden");
         // Force summer regardless of persisted state so renders are silent.
         seasonMode = "summer";
     }
 
-    // ----- Emergency Access switch (expanded sheet, single authority) -
+    // ----- Emergency Access toggle (single authority) ---------------
     //
-    // Shown only when the current map has at least one route with
-    // `emergency: true`. The peek row has no duplicate.
-    const emSwitch = document.getElementById("toggle-emergency-routes");
-    const emRow = document.getElementById("emergency-access-row");
+    // Same .sheet-toggle-row format as the POI toggles — a button
+    // that flips aria-pressed on click. Shown only when the current
+    // map has at least one route with `emergency: true`.
+    const emBtn = document.getElementById("toggle-emergency-routes");
     const hasEmergencyRoutes = anyRouteHas("emergency");
-    if (emSwitch && hasEmergencyRoutes) {
-        emSwitch.checked = emergencyOn;
-        if (emRow) emRow.classList.remove("hidden");
-        emSwitch.addEventListener("change", (e) => {
-            emergencyOn = !!e.target.checked;
+    if (emBtn && hasEmergencyRoutes) {
+        emBtn.setAttribute("aria-pressed", emergencyOn ? "true" : "false");
+        emBtn.classList.remove("hidden");
+        emBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const next = emBtn.getAttribute("aria-pressed") !== "true";
+            emBtn.setAttribute("aria-pressed", next ? "true" : "false");
+            emergencyOn = next;
             LS.set("mtb.emergencyOn", emergencyOn);
             applyVisibilityChange();
         });
     } else {
-        if (emRow) emRow.classList.add("hidden");
+        if (emBtn) emBtn.classList.add("hidden");
         // Force off — no route data to toggle.
         emergencyOn = false;
     }
@@ -4371,6 +4430,10 @@ function setupBottomSheet() {
     const basemapField = document.getElementById("basemap-field");
     const basemapSelect = document.getElementById("basemap-select");
     const baseLayers = CONFIG.baseLayers || [];
+    // The basemap selector lives inside the "Map style" collapsible
+    // accordion section. Keep both in sync — when there are no
+    // configured base layers, hide the whole section.
+    const styleSection = document.getElementById("section-style");
     if (basemapSelect && baseLayers.length > 0) {
         // Default first
         const defaultOpt = document.createElement("option");
@@ -4385,12 +4448,60 @@ function setupBottomSheet() {
         }
         basemapSelect.value = basemapMode;
         if (basemapField) basemapField.classList.remove("hidden");
+        if (styleSection) styleSection.classList.remove("hidden");
         basemapSelect.addEventListener("change", (e) => {
             basemapMode = e.target.value;
             rebuildBasemapLayers();
         });
-    } else if (basemapField) {
-        basemapField.classList.add("hidden");
+    } else {
+        if (basemapField) basemapField.classList.add("hidden");
+        if (styleSection) styleSection.classList.add("hidden");
+    }
+
+    // ----- Accordion sections (collapsible drawer groups) -----
+    // Each .sheet-section-collapsible has a header button that toggles
+    // the .is-open class on the section. Click on the header (not the
+    // body) flips state and updates aria-expanded for screen readers.
+    // Default-open state is set in HTML via the .is-open class on the
+    // section element; the header's aria-expanded mirrors it.
+    const collapsibleSections = document.querySelectorAll(
+        ".sheet-section-collapsible");
+    for (const section of collapsibleSections) {
+        const header = section.querySelector(".sheet-section-header");
+        if (!header) continue;
+        header.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const isOpen = section.classList.toggle("is-open");
+            header.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        });
+        header.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                header.click();
+            }
+        });
+    }
+
+    // ----- Peek search button -----
+    // Phase 1 stub: tapping the magnifying-glass opens the drawer
+    // (exposing the existing Finder section). Phase 3 will replace
+    // this with a full-screen search overlay that includes POI
+    // results and type-filter chips.
+    const searchBtn = document.getElementById("toggle-search");
+    if (searchBtn) {
+        searchBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openSheet();
+            // Move keyboard focus to the finder input for fast typing
+            // on desktop. Mobile keyboards open automatically via
+            // input.focus() when the input gets focus.
+            const finderInput = document.getElementById("finder-input");
+            if (finderInput) {
+                // Defer focus until after the sheet's open transition
+                // starts so the keyboard doesn't fight the slide-up.
+                setTimeout(() => finderInput.focus(), 50);
+            }
+        });
     }
 
     // ----- Finder -----
@@ -4580,7 +4691,7 @@ function makeRouteRow(r) {
 
     row.addEventListener("click", () => {
         highlightRoute(r.id);
-        document.getElementById("bottom-sheet").classList.remove("is-open");
+        if (window.__closeBottomSheet) window.__closeBottomSheet();
     });
 
     return row;
@@ -4622,7 +4733,7 @@ function makeTrailRow(t, visibleRouteIds) {
 
     row.addEventListener("click", () => {
         highlightTrail(t.name);
-        document.getElementById("bottom-sheet").classList.remove("is-open");
+        if (window.__closeBottomSheet) window.__closeBottomSheet();
     });
 
     return row;

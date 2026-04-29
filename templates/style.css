@@ -226,15 +226,17 @@ body.sheet-open #logo-overlay {
 
 /* ----- Sheet peek (always visible) ----------------------------------
  *
- * Single row of icon toggles. Whole peek (outside individual button hit
- * targets) is tappable to expand the sheet — the tap handler lives on
- * #sheet-peek in app.js. */
+ * UI v2: peek shows just the map title (left) + a small action row
+ * with the search button and the locate button (right). All set-once
+ * toggles (markers, parking, season, etc.) live in the drawer's
+ * accordion sections. Whole peek surface (outside individual button
+ * hit targets) is tappable to expand the sheet. */
 .sheet-peek {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     justify-content: center;
-    padding: 2px 10px 10px 10px;
+    padding: 4px 10px 10px 10px;
     flex-shrink: 0;
     cursor: pointer;
     /* Whole peek area is a drag surface — JS owns the gesture, so the
@@ -251,16 +253,17 @@ body.sheet-open #logo-overlay {
     touch-action: manipulation;
 }
 
-/* Map title — shown above the peek icon row, replaces the old
- * hamburger header. Uses the sheet's primary text colour so it reads
- * as the map's name rather than a section label. */
+/* Map title — left-aligned in the peek row alongside the search +
+ * locate icons. Truncates with ellipsis on narrow phones. */
 .sheet-peek-title {
-    font-size: 13px;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1.2;
     color: var(--sheet-text);
-    text-align: center;
-    padding: 0 8px 4px 8px;
+    text-align: left;
+    padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -270,13 +273,19 @@ body.sheet-open #logo-overlay {
 
 .sheet-peek-row {
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 6px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     width: 100%;
-    max-width: 480px;
     flex-wrap: nowrap;
-    overflow: hidden;
+}
+
+/* Action cluster on the right of the peek row — search + locate. */
+.sheet-peek-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
 }
 
 /* ----- Peek icon buttons -------------------------------------------
@@ -405,6 +414,357 @@ body.sheet-open #logo-overlay {
 /* Season cycles — never renders the off slash / outline treatment. */
 .peek-icon.peek-season[aria-pressed="false"] .season-swatch::after {
     content: none;
+}
+
+/* ----- Peek-icon "bare" variant ------------------------------------
+ *
+ * Used by the new peek-bar layout (search + locate). No label below
+ * the swatch — these are icon-only buttons, the action is unambiguous
+ * and the labels are redundant on the always-visible bar. Touch
+ * target is preserved by giving the button itself ≥40px hit area. */
+.peek-icon-bare {
+    width: auto;
+    min-width: 40px;
+    height: 40px;
+    padding: 4px;
+    flex-direction: row;
+    justify-content: center;
+    gap: 0;
+}
+
+.peek-icon-bare .peek-icon-label {
+    display: none;
+}
+
+.peek-icon-bare .layer-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+}
+
+/* Search swatch — matches the locate-swatch idle treatment so the
+ * two peek icons look like a coherent pair: white background, darker
+ * neutral border, dark icon stroke. Uses the #toggle-search ID
+ * prefix to ensure it WINS over the base .layer-swatch rule (which
+ * sets `color: white` and lives later in this file) — without the
+ * extra specificity, the inherited `currentColor` on the SVG stroke
+ * resolves to white and the icon disappears into the swatch
+ * background. */
+#toggle-search .search-swatch {
+    background: #fff;
+    color: #333;
+    border: 1.5px solid #ccc;
+}
+
+#toggle-search:hover .search-swatch {
+    background: #f0f0f0;
+}
+
+/* ----- Backdrop ----------------------------------------------------
+ *
+ * Covers the whole map behind the bottom sheet when the drawer is
+ * open. Fades in with the sheet's open transition; tap-to-close is
+ * wired in app.js via the existing document-level click handler.
+ * Sits below the sheet (z-index 4) but above the map (z-index 0–3).
+ * Pointer-events handled by the .is-active class so tapping through
+ * a hidden backdrop never blocks map interaction. */
+.sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease-out;
+}
+
+.sheet-backdrop.is-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sheet-backdrop {
+        transition: none;
+    }
+}
+
+/* ----- Drawer accordion sections -----------------------------------
+ *
+ * Collapsible groups inside the expanded sheet. Each section has a
+ * tappable header (title + chevron) and a body that slides
+ * open/closed by toggling the .is-open class on the parent section.
+ * No max-height-zero animation — that fights variable content height.
+ * We just toggle display on the body and rotate the chevron. */
+.sheet-section-collapsible .sheet-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    cursor: pointer;
+    color: var(--sheet-text);
+    font: inherit;
+    text-align: left;
+}
+
+.sheet-section-collapsible .sheet-section-header:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.sheet-section-collapsible .sheet-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sheet-text);
+    margin: 0;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.sheet-section-collapsible .sheet-section-chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--sheet-text);
+    opacity: 0.7;
+    transition: transform 0.18s ease-out;
+    transform: rotate(0deg);
+}
+
+.sheet-section-collapsible.is-open .sheet-section-chevron {
+    transform: rotate(180deg);
+}
+
+.sheet-section-collapsible .sheet-section-body {
+    display: none;
+    padding-top: 6px;
+}
+
+.sheet-section-collapsible.is-open .sheet-section-body {
+    display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sheet-section-collapsible .sheet-section-chevron {
+        transition: none;
+    }
+}
+
+/* ----- Drawer toggle rows (full-width buttons) ---------------------
+ *
+ * Replaces the peek-icon vertical-stack pattern when the same toggle
+ * lives in the drawer instead of the peek bar. Layout: swatch on
+ * left + label in middle + ON/OFF state on right. aria-pressed is
+ * the same authority as the peek version, so wirePeekToggle()
+ * needs no changes. */
+.sheet-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 8px 6px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--sheet-text);
+    font: inherit;
+    text-align: left;
+}
+
+.sheet-toggle-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+}
+
+@media (hover: hover) {
+    .sheet-toggle-row:hover {
+        background: var(--sheet-hover);
+    }
+}
+
+/* Invisible placeholder used by rows that don't have a colored
+ * swatch (currently just the Labels row) — preserves the
+ * 28px-of-left-indent that every other row gets from its swatch, so
+ * the label text aligns vertically across the whole "What to show"
+ * section even on rows without an icon. */
+.layer-swatch-placeholder {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+}
+
+.sheet-toggle-row .layer-swatch {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    /* Swatch text labels (#, P, TH) inherit font-size 10px from the
+     * base .layer-swatch rule which was sized for a 22px swatch. In
+     * the drawer's larger 28px swatches the same 10px text reads as
+     * tiny — bump to 13px (the same proportion as the peek's
+     * 24px-swatch / 11px-text pairing). "TH" still fits at this size
+     * (~2.4 ex per character × 2 chars = ~5 ex, swatch inner is ~25px
+     * after 1.5px borders → comfortable). */
+    font-size: 13px;
+    /* MUST be positioned so the feature-swatch's ::before
+     * coloured-dot pseudo-element AND the off-state ::after diagonal
+     * slash both anchor inside the swatch instead of floating to
+     * whatever ancestor happens to be positioned. */
+    position: relative;
+    overflow: visible;
+}
+
+.sheet-toggle-row-label {
+    flex: 1 1 auto;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--sheet-text);
+}
+
+/* ON/OFF state pill on the right side of each toggle-row. ::after
+ * carries the label so we don't need extra DOM. */
+.sheet-toggle-row-state {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: white;
+}
+
+.sheet-toggle-row-state::after {
+    content: "On";
+}
+
+.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-state {
+    background: #e3e3e3;
+    color: #6a6a6a;
+}
+
+.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-state::after {
+    content: "Off";
+}
+
+/* Off state on swatches inside drawer toggles — same three-cue
+ * treatment as the peek (transparent + grey border + slash). */
+.sheet-toggle-row[aria-pressed="false"] .layer-swatch {
+    background: transparent !important;
+    border: 1.5px solid #9aa0a6 !important;
+    color: #9aa0a6 !important;
+    box-shadow: none !important;
+}
+
+.sheet-toggle-row[aria-pressed="false"] .layer-swatch::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -2px;
+    right: -2px;
+    height: 1.5px;
+    background: #9aa0a6;
+    transform: translateY(-50%) rotate(-45deg);
+    transform-origin: center;
+    pointer-events: none;
+}
+
+.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-label {
+    color: #6a6a6a;
+}
+
+/* Season toggle never shows the off-slash treatment — it cycles
+ * between Summer and Winter, never "off." */
+.sheet-toggle-row.peek-season[aria-pressed="false"] .season-swatch::after,
+.sheet-toggle-row.peek-season[aria-pressed="false"] .layer-swatch::after {
+    content: none;
+}
+
+/* Season pill — same visual weight as the on/off pill, but its text
+ * content is set inline by app.js (Summer ↔ Winter) rather than via
+ * the ::after pseudo-element. */
+.season-pill {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: white;
+}
+
+/* ----- Segmented-pill (Labels: Routes / Trails / None) ------------
+ *
+ * Sits on the right side of a .sheet-toggle-row-segmented row in the
+ * same visual weight as the on/off pill. Each child button is a small
+ * pill segment; aria-checked drives the active fill. Stays compact
+ * enough to fit alongside the row label on a phone screen. */
+.sheet-toggle-row-segmented {
+    /* Row layout matches the toggle-row, but suppress the toggle-row's
+     * "tap-anywhere-to-flip" cursor — only the segmented buttons do
+     * anything; the rest of the row is passive. */
+    cursor: default;
+}
+
+.sheet-segmented-pill {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 2px;
+    border: none;
+    border-radius: 999px;
+    background: #e3e3e3;
+}
+
+.sheet-segmented-pill .sheet-segmented-btn {
+    /* Override the default .sheet-segmented-btn rules so the pill
+     * variant doesn't inherit the 36px min-height, flex-grow, or
+     * separator border that the original card-style segmented
+     * control assumes. */
+    flex: 0 0 auto;
+    min-height: 0;
+    border: none;
+    border-left: none;
+    background: transparent;
+    color: #555;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: background 0.12s, color 0.12s;
+}
+
+.sheet-segmented-pill .sheet-segmented-btn:hover {
+    color: #222;
+}
+
+.sheet-segmented-pill .sheet-segmented-btn[aria-checked="true"] {
+    background: var(--accent);
+    color: white;
+}
+
+.sheet-segmented-pill .sheet-segmented-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sheet-segmented-pill .sheet-segmented-btn {
+        transition: none;
+    }
 }
 
 /* ----- Sheet expanded area ----------------------------------------- */

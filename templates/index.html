@@ -64,50 +64,50 @@
         </svg>
     </button>
 
-    <!-- Bottom sheet — replaces the old hamburger panel.
-         Two states: peek (always visible, ~56-64px tall) and expanded
-         (slides up to ~70% viewport). Controlled by app.js. -->
+    <!-- Backdrop — fades in when the bottom sheet opens, dimming the
+         map behind it so the drawer reads as a focused overlay.
+         Tap to close. -->
+    <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
+
+    <!-- Bottom sheet — peek (always visible) + expanded drawer.
+         Peek shows just the map title + search button + locate button.
+         All set-once toggles (markers, parking, season, etc.) live in
+         the drawer's accordion sections. Drawer is a binary modal:
+         tap-to-open, drag-down or tap-backdrop or Escape to close. -->
     <div id="bottom-sheet" class="bottom-sheet" role="region" aria-label="Map controls" style="visibility: hidden">
-        <div class="sheet-handle" id="sheet-handle" role="button" tabindex="0" aria-label="Open or close map controls" aria-expanded="false">
+        <div class="sheet-handle" id="sheet-handle" role="button" tabindex="0" aria-label="Open or close map settings" aria-expanded="false">
             <span class="sheet-handle-bar" aria-hidden="true"></span>
         </div>
 
         <div class="sheet-peek" id="sheet-peek">
-            <div class="sheet-peek-title" id="sheet-peek-title">&nbsp;</div>
-            <div class="sheet-peek-row" id="sheet-peek-row" role="group" aria-label="Quick toggles">
-                <button class="peek-icon peek-season" id="toggle-season" type="button" aria-pressed="true" aria-label="Toggle season">
-                    <span class="layer-swatch season-swatch" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/><line x1="2.85" y1="2.85" x2="4.1" y2="4.1"/><line x1="11.9" y1="11.9" x2="13.15" y2="13.15"/><line x1="2.85" y1="13.15" x2="4.1" y2="11.9"/><line x1="11.9" y1="4.1" x2="13.15" y2="2.85"/></g></svg></span>
-                    <span class="peek-icon-label" id="toggle-season-label">Summer</span>
-                </button>
-                <button class="peek-icon" id="toggle-parking" data-poi="parking" type="button" aria-pressed="true" aria-label="Show parking">
-                    <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
-                    <span class="peek-icon-label">Parking</span>
-                </button>
-                <button class="peek-icon" id="toggle-trailheads" data-poi="trailheads" type="button" aria-pressed="true" aria-label="Show trailheads">
-                    <span class="layer-swatch trailhead-swatch" aria-hidden="true">TH</span>
-                    <span class="peek-icon-label">Trailheads</span>
-                </button>
-                <button class="peek-icon" id="toggle-features" data-poi="features" type="button" aria-pressed="true" aria-label="Show features">
-                    <span class="layer-swatch feature-swatch" aria-hidden="true"></span>
-                    <span class="peek-icon-label">Features</span>
-                </button>
-                <button class="peek-icon" id="toggle-difficulty" data-poi="difficulty" type="button" aria-pressed="true" aria-label="Show difficulty">
-                    <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
-                    <span class="peek-icon-label">Difficulty</span>
-                </button>
-                <button class="peek-icon" id="toggle-markers" data-poi="markers" type="button" aria-pressed="true" aria-label="Show markers">
-                    <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
-                    <span class="peek-icon-label">Markers</span>
-                </button>
-                <button class="peek-icon" id="toggle-locate" type="button" aria-pressed="false" aria-label="Locate me">
-                    <span class="layer-swatch locate-swatch" aria-hidden="true"><svg class="locate-icon" viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle class="locate-dot" cx="8" cy="8" r="2.2" fill="currentColor"/><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/></g></svg></span>
-                    <span class="peek-icon-label">Locate</span>
-                </button>
+            <div class="sheet-peek-row" id="sheet-peek-row" role="group" aria-label="Map controls">
+                <div class="sheet-peek-title" id="sheet-peek-title">&nbsp;</div>
+                <div class="sheet-peek-actions">
+                    <button class="peek-icon peek-icon-bare" id="toggle-search" type="button" aria-label="Search routes, trails, and places">
+                        <span class="layer-swatch search-swatch" aria-hidden="true">
+                            <!-- Heroicons outline magnifying-glass (MIT). viewBox shifted by 0.5
+                                 units so the icon's visual centre (12.5, 12.5 — the midpoint
+                                 of its bounding box from the circle's top-left at (4,4) to the
+                                 handle tip at (21,21)) lands at the rendered SVG's centre.
+                                 Without this offset the icon visibly pulls toward the
+                                 bottom-right of the swatch — most obvious now that the swatch
+                                 background is white with a clear boundary. -->
+                            <svg viewBox="0.5 0.5 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="7"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </span>
+                    </button>
+                    <button class="peek-icon peek-icon-bare" id="toggle-locate" type="button" aria-pressed="false" aria-label="Locate me">
+                        <span class="layer-swatch locate-swatch" aria-hidden="true"><svg class="locate-icon" viewBox="-1 -1 18 18" width="18" height="18" overflow="visible"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle class="locate-dot" cx="8" cy="8" r="2.2" fill="currentColor"/><circle cx="8" cy="8" r="5.5"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/></g></svg></span>
+                    </button>
+                </div>
             </div>
         </div>
 
         <div class="sheet-expanded" id="sheet-expanded" aria-hidden="true">
-            <!-- Find a route or trail -->
+            <!-- Find a route or trail (Phase 1: stays in drawer; Phase 3
+                 promotes to a full search overlay) -->
             <section class="sheet-section" id="finder-section">
                 <h3 class="sheet-section-title">Find a route or trail</h3>
                 <div class="finder">
@@ -123,32 +123,113 @@
                 </div>
             </section>
 
-            <!-- Map options -->
-            <section class="sheet-section" id="sheet-options-section">
-                <h3 class="sheet-section-title">Map options</h3>
-                <div class="sheet-row sheet-row-segmented" id="label-field">
-                    <div class="sheet-field-label" id="label-group-label">Show Labels</div>
-                    <div class="sheet-segmented" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
-                        <button type="button" class="sheet-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
-                        <button type="button" class="sheet-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
-                        <button type="button" class="sheet-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
+            <!-- What to show — collapsible accordion (default open).
+                 Holds every layer-visibility toggle, the Labels
+                 segmented control, Season cycle, Emergency Access
+                 toggle, and (Phase 2) Toilets + Drinking Water — one
+                 unified group of "what's painted on the map." -->
+            <section class="sheet-section sheet-section-collapsible is-open" id="section-what-to-show">
+                <button class="sheet-section-header" type="button" aria-expanded="true" aria-controls="section-what-to-show-body">
+                    <span class="sheet-section-title">What to show</span>
+                    <span class="sheet-section-chevron" aria-hidden="true">
+                        <!-- Heroicons outline chevron-down (MIT) -->
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="sheet-section-body" id="section-what-to-show-body">
+                    <!-- Labels — segmented control on the right (Routes
+                         / Trails / None). No left-side swatch: there's
+                         no on-map equivalent to preview. A
+                         .layer-swatch-placeholder keeps the label text
+                         aligned with the rows below that DO have
+                         swatches. -->
+                    <div class="sheet-row sheet-toggle-row sheet-toggle-row-segmented" id="label-field">
+                        <span class="layer-swatch-placeholder" aria-hidden="true"></span>
+                        <span class="sheet-toggle-row-label" id="label-group-label">Labels</span>
+                        <div class="sheet-segmented sheet-segmented-pill" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
+                            <button type="button" class="sheet-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
+                            <button type="button" class="sheet-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
+                            <button type="button" class="sheet-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
+                        </div>
                     </div>
+
+                    <!-- Season — segmented control with both options
+                         visible (Summer / Winter), matching the Labels
+                         row's pattern. Sun/snow swatch on the left
+                         updates dynamically to reflect the current
+                         selection. The whole row is a div (not a
+                         button) — only the inner segmented buttons are
+                         interactive. -->
+                    <div class="sheet-row sheet-toggle-row sheet-toggle-row-segmented peek-season" id="season-field">
+                        <span class="layer-swatch season-swatch" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="0.75" x2="8" y2="2.5"/><line x1="8" y1="13.5" x2="8" y2="15.25"/><line x1="0.75" y1="8" x2="2.5" y2="8"/><line x1="13.5" y1="8" x2="15.25" y2="8"/><line x1="2.85" y1="2.85" x2="4.1" y2="4.1"/><line x1="11.9" y1="11.9" x2="13.15" y2="13.15"/><line x1="2.85" y1="13.15" x2="4.1" y2="11.9"/><line x1="11.9" y1="4.1" x2="13.15" y2="2.85"/></g></svg></span>
+                        <span class="sheet-toggle-row-label" id="season-group-label">Season</span>
+                        <div class="sheet-segmented sheet-segmented-pill" role="radiogroup" aria-labelledby="season-group-label" id="season-segmented">
+                            <button type="button" class="sheet-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
+                            <button type="button" class="sheet-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
+                        </div>
+                    </div>
+
+                    <button class="sheet-row sheet-toggle-row" id="toggle-difficulty" data-poi="difficulty" type="button" aria-pressed="true">
+                        <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
+                        <span class="sheet-toggle-row-label">Difficulty</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
+
+                    <button class="sheet-row sheet-toggle-row" id="toggle-markers" data-poi="markers" type="button" aria-pressed="true">
+                        <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
+                        <span class="sheet-toggle-row-label">Trail markers</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
+
+                    <button class="sheet-row sheet-toggle-row" id="toggle-trailheads" data-poi="trailheads" type="button" aria-pressed="true">
+                        <span class="layer-swatch trailhead-swatch" aria-hidden="true">TH</span>
+                        <span class="sheet-toggle-row-label">Trailheads</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
+
+                    <button class="sheet-row sheet-toggle-row" id="toggle-parking" data-poi="parking" type="button" aria-pressed="true">
+                        <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
+                        <span class="sheet-toggle-row-label">Parking</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
+
+                    <button class="sheet-row sheet-toggle-row" id="toggle-features" data-poi="features" type="button" aria-pressed="true">
+                        <span class="layer-swatch feature-swatch" aria-hidden="true"></span>
+                        <span class="sheet-toggle-row-label">Features</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
+
+                    <!-- Emergency Access — same toggle-row format as the
+                         POI toggles. Uses aria-pressed; app.js wires
+                         click handler that mirrors emergencyOn into
+                         localStorage + applyVisibilityChange(). Hidden
+                         by default; revealed only when the map has at
+                         least one emergency-tagged route. -->
+                    <button class="sheet-row sheet-toggle-row hidden" id="toggle-emergency-routes" type="button" aria-pressed="false">
+                        <span class="layer-swatch emergency-swatch" aria-hidden="true">!</span>
+                        <span class="sheet-toggle-row-label">Emergency access routes</span>
+                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
+                    </button>
                 </div>
-                <div class="sheet-row hidden" id="emergency-access-row">
-                    <label class="sheet-toggle">
-                        <input type="checkbox" id="toggle-emergency-routes">
-                        <span class="sheet-toggle-track" aria-hidden="true"></span>
-                        <span class="sheet-toggle-text">
-                            <span class="sheet-toggle-title">
-                                <span class="layer-swatch emergency-swatch" aria-hidden="true">!</span>
-                                Show Emergency Access Routes
-                            </span>
-                        </span>
-                    </label>
-                </div>
-                <div class="sheet-row sheet-row-field hidden" id="basemap-field">
-                    <label class="sheet-field-label" for="basemap-select">Basemap</label>
-                    <select id="basemap-select" class="sheet-select"></select>
+            </section>
+
+            <!-- Map style — basemap selector -->
+            <section class="sheet-section sheet-section-collapsible hidden" id="section-style">
+                <button class="sheet-section-header" type="button" aria-expanded="false" aria-controls="section-style-body">
+                    <span class="sheet-section-title">Map style</span>
+                    <span class="sheet-section-chevron" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </span>
+                </button>
+                <div class="sheet-section-body" id="section-style-body">
+                    <div class="sheet-row sheet-row-field" id="basemap-field">
+                        <label class="sheet-field-label" for="basemap-select">Basemap</label>
+                        <select id="basemap-select" class="sheet-select"></select>
+                    </div>
                 </div>
             </section>
 
