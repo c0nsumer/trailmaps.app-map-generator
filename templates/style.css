@@ -20,6 +20,31 @@
     --highlight-amber: #ffb700;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
+
+    /* POI marker design tokens — shared between Options drawer
+     * swatches AND on-map markers so each Options chip is a true
+     * miniature of the marker it represents. Tweaking any of these
+     * updates both surfaces in lockstep.
+     *
+     * Trailheads use a wider chip because "TH" is two characters;
+     * trail markers use a smaller, variable-width chip because the
+     * ref ("23", "EAP-1") is hung off the existing OSM tag and
+     * varies wildly in length. Everything else is the standard
+     * square. */
+    --poi-marker-size: 24px;
+    --poi-marker-size-trailhead-w: 28px;
+    --poi-marker-size-trail-marker-h: 20px;
+    --poi-marker-size-trail-marker-min-w: 20px;
+    --poi-marker-radius: 4px;
+    --poi-marker-border: 2px;
+    --poi-marker-font-text: 13px;          /* P (parking) */
+    --poi-marker-font-text-tight: 11px;    /* TH, trail-marker refs */
+    --poi-marker-svg-size: 14px;           /* toilet, water glyphs */
+    /* Drop-shadow for on-map markers ONLY — gives them apparent
+     * depth above the basemap. Options swatches use a different
+     * shadow (a 1px dark outline for contrast against the sheet)
+     * so this token isn't shared with .layer-swatch. */
+    --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -739,28 +764,54 @@ body {
     box-shadow: 0 0 0 2px var(--sheet-bg), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* ----- Layer swatches (POI marker color cues in toggle rows) ------- */
+/* ----- Layer swatches (POI marker color cues in toggle rows) -------
+ *
+ * Sized via the shared --poi-marker-* tokens so each swatch in the
+ * Options drawer is a true miniature of the on-map marker it stands
+ * for. The dark outline (box-shadow) is unique to swatches — gives
+ * the chip an edge against the sheet background. The on-map markers
+ * use --poi-marker-map-shadow instead (drop-shadow, not outline).
+ */
 .layer-swatch {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 4px;
-    font-size: 10px;
+    width: var(--poi-marker-size);
+    height: var(--poi-marker-size);
+    border-radius: var(--poi-marker-radius);
+    font-size: var(--poi-marker-font-text);
     font-weight: 700;
     line-height: 1;
     color: white;
-    border: 1.5px solid white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    border: var(--poi-marker-border) solid white;
     box-sizing: border-box;
     flex-shrink: 0;
+    /* Faint outer outline: gives the chip's white border something
+     * to contrast against on the white-ish sheet background, so it
+     * reads as a "white frame around colored interior" the way it
+     * does naturally on the map (where the surrounding map color
+     * provides the contrast). Opacity is intentionally low (0.08)
+     * — high enough that the white border becomes perceptible as a
+     * frame, low enough that the chip's perceived size still
+     * matches its on-map equivalent. */
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+/* Override the inline SVG width/height attributes (which are baked
+ * into index.html for the toilet, water, label, and season glyphs)
+ * so the SVG size flows from the same token as everything else.
+ * Means tweaking --poi-marker-svg-size updates all four glyphs
+ * without touching HTML. */
+.layer-swatch svg {
+    width: var(--poi-marker-svg-size);
+    height: var(--poi-marker-svg-size);
 }
 
 .marker-swatch {
     background: var(--marker-color, #795548);
     color: var(--marker-text-color, #fff);
-    border: 1.5px solid var(--marker-border-color, #fff);
+    border: var(--poi-marker-border) solid var(--marker-border-color, #fff);
+    font-size: var(--poi-marker-font-text-tight);
 }
 
 /* Emergency route-bucket swatch — still used on the Map-options
@@ -772,14 +823,18 @@ body {
 .parking-swatch {
     background: var(--parking-color, #2980b9);
     color: var(--parking-text-color, #fff);
-    border: 1.5px solid var(--parking-border-color, #fff);
+    border: var(--poi-marker-border) solid var(--parking-border-color, #fff);
 }
 
 .trailhead-swatch {
     background: var(--trailhead-color, #27ae60);
     color: var(--trailhead-text-color, #fff);
-    border: 1.5px solid var(--trailhead-border-color, #fff);
-    font-size: 9px;
+    border: var(--poi-marker-border) solid var(--trailhead-border-color, #fff);
+    /* Wider chip to fit "TH" without cramping — matches the on-map
+     * trailhead marker's aspect ratio so the swatch reads as the
+     * same shape, just shrunk to row height. */
+    width: var(--poi-marker-size-trailhead-w);
+    font-size: var(--poi-marker-font-text-tight);
 }
 
 /* Labels — same "settings, not a layer toggle" treatment as the
@@ -801,7 +856,7 @@ body {
 .toilet-swatch {
     background: var(--toilet-color, #6c5ce7);
     color: var(--toilet-text-color, #fff);
-    border: 1.5px solid var(--toilet-border-color, #fff);
+    border: var(--poi-marker-border) solid var(--toilet-border-color, #fff);
 }
 
 /* Drinking water — saturated blue with a droplet glyph. Distinct
@@ -810,7 +865,7 @@ body {
 .drinking-water-swatch {
     background: var(--drinking-water-color, #3498db);
     color: var(--drinking-water-text-color, #fff);
-    border: 1.5px solid var(--drinking-water-border-color, #fff);
+    border: var(--poi-marker-border) solid var(--drinking-water-border-color, #fff);
 }
 
 /* Locate swatch — mirrors the MapLibre native GeolocateControl state
@@ -938,8 +993,8 @@ body {
  * black-diamond icon shape (see drawDifficultyShape in app.js)
  * while keeping the outer chip identical to other peek icons so
  * the off-state slash lands in the same geometric position. The
- * chip already provides the white halo via box-shadow inherited
- * from .layer-swatch, so the ::before shape doesn't need its own. */
+ * outline (from .layer-swatch base) gives the white chip its
+ * edge against the white-ish sheet. */
 .difficulty-swatch {
     background: #fff;
 }
@@ -1411,6 +1466,91 @@ body {
 }
 
 /* ----- Feature markers --------------------------------------------- */
+/* ============================================================
+ * On-map POI markers — base + per-type modifiers
+ *
+ * The visual styling for parking, trailheads, toilets, drinking
+ * water, and trail markers used to live as inline `markerStyle`
+ * template strings in app.js. They've been hoisted to CSS classes
+ * so both Options swatches AND map markers reference the same
+ * --poi-marker-* design tokens. Single source of truth — bumping
+ * --poi-marker-size in :root resizes both surfaces in lockstep.
+ *
+ * Differences from .layer-swatch (the Options chip equivalent):
+ *   - drop-shadow instead of dark-outline (gives apparent depth
+ *     above the basemap; outline would compete with map content)
+ *   - cursor: pointer (markers are tap targets)
+ *
+ * Per-type modifiers below set the color triple (background, text,
+ * border) plus any size overrides. Trail marker is special:
+ * variable-width to fit ref strings of any length.
+ * ============================================================ */
+
+.poi-marker {
+    width: var(--poi-marker-size);
+    height: var(--poi-marker-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--poi-marker-radius);
+    border: var(--poi-marker-border) solid white;
+    color: white;
+    font-weight: 700;
+    line-height: 1;
+    box-sizing: border-box;
+    box-shadow: var(--poi-marker-map-shadow);
+    cursor: pointer;
+}
+
+.poi-marker svg {
+    width: var(--poi-marker-svg-size);
+    height: var(--poi-marker-svg-size);
+}
+
+.parking-marker {
+    background: var(--parking-color, #2980b9);
+    color: var(--parking-text-color, #fff);
+    border-color: var(--parking-border-color, #fff);
+    font-size: var(--poi-marker-font-text);
+}
+
+.trailhead-marker {
+    background: var(--trailhead-color, #27ae60);
+    color: var(--trailhead-text-color, #fff);
+    border-color: var(--trailhead-border-color, #fff);
+    font-size: var(--poi-marker-font-text-tight);
+    /* Wider chip than the standard square so "TH" reads cleanly. */
+    width: var(--poi-marker-size-trailhead-w);
+}
+
+.toilet-marker {
+    background: var(--toilet-color, #6c5ce7);
+    border-color: var(--toilet-border-color, #fff);
+}
+
+.drinking-water-marker {
+    background: var(--drinking-water-color, #3498db);
+    border-color: var(--drinking-water-border-color, #fff);
+}
+
+/* Trail markers — variable-width to accommodate ref strings of
+ * varying length ("23", "EAP-1", "#"). min-width keeps a single-
+ * character chip from collapsing below readability; padding gives
+ * multi-character refs breathing room. pointer-events: none so
+ * the marker doesn't intercept map clicks (no popup wired). */
+.trail-marker {
+    background: var(--marker-color, #795548);
+    color: var(--marker-text-color, #fff);
+    border-color: var(--marker-border-color, #fff);
+    font-size: var(--poi-marker-font-text-tight);
+    height: var(--poi-marker-size-trail-marker-h);
+    min-width: var(--poi-marker-size-trail-marker-min-w);
+    width: auto;
+    padding: 0 4px;
+    pointer-events: none;
+    cursor: default;
+}
+
 .feature-marker {
     display: flex;
     flex-direction: column;
@@ -2191,15 +2331,18 @@ body {
 
 /* ----- Misc fixes after the bottom-sheet rule deletion ------------- */
 
-/* Season swatch background — the previous .peek-season .season-swatch
- * rule was deleted with the rest of the peek-icon family. Apply the
- * forest-green summer background through the renamed .peek-season
- * marker class (still on the season row in the HTML). Winter is
- * inline-styled by app.js (#3d6b9c slate-blue) so no winter rule
- * needed. */
+/* Season swatch background — summer (default) is a forest green
+ * matching the warm growing-season palette; winter (.is-winter
+ * class toggled by app.js) is a cold cyan-leaning teal-blue that
+ * reads as glacier / ice rather than generic "blue", and is
+ * distinctly cooler than the parking blue (#2980b9) and water
+ * blue (#3498db) it shares the chrome with. */
 .opt-toggle-row.peek-season .season-swatch {
     background: #2e7d32;
     color: white;
+}
+.opt-toggle-row.peek-season .season-swatch.is-winter {
+    background: #0e7490;
 }
 
 /* Off-state hollowing for swatches with ::before fills. Previously

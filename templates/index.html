@@ -334,11 +334,15 @@
                 </div>
             </section>
 
-            <!-- More — Share / Install / About. Always shown. -->
+            <!-- Share / Install / About — three full-row action buttons.
+                 No section header: the action rows are visually distinct
+                 from the toggle rows above (full-row buttons with icons +
+                 descriptions vs. toggle chips with segmented controls),
+                 so a generic "More" label adds noise without information.
+                 The .opt-section's existing border-top hairline still
+                 provides the visual break between layer toggles and
+                 actions. -->
             <section class="opt-section" id="section-more">
-                <h3 class="opt-section-header">
-                    <span class="opt-section-title">More</span>
-                </h3>
                 <div class="opt-section-body" id="section-more-body">
                     <!-- Share start -->
                     <button id="share-btn" class="opt-action-row hidden" type="button">
@@ -363,7 +367,7 @@
                         </span>
                         <span class="opt-action-text">
                             <span class="opt-action-title">Install as app</span>
-                            <span class="opt-action-help">Add to your home screen for offline use.</span>
+                            <span class="opt-action-help">Install locally for offline use.</span>
                         </span>
                     </button>
                     <div id="ios-install-hint" class="opt-install-hint hidden">

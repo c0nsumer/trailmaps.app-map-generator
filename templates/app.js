@@ -4533,11 +4533,18 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 // Single helper covering the merged trail-marker POI category — OSM
 // guideposts and emergency-access points now render with the same
 // style. Shown/hidden together via the "Markers" peek toggle.
+// Note on className strings below: each map marker carries TWO
+// classes — the .poi-marker base (shared geometry, drop-shadow,
+// font weight, etc.) plus a per-type modifier (.parking-marker,
+// .toilet-marker, etc.) that sets the color triple and any per-
+// type size overrides. All driven by --poi-marker-* CSS tokens at
+// :root so the Options swatches stay in lockstep with the on-map
+// markers — see "On-map POI markers" block in style.css.
+
 function addTrailMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.TRAIL_MARKER,
-        className: "trail-marker",
-        markerStyle: `min-width:20px;height:20px;padding:0 4px;background:${CONFIG.markerColor};color:${CONFIG.markerTextColor};border-radius:4px;border:2px solid ${CONFIG.markerBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;line-height:1;pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,0.3);box-sizing:border-box;`,
+        className: "poi-marker trail-marker",
         // Fall back to "#" when OSM carries neither ref nor name —
         // matches the peek-bar swatch, preserves the marker's physical
         // footprint (empty string would collapse it via min-width),
@@ -4551,8 +4558,7 @@ function addTrailMarkers(addToMap) {
 function addParkingMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.PARKING,
-        className: "parking-marker",
-        markerStyle: `width:24px;height:24px;background:${CONFIG.parkingColor};color:${CONFIG.parkingTextColor};border-radius:4px;border:2px solid ${CONFIG.parkingBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        className: "poi-marker parking-marker",
         labelFn: () => "P",
         popupHtmlFn: (p, coords) => {
             let h = `<div class="popup-title">${p.name || "Parking"}</div>`;
@@ -4568,8 +4574,7 @@ function addParkingMarkers(addToMap) {
 function addTrailheadMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.TRAILHEAD,
-        className: "trailhead-marker",
-        markerStyle: `width:28px;height:24px;background:${CONFIG.trailheadColor};color:${CONFIG.trailheadTextColor};border-radius:4px;border:2px solid ${CONFIG.trailheadBorderColor};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        className: "poi-marker trailhead-marker",
         labelFn: () => "TH",
         popupHtmlFn: (p, coords) => {
             let h = `<div class="popup-title">${p.name || "Trailhead"}</div>`;
@@ -4587,15 +4592,15 @@ function addTrailheadMarkers(addToMap) {
 // FIND, not contextual decoration. Square swatch with a stylised
 // figure glyph; popup carries access/fee metadata when present.
 function addToiletMarkers(addToMap) {
-    const bg = CONFIG.toiletColor || "#6c5ce7";
-    const border = CONFIG.toiletBorderColor || "#fff";
     createPoiMarkers({
         poiType: POI.TOILET,
-        className: "toilet-marker",
-        markerStyle: `width:24px;height:24px;background:${bg};color:#fff;border-radius:4px;border:2px solid ${border};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        className: "poi-marker toilet-marker",
         contentFn: (el) => {
-            // mdi:human-male-female (Apache 2.0, Pictogrammers)
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
+            // mdi:human-male-female (Apache 2.0, Pictogrammers).
+            // SVG width/height come from .poi-marker svg in CSS, so
+            // omit width/height attributes — the CSS rule provides
+            // a single source of truth (--poi-marker-svg-size).
+            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
         },
         popupHtmlFn: (p) => {
             let h = `<div class="popup-title">${p.name || "Toilets"}</div>`;
@@ -4618,15 +4623,13 @@ function addToiletMarkers(addToMap) {
 // Drinking-water markers — OSM amenity=drinking_water. Same
 // always-visible pattern as toilets. Droplet glyph, blue swatch.
 function addDrinkingWaterMarkers(addToMap) {
-    const bg = CONFIG.drinkingWaterColor || "#3498db";
-    const border = CONFIG.drinkingWaterBorderColor || "#fff";
     createPoiMarkers({
         poiType: POI.DRINKING_WATER,
-        className: "drinking-water-marker",
-        markerStyle: `width:24px;height:24px;background:${bg};color:#fff;border-radius:4px;border:2px solid ${border};display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.3);`,
+        className: "poi-marker drinking-water-marker",
         contentFn: (el) => {
-            // mdi:water (Apache 2.0, Pictogrammers)
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            // mdi:water (Apache 2.0, Pictogrammers). SVG width/height
+            // from .poi-marker svg in CSS — see toilet note above.
+            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
         },
         popupHtmlFn: (p) => {
             let h = `<div class="popup-title">${p.name || "Drinking Water"}</div>`;
@@ -4927,10 +4930,12 @@ function setupBottomSheet() {
             const isSummer = seasonMode === "summer";
             if (seasonSwatch) {
                 seasonSwatch.innerHTML = isSummer ? SUN_SVG : SNOW_SVG;
-                // Summer colour (warm forest green) lives in CSS; winter
-                // is a cold slate-blue applied inline so the two palettes
-                // read as distinct seasonal moods beyond the glyph.
-                seasonSwatch.style.background = isSummer ? "" : "#3d6b9c";
+                // Both colours live in CSS — summer is the default
+                // .season-swatch background (forest green), winter
+                // is layered on via .is-winter (cold glacier teal).
+                // Toggling a class instead of mutating inline style
+                // keeps the colours discoverable in style.css.
+                seasonSwatch.classList.toggle("is-winter", !isSummer);
             }
             for (const b of seasonButtons) {
                 b.setAttribute("aria-checked",
