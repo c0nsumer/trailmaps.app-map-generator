@@ -849,6 +849,22 @@ body {
     color: #f0f0f0;
 }
 
+/* Appearance — chrome indicator (not a sign), same adaptive pattern
+ * as the Labels chip. Light scheme: light chip with charcoal sun-
+ * moon glyph; dark scheme: dark chip with light sun-moon glyph.
+ * The mdi:theme-light-dark icon already reads as a "theme switcher"
+ * in both schemes, so no per-scheme glyph swap needed (unlike the
+ * Season chip's sun ⇌ snowflake). */
+.appearance-swatch {
+    background: var(--input-bg);
+    color: var(--sheet-text);
+}
+
+[data-color-scheme="dark"] .appearance-swatch {
+    background: var(--input-bg);
+    color: #f0f0f0;
+}
+
 /* Toilets — neutral slate to read as "facility" without competing
  * with parking blue or trailhead green. Glyph is a stylised standing
  * figure rendered as an SVG inside the swatch. */

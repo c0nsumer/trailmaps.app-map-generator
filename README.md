@@ -1198,6 +1198,7 @@ Icons currently in use:
 - `mdi:close` — Search overlay, Options overlay, and About-modal close buttons
 - `mdi:label` — Options "Labels" row
 - `mdi:weather-sunny` / `mdi:snowflake` — Options "Season" toggle (swapped at runtime by `reflectSeason()`)
+- `mdi:theme-light-dark` — Options "Appearance" row (light / dark / auto colour scheme)
 - `mdi:human-male-female` — Options "Toilets" row + on-map markers
 - `mdi:water` — Options "Drinking water" row + on-map markers
 - `mdi:information-outline` — About-modal header
