@@ -124,6 +124,8 @@ KNOWN_KEYS = {
     "welcome":                       (dict, bool),
     "default_visible":               (list, str),
     "accent_color":                  str,
+    "default_color_scheme":          str,
+    "invert_logo_dark":              bool,
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
@@ -190,6 +192,7 @@ HANDLED_SPECIALLY = {
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
+VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {"sunday", "monday", "tuesday", "wednesday",
               "thursday", "friday", "saturday",
               # Parity tokens: reverse on even or odd calendar dates
@@ -312,6 +315,12 @@ def _validate_enums(report, config):
         report.err("distance_units",
                    f"must be one of {sorted(VALID_DISTANCE_UNITS)}, "
                    f"got {config['distance_units']!r}")
+
+    if ("default_color_scheme" in config
+            and config["default_color_scheme"] not in VALID_COLOR_SCHEMES):
+        report.err("default_color_scheme",
+                   f"must be one of {sorted(VALID_COLOR_SCHEMES)}, "
+                   f"got {config['default_color_scheme']!r}")
 
     # (Historical note: an earlier draft cross-checked
     # show_route_elevation against show_terrain because the original

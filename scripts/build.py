@@ -1035,6 +1035,18 @@ CONFIG_SPEC = [
     # "none" so a fresh-LS visit produces a clean map with the rider
     # opting into labels via the Labels segmented control.
     ("default_labels",          "defaultLabels",        "none"),
+    # Initial colour scheme for first-visit riders. "light" / "dark"
+    # / "auto" (auto resolves prefers-color-scheme). Default "light"
+    # preserves existing behaviour for maps that don't opt in. The
+    # rider can override via the Options Appearance toggle; LS wins
+    # over this default on subsequent visits. The build also injects
+    # this value into the inline <head> bootstrap script so first
+    # paint already has the right scheme set on <html>.
+    ("default_color_scheme",    "defaultColorScheme",   "light"),
+    # Whether the brand-img logo should auto-invert in dark mode.
+    # Default true matches historical behaviour; curators with
+    # colored logos that look bad inverted set false per-map.
+    ("invert_logo_dark",        "invertLogoDark",       True),
     ("color_by",                "colorBy",              "relation"),
     ("suppress_path_labels",    "suppressPathLabels",   False),
     ("suppress_basemap_pois",   "suppressBasemapPois",  False),
@@ -1489,6 +1501,44 @@ def copy_templates(config, output_dir, trails_geojson):
                           or "Trail Map")
             content = content.replace("__BRAND_TITLE__",
                                       _html_escape(brand_title, quote=True))
+
+            # Inline colour-scheme bootstrap script. Runs synchronously
+            # in <head> BEFORE the stylesheet, so first paint already
+            # has the right data-color-scheme attribute on <html> and
+            # CSS variables resolve to the correct values without FOUC.
+            # Slug + default-scheme are baked in at build time; the
+            # snippet reads LS / falls back to the default / resolves
+            # "auto" against prefers-color-scheme.
+            slug = config.get("slug", "")
+            default_scheme = config.get("default_color_scheme", "light")
+            bootstrap_slug = json.dumps(slug)        # JS string-safe
+            bootstrap_default = json.dumps(default_scheme)
+            # The runtime stores LS values JSON-stringified (see
+            # LS.set in app.js: setItem(..., JSON.stringify(value))),
+            # so a stored "dark" preference is on disk as the
+            # 6-char string `"dark"` (with literal quote marks).
+            # The bootstrap parses it back; on parse failure (older
+            # raw values, or future schema drift) it falls through
+            # to the curator default rather than blocking on a
+            # broken LS entry.
+            bootstrap_script = (
+                "<script>"
+                "(function(){"
+                "try{"
+                f"var raw=localStorage.getItem({bootstrap_slug}+\".mtb.colorScheme\");"
+                "var stored=null;"
+                "if(raw){try{stored=JSON.parse(raw);}catch(e){stored=raw;}}"
+                f"var s=stored||{bootstrap_default};"
+                "if(s===\"auto\"){"
+                "s=matchMedia(\"(prefers-color-scheme: dark)\").matches?\"dark\":\"light\";"
+                "}"
+                "document.documentElement.setAttribute(\"data-color-scheme\",s);"
+                "}catch(e){}"
+                "})();"
+                "</script>"
+            )
+            content = content.replace("__COLOR_SCHEME_BOOTSTRAP__",
+                                      bootstrap_script)
 
             # Inject or remove brand image. Logo source falls back to
             # icon: when logo: is omitted; raster sources are normalized

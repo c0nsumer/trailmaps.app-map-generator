@@ -41,6 +41,123 @@
 })();
 
 // ============================================================
+// Colour scheme (light / dark) helpers — Bundle 4B
+// ============================================================
+//
+// The data-color-scheme attribute on <html> is the single source of
+// truth at runtime. It's set by the inline bootstrap script in <head>
+// (see build.py's __COLOR_SCHEME_BOOTSTRAP__ injection) BEFORE any
+// stylesheet renders, so first paint already has the correct scheme
+// and there's no light→dark FOUC.
+//
+// Resolution order is encoded in the bootstrap script:
+//   1. localStorage <slug>.mtb.colorScheme (rider's last toggle)
+//   2. CONFIG.defaultColorScheme (curator default; "light" by default)
+//   3. "auto" → matchMedia(prefers-color-scheme: dark)
+//
+// Once the page is up, JS reads/writes through these helpers.
+// ============================================================
+
+function currentColorScheme() {
+    // Always returns "light" or "dark" — the bootstrap script
+    // resolves "auto" before this runs, so the attribute is one of
+    // those two concrete values.
+    return document.documentElement.dataset.colorScheme === "dark"
+        ? "dark" : "light";
+}
+
+// Per-scheme paint tokens for MapLibre layers that can't read CSS
+// vars. Walked through applyMapPaintForScheme() on init AND every
+// scheme change. Trail/route labels, direction arrows, and any
+// future MapLibre-rendered text get their colours from here.
+const MAP_PAINT_TOKENS = {
+    light: {
+        labelText:  "#1a1a1a",
+        labelHalo:  "rgba(255, 255, 255, 0.9)",
+        // Arrow icon ID — we register two canvas-rendered variants
+        // (light-bg / dark-bg), distinct images, swap via
+        // setLayoutProperty.
+        arrowIcon:  "arrow-light-bg",
+    },
+    dark: {
+        labelText:  "#f0f0f0",
+        labelHalo:  "rgba(0, 0, 0, 0.7)",
+        arrowIcon:  "arrow-dark-bg",
+    },
+};
+
+function applyMapPaintForScheme(scheme) {
+    const t = MAP_PAINT_TOKENS[scheme] || MAP_PAINT_TOKENS.light;
+    if (!map) return;
+    if (map.getLayer("decor-trail-name")) {
+        map.setPaintProperty("decor-trail-name", "text-color", t.labelText);
+        map.setPaintProperty("decor-trail-name", "text-halo-color", t.labelHalo);
+    }
+    if (map.getLayer("decor-route-name")) {
+        map.setPaintProperty("decor-route-name", "text-color", t.labelText);
+        map.setPaintProperty("decor-route-name", "text-halo-color", t.labelHalo);
+    }
+    if (map.getLayer("decor-arrow")) {
+        map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
+    }
+}
+
+// Apply a chosen scheme to the live page. Three concerns:
+//   1. Persist preference to LS so subsequent visits use it.
+//   2. Resolve "auto" → "light"|"dark" via prefers-color-scheme.
+//   3. Update <html data-color-scheme>, then rebuild the basemap
+//      (Protomaps flavor follows scheme via buildPmtilesStyle), then
+//      re-apply the per-scheme map paint tokens once the new style
+//      finishes loading.
+//
+// Used by:
+//   - The Options Appearance segmented control (rider toggle)
+//   - The OS prefers-color-scheme listener when the rider's stored
+//     preference is "auto"
+function applyColorScheme(rawScheme) {
+    // rawScheme is the *intent*: "light", "dark", or "auto". Persist
+    // intent (so "auto" stays "auto"), but resolve to a concrete
+    // scheme for the data-color-scheme attribute.
+    LS.set("mtb.colorScheme", rawScheme);
+    let resolved = rawScheme;
+    if (resolved === "auto") {
+        resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark" : "light";
+    }
+    if (resolved !== "light" && resolved !== "dark") resolved = "light";
+    document.documentElement.setAttribute("data-color-scheme", resolved);
+
+    // Rebuild basemap layers via the existing helper that's already
+    // careful to preserve trail/decoration/highlight overlays. A
+    // naive map.setStyle(buildStyle()) would replace the WHOLE style
+    // including those overlays — trails would vanish until the next
+    // page load. rebuildBasemapLayers extracts the overlay layers
+    // from the current style, swaps in the new flavor's basemap,
+    // and stitches the overlays back in via setStyle({diff: true}).
+    // It also re-registers icons and re-applies map paint tokens.
+    if (map) rebuildBasemapLayers();
+}
+
+// Wire the OS prefers-color-scheme listener. Only takes effect when
+// the rider's stored preference is "auto" — explicit "light" or
+// "dark" wins over OS changes. Fires e.g. on iOS sunset shift if the
+// device is set to auto-switch.
+function watchSystemColorScheme() {
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => {
+        const stored = LS.get("mtb.colorScheme",
+            CONFIG.defaultColorScheme || "light");
+        if (stored === "auto") applyColorScheme("auto");
+    };
+    if (mql.addEventListener) {
+        mql.addEventListener("change", handler);
+    } else if (mql.addListener) {
+        // Safari < 14 fallback.
+        mql.addListener(handler);
+    }
+}
+
+// ============================================================
 // localStorage helpers — UI state persists per-map under
 // `<slug>.mtb.*` keys. localStorage is scoped by origin, not by
 // path, so without the slug prefix every map served from the same
@@ -258,25 +375,35 @@ function drawArrow(ctx, size, fillColor, haloColor) {
     ctx.fill();
 }
 
-const ARROW_ICON_ID = "arrow-dark";
-const ARROW_FILL = "#000000";
-const ARROW_HALO = "rgba(255,255,255,0.9)";
+// Two arrow icon variants — one tuned for each colour scheme.
+// MapLibre's icon-image layout property swaps between them via
+// applyMapPaintForScheme(). Both are registered at init so the swap
+// is instant; setStyle() drops icons but the registerArrowIcons
+// re-registration in onStyleLoaded re-uploads both.
+const ARROW_ICON_LIGHT_BG_ID = "arrow-light-bg";   // black fill on light basemap
+const ARROW_ICON_DARK_BG_ID  = "arrow-dark-bg";    // white fill on dark basemap
+const ARROW_VARIANTS = [
+    { id: ARROW_ICON_LIGHT_BG_ID, fill: "#000000",            halo: "rgba(255,255,255,0.9)" },
+    { id: ARROW_ICON_DARK_BG_ID,  fill: "#ffffff",            halo: "rgba(0,0,0,0.7)" },
+];
 
 function registerArrowIcons() {
     const size = 22;
     const ratio = 4;
-    if (map.hasImage(ARROW_ICON_ID)) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = size * ratio;
-    canvas.height = size * ratio;
-    const ctx = canvas.getContext("2d");
-    ctx.scale(ratio, ratio);
-    drawArrow(ctx, size, ARROW_FILL, ARROW_HALO);
-    map.addImage(ARROW_ICON_ID, {
-        width: size * ratio,
-        height: size * ratio,
-        data: ctx.getImageData(0, 0, size * ratio, size * ratio).data,
-    }, { pixelRatio: ratio });
+    for (const variant of ARROW_VARIANTS) {
+        if (map.hasImage(variant.id)) continue;
+        const canvas = document.createElement("canvas");
+        canvas.width = size * ratio;
+        canvas.height = size * ratio;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(ratio, ratio);
+        drawArrow(ctx, size, variant.fill, variant.halo);
+        map.addImage(variant.id, {
+            width: size * ratio,
+            height: size * ratio,
+            data: ctx.getImageData(0, 0, size * ratio, size * ratio).data,
+        }, { pixelRatio: ratio });
+    }
 }
 
 function todaysReverseRoutes() {
@@ -895,7 +1022,9 @@ function addDecorationLayers() {
         ],
         layout: {
             "symbol-placement": "point",
-            "icon-image": ARROW_ICON_ID,
+            // Initial icon-image keyed off current scheme; swapped on
+            // scheme change by applyMapPaintForScheme.
+            "icon-image": MAP_PAINT_TOKENS[currentColorScheme()].arrowIcon,
             "icon-size": ["interpolate", ["linear"], ["zoom"],
                 12, 0.5, 14, 0.7, 18, 1.0],
             "icon-rotate": ["get", "rotation"],
@@ -2332,9 +2461,13 @@ function buildStyle() {
         return buildCustomStyle(getCustomLayer(), base);
     }
 
-    // Default: Protomaps light flavor. Dark mode was removed in the UI
-    // redesign — light theme only across all maps.
-    const flavor = "light";
+    // Protomaps flavor follows current colour scheme: "light" or
+    // "dark". The bootstrap script in <head> sets data-color-scheme
+    // before the runtime initialises, so first-paint tile selection
+    // is already correct — no light→dark flicker on load. Scheme
+    // toggles at runtime trigger map.setStyle(buildStyle()) which
+    // re-runs this and gets the new flavor.
+    const flavor = currentColorScheme() === "dark" ? "dark" : "light";
     const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
 
     // Attribution: each source gets its own © assertion so it reads
@@ -3231,6 +3364,12 @@ async function loadTrails() {
     }
     registerArrowIcons();
     addDecorationLayers();
+    // Apply the current colour scheme's paint tokens — sets label
+    // text-color / halo and arrow icon-image to the scheme-correct
+    // values. Decoration layers ship with light-mode defaults; this
+    // ensures dark-mode visitors see the right colours immediately
+    // (no flash of light-mode labels).
+    applyMapPaintForScheme(currentColorScheme());
 }
 
 // Build a filter expression for a label layer on the trail-decorations
@@ -4720,10 +4859,17 @@ function setupBottomSheet() {
     // template-substitution time — the build replaces __BRAND_TITLE__
     // with the configured map title and strips the <img> tag if
     // neither logo: nor icon: is configured. CSS handles the visible
-    // fallback (img hides span via :has when img is present). So the
-    // JS doesn't need to do anything here — the markup is already
-    // correct. Kept this block as a comment-only anchor so future
-    // additions (e.g. tap-to-open-About) have an obvious home.
+    // fallback (img hides span via :has when img is present).
+    //
+    // Tag the img with .invert-dark so the CSS rule
+    // [data-color-scheme="dark"] #brand-img.invert-dark { filter: invert(1) ... }
+    // applies in dark mode. Default is on (matches historical
+    // behaviour); curators with colored logos that look bad inverted
+    // set invert_logo_dark: false in YAML to opt out.
+    if (CONFIG.invertLogoDark !== false) {
+        const brandImg = document.getElementById("brand-img");
+        if (brandImg) brandImg.classList.add("invert-dark");
+    }
 
     // ----- Search overlay (half-sheet) + Options overlay (full-screen)
     //
@@ -5224,6 +5370,46 @@ function setupBottomSheet() {
         arrowsBtn.classList.add("hidden");
     }
 
+    // ----- Appearance: Light / Dark / Auto colour scheme ------------
+    //
+    // Three-state segmented control; clicking any button calls
+    // applyColorScheme() which: persists the *intent* (light/dark/auto)
+    // to LS, resolves to a concrete scheme (auto → matchMedia), sets
+    // <html data-color-scheme>, rebuilds the basemap with the matching
+    // Protomaps flavor, and re-applies map paint tokens (label colours,
+    // arrow icon variant). The OS prefers-color-scheme listener
+    // re-fires applyColorScheme("auto") when the rider's stored
+    // intent is "auto" — handles e.g. iOS sunset shift mid-session.
+    const schemeGroup = document.getElementById("color-scheme-segmented");
+    if (schemeGroup) {
+        const schemeButtons = Array.from(
+            schemeGroup.querySelectorAll(".opt-segmented-btn"));
+        // Stored *intent* — may be "auto" even though the resolved
+        // scheme on <html> is "light" or "dark". The pill highlights
+        // the intent so the rider sees what they chose.
+        const storedScheme = LS.get("mtb.colorScheme",
+            CONFIG.defaultColorScheme || "light");
+        const syncSchemePressed = () => {
+            for (const b of schemeButtons) {
+                b.setAttribute("aria-checked",
+                    b.dataset.value === storedScheme ? "true" : "false");
+            }
+        };
+        syncSchemePressed();
+        for (const b of schemeButtons) {
+            b.addEventListener("click", () => {
+                const next = b.dataset.value;
+                applyColorScheme(next);
+                // Update local copy so re-syncs paint the right pill.
+                for (const x of schemeButtons) {
+                    x.setAttribute("aria-checked",
+                        x.dataset.value === next ? "true" : "false");
+                }
+            });
+        }
+        watchSystemColorScheme();
+    }
+
     // ----- Show Routes / Show Trails gating -----
     //
     // Hide the Finder section when neither routes nor trails are
@@ -5271,6 +5457,19 @@ function setupBottomSheet() {
             for (const b of buttons) {
                 b.setAttribute("aria-checked",
                     b.dataset.value === labelMode ? "true" : "false");
+            }
+            // Mirror the binary-toggle off-state visual on the row when
+            // the rider has picked "None" — chip greys out + slash
+            // overlay, same treatment as a layer toggle that's been
+            // turned off. data-multi-off is consumed by CSS; using a
+            // data attribute (not aria-pressed) avoids confusing
+            // screen readers since the actual control is a radiogroup.
+            if (labelField) {
+                if (labelMode === "none") {
+                    labelField.setAttribute("data-multi-off", "true");
+                } else {
+                    labelField.removeAttribute("data-multi-off");
+                }
             }
         };
         syncPressed();
@@ -6134,8 +6333,11 @@ function rebuildBasemapLayers() {
         };
         map.setStyle(newStyle, { diff: true });
     } else {
-        baseLayers = basemaps.layers("basemap", basemaps.namedFlavor("light"), { lang: "en" });
-        spritePath = `${base}sprites/v4/light`;
+        // Same flavor logic as buildPmtilesStyle — picks dark/light
+        // Protomaps tiles to match the current colour scheme.
+        const flavor = currentColorScheme() === "dark" ? "dark" : "light";
+        baseLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
+        spritePath = `${base}sprites/v4/${flavor}`;
 
         const newStyle = {
             ...currentStyle,
@@ -6157,9 +6359,15 @@ function rebuildBasemapLayers() {
     if (CONFIG.showDifficulty && !map.hasImage("imba-0")) {
         registerDifficultyIcons();
     }
-    if (!map.hasImage(ARROW_ICON_ID)) {
+    if (!map.hasImage(ARROW_ICON_LIGHT_BG_ID) ||
+            !map.hasImage(ARROW_ICON_DARK_BG_ID)) {
         registerArrowIcons();
     }
+    // After style rebuild (including scheme-driven flavor swap),
+    // re-apply the paint tokens so labels and arrow icons match
+    // the current scheme. setStyle preserves overlay layers but
+    // not their JS-driven paint overrides.
+    applyMapPaintForScheme(currentColorScheme());
 }
 
 // ============================================================

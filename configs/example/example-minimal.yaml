@@ -105,6 +105,14 @@ root_relation_id: 12345678
 # "all" so first-visit riders see directional indicators.
 # default_visible: []
 # default_labels: none   # routes / trails / none
+# Initial colour scheme on first visit: light / dark / auto.
+# Default "light" preserves existing behaviour; "auto" matches OS
+# prefers-color-scheme. Riders override via Options → Appearance
+# and their choice persists per-map in localStorage.
+# default_color_scheme: light
+# Whether the logo auto-inverts in dark mode. Default true; set
+# false if your logo is colourful and inverts badly.
+# invert_logo_dark: true
 # map_dim_on_highlight: true
 # url_hash: false
 # Units used for ALL distance and elevation values shown in the app —

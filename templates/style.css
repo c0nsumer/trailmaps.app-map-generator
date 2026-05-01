@@ -1,8 +1,21 @@
 /* MTB Trail Map Framework — Styles
  *
- * Light theme only. No dark-mode rules — rendering is the same regardless
- * of OS preference. Tweaks tuned for mobile-first (one-thumb operation,
- * 44 px tap targets, safe-area insets) with desktop layered on top.
+ * Mobile-first (one-thumb operation, 44 px tap targets, safe-area
+ * insets) with desktop layered on top.
+ *
+ * Light + dark theme. The chrome (sheet bg / text / dividers / etc.)
+ * uses CSS custom properties on :root for light defaults; an
+ * [data-color-scheme="dark"] selector overrides the same tokens for
+ * dark mode. The data-color-scheme attribute is set on <html> by an
+ * inline bootstrap script in <head> BEFORE this stylesheet loads, so
+ * first paint already has the right scheme — no FOUC.
+ *
+ * Per-map accent colour (--accent) survives both schemes — it's
+ * branding, not a theme concern.
+ *
+ * On-map elements that need per-scheme tweaking (trail labels,
+ * arrows, marker shadow) live in their respective sections with a
+ * matching [data-color-scheme="dark"] selector.
  */
 
 :root {
@@ -13,6 +26,21 @@
     --sheet-shadow: rgba(0, 0, 0, 0.18);
     --sheet-hover: rgba(0, 0, 0, 0.05);
     --sheet-divider: #ececec;
+    /* Surface tokens for elements that need a subtly-different bg
+     * from the main sheet — input fields (white inset against the
+     * sheet), segmented pills + filter chips (slightly darker for
+     * visual containment), section headers (faint tint to mark the
+     * group). All flip in dark mode via the [data-color-scheme]
+     * override below. */
+    --input-bg: white;
+    --pill-bg: #e3e3e3;
+    --section-header-bg: #fafafa;
+    /* Faint hairline outline for layer-swatch chips in Options.
+     * Light scheme: dark line on a white-ish sheet. Dark scheme:
+     * light line on a dark sheet. Both hover at low opacity so the
+     * chip's filled colour does the heavy lifting and the hairline
+     * just provides a "this is a chip" edge. */
+    --swatch-outline: rgba(0, 0, 0, 0.08);
     --accent: #2980b9;
     /* Derived from --accent so a per-map override (set on :root by
      * JS from CONFIG.accentColor) cascades automatically — the
@@ -52,6 +80,43 @@
      * shadow (a 1px dark outline for contrast against the sheet)
      * so this token isn't shared with .layer-swatch. */
     --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark-mode token overrides. Selector targets <html data-color-scheme="dark">,
+ * which is set by the inline bootstrap script in <head> from the rider's
+ * LS preference / curator default / OS prefers-color-scheme.
+ *
+ * Variables not listed here keep their light-theme values — that's how the
+ * accent colour, marker design tokens (size/border/radius), and POI
+ * brand colours all survive both schemes.
+ */
+[data-color-scheme="dark"] {
+    --sheet-bg: rgba(28, 28, 30, 0.98);
+    --sheet-text: #f0f0f0;
+    --sheet-text-muted: #a0a0a0;
+    --sheet-border: #3c3c3e;
+    --sheet-shadow: rgba(0, 0, 0, 0.6);
+    --sheet-hover: rgba(255, 255, 255, 0.08);
+    --sheet-divider: #2c2c2e;
+    /* Inverted surface tokens — see :root for the light defaults.
+     * Inputs match the sheet body (just contained by their border);
+     * pills sit slightly LIGHTER than the dark sheet so the active-
+     * state accent fill still has a neutral resting bg to overlay;
+     * section headers a touch lighter than the sheet for grouping. */
+    --input-bg: #1c1c1e;
+    --pill-bg: #3a3a3c;
+    --section-header-bg: #2c2c2e;
+    /* Light hairline against the dark sheet so chips have a visible
+     * edge in dark mode (the dark-line variant from the light scheme
+     * disappears against the dark sheet). */
+    --swatch-outline: rgba(255, 255, 255, 0.18);
+
+    /* On-map POI markers need a stronger shadow against dark
+     * basemap tiles — drop shadow alone fades into the dark map.
+     * Add a faint inner-edge ring (the second shadow) so the chip's
+     * white border has some structural contrast against the basemap. */
+    --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.5),
+                              0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 * {
@@ -418,15 +483,22 @@ body {
  * pill (Labels: Routes / Trails / None)".) */
 
 /* Off state on swatches inside drawer toggles — same three-cue
- * treatment as the peek (transparent + grey border + slash). */
-.opt-toggle-row[aria-pressed="false"] .layer-swatch {
+ * treatment as the peek (transparent + grey border + slash). The
+ * `data-multi-off="true"` selector is for multi-option rows whose
+ * "off" state isn't a binary aria-pressed=false but a specific
+ * value choice (e.g. Labels = "None" → row visually reads as off
+ * the same way a binary toggle in off state does). JS sets the
+ * data attribute when the chosen value is the "off" one. */
+.opt-toggle-row[aria-pressed="false"] .layer-swatch,
+.opt-toggle-row[data-multi-off="true"] .layer-swatch {
     background: transparent !important;
     border: 1.5px solid #9aa0a6 !important;
     color: #9aa0a6 !important;
     box-shadow: none !important;
 }
 
-.opt-toggle-row[aria-pressed="false"] .layer-swatch::after {
+.opt-toggle-row[aria-pressed="false"] .layer-swatch::after,
+.opt-toggle-row[data-multi-off="true"] .layer-swatch::after {
     content: "";
     position: absolute;
     top: 50%;
@@ -439,7 +511,8 @@ body {
     pointer-events: none;
 }
 
-.opt-toggle-row[aria-pressed="false"] .opt-toggle-row-label {
+.opt-toggle-row[aria-pressed="false"] .opt-toggle-row-label,
+.opt-toggle-row[data-multi-off="true"] .opt-toggle-row-label {
     color: #6a6a6a;
 }
 
@@ -481,7 +554,7 @@ body {
     padding: 2px;
     border: none;
     border-radius: 999px;
-    background: #e3e3e3;
+    background: var(--pill-bg);
 }
 
 .opt-segmented-pill .opt-segmented-btn {
@@ -494,7 +567,7 @@ body {
     border: none;
     border-left: none;
     background: transparent;
-    color: #555;
+    color: var(--sheet-text-muted);
     font: inherit;
     font-size: 11px;
     font-weight: 600;
@@ -508,7 +581,7 @@ body {
 }
 
 .opt-segmented-pill .opt-segmented-btn:hover {
-    color: #222;
+    color: var(--sheet-text);
 }
 
 .opt-segmented-pill .opt-segmented-btn[aria-checked="true"] {
@@ -591,7 +664,7 @@ body {
     padding: 8px 28px 8px 10px;
     border: 1px solid var(--sheet-border);
     border-radius: 6px;
-    background: white;
+    background: var(--input-bg);
     color: var(--sheet-text);
     font-family: inherit;
     font-size: 14px;
@@ -603,51 +676,16 @@ body {
     min-height: 36px;
 }
 
-/* ----- Segmented control (Labels row: Routes / Trails / None) ------
- * Replaces a native <select> with a three-button group for cases where
- * a tap-sized, glanceable control beats a dropdown. Uses a radiogroup
- * under the hood (aria-checked on each button) for accessibility. */
-.opt-row-segmented {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-}
-
-.opt-segmented {
-    display: flex;
-    gap: 0;
-    border: 1px solid var(--sheet-border);
-    border-radius: 6px;
-    overflow: hidden;
-    background: white;
-}
-
-.opt-segmented-btn {
-    flex: 1 1 0;
-    min-height: 36px;
-    padding: 8px 10px;
-    background: white;
-    color: var(--sheet-text);
-    font: inherit;
-    font-size: 14px;
-    border: none;
-    border-left: 1px solid var(--sheet-border);
-    cursor: pointer;
-    transition: background 0.1s, color 0.1s;
-}
-
-.opt-segmented-btn:first-child {
-    border-left: none;
-}
-
-.opt-segmented-btn[aria-checked="true"] {
-    background: var(--sheet-text);
-    color: white;
-}
-
-.opt-segmented-btn:not([aria-checked="true"]):hover {
-    background: var(--sheet-hover);
-}
+/* (Removed: the old "card-style" .opt-segmented + .opt-row-segmented
+ * + .opt-segmented-btn base rules used to live here. They were dead
+ * code — every segmented control in the current HTML uses
+ * .opt-segmented-pill, and that variant's rules above cover styling
+ * comprehensively. The base rules were also actively harmful: the
+ * elements carry BOTH classes (.opt-segmented .opt-segmented-pill),
+ * so .opt-segmented's `background: white` had the same specificity
+ * as .opt-segmented-pill's `background: var(--pill-bg)`, and
+ * appearing later in source it won — pinning every pill bg to white
+ * regardless of the per-scheme --pill-bg token. Removed wholesale.) */
 
 /* ----- Action rows (Install / About) ------------------------------- */
 .opt-section-action {
@@ -799,15 +837,16 @@ body {
     border: var(--poi-marker-border) solid white;
     box-sizing: border-box;
     flex-shrink: 0;
-    /* Faint outer outline: gives the chip's white border something
-     * to contrast against on the white-ish sheet background, so it
-     * reads as a "white frame around colored interior" the way it
-     * does naturally on the map (where the surrounding map color
-     * provides the contrast). Opacity is intentionally low (0.08)
-     * — high enough that the white border becomes perceptible as a
-     * frame, low enough that the chip's perceived size still
-     * matches its on-map equivalent. */
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    /* Faint outer outline. Light scheme: a darker hairline against
+     * the white sheet — gives the chip's white border something to
+     * contrast against, so it reads as a "white frame around the
+     * coloured interior" the way it does naturally on the map. Dark
+     * scheme: a lighter hairline against the dark sheet, same role.
+     * The token --swatch-outline flips per scheme. Opacity is
+     * intentionally low — high enough to perceive an edge, low
+     * enough that the chip's perceived size matches its on-map
+     * equivalent. */
+    box-shadow: 0 0 0 1px var(--swatch-outline);
 }
 
 /* Override the inline SVG width/height attributes (which are baked
@@ -861,17 +900,21 @@ body {
     font-size: var(--poi-marker-font-text-tight);
 }
 
-/* Labels — same "settings, not a layer toggle" treatment as the
- * Difficulty chip: white background, neutral icon, white border
- * (inherited from .layer-swatch base). The dark halo from the base
- * box-shadow gives the chip its visible edge so it reads cleanly
- * against the sheet without claiming a specific layer color. The
- * background mirrors the on-map label text colour and the icon
- * mirrors the on-map label backing colour, so the chip doubles as
- * a tiny "label colour sample." */
+/* Labels — chrome indicator (not a sign), so it adapts to colour
+ * scheme like the rest of the chrome. Light scheme: white chip
+ * with slate tag icon (mirrors how labels render on a light
+ * basemap — slate text on white halo). Dark scheme: dark chip
+ * with light tag icon (mirrors how labels render on a dark
+ * basemap — light text on dark halo). The chip doubles as a
+ * tiny "label colour sample" in either mode. */
 .label-swatch {
     background: var(--label-text-color, #fff);
     color: var(--label-color, #5d6d7e);
+}
+
+[data-color-scheme="dark"] .label-swatch {
+    background: var(--input-bg);
+    color: #f0f0f0;
 }
 
 /* Toilets — neutral slate to read as "facility" without competing
@@ -892,96 +935,14 @@ body {
     border: var(--poi-marker-border) solid var(--drinking-water-border-color, #fff);
 }
 
-/* Locate swatch — mirrors the MapLibre native GeolocateControl state
- * machine pixel-for-pixel: same hex colors (#33b5e5 tracking blue,
- * #e58978 active-error salmon, #e54e33 background-error red,
- * #333 idle, #999 disabled, red strikethrough on denied), same
- * iconography (ring + N/S/E/W ticks + center dot; dot disappears in
- * "background" states to signal "tracking but panned away"), same
- * 2-second linear spin during acquisition. State classes
- * (locate-state-*) are stamped onto #toggle-locate by a
- * MutationObserver in app.js that mirrors the hidden native
- * control's classes — the native GeolocateControl is still added
- * to the map because its FSM is the source of truth, we just hide
- * the button (see .maplibregl-ctrl-geolocate below). */
-.locate-swatch {
-    background: #fff;
-    color: #333;
-    border: 1.5px solid #ccc;
-    box-shadow: none;
-}
-
-/* Override the peek-icon default off-state (outline + slash + grey
- * label) for Locate — MapLibre's idle state is white bg + dark
- * crosshair, not a slashed swatch. Our locate-state-* classes below
- * drive the actual appearance. */
-#toggle-locate[aria-pressed="false"] .layer-swatch {
-    background: #fff !important;
-    border: 1.5px solid #ccc !important;
-    color: #333 !important;
-    box-shadow: none !important;
-}
-#toggle-locate[aria-pressed="false"] .layer-swatch::after {
-    content: none;
-}
-/* --- State: idle (default, no tracking) --- */
-#toggle-locate.locate-state-idle .locate-swatch {
-    color: #333;
-}
-
-/* --- State: waiting (GPS acquisition in progress) --- */
-#toggle-locate.locate-state-waiting .locate-icon {
-    animation: mtb-locate-spin 2s linear infinite;
-    transform-origin: center;
-}
-
-/* --- State: active (tracking + camera following) --- */
-#toggle-locate.locate-state-active .locate-swatch {
-    color: #33b5e5;
-}
-
-/* --- State: background (tracking, user panned away → no center dot) --- */
-#toggle-locate.locate-state-background .locate-swatch {
-    color: #33b5e5;
-}
-#toggle-locate.locate-state-background .locate-dot {
-    display: none;
-}
-
-/* --- State: active-error (tracking, transient error) --- */
-#toggle-locate.locate-state-active-error .locate-swatch {
-    color: #e58978;
-}
-
-/* --- State: background-error (tracking + panned + error) --- */
-#toggle-locate.locate-state-background-error .locate-swatch {
-    color: #e54e33;
-}
-#toggle-locate.locate-state-background-error .locate-dot {
-    display: none;
-}
-
-/* --- State: disabled (permission denied / geolocation unavailable) --- */
-#toggle-locate.locate-state-disabled .locate-swatch {
-    color: #999;
-}
-#toggle-locate.locate-state-disabled .locate-swatch::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 15%;
-    right: 15%;
-    height: 2px;
-    background: red;
-    transform: translateY(-50%) rotate(-45deg);
-    transform-origin: center;
-    border-radius: 1px;
-    pointer-events: none;
-}
-@keyframes mtb-locate-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(1turn); }
-}
+/* (Removed: a duplicate locate-state-* block that targeted
+ * `.locate-swatch` and `.layer-swatch` descendants of #toggle-locate.
+ * Those selectors don't match anything in the current FAB markup —
+ * the actual SVG has class `.locate-icon`, not `.locate-swatch`. The
+ * live state machine lives further down (search "Locate FAB state
+ * machine") and targets `#toggle-locate.locate-state-*` directly.
+ * The mtb-locate-spin @keyframes referenced by the live block
+ * also lives further down. */
 
 /* Feature swatch — the chip itself gets the same outer treatment as
  * Parking / Markers / Trailheads: a visible 1.5px border and the
@@ -1012,13 +973,14 @@ body {
     pointer-events: none;
 }
 
-/* Difficulty swatch — standard white chip with a small black
- * rotated-square diamond drawn by ::before. Matches the IMBA
- * black-diamond icon shape (see drawDifficultyShape in app.js)
- * while keeping the outer chip identical to other peek icons so
- * the off-state slash lands in the same geometric position. The
- * outline (from .layer-swatch base) gives the white chip its
- * edge against the white-ish sheet. */
+/* Difficulty swatch — sign-like chip preserving the IMBA "black
+ * diamond on white" convention in BOTH light and dark schemes.
+ * Real trail signage doesn't invert at sunset; the chip stays the
+ * same so the symbology riders learn on the trailhead carries to
+ * the in-app legend. The chip stands out from the dark sheet on
+ * its own (white on dark = high contrast); the outline (from
+ * .layer-swatch base) gives it edge in light mode where the white
+ * blends with the sheet. */
 .difficulty-swatch {
     background: #fff;
 }
@@ -1087,7 +1049,7 @@ body {
     letter-spacing: 0.06em;
     color: var(--sheet-text-muted);
     padding: 8px 12px 4px 12px;
-    background: #fafafa;
+    background: var(--section-header-bg);
     border-bottom: 1px solid var(--sheet-divider);
 }
 
@@ -1621,12 +1583,15 @@ body {
     padding: 8px 14px 10px 14px;
     border-radius: 8px;
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
-    background: #fff;
-    color: #333;
+    background: var(--sheet-bg);
+    color: var(--sheet-text);
 }
 
 .maplibregl-popup-tip {
-    border-top-color: #fff;
+    /* MapLibre paints the tip as a triangle with border-top-color
+     * on bottom-anchored popups (the common case for our markers).
+     * Match the popup body so the tip blends seamlessly. */
+    border-top-color: var(--sheet-bg);
 }
 
 .maplibregl-popup-close-button {
@@ -1899,6 +1864,20 @@ body {
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
+/* Logo auto-invert in dark mode. JS adds .invert-dark to #brand-img
+ * at boot iff CONFIG.invertLogoDark !== false (default true).
+ * invert(1) hue-rotate(180deg) flips lightness without flipping
+ * hue, so coloured logo elements stay the right hue rather than
+ * going green→magenta etc. For monochrome logos this is equivalent
+ * to plain invert. The drop-shadow is preserved (filter chain
+ * reapplies it after the invert). Curators with logos that look
+ * bad inverted set invert_logo_dark: false in YAML to opt out.
+ */
+[data-color-scheme="dark"] #brand-img.invert-dark {
+    filter: invert(1) hue-rotate(180deg)
+            drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
 /* Title span — visible only when no image is present (build-time
  * stripping removes the <img> when neither logo nor icon is
  * configured). When the img IS present, hide the span via :has()
@@ -1947,10 +1926,14 @@ body {
     width: 48px;
     height: 48px;
     border-radius: 24px;
-    background: #fff;
-    border: 1.5px solid #ccc;
+    /* FAB chrome adapts to the colour scheme via the same sheet
+     * tokens used by the overlays and chip — on a dark basemap, a
+     * dark FAB with a light icon reads as part of the dark UI
+     * rather than a bright white spot. */
+    background: var(--sheet-bg);
+    border: 1.5px solid var(--sheet-border);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    color: #333;
+    color: var(--sheet-text);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1961,7 +1944,12 @@ body {
 }
 
 .fab:hover {
-    background: #f4f4f4;
+    /* --pill-bg is "subtly different from sheet bg" — light grey on
+     * light mode (darker than sheet), darker grey on dark mode
+     * (lighter than sheet). Replacing the bg outright instead of
+     * overlaying because --sheet-hover is translucent and would
+     * make the FAB nearly transparent against the map. */
+    background: var(--pill-bg);
 }
 
 .fab:active {
@@ -1994,10 +1982,23 @@ body {
 /* ----- Locate FAB state machine ----------------------------------
  * Mirrors MapLibre's native GeolocateControl FSM. The state classes
  * (locate-state-*) are stamped onto #toggle-locate by app.js. Color
- * on the button cascades into the SVG via currentColor. */
+ * on the button cascades into the SVG (.locate-icon, fill=currentColor)
+ * via inheritance.
+ *
+ * Tracking / error / disabled states use semantic colours that read
+ * fine on both light and dark FAB backgrounds (cyan, salmon, red,
+ * mid-grey). The idle "default, not yet tracking" colour adapts to
+ * the colour scheme via --sheet-text — dark in light mode, light in
+ * dark mode — otherwise the icon would disappear into a dark FAB
+ * and read as disabled. */
+
+@keyframes mtb-locate-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(1turn); }
+}
 
 #toggle-locate.locate-state-idle {
-    color: #333;
+    color: var(--sheet-text);
 }
 
 #toggle-locate.locate-state-waiting .locate-icon {
@@ -2130,7 +2131,7 @@ body {
     padding: 0 38px 0 12px;
     border: 1px solid var(--sheet-border);
     border-radius: 8px;
-    background: white;
+    background: var(--input-bg);
     color: var(--sheet-text);
     font: inherit;
     font-size: 15px;
@@ -2215,7 +2216,7 @@ body {
 
 .search-filter-chip {
     flex: 0 0 auto;
-    background: #ececec;
+    background: var(--pill-bg);
     color: var(--sheet-text);
     border: 1px solid transparent;
     border-radius: 999px;
