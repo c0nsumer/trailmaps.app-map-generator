@@ -249,8 +249,9 @@ See [Custom routes](#custom-routes) for details.
 | `trailhead_border_color` | No | `"white"` | Trailhead outer halo border colour |
 | `feature_color` | No | `"#8e44ad"` | Feature marker inner dot colour |
 | `feature_ring_color` | No | `"#ffffff"` | Feature marker outer ring colour |
+| `accent_color` | No | `"#2980b9"` | UI accent colour: active toggle pill, search input focus ring, link colour, FAB pressed state, segmented-control active fill, etc. Three accepted forms: omitted (framework default blue), 6-digit hex (e.g. `"#FF5733"`), or the literal string `"auto"` (derive from the logo at build time via Pillow — picks the most common saturated colour, auto-darkens for WCAG AA contrast against white text, caches per-source-hash). The build prints a warning when the resolved colour fails WCAG AA against either the light-mode or dark-mode sheet background. SVG-only logos fall back to the `icon:` raster as the derive source; if neither is raster, falls back to the default with a warning |
 
-Each POI type follows the same three-knob pattern (fill + glyph/dot + halo/ring). Values flow to CSS custom properties on `:root` so the peek-bar swatch, the on-map marker, and any popup badge all read the same hex — one source of truth per colour.
+Each POI type follows the same three-knob pattern (fill + glyph/dot + halo/ring). Values flow to CSS custom properties on `:root` so the peek-bar swatch, the on-map marker, and any popup badge all read the same hex — one source of truth per colour. The accent colour follows the same pattern: setting `accent_color` updates `--accent` on `:root`; `--link-color` and `--accent-strong` (the darker hover/pressed variant) derive from `--accent` via `color-mix()`, so a single override cascades to every accented surface.
 
 #### Map View
 

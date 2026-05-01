@@ -31,6 +31,13 @@
     // Features (inner dot + outer ring)
     if (CONFIG.featureColor)         root.style.setProperty("--feature-color",         CONFIG.featureColor);
     if (CONFIG.featureRingColor)     root.style.setProperty("--feature-ring-color",    CONFIG.featureRingColor);
+    // Per-map UI accent (active toggle pills, focus rings, link colour,
+    // FAB pressed state, etc.). When omitted, the CSS var falls back
+    // to the framework default (#2980b9). When CONFIG.accentColor is
+    // a hex string (either explicit YAML or build-time-derived from
+    // the logo via accent_color: "auto"), set --accent on :root and
+    // every consumer picks it up automatically via var(--accent).
+    if (CONFIG.accentColor)          root.style.setProperty("--accent",                CONFIG.accentColor);
 })();
 
 // ============================================================

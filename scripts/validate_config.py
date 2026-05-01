@@ -123,6 +123,7 @@ KNOWN_KEYS = {
     "about":                         dict,
     "welcome":                       (dict, bool),
     "default_visible":               (list, str),
+    "accent_color":                  str,
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
@@ -181,6 +182,7 @@ HANDLED_SPECIALLY = {
     "about",                # → CONFIG.about (object passed through)
     "welcome",              # → CONFIG.welcome (object or false; passed through)
     "default_visible",      # → CONFIG.defaultVisible (list; "all" expanded at build time)
+    "accent_color",         # → CONFIG.accentColor (hex; "auto" resolved from logo at build time)
     "logo",                 # → CONFIG.logoUrl (after asset pipeline)
     "icon",                 # → fallback for logoUrl
 }
@@ -729,6 +731,34 @@ DEFAULT_VISIBLE_LAYERS = {
 }
 
 
+_ACCENT_COLOR_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _validate_accent_color(report, config):
+    """Validate the optional `accent_color` key.
+
+    Three forms accepted:
+      - omitted: framework default blue (#2980b9)
+      - 6-digit hex string: explicit accent (e.g. "#FF5733")
+      - the literal string "auto": derive from the logo at build time
+
+    Anything else errors with a clear message.
+    """
+    val = config.get("accent_color")
+    if val is None:
+        return
+    if not isinstance(val, str):
+        report.err("accent_color",
+                   f"expected string, got {type(val).__name__}")
+        return
+    if val == "auto":
+        return
+    if not _ACCENT_COLOR_HEX_RE.match(val):
+        report.err("accent_color",
+                   f"must be a 6-digit hex (e.g. '#FF5733') or 'auto', "
+                   f"got {val!r}")
+
+
 def _validate_default_visible(report, config):
     """Validate the optional `default_visible` key.
 
@@ -896,6 +926,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)
+    _validate_accent_color(report, config)
     _validate_slug(report, config)
     return report.errors, report.warnings
 

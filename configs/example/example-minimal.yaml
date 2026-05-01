@@ -36,6 +36,15 @@ root_relation_id: 12345678
 # trailhead_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
+# UI accent colour (active toggle pill, focus ring, link, FAB pressed,
+# etc.). Three forms:
+#   omitted       → framework default (#2980b9), shown below
+#   "#FF5733"     → explicit hex
+#   "auto"        → derive from logo (or icon if logo is SVG) at
+#                   build time; auto-darkens for WCAG AA contrast.
+# Build prints a warning if the resolved colour fails contrast on
+# either the light- or dark-mode sheet background.
+# accent_color: "#2980b9"
 
 # --- View geometry ---
 # bbox: [-87.66, 46.47, -87.59, 46.53]

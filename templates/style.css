@@ -13,9 +13,16 @@
     --sheet-shadow: rgba(0, 0, 0, 0.18);
     --sheet-hover: rgba(0, 0, 0, 0.05);
     --sheet-divider: #ececec;
-    --link-color: #2980b9;
     --accent: #2980b9;
-    --accent-strong: #1f6391;
+    /* Derived from --accent so a per-map override (set on :root by
+     * JS from CONFIG.accentColor) cascades automatically — the
+     * runtime only has to set --accent and link colour + the darker
+     * pressed/hover variant follow. color-mix(in srgb, X 75%, black)
+     * darkens X by 25%, matching the historical relationship between
+     * #2980b9 and #1f6391. Browser support for color-mix() is
+     * universal in evergreen browsers as of 2023. */
+    --link-color: var(--accent);
+    --accent-strong: color-mix(in srgb, var(--accent) 75%, black);
     --emergency-color: #c0392b;
     --highlight-amber: #ffb700;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -673,7 +680,13 @@ body {
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: var(--sheet-hover);
+    /* Faint accent wash on the badge — a very low-opacity tint of
+     * the per-map accent. Brings a subtle brand presence to the
+     * action rows without coloring the icons themselves (which
+     * would dilute the accent's role as "interactive state"
+     * indicator). color-mix means a per-map override of --accent
+     * cascades automatically. */
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1111,8 +1124,11 @@ body {
  * left-edge accent stripe gives it a directional anchor that scans
  * fast, even in a long list. */
 .finder-row.is-active {
-    background: rgba(41, 128, 185, 0.18);
-    box-shadow: inset 3px 0 0 var(--accent, #2980b9);
+    /* Accent at 18% opacity. color-mix lets per-map accent overrides
+     * (CONFIG.accentColor → :root --accent) cascade through to this
+     * keyboard-active background without any JS plumbing. */
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .finder-row-swatch {
