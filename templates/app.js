@@ -1744,9 +1744,35 @@ async function init() {
     map.on("zoom", scheduleIndicatorUpdate);
     map.on("resize", scheduleIndicatorUpdate);
 
+    // Attribution: compact (i) form, but EXPANDED at page load so the
+    // first impression of the map shows OSM / Protomaps / Mapterhorn
+    // credits prominently. Auto-collapses on the rider's first
+    // user-driven map gesture (mouse-down for pan, wheel for zoom,
+    // touch for pan/pinch) — at that point they've already seen the
+    // attribution and want their screen real estate back. The (i)
+    // icon stays visible after collapse; one tap re-expands.
+    //
+    // Why user-input listeners (mousedown/touchstart/wheel) instead
+    // of MapLibre's `movestart` event: programmatic camera changes
+    // at load time (a share-link flyTo, fitBounds on a deep-linked
+    // highlight, etc.) also fire `movestart` and would dismiss the
+    // attribution before the rider has even seen it. Raw input
+    // events only fire on actual user gestures.
     const attrControl = new maplibregl.AttributionControl({ compact: true });
     map.addControl(attrControl, "bottom-left");
     attrControl._container.classList.add("maplibregl-compact-show");
+
+    const collapseAttribution = () => {
+        attrControl._container.classList.remove("maplibregl-compact-show");
+        const canvasContainer = map.getCanvasContainer();
+        canvasContainer.removeEventListener("mousedown", collapseAttribution);
+        canvasContainer.removeEventListener("touchstart", collapseAttribution);
+        canvasContainer.removeEventListener("wheel", collapseAttribution);
+    };
+    const canvasContainer = map.getCanvasContainer();
+    canvasContainer.addEventListener("mousedown", collapseAttribution, { passive: true });
+    canvasContainer.addEventListener("touchstart", collapseAttribution, { passive: true });
+    canvasContainer.addEventListener("wheel", collapseAttribution, { passive: true });
 
     // Load data and add layers once map is ready.
     map.once("style.load", async () => {
@@ -1923,11 +1949,14 @@ function buildWelcomeControlsHint() {
                 ? "trails and places (parking, water, toilets, trailheads)"
                 : "places (parking, water, toilets, trailheads)";
 
+    // Order matches the FAB stack on the map (top to bottom:
+    // Options, Search, Locate) so the rider sees the same sequence
+    // here that they'll see on the screen.
     const rows = [
-        { icon: _WELCOME_ICON_SEARCH,  name: "Search",
-            desc: `Find ${searchTargets}.` },
         { icon: _WELCOME_ICON_OPTIONS, name: "Options",
             desc: "Configure layers, season, share view, and About this map." },
+        { icon: _WELCOME_ICON_SEARCH,  name: "Search",
+            desc: `Find ${searchTargets}.` },
         { icon: _WELCOME_ICON_LOCATE,  name: "Locate",
             desc: "Track your position on the map." },
     ];
