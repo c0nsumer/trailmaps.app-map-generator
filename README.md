@@ -51,7 +51,7 @@ Drag the handle up/down, tap the peek area, swipe down to close, or press Escape
 - **Highlight layers** — four overlay layers render a glow+stroke emphasis when a route or trail is picked. Route highlights use the route's own colour; trail highlights use amber so they read consistently across differently-coloured parent routes
 - **Trail colouring** — colour by route (OSM `colour` tag per relation, overridable via `relation_colors`) or by IMBA difficulty rating (`mtb:scale:imba` per way)
 - **Trail difficulty symbols** — optional IMBA difficulty rating symbols (`mtb:scale:imba` 0–5) rendered along trail segments with a toggleable checkbox. Defaults to **on** when the build generates the sprite; state persists in localStorage
-- **Direction arrows** — arrows along ways tagged `oneway=yes`/`oneway=-1`/`oneway=reversible`; optional day-of-week direction schedule via `default_direction_schedule` (system-wide) or `direction_schedules` (per-relation overrides), required for `reversible` ways. Always rendered (no toggle) and tuned small enough to read as a subtle cue rather than a dominant visual
+- **Direction arrows** — arrows along ways tagged `oneway=yes`/`oneway=-1`/`oneway=reversible`; optional day-of-week direction schedule via `default_direction_schedule` (system-wide) or `direction_schedules` (per-relation overrides), required for `reversible` ways. Toggleable via the Options drawer; first-visit visibility controlled by `default_visible` (include `direction_arrows` in the list, or use `default_visible: all`). The build prints a warning if a map has one-way trail segments but `direction_arrows` is omitted from `default_visible` — first-visit riders on a flow trail would otherwise miss the directional indicators
 - **Dashed line styles** — config-driven dash patterns per route (dots, dashes, etc.) with round or square caps and optional two-colour alternating dashes
 - **Colour overrides** — override OSM `colour` tag per route from config
 - **Trail labels** — switchable between route names, individual trail names, or off
@@ -180,12 +180,9 @@ Deploying a new build ticks `CACHE_VERSION` (a content-based hash of every outpu
 
 Each map lives in its own folder under `configs/`: `configs/<slug>/<slug>.yaml` plus all of its asset files (logo, icon, optional offline OSM snapshot, optional custom-route GeoJSONs). Copy the whole folder to start a new map — everything the framework needs for that map is self-contained.
 
-Two reference templates ship together under `configs/example/`:
+The reference template **`configs/example/example-minimal.yaml`** lists every supported key in canonical order, commented out when the value matches the house default. Copy this as the starting point for a new map, then uncomment only the lines you need to customise. The Config Reference table below is the canonical description for every knob — what it does, accepted values, and defaults.
 
-- **`configs/example/example-minimal.yaml`** — every supported key listed in canonical order, commented out when the value matches the house default. Copy this as the starting point for a new map, then uncomment only the lines you need to customise.
-- **`configs/example/example.yaml`** — same layout, but every key is uncommented with an inline comment explaining what it does and what the default is. Reference it to understand what a knob does without re-reading this page.
-
-Each real map config follows the same canonical order — scan any of them (e.g. `configs/ramba/ramba.yaml`, `configs/dte/dte.yaml`) to see the paradigm in practice. Non-default lines are uncommented; defaults stay commented as placeholders. Descriptive comments live in `example.yaml`, not in per-map configs.
+Each real map config follows the same canonical order — scan any of them (e.g. `configs/ramba/ramba.yaml`, `configs/dte/dte.yaml`) to see the paradigm in practice. Non-default lines are uncommented; defaults stay commented as placeholders.
 
 Minimal map config:
 
@@ -851,7 +848,6 @@ The two example templates share one folder:
 
 ```
 configs/example/
-  example.yaml               # verbose, every key uncommented with inline comments
   example-minimal.yaml       # canonical-order skeleton, most keys commented out
 ```
 
@@ -1086,7 +1082,6 @@ configs/
     osm.osm           Optional: offline OSM snapshot
     *.geojson         Optional: custom-route geometries (one per custom_routes entry)
   example/
-    example.yaml      Verbose template — every key uncommented with inline comments
     example-minimal.yaml  Canonical-order skeleton; copy this to start a new map
 assets/
   fonts/              Protomaps basemap fonts (PBF glyph ranges, auto-trimmed at build time)

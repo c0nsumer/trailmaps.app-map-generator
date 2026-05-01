@@ -4,7 +4,7 @@ Helper scripts for building and deploying trail maps.
 
 ## build_and_deploy.sh
 
-Builds and/or deploys one or more trail map configs. By default, processes all YAML configs in `configs/` (excluding `example.yaml`).
+Builds and/or deploys one or more trail map configs. By default, processes all YAML configs in `configs/` (excluding the `configs/example/` folder of templates).
 
 The deploy destination is configured via the `DEPLOY_DEST` variable at the top of the script.
 
@@ -44,5 +44,5 @@ The deploy destination is configured via the `DEPLOY_DEST` variable at the top o
 ### Notes
 
 - The YAML filename is used to locate the config, but the `slug` field inside the config determines the build output directory and deploy path. These do not need to match.
-- When no configs are specified, all `.yaml` files in `configs/` are processed except `example.yaml`.
+- When no configs are specified, every per-map config under `configs/<slug>/<slug>.yaml` is processed; the `configs/example/` template folder is skipped.
 - A summary is printed at the end showing which maps succeeded and which failed.
