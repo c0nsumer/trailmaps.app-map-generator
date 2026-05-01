@@ -78,11 +78,24 @@ const MAP_PAINT_TOKENS = {
         // (light-bg / dark-bg), distinct images, swap via
         // setLayoutProperty.
         arrowIcon:  "arrow-light-bg",
+        // Hillshade — bright highlight + dark shadow give classic
+        // "lit-from-NW" 3D shading on a light basemap. The dark
+        // override below uses a much subtler highlight; bright
+        // white on a dark basemap reads as clouds, not terrain.
+        hillshadeShadow:    "#3d3d3d",
+        hillshadeHighlight: "#ffffff",
     },
     dark: {
         labelText:  "#f0f0f0",
         labelHalo:  "rgba(0, 0, 0, 0.7)",
         arrowIcon:  "arrow-dark-bg",
+        // Pure-black shadow deepens valleys BELOW the dark basemap
+        // so topography reads. Highlight kept at low-alpha white
+        // (~15%) — provides a subtle lift on the lit slopes
+        // without the bright "cloud-over-the-background" effect
+        // that plain #ffffff produces.
+        hillshadeShadow:    "#000000",
+        hillshadeHighlight: "rgba(255, 255, 255, 0.15)",
     },
 };
 
@@ -112,6 +125,10 @@ function applyMapPaintForScheme(scheme) {
     }
     if (map.getLayer("decor-arrow")) {
         map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
+    }
+    if (map.getLayer("hillshade")) {
+        map.setPaintProperty("hillshade", "hillshade-shadow-color", t.hillshadeShadow);
+        map.setPaintProperty("hillshade", "hillshade-highlight-color", t.hillshadeHighlight);
     }
 }
 
@@ -2565,6 +2582,11 @@ async function addTerrainLayers() {
         }
     }
 
+    // Initial paint comes from the current scheme's tokens so dark-
+    // mode visitors don't see a flash of light-mode hillshade before
+    // applyMapPaintForScheme() patches the layer. Subsequent scheme
+    // toggles route through applyMapPaintForScheme.
+    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
     map.addLayer({
         id: "hillshade",
         type: "hillshade",
@@ -2573,8 +2595,8 @@ async function addTerrainLayers() {
             "hillshade-illumination-direction": 315,
             "hillshade-illumination-anchor": "map",
             "hillshade-exaggeration": 0.4,
-            "hillshade-shadow-color": "#3d3d3d",
-            "hillshade-highlight-color": "#ffffff",
+            "hillshade-shadow-color": t.hillshadeShadow,
+            "hillshade-highlight-color": t.hillshadeHighlight,
         },
     }, beforeLayer);
 }
