@@ -97,6 +97,19 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("decor-route-name", "text-color", t.labelText);
         map.setPaintProperty("decor-route-name", "text-halo-color", t.labelHalo);
     }
+    // Per-route name labels (one layer per route, id="trail-label-<routeId>",
+    // added by addLineLabelLayers around line 3316). These render the route
+    // name when labelMode === "routes" and need the same per-scheme paint
+    // flip as decor-route-name; without it they stay frozen at the
+    // hardcoded light-mode values, producing the "some labels dark-inner
+    // light-outer, some the reverse" inconsistency in dark mode.
+    if (map.getStyle && map.getStyle()) {
+        for (const layer of map.getStyle().layers) {
+            if (!layer.id.startsWith("trail-label-")) continue;
+            map.setPaintProperty(layer.id, "text-color", t.labelText);
+            map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
+        }
+    }
     if (map.getLayer("decor-arrow")) {
         map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
     }
