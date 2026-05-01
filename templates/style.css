@@ -2269,10 +2269,21 @@ body {
  * map.addControl(..., "bottom-left") in app.js). Respect safe-area-
  * inset-bottom for the iOS home-bar area. Bottom-LEFT is currently
  * empty (brand is top-left, FAB stack is bottom-right); attribution
- * fits there cleanly without competing with any other chrome. */
+ * fits there cleanly without competing with any other chrome.
+ *
+ * Inset matches the brand element (top-left, 12 px) and the FAB
+ * stack (bottom-right, 12 px) so all three corner elements sit the
+ * same distance from their respective corners. The inner chip's
+ * default 0 0 10 10 margin (set by MapLibre's own stylesheet) is
+ * flattened so the visible chip edge IS the 12 px inset rather
+ * than 12 + 10. */
 .maplibregl-ctrl-bottom-left {
-    bottom: calc(8px + var(--safe-bottom)) !important;
-    left: calc(8px + env(safe-area-inset-left, 0)) !important;
+    bottom: calc(12px + var(--safe-bottom)) !important;
+    left: calc(12px + env(safe-area-inset-left, 0)) !important;
+}
+
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl {
+    margin: 0 !important;
 }
 
 /* ============================================================
