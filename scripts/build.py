@@ -1222,12 +1222,24 @@ def copy_templates(config, output_dir, trails_geojson):
                     '', content, flags=re.DOTALL,
                 )
 
-            # Inject or remove logo. Logo source falls back to icon: when
-            # logo: is omitted; raster sources are normalized to `logo.webp`
-            # in copy_assets() while SVG sources are copied as `logo.svg`.
-            # The template ships with src="logo.webp"; rename to .svg if the
-            # source is vector. Strip the overlay only when neither source
-            # is set.
+            # Brand title — substitute the map's title text into both
+            # the alt= on the brand-img (used by screen readers + as a
+            # fallback when the image is missing) AND the brand-title
+            # span text (shown when no logo is configured at all). Same
+            # value as the OG title.
+            brand_title = (config.get("title") or config.get("name")
+                          or "Trail Map")
+            content = content.replace("__BRAND_TITLE__",
+                                      _html_escape(brand_title, quote=True))
+
+            # Inject or remove brand image. Logo source falls back to
+            # icon: when logo: is omitted; raster sources are normalized
+            # to `logo.webp` in copy_assets() while SVG sources are
+            # copied as `logo.svg`. The template ships the brand-img
+            # with src="logo.webp"; rename to .svg if the source is
+            # vector. Strip the brand-img tag entirely when neither
+            # source is set, so the brand element falls back to the
+            # title span only.
             logo_path = config.get("logo", "")
             icon_path_for_logo = config.get("icon", "")
             logo_chosen = logo_path or icon_path_for_logo
@@ -1237,7 +1249,7 @@ def copy_templates(config, output_dir, trails_geojson):
                     content = content.replace("logo.webp", out_name)
             else:
                 content = re.sub(
-                    r'\s*<!-- Logo overlay -->.*?</div>\n',
+                    r'\s*<!-- Brand img start -->.*?<!-- Brand img end -->\n',
                     '', content, flags=re.DOTALL,
                 )
 

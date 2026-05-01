@@ -3,15 +3,11 @@
 
 /*__CONFIG__*/
 
-// Set the peek-title text synchronously so it never flashes a
-// placeholder. This script tag lives at the end of <body>, so the
-// element already exists; CONFIG is injected above and is available
-// here. Running this before any map-init async work means the first
-// paint carries the real title.
-(function setPeekTitleEarly() {
-    const el = document.getElementById("sheet-peek-title");
-    if (el) el.textContent = CONFIG.name || CONFIG.title || "Trail Map";
-})();
+// The brand element's content (logo image OR title text) is rendered
+// at template-substitution time by the build pipeline — see
+// scripts/build.py's __BRAND_TITLE__ replacement and the brand-img
+// strip when no logo is configured. No JS-side title injection
+// needed; the first paint carries the real brand.
 
 // Push YAML-configured POI colours onto :root as CSS custom
 // properties so the peek-bar swatches, on-map markers, and popup
@@ -947,6 +943,16 @@ let highlight = null; // { kind: "route"|"trail", key: string } | null
 // Indexes derived once at startup
 let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM, elevationGainM, elevationLossM }]
 let trailIndex = []; // [{ name, routeIds: [string] }]
+let poiIndex = [];   // [{ uid, type, name, lng, lat, ref }]
+// Active filter for the search overlay: "all" | "route" | "trail" | "poi".
+// Defaults to "all". Updated by chip clicks; consumed by rebuildFinderList.
+let currentSearchFilter = "all";
+
+// Index (within the rendered .finder-row buttons) of the currently
+// keyboard-active row. -1 means no row is active — the user hasn't
+// pressed a navigation key yet, or has typed since (which resets it).
+// Drives the .is-active class + aria-activedescendant on the input.
+let _finderActiveIndex = -1;
 
 // Marker arrays — trailMarkerMarkers covers the merged guidepost +
 // emergency-access-point category (single "Markers" peek button).
@@ -1739,36 +1745,29 @@ async function init() {
     map.on("resize", scheduleIndicatorUpdate);
 
     const attrControl = new maplibregl.AttributionControl({ compact: true });
-    map.addControl(attrControl, "bottom-right");
+    map.addControl(attrControl, "bottom-left");
     attrControl._container.classList.add("maplibregl-compact-show");
 
-    // Load data and add layers once map is ready. The bottom sheet is
-    // hidden via inline visibility:hidden in the HTML and is revealed
-    // at the end of setupBottomSheet(). If setup throws, reveal it
-    // anyway in finally so the user isn't stranded with no controls.
+    // Load data and add layers once map is ready.
     map.once("style.load", async () => {
-        try {
-            await loadTrails();
-            await loadPOIs();
-            buildRouteIndex();
-            buildTrailIndex();
-            setupBottomSheet();
-            setupInteractions();
-            promoteBasemapLabels();
-            suppressPathLabels();
-            suppressBasemapPois();
-            // Apply share-link highlight, if any. Done here (after
-            // both trails and route/trail indexes are built) so we
-            // can resolve route IDs / trail names against real data.
-            // Best-effort — silently skip if the referenced route or
-            // trail no longer exists (e.g. the map has been rebuilt
-            // since the link was shared and the relation changed).
-            if (_pendingShareHighlight) {
-                applyPendingShareHighlight();
-            }
-        } finally {
-            const sheet = document.getElementById("bottom-sheet");
-            if (sheet) sheet.style.visibility = "";
+        await loadTrails();
+        await loadPOIs();
+        buildRouteIndex();
+        buildTrailIndex();
+        buildPoiIndex();
+        setupBottomSheet();
+        setupInteractions();
+        promoteBasemapLabels();
+        suppressPathLabels();
+        suppressBasemapPois();
+        // Apply share-link highlight, if any. Done here (after both
+        // trails and route/trail indexes are built) so we can resolve
+        // route IDs / trail names against real data. Best-effort —
+        // silently skip if the referenced route or trail no longer
+        // exists (e.g. the map has been rebuilt since the link was
+        // shared and the relation changed).
+        if (_pendingShareHighlight) {
+            applyPendingShareHighlight();
         }
     });
 
@@ -1802,7 +1801,10 @@ function initWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (!modal) return;
     const slug = CONFIG.slug || "default";
-    const flagKey = `mtb.welcomed:${slug}`;
+    // Bumped from `mtb.welcomed:<slug>` to `mtb.welcomed.v2:<slug>` for
+    // the floating-chrome rework — riders who dismissed the old peek-
+    // bar welcome get one fresh showing of the new launcher copy.
+    const flagKey = `mtb.welcomed.v2:${slug}`;
     if (LS.get(flagKey) === "true") return;
 
     const titleEl = document.getElementById("welcome-modal-title");
@@ -1812,27 +1814,28 @@ function initWelcomeModal() {
 
     if (titleEl) titleEl.textContent = `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`;
 
-    // Build body copy reflecting the map's actual features.
+    // Build body copy reflecting the map's actual features and the
+    // new 3-FAB launcher pattern (Options · Search · Locate at
+    // bottom-right).
     const showRoutes = CONFIG.showRoutes !== false;
     const showTrails = CONFIG.showTrails !== false;
-    const finderLine = (showRoutes && showTrails)
-        ? "Search <strong>routes</strong> (named loops) or <strong>trails</strong> (the segments that make them up) from the bottom sheet."
+    const searchTargets = (showRoutes && showTrails)
+        ? "routes, trails, and places (parking, toilets, water, trailheads)"
         : showRoutes
-            ? "Search <strong>routes</strong> (named loops) from the bottom sheet."
+            ? "routes and places (parking, toilets, water, trailheads)"
             : showTrails
-                ? "Search <strong>trails</strong> from the bottom sheet."
-                : null;
+                ? "trails and places (parking, toilets, water, trailheads)"
+                : "places (parking, toilets, water, trailheads)";
 
     const bullets = [];
-    bullets.push("Tap the <strong>locate icon</strong> in the bottom bar to centre the map on you.");
-    if (finderLine) {
-        bullets.push("Tap the <strong>search icon</strong> to find routes and trails by name.");
-    }
-    bullets.push("Tap or drag the bottom bar up to open <strong>Settings</strong> — toggle layer visibility, change the season, pick a basemap, and more. Settings are saved between visits.");
-    bullets.push("Tap <strong>About this map</strong> for sources, attribution, and contact info.");
+    bullets.push("The map fills the whole screen — your controls live as three buttons in the <strong>bottom-right corner</strong>.");
+    bullets.push(`<strong>🔍 Search</strong> &mdash; find ${searchTargets}.`);
+    bullets.push("<strong>⚙ Options</strong> &mdash; configure what's shown on the map (layers, labels, season). Settings are saved between visits.");
+    bullets.push("<strong>📍 Locate</strong> &mdash; track your position on the map.");
     if (CONFIG.shareButton) {
-        bullets.push("Found a great view? Tap <strong>Share this view</strong> to send a link with the current zoom and any highlighted route.");
+        bullets.push("Found a great view? Open Options &rarr; <strong>Share this view</strong> to send a link with the current zoom and any highlighted route.");
     }
+    bullets.push("Open Options &rarr; <strong>About this map</strong> for sources, attribution, and contact info.");
 
     if (bodyEl) {
         bodyEl.innerHTML = "<ul>" +
@@ -1856,9 +1859,9 @@ function initWelcomeModal() {
     }
     document.addEventListener("keydown", onKeydown);
 
-    // Show the modal. Done after a tick so the bottom-sheet visibility
-    // toggle has settled (otherwise on slow paint the modal can flash
-    // with nothing behind it).
+    // Show the modal on the next frame so the floating chrome has
+    // settled into place first (otherwise the modal can flash before
+    // the brand + FAB stack render on slow first paints).
     requestAnimationFrame(() => modal.classList.remove("hidden"));
 }
 
@@ -1871,23 +1874,27 @@ function initAbout() {
     const closeBtn = modal.querySelector(".about-modal-close");
 
     btn.addEventListener("click", openAboutModal);
-    // Close via the X or Escape — backdrop clicks intentionally
-    // do nothing. Rationale: About is launched from inside the
-    // expanded bottom sheet, and the user expects to return to
-    // that still-open sheet when they're done. A stray backdrop
-    // tap was previously dismissing both About AND the underlying
-    // sheet because the click bubbled to the sheet's document-
-    // level outside-click handler. Escape is handled inside the
-    // sheet's single document-level Escape handler (see
-    // setupBottomSheet) so the priority order is explicit: About
-    // first, sheet next, highlight last — one press, one action.
+    // Close via the X, Escape, or backdrop click — matches the
+    // dismissal pattern of the Search and Options overlays so any
+    // window over the map closes the same way. The earlier "X-only"
+    // restriction was a workaround for the old bottom-sheet drawer
+    // (which had its own backdrop click-outside handler that would
+    // collapse the sheet too); with the floating-chrome / overlays
+    // model that conflict is gone.
     closeBtn.addEventListener("click", (e) => {
-        // stopPropagation keeps this X click from bubbling to the
-        // document-level "click outside sheet → closeSheet" handler
-        // in setupBottomSheet.
         e.stopPropagation();
         closeAboutModal();
     });
+    // Backdrop dismissal: click on the backdrop layer (outside the
+    // .about-modal-content card) closes. The `e.target === backdrop`
+    // discriminator means clicks inside the card don't bubble out
+    // and dismiss accidentally.
+    const backdrop = modal.querySelector(".about-modal-backdrop");
+    if (backdrop) {
+        backdrop.addEventListener("click", (e) => {
+            if (e.target === backdrop) closeAboutModal();
+        });
+    }
 
     buildAboutModalContent();
 }
@@ -3521,6 +3528,213 @@ function highlightTrail(trailName) {
     applyDimState();
 }
 
+// highlightPoi — single POI highlight. Hands off to highlightPoiSet
+// (which does the pan/zoom + persistent ring + chip), then opens the
+// marker's popup once the camera settles so the rider gets the info
+// card immediately.
+function highlightPoi(p) {
+    if (!p || typeof p.lng !== "number" || typeof p.lat !== "number") return;
+
+    const label = p.name || (POI_TYPE_META_LABEL[p.type] || "Place");
+    highlightPoiSet([p], label);
+
+    // Defer popup until the flyTo finishes so the popup positions
+    // correctly relative to its new screen position.
+    const marker = findPoiMarker(p);
+    if (marker && typeof marker.getPopup === "function") {
+        const popup = marker.getPopup();
+        if (popup) {
+            const onMoveEnd = () => {
+                map.off("moveend", onMoveEnd);
+                if (!popup.isOpen()) marker.togglePopup();
+            };
+            map.on("moveend", onMoveEnd);
+            // Safety timeout in case moveend doesn't fire.
+            setTimeout(() => {
+                map.off("moveend", onMoveEnd);
+                if (!popup.isOpen()) marker.togglePopup();
+            }, 1200);
+        }
+    }
+}
+
+// highlightPoiGroup — for a group of same-type, same-name POIs
+// (e.g. all 5 unnamed toilets on the map). Hands off to
+// highlightPoiSet which fits bounds + draws a persistent ring on
+// each member. No popups (would be visually noisy with multiple
+// overlapping cards); the rider can tap an individual marker for
+// details, or read the chip ("Toilets × 3") for the count.
+function highlightPoiGroup(group) {
+    if (!group || !group.members || !group.members.length) return;
+    const label = `${group.name} × ${group.count}`;
+    highlightPoiSet(group.members, label);
+}
+
+// Find the on-map maplibregl.Marker that corresponds to a poiIndex
+// entry. Compares geographic coords (6-decimal precision = ~11cm,
+// well below any meaningful POI placement). Returns null if no
+// matching marker is currently in the marker pool — happens when the
+// POI's layer toggle is off (the marker objects exist but aren't
+// .addTo()'d to the map). The popup-open path tolerates null.
+function findPoiMarker(p) {
+    const arrays = {
+        "trail_marker":   trailMarkerMarkers,
+        "parking":        parkingMarkers,
+        "trailhead":      trailheadMarkers,
+        "feature":        featureMarkers,
+        "toilet":         toiletMarkers,
+        "drinking_water": drinkingWaterMarkers,
+    };
+    const list = arrays[p.type];
+    if (!list) return null;
+    const lngEq = (a, b) => Math.abs(a - b) < 1e-6;
+    for (const m of list) {
+        if (typeof m.getLngLat !== "function") continue;
+        const ll = m.getLngLat();
+        if (lngEq(ll.lng, p.lng) && lngEq(ll.lat, p.lat)) return m;
+    }
+    return null;
+}
+
+// POI persistent-highlight system.
+//
+// When the rider taps a POI search result (single OR group), the
+// matching POIs get a persistent ring drawn around them on the map.
+// The ring stays put while the rider pans and zooms, so they can
+// navigate toward whichever one is most relevant. Cleared explicitly
+// via the highlight chip's X, the Esc key, or by triggering a new
+// highlight (which replaces the set).
+//
+// No animation, no map dim — the rings are static decorations that
+// say "here are your matches, pick the one you want." For single-POI
+// highlights we ALSO open the marker's popup so the rider gets the
+// info card immediately. For group highlights we skip the popup
+// (would be visually noisy with N overlapping cards).
+//
+// Implementation: one MapLibre GeoJSON source + two stacked circle
+// layers (dark stroke outside, bright stroke inside — sandwich
+// pattern visible on any basemap). setData fires once per
+// highlight change; no per-frame updates → no MapLibre render
+// re-entrancy issue.
+
+let _highlightedPois = [];                       // module-scope state
+const POI_HIGHLIGHT_SOURCE = "poi-highlight-source";
+const POI_HIGHLIGHT_OUTER  = "poi-highlight-outer";
+const POI_HIGHLIGHT_INNER  = "poi-highlight-inner";
+const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
+
+function ensurePoiHighlightLayers() {
+    if (!map.getSource(POI_HIGHLIGHT_SOURCE)) {
+        map.addSource(POI_HIGHLIGHT_SOURCE, {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+        });
+    }
+    // Outer dark stroke first so the inner bright stroke sits on
+    // top. Translucent dark for any-light-background contrast.
+    if (!map.getLayer(POI_HIGHLIGHT_OUTER)) {
+        map.addLayer({
+            id: POI_HIGHLIGHT_OUTER,
+            type: "circle",
+            source: POI_HIGHLIGHT_SOURCE,
+            paint: {
+                "circle-radius": POI_HIGHLIGHT_RADIUS,
+                "circle-color": "transparent",
+                "circle-stroke-color": "rgba(0, 0, 0, 0.7)",
+                "circle-stroke-width": 5,
+            },
+        });
+    }
+    if (!map.getLayer(POI_HIGHLIGHT_INNER)) {
+        map.addLayer({
+            id: POI_HIGHLIGHT_INNER,
+            type: "circle",
+            source: POI_HIGHLIGHT_SOURCE,
+            paint: {
+                "circle-radius": POI_HIGHLIGHT_RADIUS,
+                "circle-color": "transparent",
+                "circle-stroke-color": "#FFEC00",  // highlighter yellow
+                "circle-stroke-width": 2.5,
+            },
+        });
+    }
+}
+
+function setPoiHighlightData(pois) {
+    ensurePoiHighlightLayers();
+    const src = map.getSource(POI_HIGHLIGHT_SOURCE);
+    if (!src) return;
+    src.setData({
+        type: "FeatureCollection",
+        features: pois.map((p) => ({
+            type: "Feature",
+            properties: {},
+            geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+        })),
+    });
+}
+
+// Set the persistent POI highlight to a list of POIs. Pans/zooms to
+// fit them all, draws the rings, shows the highlight chip with the
+// label and count.
+function highlightPoiSet(pois, label) {
+    if (!pois || !pois.length) return;
+
+    _highlightedPois = pois.slice();
+    setPoiHighlightData(_highlightedPois);
+
+    // Fit map. Single → flyTo with zoom-up. Multiple → fitBounds.
+    if (_highlightedPois.length === 1) {
+        const p = _highlightedPois[0];
+        map.flyTo({
+            center: [p.lng, p.lat],
+            zoom: Math.max(map.getZoom(), 15),
+            duration: 700,
+        });
+    } else {
+        let minLng = Infinity, maxLng = -Infinity;
+        let minLat = Infinity, maxLat = -Infinity;
+        for (const p of _highlightedPois) {
+            if (p.lng < minLng) minLng = p.lng;
+            if (p.lng > maxLng) maxLng = p.lng;
+            if (p.lat < minLat) minLat = p.lat;
+            if (p.lat > maxLat) maxLat = p.lat;
+        }
+        // Degenerate (all same coords) — fall through to single-pan.
+        if (minLng === maxLng && minLat === maxLat) {
+            map.flyTo({
+                center: [minLng, minLat],
+                zoom: Math.max(map.getZoom(), 15),
+                duration: 700,
+            });
+        } else {
+            map.fitBounds(
+                [[minLng, minLat], [maxLng, maxLat]],
+                { padding: 80, maxZoom: 16, duration: 700 },
+            );
+        }
+    }
+
+    // Highlight chip — re-uses the existing chip element. Yellow
+    // swatch matches the inner ring color so the visual link
+    // between chip and on-map highlights is obvious.
+    showHighlightChip({
+        label,
+        color: "#FFEC00",
+        stats: "",
+    });
+}
+
+function clearPoiHighlight() {
+    if (_highlightedPois.length === 0) return;
+    _highlightedPois = [];
+    const src = map.getSource(POI_HIGHLIGHT_SOURCE);
+    if (src) {
+        src.setData({ type: "FeatureCollection", features: [] });
+    }
+    hideHighlightChip();
+}
+
 function clearHighlight() {
     highlight = null;
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
@@ -3533,6 +3747,11 @@ function clearHighlight() {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
         }
     }
+    // POI rings + chip — clearPoiHighlight is a no-op if nothing's
+    // currently highlighted, and it tears down the chip itself, so
+    // calling it here unifies the chip's clear path for both
+    // route/trail highlights and POI highlights.
+    clearPoiHighlight();
     hideHighlightChip();
 
     // Dim follows highlight lifecycle — tear it down here.
@@ -3653,6 +3872,68 @@ function buildTrailIndex() {
         .map(([name, routeIds]) => ({ name, routeIds: [...routeIds] }))
         .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+// Build the POI search index from poisData (loaded by loadPOIs at
+// boot). One entry per POI feature; each entry carries the
+// information the search overlay needs to render a row + the
+// coordinates needed by highlightPoi(). Unnamed POIs get a
+// synthesized fallback name (e.g. "Marker EPIC-3") so they're still
+// findable.
+function buildPoiIndex() {
+    poiIndex = [];
+    if (!poisData || !poisData.features) return;
+    for (const f of poisData.features) {
+        const props = f.properties || {};
+        const coords = f.geometry && f.geometry.coordinates;
+        if (!coords || coords.length < 2) continue;
+        const type = props.poi_type;
+        if (!type) continue;
+
+        // Display name. POIs vary in what they have:
+        //   - parking / trailhead: name from config
+        //   - feature: name from OSM (sometimes empty)
+        //   - trail_marker: ref or name
+        //   - toilet / drinking_water: name from OSM (often empty)
+        // For empty names we synthesize something searchable.
+        let name = props.name || "";
+        if (!name && type === "trail_marker") {
+            name = props.ref ? `Marker ${props.ref}` : "Trail marker";
+        }
+        if (!name) {
+            name = POI_TYPE_FALLBACK_NAME[type] || type;
+        }
+
+        poiIndex.push({
+            uid: `poi:${type}:${coords[0].toFixed(6)},${coords[1].toFixed(6)}`,
+            type,
+            name,
+            lng: coords[0],
+            lat: coords[1],
+            ref: props.ref || "",
+        });
+    }
+    poiIndex.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Display label for each POI type when the OSM feature has no name.
+// Also used for the small "type" meta line under the POI row.
+const POI_TYPE_FALLBACK_NAME = Object.freeze({
+    "trail_marker":   "Trail marker",
+    "parking":        "Parking",
+    "trailhead":      "Trailhead",
+    "feature":        "Feature",
+    "toilet":         "Toilets",
+    "drinking_water": "Drinking water",
+});
+
+const POI_TYPE_META_LABEL = Object.freeze({
+    "trail_marker":   "trail marker",
+    "parking":        "parking",
+    "trailhead":      "trailhead",
+    "feature":        "feature",
+    "toilet":         "toilets",
+    "drinking_water": "drinking water",
+});
 
 // ============================================================
 // POI loading
@@ -3967,311 +4248,225 @@ function addFeatureMarkers(addToMap) {
 }
 
 // ============================================================
-// Bottom sheet — peek + expanded states; replaces the old top-right
-// sandwich panel.
+// Floating chrome (Phase 3 of the UI v2 rework) — brand element TL,
+// FAB stack BR, plus two overlays (search half-sheet + options
+// full-screen). Replaces the old bottom-sheet drawer entirely. Function
+// retains the historic name for git-blame readability; what it sets
+// up is "everything that used to live in or around the bottom sheet."
 // ============================================================
 function setupBottomSheet() {
-    const sheet = document.getElementById("bottom-sheet");
-    const handle = document.getElementById("sheet-handle");
-    const peek = document.getElementById("sheet-peek");
-    const expanded = document.getElementById("sheet-expanded");
-    // The peek-title text is already set eagerly at script-init time
-    // (see setPeekTitleEarly near the top of this file) so no flash
-    // before map load. The whole bottom-sheet starts visibility:hidden
-    // in the HTML and is revealed at the end of this function.
+    // ----- Brand element (top-left) ---------------------------------
+    // The brand-img and brand-title are both rendered by the build at
+    // template-substitution time — the build replaces __BRAND_TITLE__
+    // with the configured map title and strips the <img> tag if
+    // neither logo: nor icon: is configured. CSS handles the visible
+    // fallback (img hides span via :has when img is present). So the
+    // JS doesn't need to do anything here — the markup is already
+    // correct. Kept this block as a comment-only anchor so future
+    // additions (e.g. tap-to-open-About) have an obvious home.
 
-    // ----- Open/close behaviour -----
-    // The backdrop is a separate sibling element (sheet-backdrop) that
-    // dims the map behind the open drawer. Its .is-active class
-    // toggles in lockstep with the sheet's .is-open so the visual
-    // state stays in sync. tap-to-close on the backdrop works via
-    // the existing document-level "click outside the sheet" handler
-    // further down in this function.
-    const backdrop = document.getElementById("sheet-backdrop");
-    function openSheet() {
-        sheet.classList.add("is-open");
-        handle.setAttribute("aria-expanded", "true");
-        expanded.setAttribute("aria-hidden", "false");
-        if (backdrop) backdrop.classList.add("is-active");
-    }
-    function closeSheet() {
-        sheet.classList.remove("is-open");
-        handle.setAttribute("aria-expanded", "false");
-        expanded.setAttribute("aria-hidden", "true");
-        if (backdrop) backdrop.classList.remove("is-active");
-    }
-    function toggleSheet() {
-        if (sheet.classList.contains("is-open")) closeSheet();
-        else openSheet();
-    }
-
-    // Expose openSheet/closeSheet so other call sites that live outside
-    // this function's scope (the finder row clicks, the peek search
-    // button) can trigger the drawer through the canonical paths
-    // instead of toggling .is-open directly. Toggling the class
-    // directly bypasses backdrop sync — backdrop stays .is-active,
-    // intercepts all map gestures, and the user can't pan/zoom.
-    window.__openBottomSheet = openSheet;
-    window.__closeBottomSheet = closeSheet;
-
-    // ----- Drag-to-open gesture -------------------------------------
+    // ----- Search overlay (half-sheet) + Options overlay (full-screen)
     //
-    // Pointer drags on the handle (or bare peek area) translate the
-    // sheet in real time. At pointerup we decide: tap → toggle; else
-    // snap based on final position + velocity. The snap transition is
-    // handled by the existing CSS animation on max-height (except when
-    // the user prefers reduced motion — in that case the final state
-    // is applied instantly).
-    const TAP_MAX_DIST = 6;        // px
-    const TAP_MAX_TIME = 250;      // ms
-    const VELOCITY_SNAP = 300;     // px/s that forces open/close
-    const OPEN_SNAP_RATIO = 0.40;  // fraction of travel that snaps open
+    // Two distinct surfaces, each with its own open/close lifecycle.
+    // The Options overlay covers the entire viewport; the Search
+    // overlay covers the bottom ~55% so the map stays visible above.
+    // Both are dismissed via Escape, their own close button, or
+    // re-tapping the FAB that opened them. The Search overlay also
+    // dismisses on tap-outside (the visible map area above the
+    // sheet). Because the overlays are visually distinct from each
+    // other, only one can be open at a time — opening one closes the
+    // other.
+    const searchOverlay = document.getElementById("search-overlay");
+    const optionsOverlay = document.getElementById("options-overlay");
+    const searchBtn = document.getElementById("toggle-search");
+    const optionsBtn = document.getElementById("toggle-options");
 
-    const reduceMotion = () =>
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    let drag = null;
-
-    function getOpenHeight() {
-        // Mirror the CSS max-height the sheet animates to for .is-open:
-        // 72vh on mobile, 80vh on desktop (see style.css
-        // .bottom-sheet.is-open + the @media (min-width: 768px)
-        // override). These values must match — if they drift, the
-        // snap-to-open position overshoots or undershoots the final
-        // CSS state.
-        const desktop = window.matchMedia("(min-width: 768px)").matches;
-        const cap = window.innerHeight * (desktop ? 0.80 : 0.72);
-        return cap;
+    function setOverlayOpen(overlay, btn, open) {
+        if (!overlay) return;
+        if (open) {
+            overlay.hidden = false;
+            // Force a reflow before adding .is-open so the slide-up
+            // transition fires (otherwise the element jumps from
+            // hidden directly to translateY(0)).
+            // eslint-disable-next-line no-unused-expressions
+            overlay.offsetHeight;
+            overlay.classList.add("is-open");
+            if (btn) btn.setAttribute("aria-pressed", "true");
+        } else {
+            overlay.classList.remove("is-open");
+            if (btn) btn.setAttribute("aria-pressed", "false");
+            // Wait for slide-out transition before re-hiding the
+            // element so the animation plays. Match the CSS
+            // transition duration (0.22s) plus a small margin.
+            const reduce = window.matchMedia(
+                "(prefers-reduced-motion: reduce)").matches;
+            const ms = reduce ? 0 : 240;
+            setTimeout(() => {
+                if (!overlay.classList.contains("is-open")) {
+                    overlay.hidden = true;
+                }
+            }, ms);
+        }
     }
 
-    function peekHeight() {
-        // Use the peek's real rendered height (includes the handle).
-        const peekRect = peek.getBoundingClientRect();
-        const handleRect = handle.getBoundingClientRect();
-        return peekRect.height + handleRect.height;
+    function openSearchOverlay() {
+        // Single-overlay invariant: close Options if it's open.
+        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
+            setOverlayOpen(optionsOverlay, optionsBtn, false);
+        }
+        setOverlayOpen(searchOverlay, searchBtn, true);
+        // Defer focus until after the slide-up starts so iOS doesn't
+        // fight the keyboard with the transition.
+        const finderInput = document.getElementById("finder-input");
+        if (finderInput) setTimeout(() => finderInput.focus(), 50);
+    }
+    function closeSearchOverlay() {
+        setOverlayOpen(searchOverlay, searchBtn, false);
+        // Drop focus from the input so iOS can dismiss the keyboard.
+        const finderInput = document.getElementById("finder-input");
+        if (finderInput) finderInput.blur();
+    }
+    function toggleSearchOverlay() {
+        if (!searchOverlay) return;
+        if (searchOverlay.classList.contains("is-open")) closeSearchOverlay();
+        else openSearchOverlay();
     }
 
-    // `captureEl` is the element that owns the pointer-capture + event
-    // listeners for this drag. Using `e.target` is unreliable because
-    // the target can be a descendant (text node / child span) that
-    // doesn't stay in the document, breaking setPointerCapture on
-    // Chrome Android + Firefox. Always capture on the listener element.
-    function makeDragHandlers(captureEl) {
-        function startDrag(e) {
-            // Only track primary-button pointer events (left click / first
-            // touch). Ignore drags started on interactive children (peek
-            // icon buttons, form controls) — those should behave as native
-            // clicks.
-            if (e.button !== undefined && e.button !== 0) return;
-            if (e.target.closest && e.target.closest(".peek-icon, select, input, a")) return;
-            const wasOpen = sheet.classList.contains("is-open");
-            drag = {
-                startY: e.clientY,
-                startT: performance.now(),
-                lastY: e.clientY,
-                lastT: performance.now(),
-                wasOpen,
-                peekH: peekHeight(),
-                openH: getOpenHeight(),
-                moved: false,
-                draggingApplied: false,
-                pointerId: e.pointerId,
-                captureEl,
-            };
-            // Capture so moves keep firing even outside the element. Use
-            // the *listener* element, not e.target — some browsers throw
-            // NotFoundError when capturing on a child text run.
-            //
-            // Note: we do NOT enter "drag mode" (pin max-height, add
-            // .is-dragging, expose .sheet-expanded) on pointerdown.
-            // A pure click that never moves shouldn't visually flash
-            // the drawer content, and on desktop the brief mid-drag
-            // exposure can read as the peek "flashing wide" before
-            // the open animation. Drag mode is deferred to the first
-            // moveDrag past TAP_MAX_DIST. See moveDrag below.
-            try { captureEl.setPointerCapture(e.pointerId); } catch (_) {}
+    function openOptionsOverlay() {
+        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
+            setOverlayOpen(searchOverlay, searchBtn, false);
         }
+        setOverlayOpen(optionsOverlay, optionsBtn, true);
+    }
+    function closeOptionsOverlay() {
+        setOverlayOpen(optionsOverlay, optionsBtn, false);
+    }
+    function toggleOptionsOverlay() {
+        if (!optionsOverlay) return;
+        if (optionsOverlay.classList.contains("is-open")) closeOptionsOverlay();
+        else openOptionsOverlay();
+    }
 
-        function enterDragMode() {
-            if (!drag || drag.draggingApplied) return;
-            drag.draggingApplied = true;
-            // Pin max-height to the current visual height BEFORE we
-            // expose .sheet-expanded. Without this, adding
-            // .is-dragging un-hides the expanded section and the
-            // sheet grows to the default CSS cap (100vh - 60px) for
-            // one frame before the first pointermove clips it. The
-            // user sees a flash of "fully open then drag in"
-            // (visible in Firefox in particular). Setting the inline
-            // max-height in the same synchronous handler means the
-            // browser never paints the un-clipped intermediate
-            // state. Disabling transition keeps the snap-back at
-            // pointerup from animating from this pinned value.
-            sheet.style.transition = "none";
-            sheet.style.maxHeight = (drag.wasOpen ? drag.openH : drag.peekH) + "px";
-            // Expose .sheet-expanded during drag so max-height has
-            // content to reveal. Without this, dragging from closed
-            // state was a no-op: the CSS `.sheet-expanded { display:
-            // none }` rule left the sheet at peek height regardless
-            // of any inline max-height we set. Most visible in
-            // Firefox, where the tap-fallback didn't always salvage
-            // short drags. Clear in end/cancel.
-            if (!drag.wasOpen) sheet.classList.add("is-dragging");
-        }
+    // FAB click handlers
+    if (searchBtn) {
+        searchBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleSearchOverlay();
+        });
+    }
+    if (optionsBtn) {
+        optionsBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleOptionsOverlay();
+        });
+    }
 
-        function moveDrag(e) {
-            if (!drag || e.pointerId !== drag.pointerId) return;
-            const dy = e.clientY - drag.startY;
-            drag.lastY = e.clientY;
-            drag.lastT = performance.now();
-            if (Math.abs(dy) > TAP_MAX_DIST) {
-                drag.moved = true;
-                // First time we cross the tap threshold, actually enter
-                // drag mode (pin max-height + expose expanded section).
-                enterDragMode();
+    // Search overlay's Cancel button + tap-on-backdrop dismissal.
+    // The overlay element IS the backdrop (full viewport, dimmed
+    // when open). Clicks land on either the overlay element itself
+    // (backdrop area) or on a descendant (the panel). We close on
+    // the former, ignore the latter. The FAB stack is z-indexed
+    // ABOVE the overlay so FAB clicks don't reach this handler at
+    // all — they toggle the overlay via their own click handlers.
+    const searchCancel = document.getElementById("search-cancel");
+    if (searchCancel) {
+        searchCancel.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeSearchOverlay();
+        });
+    }
+    if (searchOverlay) {
+        searchOverlay.addEventListener("click", (e) => {
+            if (e.target === searchOverlay) closeSearchOverlay();
+        });
+    }
+
+    // Search filter chips (All / Routes / Trails / Places). Single-
+    // selection — clicking a chip flips it to selected and rebuilds
+    // the result list. Default is "all" set at module scope. The
+    // "Trails" chip is hidden when the map has no trails configured;
+    // same for "Routes". The "Places" chip is hidden when no POIs
+    // exist. "All" stays visible whenever ≥1 of the others does.
+    const searchFiltersEl = document.getElementById("search-filters");
+    if (searchFiltersEl) {
+        const showRoutes = CONFIG.showRoutes !== false;
+        const showTrails = CONFIG.showTrails !== false;
+        const hasPois = poiIndex && poiIndex.length > 0;
+        const chipFilters = searchFiltersEl
+            .querySelectorAll(".search-filter-chip");
+        for (const chip of chipFilters) {
+            const f = chip.dataset.filter;
+            // Hide chips whose category has no data
+            if ((f === "route" && !showRoutes) ||
+                (f === "trail" && !showTrails) ||
+                (f === "poi" && !hasPois)) {
+                chip.classList.add("hidden");
+                continue;
             }
-
-            // No-op until the user has actually moved past the tap
-            // threshold — leave the sheet at its CSS-resolved size so
-            // a static click never flashes the drawer content.
-            if (!drag.draggingApplied) return;
-
-            // Derive a live height by applying the drag delta to whichever
-            // state we started in. Negative dy (finger up) opens; positive
-            // closes.
-            const baseH = drag.wasOpen ? drag.openH : drag.peekH;
-            let liveH = baseH - dy;
-            if (liveH < drag.peekH) liveH = drag.peekH;
-            if (liveH > drag.openH) liveH = drag.openH;
-
-            // Pin max-height during drag; disable the CSS transition so
-            // the sheet tracks the finger exactly.
-            sheet.style.transition = "none";
-            sheet.style.maxHeight = liveH + "px";
-            // Prevent text-selection / scroll hijack on touch drags.
-            if (drag.moved && e.cancelable) e.preventDefault();
+            chip.addEventListener("click", (e) => {
+                e.stopPropagation();
+                currentSearchFilter = f;
+                for (const c of chipFilters) {
+                    c.setAttribute("aria-selected",
+                        c.dataset.filter === f ? "true" : "false");
+                }
+                rebuildFinderList();
+            });
         }
-
-        function endDrag(e) {
-            if (!drag || e.pointerId !== drag.pointerId) return;
-            const dy = e.clientY - drag.startY;
-            const dt = performance.now() - drag.startT;
-            const vy = (e.clientY - drag.lastY) /
-                Math.max(1, (performance.now() - drag.lastT)) * 1000; // px/s
-            const travel = drag.openH - drag.peekH;
-
-            // Clear the inline overrides before applying the final state so
-            // the CSS transition can take over for the snap.
-            sheet.style.transition = reduceMotion() ? "none" : "";
-            sheet.style.maxHeight = "";
-            sheet.classList.remove("is-dragging");
-
-            try { drag.captureEl.releasePointerCapture(drag.pointerId); } catch (_) {}
-
-            const wasOpen = drag.wasOpen;
-            const moved = drag.moved;
-            drag = null;
-
-            // Tap → toggle. A pointerup that never crossed
-            // TAP_MAX_DIST is a tap regardless of duration — desktop
-            // mouse users sometimes click and hold for a beat before
-            // releasing, and the previous TAP_MAX_TIME bound was
-            // sending those held-clicks down the snap branch where
-            // dy=0 always evaluated to closeSheet(). dt is no longer
-            // an input to tap-vs-drag classification; only motion is.
-            if (!moved && Math.abs(dy) < TAP_MAX_DIST) {
-                toggleSheet();
-                return;
-            }
-
-            // Velocity-driven decision first.
-            if (vy < -VELOCITY_SNAP) { openSheet(); return; }
-            if (vy >  VELOCITY_SNAP) { closeSheet(); return; }
-
-            // Otherwise snap based on fraction of travel crossed.
-            // When open and dragged down > (1-ratio) of travel → close.
-            // When closed and dragged up >  ratio of travel → open.
-            if (wasOpen) {
-                if (dy > travel * (1 - OPEN_SNAP_RATIO)) closeSheet();
-                else openSheet();
-            } else {
-                if (-dy > travel * OPEN_SNAP_RATIO) openSheet();
-                else closeSheet();
-            }
-        }
-
-        function cancelDrag(e) {
-            if (!drag || (e && e.pointerId !== drag.pointerId)) return;
-            sheet.style.transition = "";
-            sheet.style.maxHeight = "";
-            sheet.classList.remove("is-dragging");
-            try { drag.captureEl.releasePointerCapture(drag.pointerId); } catch (_) {}
-            drag = null;
-        }
-
-        return { startDrag, moveDrag, endDrag, cancelDrag };
     }
 
-    // Attach drag listeners to both the handle and the peek row. Each
-    // set of handlers captures on its own listener element so pointer
-    // capture works reliably across Safari / Chrome / Firefox.
-    for (const el of [handle, peek]) {
-        const { startDrag, moveDrag, endDrag, cancelDrag } = makeDragHandlers(el);
-        el.addEventListener("pointerdown", startDrag);
-        el.addEventListener("pointermove", moveDrag);
-        el.addEventListener("pointerup", endDrag);
-        el.addEventListener("pointercancel", cancelDrag);
+    // Options overlay's Close button + tap-on-backdrop dismissal.
+    // Same pattern as search.
+    const optionsClose = document.getElementById("options-close");
+    if (optionsClose) {
+        optionsClose.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeOptionsOverlay();
+        });
+    }
+    if (optionsOverlay) {
+        optionsOverlay.addEventListener("click", (e) => {
+            if (e.target === optionsOverlay) closeOptionsOverlay();
+        });
     }
 
-    // Keyboard + non-drag fallbacks.
-    handle.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggleSheet();
-        }
-    });
-
-    // When the About modal is up, the sheet's outside-click and
-    // Escape handlers must stand down — About sits on top of the
-    // sheet and owns the foreground. Without this guard, a backdrop
-    // tap (or a keystroke that happens to be Escape) would reach
-    // these document-level handlers and silently collapse the sheet
-    // behind the modal.
+    // When the About modal is up, the overlay Escape handlers must
+    // stand down — About sits on top of everything and owns the
+    // foreground. Without this guard a stray Escape would close the
+    // overlay behind the modal silently.
     function isAboutOpen() {
         const aboutModal = document.getElementById("about-modal");
         return aboutModal && !aboutModal.classList.contains("hidden");
     }
 
-    // Tap outside the sheet closes it (when expanded).
-    document.addEventListener("click", (e) => {
-        if (!sheet.classList.contains("is-open")) return;
-        if (isAboutOpen()) return;
-        if (sheet.contains(e.target)) return;
-        // Don't close on chip or map control clicks.
-        if (e.target.closest(".highlight-chip")) return;
-        closeSheet();
-    });
-
     // Escape = dismiss topmost state, one press at a time. Priority
-    // order from topmost downward:
-    //   1. About modal open → close About (sheet stays open behind).
-    //   2. Sheet open → close sheet.
-    //   3. Highlight active → clear highlight (same as tapping the
-    //      highlight chip).
-    // Consolidated in a single handler so we don't have two
-    // document-level Escape listeners racing to close different
-    // layers on the same keystroke.
+    // order: About modal > Options overlay > Search overlay >
+    // highlight. Consolidated handler so we don't have multiple
+    // listeners racing on the same keystroke.
     document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
         if (isAboutOpen()) {
             closeAboutModal();
             return;
         }
-        if (sheet.classList.contains("is-open")) {
-            closeSheet();
-        } else if (highlight) {
-            clearHighlight();
+        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
+            closeOptionsOverlay();
+            return;
         }
+        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
+            closeSearchOverlay();
+            return;
+        }
+        // Both the route/trail highlight and the POI highlight set
+        // count as "something to dismiss." clearHighlight() handles
+        // both, so a single Esc press reliably clears whatever's lit.
+        if (highlight || _highlightedPois.length > 0) clearHighlight();
     });
+
+    // Expose closeSearchOverlay so the finder row clicks (defined
+    // outside this function's scope) can dismiss search after a
+    // selection commits. Replaces the old window.__closeSearchOverlay.
+    window.__closeSearchOverlay = closeSearchOverlay;
 
     // ----- Season cycle button (peek) --------------------------------
     //
@@ -4295,7 +4490,7 @@ function setupBottomSheet() {
     const seasonField = document.getElementById("season-field");
     const seasonSwatch = seasonField && seasonField.querySelector(".season-swatch");
     const seasonButtons = seasonField
-        ? Array.from(seasonField.querySelectorAll(".sheet-segmented-btn"))
+        ? Array.from(seasonField.querySelectorAll(".opt-segmented-btn"))
         : [];
     // CONFIG.routes and CONFIG.customRoutes are objects keyed by route id.
     // A route participates in winter mode iff its info carries `winter: true`.
@@ -4340,20 +4535,16 @@ function setupBottomSheet() {
 
     // ----- Emergency Access toggle (single authority) ---------------
     //
-    // Same .sheet-toggle-row format as the POI toggles — a button
-    // that flips aria-pressed on click. Shown only when the current
-    // map has at least one route with `emergency: true`.
+    // Same segmented On/Off format as the POI toggles. Shown only
+    // when the current map has at least one route with
+    // `emergency: true`. Reveal the row first, then wire — wirePeekToggle
+    // bails on hidden rows.
     const emBtn = document.getElementById("toggle-emergency-routes");
     const hasEmergencyRoutes = anyRouteHas("emergency");
     if (emBtn && hasEmergencyRoutes) {
-        emBtn.setAttribute("aria-pressed", emergencyOn ? "true" : "false");
         emBtn.classList.remove("hidden");
-        emBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const next = emBtn.getAttribute("aria-pressed") !== "true";
-            emBtn.setAttribute("aria-pressed", next ? "true" : "false");
-            emergencyOn = next;
-            LS.set("mtb.emergencyOn", emergencyOn);
+        wirePeekToggle("toggle-emergency-routes", "mtb.emergencyOn", false, (on) => {
+            emergencyOn = on;
             applyVisibilityChange();
         });
     } else {
@@ -4380,17 +4571,38 @@ function setupBottomSheet() {
     // Each button carries on/off state via aria-pressed. The wirePeekToggle
     // helper reads persisted state, sets the initial pressed value, and
     // wires the click handler. Buttons already hidden (no data) are skipped.
+    // Wire a toggle row that uses the segmented On/Off pattern (the
+    // visible UI matches the Season row: two side-by-side segments
+    // labelled "On" and "Off"). aria-pressed lives on the row div
+    // for the existing CSS off-state-slash treatment to keep
+    // working; aria-checked drives the visible "fill the active
+    // segment" appearance.
     function wirePeekToggle(id, lsKey, defaultOn, onChange) {
-        const btn = document.getElementById(id);
-        if (!btn || btn.classList.contains("hidden")) return;
+        const row = document.getElementById(id);
+        if (!row || row.classList.contains("hidden")) return;
+        const onBtn = row.querySelector('[data-value="on"]');
+        const offBtn = row.querySelector('[data-value="off"]');
+        if (!onBtn || !offBtn) return;
         const initial = LS.get(lsKey, defaultOn);
-        btn.setAttribute("aria-pressed", initial ? "true" : "false");
-        btn.addEventListener("click", (e) => {
+        function applyState(isOn) {
+            row.setAttribute("aria-pressed", isOn ? "true" : "false");
+            onBtn.setAttribute("aria-checked", isOn ? "true" : "false");
+            offBtn.setAttribute("aria-checked", isOn ? "false" : "true");
+        }
+        applyState(initial);
+        onBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const next = btn.getAttribute("aria-pressed") !== "true";
-            btn.setAttribute("aria-pressed", next ? "true" : "false");
-            LS.set(lsKey, next);
-            onChange(next);
+            if (onBtn.getAttribute("aria-checked") === "true") return;
+            applyState(true);
+            LS.set(lsKey, true);
+            onChange(true);
+        });
+        offBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (offBtn.getAttribute("aria-checked") === "true") return;
+            applyState(false);
+            LS.set(lsKey, false);
+            onChange(false);
         });
     }
 
@@ -4461,24 +4673,24 @@ function setupBottomSheet() {
         updateDecorationsSource();
     });
 
-    // Difficulty — drives the decor-diamond layer. Uses aria-pressed
-    // semantics to match the other peek icons.
+    // Difficulty — drives the decor-diamond layer. Uses the shared
+    // wirePeekToggle so the visual + behaviour matches the other
+    // toggles (segmented On/Off pill).
     const difficultyBtn = document.getElementById("toggle-difficulty");
     if (CONFIG.showDifficulty && difficultyBtn) {
+        // Set the initial layer visibility from persisted state
+        // before wiring; wirePeekToggle reads the LS state again
+        // and applies it via the onChange callback only on user
+        // interaction, not on mount.
         const initial = LS.get("mtb.difficulty", true);
-        difficultyBtn.setAttribute("aria-pressed", initial ? "true" : "false");
         if (map.getLayer("decor-diamond")) {
             map.setLayoutProperty("decor-diamond", "visibility",
                 initial ? "visible" : "none");
         }
-        difficultyBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const next = difficultyBtn.getAttribute("aria-pressed") !== "true";
-            difficultyBtn.setAttribute("aria-pressed", next ? "true" : "false");
-            LS.set("mtb.difficulty", next);
+        wirePeekToggle("toggle-difficulty", "mtb.difficulty", true, (on) => {
             if (map.getLayer("decor-diamond")) {
                 map.setLayoutProperty("decor-diamond", "visibility",
-                    next ? "visible" : "none");
+                    on ? "visible" : "none");
             }
         });
     } else if (difficultyBtn) {
@@ -4515,7 +4727,7 @@ function setupBottomSheet() {
             const btn = labelGroup.querySelector('[data-value="trails"]');
             if (btn) btn.remove();
         }
-        const buttons = Array.from(labelGroup.querySelectorAll(".sheet-segmented-btn"));
+        const buttons = Array.from(labelGroup.querySelectorAll(".opt-segmented-btn"));
         const available = buttons.map((b) => b.dataset.value);
         // If both section flags are off, "None" is the only choice —
         // hide the whole row (and force labelMode off).
@@ -4576,51 +4788,14 @@ function setupBottomSheet() {
         if (styleSection) styleSection.classList.add("hidden");
     }
 
-    // ----- Accordion sections (collapsible drawer groups) -----
-    // Each .sheet-section-collapsible has a header button that toggles
-    // the .is-open class on the section. Click on the header (not the
-    // body) flips state and updates aria-expanded for screen readers.
-    // Default-open state is set in HTML via the .is-open class on the
-    // section element; the header's aria-expanded mirrors it.
-    const collapsibleSections = document.querySelectorAll(
-        ".sheet-section-collapsible");
-    for (const section of collapsibleSections) {
-        const header = section.querySelector(".sheet-section-header");
-        if (!header) continue;
-        header.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const isOpen = section.classList.toggle("is-open");
-            header.setAttribute("aria-expanded", isOpen ? "true" : "false");
-        });
-        header.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                header.click();
-            }
-        });
-    }
+    // (Section accordions removed — with ~14 rows total across three
+    // sections, the panel scrolls cleanly without needing per-section
+    // collapse. Section headers are now plain <h3> labels, no click
+    // behaviour.)
 
-    // ----- Peek search button -----
-    // Phase 1 stub: tapping the magnifying-glass opens the drawer
-    // (exposing the existing Finder section). Phase 3 will replace
-    // this with a full-screen search overlay that includes POI
-    // results and type-filter chips.
-    const searchBtn = document.getElementById("toggle-search");
-    if (searchBtn) {
-        searchBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            openSheet();
-            // Move keyboard focus to the finder input for fast typing
-            // on desktop. Mobile keyboards open automatically via
-            // input.focus() when the input gets focus.
-            const finderInput = document.getElementById("finder-input");
-            if (finderInput) {
-                // Defer focus until after the sheet's open transition
-                // starts so the keyboard doesn't fight the slide-up.
-                setTimeout(() => finderInput.focus(), 50);
-            }
-        });
-    }
+    // (The search button click handler is wired at the top of this
+    // function alongside the overlay open/close functions — see
+    // searchBtn.addEventListener above.)
 
     // ----- Finder -----
     setupFinder();
@@ -4642,33 +4817,6 @@ function setupBottomSheet() {
 
     // ----- Initial render -----
     applyVisibilityChange();
-
-    // The whole bottom sheet starts invisible (visibility: hidden in
-    // HTML) so first paint never shows the "all 6 icons wide" state
-    // that would then shrink as buttons hide based on data
-    // availability + CONFIG gates. Now that every peek button has its
-    // correct .hidden class, reveal the sheet in a single paint.
-    if (sheet) sheet.style.visibility = "";
-
-    // Publish the actual peek height as a CSS custom property so the
-    // logo overlay and attribution can sit exactly above the peek on
-    // mobile (where the peek spans full width) instead of a hard-
-    // coded 72 px that stale-dated the peek before it grew a title,
-    // labels, etc. Desktop (≥ 768 px) uses a different CSS rule that
-    // tucks them in the corners regardless — see style.css. Refreshed
-    // on resize/orientation for font-scale or device-rotation
-    // changes. ResizeObserver would be more precise but the peek
-    // doesn't resize except in response to these events.
-    function publishPeekHeight() {
-        if (!peek || !handle) return;
-        const h = Math.round(
-            peek.getBoundingClientRect().height +
-            handle.getBoundingClientRect().height);
-        document.documentElement.style.setProperty("--peek-height", h + "px");
-    }
-    publishPeekHeight();
-    window.addEventListener("resize", publishPeekHeight);
-    window.addEventListener("orientationchange", publishPeekHeight);
 
     // ----- Day-of-week recheck for direction schedules -----
     // Each arrow's rotation is baked into its feature properties at
@@ -4692,8 +4840,116 @@ function setupBottomSheet() {
 function setupFinder() {
     const input = document.getElementById("finder-input");
     if (!input) return;
-    input.addEventListener("input", () => rebuildFinderList());
+
+    // Inline clear button. Shown only when the input has content, so
+    // an empty search box stays visually quiet. Click clears the
+    // value, refocuses the input (so the rider can keep typing
+    // immediately), and rebuilds the list. We also reset the active
+    // index — clearing means there's nothing to navigate to anyway.
+    const clearBtn = document.getElementById("finder-clear");
+    function syncClearVisibility() {
+        if (!clearBtn) return;
+        const hasText = (input.value || "").length > 0;
+        clearBtn.classList.toggle("hidden", !hasText);
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+            input.value = "";
+            syncClearVisibility();
+            rebuildFinderList();
+            input.focus();
+        });
+    }
+
+    input.addEventListener("input", () => {
+        syncClearVisibility();
+        rebuildFinderList();
+    });
+    syncClearVisibility();
+
+    // Desktop keyboard navigation. Up/Down move through the result
+    // list, Home/End jump to the ends, Enter triggers the active row
+    // (or the first row if nothing's active yet — common shortcut for
+    // "search and go"). preventDefault so Up/Down don't move the
+    // text-input caret around. Esc is handled globally elsewhere
+    // (closes the overlay).
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            moveFinderActive(+1);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            moveFinderActive(-1);
+        } else if (e.key === "Home") {
+            e.preventDefault();
+            setFinderActive(0);
+        } else if (e.key === "End") {
+            const rows = getFinderRows();
+            if (rows.length) {
+                e.preventDefault();
+                setFinderActive(rows.length - 1);
+            }
+        } else if (e.key === "Enter") {
+            const rows = getFinderRows();
+            if (!rows.length) return;
+            e.preventDefault();
+            const idx = _finderActiveIndex >= 0 ? _finderActiveIndex : 0;
+            const target = rows[idx];
+            if (target) target.click();
+        }
+    });
+
     rebuildFinderList();
+}
+
+// Returns the currently-rendered .finder-row buttons (skipping
+// section headers, which aren't selectable). Read from the DOM each
+// time so we always reflect the latest rebuild.
+function getFinderRows() {
+    const list = document.getElementById("finder-list");
+    if (!list) return [];
+    return Array.from(list.querySelectorAll(".finder-row"));
+}
+
+// Mark a given row index as the active keyboard target. Updates the
+// is-active class + aria-activedescendant + scrolls into view (block:
+// "nearest" so the list doesn't jump if the row is already visible).
+// Pass -1 to clear the active state entirely.
+function setFinderActive(index) {
+    const rows = getFinderRows();
+    const input = document.getElementById("finder-input");
+    // Clear prior active row regardless of where we land.
+    for (const r of rows) r.classList.remove("is-active");
+
+    if (index < 0 || index >= rows.length) {
+        _finderActiveIndex = -1;
+        if (input) input.setAttribute("aria-activedescendant", "");
+        return;
+    }
+    _finderActiveIndex = index;
+    const row = rows[index];
+    row.classList.add("is-active");
+    if (input && row.id) input.setAttribute("aria-activedescendant", row.id);
+    // scrollIntoView with block: "nearest" only scrolls when the row
+    // is actually off-screen — no-op when already visible.
+    row.scrollIntoView({ block: "nearest" });
+}
+
+// Move the active index by delta (typically +1 or -1). Wraps at the
+// ends — pressing Down on the last row goes to the first (and vice
+// versa) so the rider can flick through a short list without
+// thinking about boundaries.
+function moveFinderActive(delta) {
+    const rows = getFinderRows();
+    if (!rows.length) return;
+    let next;
+    if (_finderActiveIndex < 0) {
+        // No active row yet. Down → first row, Up → last row.
+        next = delta > 0 ? 0 : rows.length - 1;
+    } else {
+        next = (_finderActiveIndex + delta + rows.length) % rows.length;
+    }
+    setFinderActive(next);
 }
 
 function rebuildFinderList() {
@@ -4707,37 +4963,66 @@ function rebuildFinderList() {
     const showTrails = CONFIG.showTrails !== false;
 
     list.innerHTML = "";
+    // Each rebuild wipes the prior active row (since the rows
+    // themselves are gone). Reset state so Enter doesn't try to fire
+    // an index that no longer exists.
+    _finderActiveIndex = -1;
+    const finderInput = document.getElementById("finder-input");
+    if (finderInput) finderInput.setAttribute("aria-activedescendant", "");
 
-    // If both sections are hidden the whole Finder section is hidden by
-    // setupBottomSheet(); we still bail early in case this ever runs.
-    if (!showRoutes && !showTrails) {
+    // Active filter chip determines which kinds get included. "all"
+    // is the default and includes every kind. Per-kind chip
+    // restricts to just that kind.
+    const filter = currentSearchFilter || "all";
+    const includeRoutes = (filter === "all" || filter === "route") && showRoutes;
+    const includeTrails = (filter === "all" || filter === "trail") && showTrails;
+    const includePois = (filter === "all" || filter === "poi");
+
+    // If everything's filtered out by config, bail.
+    if (!includeRoutes && !includeTrails && !includePois) {
         if (empty) empty.classList.add("hidden");
         return;
     }
 
-    // Filter routes to the visible set, then by query.
+    // Filter routes/trails to the currently-visible bucket, then by
+    // query. POIs aren't gated by visibility — a rider should be
+    // able to find a hidden marker by name (the search-then-toggle
+    // pattern is too friction-laden), so the POI list is the full
+    // index regardless of which layer toggles are on.
     const routes = routeIndex.filter((r) => visibleRoutes.has(r.id));
     const visibleRouteIds = new Set(routes.map((r) => r.id));
     const trails = trailIndex.filter((t) =>
         t.routeIds.some((rid) => visibleRouteIds.has(rid)));
 
-    const matchedRoutes = query
-        ? routes.filter((r) => r.name.toLowerCase().includes(query))
-        : routes;
-    const matchedTrails = query
-        ? trails.filter((t) => t.name.toLowerCase().includes(query))
-        : trails;
+    const matchedRoutes = !includeRoutes ? []
+        : (query ? routes.filter((r) => r.name.toLowerCase().includes(query))
+                 : routes);
+    const matchedTrails = !includeTrails ? []
+        : (query ? trails.filter((t) => t.name.toLowerCase().includes(query))
+                 : trails);
+    // Search query matches either a POI's name OR its type label
+    // (the meta text shown on the row — "parking", "trailhead",
+    // "toilets", "drinking water", "trail marker", "feature").
+    // Lets the rider use category-style queries like "parking" or
+    // "toilet" and surface every POI of that type, even when the
+    // individual OSM features have specific names like "Cassidy Lot"
+    // or "Pit Latrine" that don't contain the category word.
+    const matchedPois = !includePois ? []
+        : (query ? poiIndex.filter((p) => {
+            const name = p.name.toLowerCase();
+            const typeLabel = (POI_TYPE_META_LABEL[p.type] || "").toLowerCase();
+            return name.includes(query) || typeLabel.includes(query);
+        })
+                 : poiIndex);
 
-    const routeCount = showRoutes ? matchedRoutes.length : 0;
-    const trailCount = showTrails ? matchedTrails.length : 0;
-
-    if (routeCount === 0 && trailCount === 0) {
+    const total = matchedRoutes.length + matchedTrails.length + matchedPois.length;
+    if (total === 0) {
         if (empty) empty.classList.remove("hidden");
         return;
     }
     if (empty) empty.classList.add("hidden");
 
-    if (showRoutes && matchedRoutes.length > 0) {
+    if (matchedRoutes.length > 0) {
         const h = document.createElement("div");
         h.className = "finder-section-header";
         h.textContent = "Routes";
@@ -4747,7 +5032,7 @@ function rebuildFinderList() {
         }
     }
 
-    if (showTrails && matchedTrails.length > 0) {
+    if (matchedTrails.length > 0) {
         const h = document.createElement("div");
         h.className = "finder-section-header";
         h.textContent = "Trails";
@@ -4756,6 +5041,62 @@ function rebuildFinderList() {
             list.appendChild(makeTrailRow(t, visibleRouteIds));
         }
     }
+
+    if (matchedPois.length > 0) {
+        const h = document.createElement("div");
+        h.className = "finder-section-header";
+        h.textContent = "Places";
+        list.appendChild(h);
+        // Group same-type, same-name POIs into a single row. Most
+        // OSM POIs (toilets, drinking-water fountains, often
+        // parking) share a generic name — listing them as N
+        // identical rows wastes space AND offers no way for the
+        // rider to differentiate. Better: one row that says
+        // "Toilets × 5" and highlights all five on the map at once.
+        // POIs with unique names (e.g. "South Trailhead", "Visitor
+        // Center Toilets") stay as individual rows since they're
+        // already distinguishable.
+        const grouped = groupPoisByName(matchedPois);
+        for (const item of grouped) {
+            list.appendChild(makePoiRow(item));
+        }
+    }
+
+    // Assign sequential ids so aria-activedescendant on the input can
+    // reference whichever row is currently keyboard-active. Also
+    // makes the rows targetable by the keydown handler in setupFinder.
+    const rows = list.querySelectorAll(".finder-row");
+    rows.forEach((row, i) => { row.id = `finder-opt-${i}`; });
+}
+
+// Collapse same-type same-name POIs into group entries. Entries with
+// unique (type, name) pass through unchanged; multi-member entries
+// become {isGroup: true, type, name, count, members: [...]}.
+function groupPoisByName(pois) {
+    const buckets = new Map();
+    for (const p of pois) {
+        const key = `${p.type}:${p.name}`;
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key).push(p);
+    }
+    const out = [];
+    for (const members of buckets.values()) {
+        if (members.length === 1) {
+            out.push(members[0]);
+        } else {
+            out.push({
+                isGroup: true,
+                uid: `group:${members[0].type}:${members[0].name}`,
+                type: members[0].type,
+                name: members[0].name,
+                count: members.length,
+                members,
+            });
+        }
+    }
+    // Preserve original alphabetical order
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
 }
 
 // Build the stats string ("8.2 mi · ↑410 / ↓380 ft") for a route.
@@ -4809,7 +5150,7 @@ function makeRouteRow(r) {
 
     row.addEventListener("click", () => {
         highlightRoute(r.id);
-        if (window.__closeBottomSheet) window.__closeBottomSheet();
+        if (window.__closeSearchOverlay) window.__closeSearchOverlay();
     });
 
     return row;
@@ -4851,10 +5192,99 @@ function makeTrailRow(t, visibleRouteIds) {
 
     row.addEventListener("click", () => {
         highlightTrail(t.name);
-        if (window.__closeBottomSheet) window.__closeBottomSheet();
+        if (window.__closeSearchOverlay) window.__closeSearchOverlay();
     });
 
     return row;
+}
+
+// Build a finder row for a POI. Visual recipe matches the on-map
+// marker's swatch so the rider's mental model is consistent: "the
+// blue P I see in the search results is the blue P I'll see on the
+// map." Reuses the existing .layer-swatch + per-type swatch class
+// so swatch styling stays in one place. The meta line below the
+// name names the POI type ("parking", "toilets", etc.) so the
+// rider can disambiguate similarly-named items.
+function makePoiRow(p) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "finder-row finder-row-poi";
+    if (p.isGroup) row.classList.add("finder-row-poi-group");
+    row.setAttribute("role", "option");
+    row.dataset.poiUid = p.uid;
+
+    // Swatch — same .layer-swatch + per-type class as the drawer
+    // toggle row uses, so styling/colour matches the on-map marker.
+    const swatch = document.createElement("span");
+    swatch.className = "layer-swatch finder-row-poi-swatch";
+    swatch.setAttribute("aria-hidden", "true");
+    poiSwatchContent(swatch, p.type);
+    row.appendChild(swatch);
+
+    const name = document.createElement("span");
+    name.className = "finder-row-name";
+    name.textContent = p.name;
+    row.appendChild(name);
+
+    // Meta line: type label, plus a count badge for groups so the
+    // rider sees "TOILETS × 5" instead of just "TOILETS" — makes it
+    // obvious that the row represents multiple POIs.
+    const meta = document.createElement("span");
+    meta.className = "finder-row-meta";
+    const typeLabel = POI_TYPE_META_LABEL[p.type] || p.type;
+    meta.textContent = p.isGroup
+        ? `${typeLabel} × ${p.count}`
+        : typeLabel;
+    row.appendChild(meta);
+
+    row.addEventListener("click", () => {
+        if (window.__closeSearchOverlay) window.__closeSearchOverlay();
+        // Defer the highlight so the overlay close transition starts
+        // before the map starts panning — feels less jumpy.
+        setTimeout(() => {
+            if (p.isGroup) highlightPoiGroup(p);
+            else highlightPoi(p);
+        }, 60);
+    });
+
+    return row;
+}
+
+// Apply per-type styling + glyph to a layer-swatch element used in a
+// finder POI row. Each POI type has a designated swatch class
+// (already styled in style.css with the right background colour and
+// content) — we just slap on the type class and inject the glyph
+// (text or SVG) that the on-map marker uses.
+function poiSwatchContent(el, type) {
+    switch (type) {
+        case "parking":
+            el.classList.add("parking-swatch");
+            el.textContent = "P";
+            break;
+        case "trailhead":
+            el.classList.add("trailhead-swatch");
+            el.textContent = "TH";
+            break;
+        case "trail_marker":
+            el.classList.add("marker-swatch");
+            el.textContent = "#";
+            break;
+        case "feature":
+            el.classList.add("feature-swatch");
+            // .feature-swatch::before draws the inner dot; nothing
+            // to inject as text.
+            break;
+        case "toilet":
+            el.classList.add("toilet-swatch");
+            // mdi:human-male-female (Apache 2.0, Pictogrammers)
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
+            break;
+        case "drinking_water":
+            el.classList.add("drinking-water-swatch");
+            // mdi:water (Apache 2.0, Pictogrammers)
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            break;
+    }
 }
 
 // ============================================================
@@ -5435,22 +5865,18 @@ function updateLocationIndicator() {
     const h = canvas.clientHeight;
 
     // Inset rectangle the indicator is allowed to occupy. The bottom
-    // edge pulls up by the peek-bar height + safe-area inset because
-    // the bottom sheet overlays the canvas's bottom strip. Without
-    // this reserve, the indicator sits behind the peek bar — the user
-    // gets the "tap the blue ▲" toast with no visible triangle to
-    // tap. The logo overlay (bottom-left) is transparent, so an
-    // indicator landing on top of it is fine; we don't reserve for
-    // it. Reading peek-height live means sheet resize / orientation
-    // change is reflected without a separate notification.
+    // edge accounts for safe-area-inset-bottom (notch / home bar). The
+    // FAB stack at bottom-right is corner-localised so the standard
+    // 48px edgeMargin already keeps the indicator clear of it; no
+    // separate reserve needed. The brand at top-left + highlight chip
+    // at top-center are similarly handled by the same margin.
     const cs = getComputedStyle(document.documentElement);
-    const peekH = parseFloat(cs.getPropertyValue("--peek-height")) || 72;
     const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
     const edgeMargin = 48;
     const xLeft = edgeMargin;
     const xRight = w - edgeMargin;
     const yTop = edgeMargin;
-    const yBottom = h - peekH - safeBottom - edgeMargin;
+    const yBottom = h - safeBottom - edgeMargin;
 
     // Degenerate rectangle (canvas too short for the reserve) — skip.
     if (xRight <= xLeft || yBottom <= yTop) {

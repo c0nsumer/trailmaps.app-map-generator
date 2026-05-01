@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Trail Map</title>
 
     <!-- Open Graph + Twitter Card metadata for rich share-link previews.
@@ -45,9 +45,18 @@
 <body>
     <div id="map"></div>
 
-    <!-- Logo overlay -->
-    <div id="logo-overlay">
-        <img src="logo.webp" alt="Trail system logo">
+    <!-- Brand: top-left trail-system identity. The build pipeline:
+         - Replaces __BRAND_TITLE__ with the map's title text
+         - Strips the <img> when neither `logo:` nor `icon:` is configured
+         - Renames `logo.webp` → `logo.svg` when the source is vector
+         When the img is shown, the title span is visually hidden via
+         CSS but stays in the DOM for screen readers + as a fallback if
+         the image fails to load. -->
+    <div id="brand">
+        <!-- Brand img start -->
+        <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img">
+        <!-- Brand img end -->
+        <span id="brand-title">__BRAND_TITLE__</span>
     </div>
 
     <!-- Off-screen location indicator (managed by app.js) -->
@@ -64,99 +73,125 @@
         </svg>
     </button>
 
-    <!-- Backdrop — fades in when the bottom sheet opens, dimming the
-         map behind it so the drawer reads as a focused overlay.
-         Tap to close. -->
-    <div id="sheet-backdrop" class="sheet-backdrop" aria-hidden="true"></div>
+    <!-- Floating button stack — bottom-right corner. Three FABs stacked
+         vertically. Order top→bottom: Options · Search · Locate. Most-
+         used (Locate) at the bottom so it's closest to a thumb when
+         the phone is held one-handed. The MapLibre attribution sits
+         above this stack (CSS lifts it out of the way). -->
+    <div id="fab-stack" class="fab-stack" role="group" aria-label="Map controls">
+        <button id="toggle-options" class="fab" type="button" aria-label="Options" aria-pressed="false" aria-controls="options-overlay">
+            <!-- mdi:cog (Apache 2.0, Pictogrammers) -->
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/>
+            </svg>
+        </button>
+        <button id="toggle-search" class="fab" type="button" aria-label="Search routes, trails, and places" aria-pressed="false" aria-controls="search-overlay">
+            <!-- mdi:magnify (Apache 2.0, Pictogrammers) -->
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+            </svg>
+        </button>
+        <button id="toggle-locate" class="fab" type="button" aria-pressed="false" aria-label="Locate me">
+            <!-- mdi:crosshairs-gps (Apache 2.0, Pictogrammers) — inner dot
+                 split into a separate <circle class="locate-dot"> so CSS can
+                 hide it independently in the locate-state-background[-error]
+                 states (tracking continues but user has panned away from
+                 their position; no centre dot). -->
+            <svg class="locate-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                <circle class="locate-dot" cx="12" cy="12" r="4"/>
+                <path d="M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z"/>
+            </svg>
+        </button>
+    </div>
 
-    <!-- Bottom sheet — peek (always visible) + expanded drawer.
-         Peek shows just the map title + search button + locate button.
-         All set-once toggles (markers, parking, season, etc.) live in
-         the drawer's accordion sections. Drawer is a binary modal:
-         tap-to-open, drag-down or tap-backdrop or Escape to close. -->
-    <div id="bottom-sheet" class="bottom-sheet" role="region" aria-label="Map controls" style="visibility: hidden">
-        <div class="sheet-handle" id="sheet-handle" role="button" tabindex="0" aria-label="Open or close map settings" aria-expanded="false">
-            <span class="sheet-handle-bar" aria-hidden="true"></span>
-        </div>
-
-        <div class="sheet-peek" id="sheet-peek">
-            <div class="sheet-peek-row" id="sheet-peek-row" role="group" aria-label="Map controls">
-                <div class="sheet-peek-title" id="sheet-peek-title">&nbsp;</div>
-                <div class="sheet-peek-actions">
-                    <button class="peek-icon peek-icon-bare" id="toggle-search" type="button" aria-label="Search routes, trails, and places">
-                        <span class="layer-swatch search-swatch" aria-hidden="true">
-                            <!-- mdi:magnify (Apache 2.0, Pictogrammers) -->
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                                <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
-                            </svg>
-                        </span>
-                    </button>
-                    <button class="peek-icon peek-icon-bare" id="toggle-locate" type="button" aria-pressed="false" aria-label="Locate me">
-                        <span class="layer-swatch locate-swatch" aria-hidden="true">
-                            <!-- mdi:crosshairs-gps (Apache 2.0, Pictogrammers) — inner dot
-                                 split into a separate <circle class="locate-dot"> so CSS can
-                                 hide it independently in the locate-state-background[-error]
-                                 states (tracking continues but user has panned away from
-                                 their position; no centre dot). -->
-                            <svg class="locate-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
-                                <circle class="locate-dot" cx="12" cy="12" r="4"/>
-                                <path d="M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z"/>
-                            </svg>
-                        </span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div class="sheet-expanded" id="sheet-expanded" aria-hidden="true">
-            <!-- Find a route or trail (Phase 1: stays in drawer; Phase 3
-                 promotes to a full search overlay) -->
-            <section class="sheet-section" id="finder-section">
-                <h3 class="sheet-section-title">Find a route or trail</h3>
-                <div class="finder">
-                    <div class="finder-search">
-                        <input type="search" id="finder-input" class="finder-input"
-                            placeholder="Search routes &amp; trails" aria-label="Search routes and trails"
-                            autocomplete="off" spellcheck="false">
-                    </div>
-                    <div class="finder-list" id="finder-list" role="listbox" aria-label="Routes and trails">
-                        <!-- Rows rendered by app.js -->
-                    </div>
-                    <p class="finder-empty hidden" id="finder-empty">No matches.</p>
-                </div>
-            </section>
-
-            <!-- What to show — collapsible accordion (default open).
-                 Holds every layer-visibility toggle, the Labels
-                 segmented control, Season cycle, Emergency Access
-                 toggle, and (Phase 2) Toilets + Drinking Water — one
-                 unified group of "what's painted on the map." -->
-            <section class="sheet-section sheet-section-collapsible is-open" id="section-what-to-show">
-                <button class="sheet-section-header" type="button" aria-expanded="true" aria-controls="section-what-to-show-body">
-                    <span class="sheet-section-title">What to show</span>
-                    <span class="sheet-section-chevron" aria-hidden="true">
-                        <!-- mdi:chevron-down (Apache 2.0, Pictogrammers) -->
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                            <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+    <!-- Search overlay — full-viewport layer with a panel inside.
+         The outer .search-overlay is the backdrop dim + click-outside
+         target. The inner .search-overlay-panel is the actual visible
+         chrome (half-sheet on mobile, centred card on desktop).
+         Triggered by the Search FAB; dismissed by Cancel button, Esc,
+         tap on the backdrop (anywhere outside the panel), result
+         selection, or tapping the Search FAB again. -->
+    <div id="search-overlay" class="search-overlay" role="dialog" aria-modal="false" aria-label="Search routes, trails, and places" hidden>
+        <div class="search-overlay-panel">
+            <div class="search-overlay-header">
+                <div class="search-input-wrap">
+                    <input type="search" id="finder-input" class="search-overlay-input"
+                        placeholder="Search routes, trails, places…" aria-label="Search routes, trails, and places"
+                        autocomplete="off" spellcheck="false"
+                        role="combobox" aria-controls="finder-list" aria-autocomplete="list"
+                        aria-expanded="true" aria-activedescendant="">
+                    <button type="button" id="finder-clear" class="search-clear-btn hidden" aria-label="Clear search">
+                        <!-- mdi:close (Apache 2.0, Pictogrammers) -->
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                            <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
                         </svg>
-                    </span>
+                    </button>
+                </div>
+                <button id="search-cancel" class="overlay-close-btn" type="button" aria-label="Close search">
+                    <!-- mdi:close (Apache 2.0, Pictogrammers) -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                    </svg>
                 </button>
-                <div class="sheet-section-body" id="section-what-to-show-body">
+            </div>
+            <div class="search-overlay-filters" id="search-filters" role="tablist" aria-label="Filter search by type">
+                <button type="button" class="search-filter-chip" data-filter="all" role="tab" aria-selected="true">All</button>
+                <button type="button" class="search-filter-chip" data-filter="route" role="tab" aria-selected="false">Routes</button>
+                <button type="button" class="search-filter-chip" data-filter="trail" role="tab" aria-selected="false">Trails</button>
+                <button type="button" class="search-filter-chip" data-filter="poi" role="tab" aria-selected="false">Places</button>
+            </div>
+            <div class="search-overlay-results" id="finder-list" role="listbox" aria-label="Routes, trails, and places">
+                <!-- Rows rendered by app.js -->
+            </div>
+            <p class="search-overlay-empty hidden" id="finder-empty">No matches.</p>
+        </div>
+    </div>
+
+    <!-- Options overlay — full-viewport layer with a panel inside.
+         Same outer-backdrop / inner-panel pattern as the Search
+         overlay so dimming + dismissal behave consistently. On
+         mobile the panel fills the viewport (dim is hidden behind
+         the panel); on desktop the panel is a centred card with the
+         dim visible around it. Triggered by the Options FAB;
+         dismissed by Close X, Esc, tap on the backdrop, or tapping
+         the Options FAB again. -->
+    <div id="options-overlay" class="options-overlay" role="dialog" aria-modal="true" aria-labelledby="options-overlay-title" hidden>
+        <div class="options-overlay-panel">
+            <div class="options-overlay-header">
+                <h2 id="options-overlay-title" class="options-overlay-title">Options</h2>
+                <button id="options-close" class="overlay-close-btn" type="button" aria-label="Close options">
+                    <!-- mdi:close (Apache 2.0, Pictogrammers) -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="options-overlay-body">
+            <!-- What to show — collapsible accordion (default open).
+                 Holds every layer-visibility toggle, the Labels segmented
+                 control, Season cycle, Emergency Access toggle, and (Phase 2)
+                 Toilets + Drinking Water — one unified group of "what's
+                 painted on the map." -->
+            <section class="opt-section" id="section-what-to-show">
+                <h3 class="opt-section-header">
+                    <span class="opt-section-title">What to show</span>
+                </h3>
+                <div class="opt-section-body" id="section-what-to-show-body">
                     <!-- Labels — segmented control on the right (Routes
                          / Trails / None). mdi:label icon for visual
                          identity matching neighbouring rows. -->
-                    <div class="sheet-row sheet-toggle-row sheet-toggle-row-segmented" id="label-field">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="label-field">
                         <span class="layer-swatch label-swatch" aria-hidden="true">
                             <!-- mdi:label (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
                                 <path d="M17.63,5.84C17.27,5.33 16.67,5 16,5H5A2,2 0 0,0 3,7V17A2,2 0 0,0 5,19H16C16.67,19 17.27,18.66 17.63,18.15L22,12L17.63,5.84Z"/>
                             </svg>
                         </span>
-                        <span class="sheet-toggle-row-label" id="label-group-label">Labels</span>
-                        <div class="sheet-segmented sheet-segmented-pill" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
-                            <button type="button" class="sheet-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
-                            <button type="button" class="sheet-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
-                            <button type="button" class="sheet-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
+                        <span class="opt-toggle-row-label" id="label-group-label">Labels</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
+                            <button type="button" class="opt-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
+                            <button type="button" class="opt-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
+                            <button type="button" class="opt-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
                         </div>
                     </div>
 
@@ -167,7 +202,7 @@
                          selection. The whole row is a div (not a
                          button) — only the inner segmented buttons are
                          interactive. -->
-                    <div class="sheet-row sheet-toggle-row sheet-toggle-row-segmented peek-season" id="season-field">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented peek-season" id="season-field">
                         <span class="layer-swatch season-swatch" aria-hidden="true">
                             <!-- mdi:weather-sunny (Apache 2.0, Pictogrammers). Replaced at
                                  runtime by app.js's reflectSeason() with mdi:snowflake when
@@ -176,70 +211,91 @@
                                 <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/>
                             </svg>
                         </span>
-                        <span class="sheet-toggle-row-label" id="season-group-label">Season</span>
-                        <div class="sheet-segmented sheet-segmented-pill" role="radiogroup" aria-labelledby="season-group-label" id="season-segmented">
-                            <button type="button" class="sheet-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
-                            <button type="button" class="sheet-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
+                        <span class="opt-toggle-row-label" id="season-group-label">Season</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="season-group-label" id="season-segmented">
+                            <button type="button" class="opt-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
+                            <button type="button" class="opt-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
                         </div>
                     </div>
 
-                    <button class="sheet-row sheet-toggle-row" id="toggle-difficulty" data-poi="difficulty" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-difficulty" data-poi="difficulty" aria-pressed="true">
                         <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
-                        <span class="sheet-toggle-row-label">Difficulty</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Difficulty</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Difficulty">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
-                    <button class="sheet-row sheet-toggle-row" id="toggle-markers" data-poi="markers" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-markers" data-poi="markers" aria-pressed="true">
                         <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
-                        <span class="sheet-toggle-row-label">Trail markers</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Trail markers</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Trail markers">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
-                    <button class="sheet-row sheet-toggle-row" id="toggle-trailheads" data-poi="trailheads" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-trailheads" data-poi="trailheads" aria-pressed="true">
                         <span class="layer-swatch trailhead-swatch" aria-hidden="true">TH</span>
-                        <span class="sheet-toggle-row-label">Trailheads</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Trailheads</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Trailheads">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
-                    <button class="sheet-row sheet-toggle-row" id="toggle-parking" data-poi="parking" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-parking" data-poi="parking" aria-pressed="true">
                         <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
-                        <span class="sheet-toggle-row-label">Parking</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Parking</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Parking">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
-                    <button class="sheet-row sheet-toggle-row" id="toggle-features" data-poi="features" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-features" data-poi="features" aria-pressed="true">
                         <span class="layer-swatch feature-swatch" aria-hidden="true"></span>
-                        <span class="sheet-toggle-row-label">Features</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Features</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Features">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
                     <!-- Toilets — OSM amenity=toilets. Hidden by default;
                          app.js reveals only when pois.geojson contains
                          at least one toilet feature. -->
-                    <button class="sheet-row sheet-toggle-row hidden" id="toggle-toilets" data-poi="toilets" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-toilets" data-poi="toilets" aria-pressed="true">
                         <span class="layer-swatch toilet-swatch" aria-hidden="true">
                             <!-- mdi:human-male-female (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
                                 <path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/>
                             </svg>
                         </span>
-                        <span class="sheet-toggle-row-label">Toilets</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Toilets</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Toilets">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
                     <!-- Drinking water — OSM amenity=drinking_water.
                          Hidden by default; app.js reveals only when
                          pois.geojson contains at least one. -->
-                    <button class="sheet-row sheet-toggle-row hidden" id="toggle-drinking-water" data-poi="drinking_water" type="button" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-drinking-water" data-poi="drinking_water" aria-pressed="true">
                         <span class="layer-swatch drinking-water-swatch" aria-hidden="true">
                             <!-- mdi:water (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
                                 <path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/>
                             </svg>
                         </span>
-                        <span class="sheet-toggle-row-label">Drinking water</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
+                        <span class="opt-toggle-row-label">Drinking water</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Drinking water">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
 
                     <!-- Emergency Access — same toggle-row format as the
                          POI toggles. Uses aria-pressed; app.js wires
@@ -247,79 +303,76 @@
                          localStorage + applyVisibilityChange(). Hidden
                          by default; revealed only when the map has at
                          least one emergency-tagged route. -->
-                    <button class="sheet-row sheet-toggle-row hidden" id="toggle-emergency-routes" type="button" aria-pressed="false">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-emergency-routes" aria-pressed="false">
                         <span class="layer-swatch emergency-swatch" aria-hidden="true">!</span>
-                        <span class="sheet-toggle-row-label">Emergency access routes</span>
-                        <span class="sheet-toggle-row-state" aria-hidden="true"></span>
-                    </button>
-                </div>
-            </section>
-
-            <!-- Map style — basemap selector -->
-            <section class="sheet-section sheet-section-collapsible hidden" id="section-style">
-                <button class="sheet-section-header" type="button" aria-expanded="false" aria-controls="section-style-body">
-                    <span class="sheet-section-title">Map style</span>
-                    <span class="sheet-section-chevron" aria-hidden="true">
-                        <!-- mdi:chevron-down (Apache 2.0, Pictogrammers) -->
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                            <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
-                        </svg>
-                    </span>
-                </button>
-                <div class="sheet-section-body" id="section-style-body">
-                    <div class="sheet-row sheet-row-field" id="basemap-field">
-                        <label class="sheet-field-label" for="basemap-select">Basemap</label>
-                        <select id="basemap-select" class="sheet-select"></select>
+                        <span class="opt-toggle-row-label">Emergency access routes</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Emergency access routes">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="false">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="true">Off</button>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- Share start -->
-            <section class="sheet-section sheet-section-action hidden" id="sheet-share-section">
-                <button id="share-btn" class="sheet-action-row" type="button">
-                    <span class="sheet-action-icon" aria-hidden="true">
-                        <!-- Share glyph: arrow from a tray. Stroke-only so it
-                             tints with currentColor, matches the About icon
-                             style. -->
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
-                            <polyline points="16 6 12 2 8 6"/>
-                            <line x1="12" y1="2" x2="12" y2="15"/>
-                        </svg>
-                    </span>
-                    <span class="sheet-action-text">
-                        <span class="sheet-action-title">Share this view</span>
-                        <span class="sheet-action-help">Copy a link to the current map view, including any highlighted route or trail.</span>
-                    </span>
-                </button>
-            </section>
-            <!-- Share end -->
-
-            <!-- PWA start -->
-            <section class="sheet-section sheet-section-action hidden" id="sheet-install-section">
-                <button id="install-btn" class="sheet-action-row install-btn hidden" type="button">
-                    <span class="install-btn-icon" aria-hidden="true">
-                        <img src="icons/android-chrome-192x192.png" alt="">
-                    </span>
-                    <span class="sheet-action-text">
-                        <span class="sheet-action-title">Install as app</span>
-                        <span class="sheet-action-help">Add to your home screen for offline use.</span>
-                    </span>
-                </button>
-                <div id="ios-install-hint" class="sheet-install-hint hidden">
-                    <p>To install: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
+            <!-- Map style — basemap selector. Hidden when no base_layers configured. -->
+            <section class="opt-section hidden" id="section-style">
+                <h3 class="opt-section-header">
+                    <span class="opt-section-title">Map style</span>
+                </h3>
+                <div class="opt-section-body" id="section-style-body">
+                    <div class="opt-row opt-row-field" id="basemap-field">
+                        <label class="opt-field-label" for="basemap-select">Basemap</label>
+                        <select id="basemap-select" class="opt-select"></select>
+                    </div>
                 </div>
             </section>
-            <!-- PWA end -->
 
-            <section class="sheet-section sheet-section-action">
-                <button id="about-btn" class="sheet-action-row" type="button">
-                    <span class="sheet-action-icon" aria-hidden="true">&#9432;</span>
-                    <span class="sheet-action-text">
-                        <span class="sheet-action-title">About this map</span>
-                    </span>
-                </button>
+            <!-- More — Share / Install / About. Always shown. -->
+            <section class="opt-section" id="section-more">
+                <h3 class="opt-section-header">
+                    <span class="opt-section-title">More</span>
+                </h3>
+                <div class="opt-section-body" id="section-more-body">
+                    <!-- Share start -->
+                    <button id="share-btn" class="opt-action-row hidden" type="button">
+                        <span class="opt-action-icon" aria-hidden="true">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+                                <polyline points="16 6 12 2 8 6"/>
+                                <line x1="12" y1="2" x2="12" y2="15"/>
+                            </svg>
+                        </span>
+                        <span class="opt-action-text">
+                            <span class="opt-action-title">Share this view</span>
+                            <span class="opt-action-help">Copy a link to the current map view, including any highlighted route or trail.</span>
+                        </span>
+                    </button>
+                    <!-- Share end -->
+
+                    <!-- PWA start -->
+                    <button id="install-btn" class="opt-action-row install-btn hidden" type="button">
+                        <span class="install-btn-icon" aria-hidden="true">
+                            <img src="icons/android-chrome-192x192.png" alt="">
+                        </span>
+                        <span class="opt-action-text">
+                            <span class="opt-action-title">Install as app</span>
+                            <span class="opt-action-help">Add to your home screen for offline use.</span>
+                        </span>
+                    </button>
+                    <div id="ios-install-hint" class="opt-install-hint hidden">
+                        <p>To install: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
+                    </div>
+                    <!-- PWA end -->
+
+                    <button id="about-btn" class="opt-action-row" type="button">
+                        <span class="opt-action-icon" aria-hidden="true">&#9432;</span>
+                        <span class="opt-action-text">
+                            <span class="opt-action-title">About this map</span>
+                        </span>
+                    </button>
+                </div>
             </section>
+        </div>
         </div>
     </div>
 

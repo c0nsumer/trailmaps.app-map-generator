@@ -83,31 +83,8 @@ body {
  * hard-coded 72 px was left over from a slimmer peek and clipped the
  * logo after the title was added. 6 px gap keeps it off the border.
  * Desktop rule below tucks it in the corner instead. */
-#logo-overlay {
-    position: absolute;
-    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px);
-    left: 16px;
-    z-index: 2;
-    pointer-events: none;
-    transition: bottom 0.2s ease-out;
-}
-
-#logo-overlay img {
-    max-width: 200px;
-    max-height: 80px;
-    width: auto;
-    height: auto;
-    opacity: 0.92;
-    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
-}
-
 /* When the bottom sheet is expanded, slide the logo above the expanded
  * area so it doesn't disappear behind the sheet. */
-body.sheet-open #logo-overlay {
-    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px);
-    opacity: 0.6;
-}
-
 /* ----- Highlight chip (top of map, when a route/trail is highlighted) */
 .highlight-chip {
     position: absolute;
@@ -173,57 +150,6 @@ body.sheet-open #logo-overlay {
 }
 
 /* ----- Bottom sheet -------------------------------------------------- */
-.bottom-sheet {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 5;
-    background: var(--sheet-bg);
-    border-top: 1px solid var(--sheet-border);
-    box-shadow: 0 -2px 12px var(--sheet-shadow);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    transform: translateY(0);
-    transition: transform 0.22s ease-out;
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100vh - 60px);
-    overflow: hidden;
-    padding-bottom: var(--safe-bottom);
-}
-
-.bottom-sheet.is-open {
-    /* Expanded covers up to ~72% of viewport height (still leaves the map
-     * visible above for context). */
-    max-height: calc(72vh + var(--safe-bottom));
-}
-
-.sheet-handle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 16px;
-    cursor: grab;
-    flex-shrink: 0;
-    -webkit-user-select: none;
-    user-select: none;
-    /* Cede all touch-gesture ownership to JS so Chrome Android / Firefox
-     * don't consume the pointer drag as a page scroll. */
-    touch-action: none;
-}
-
-.sheet-handle:active {
-    cursor: grabbing;
-}
-
-.sheet-handle-bar {
-    width: 36px;
-    height: 4px;
-    border-radius: 2px;
-    background: #cfcfcf;
-}
-
 /* ----- Sheet peek (always visible) ----------------------------------
  *
  * UI v2: peek shows just the map title (left) + a small action row
@@ -231,63 +157,11 @@ body.sheet-open #logo-overlay {
  * toggles (markers, parking, season, etc.) live in the drawer's
  * accordion sections. Whole peek surface (outside individual button
  * hit targets) is tappable to expand the sheet. */
-.sheet-peek {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: center;
-    padding: 4px 10px 10px 10px;
-    flex-shrink: 0;
-    cursor: pointer;
-    /* Whole peek area is a drag surface — JS owns the gesture, so the
-     * browser must not scroll in response to the same touch. Icons
-     * below re-enable tap via touch-action: manipulation. */
-    touch-action: none;
-}
-
 /* Icon buttons must remain tappable — touch-action: manipulation is
  * enough to allow taps without letting the browser steal drag. */
-.sheet-peek .peek-icon,
-.sheet-peek select,
-.sheet-peek input {
-    touch-action: manipulation;
-}
-
 /* Map title — left-aligned in the peek row alongside the search +
  * locate icons. Truncates with ellipsis on narrow phones. */
-.sheet-peek-title {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--sheet-text);
-    text-align: left;
-    padding: 0 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-.sheet-peek-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    width: 100%;
-    flex-wrap: nowrap;
-}
-
 /* Action cluster on the right of the peek row — search + locate. */
-.sheet-peek-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-}
-
 /* ----- Peek icon buttons -------------------------------------------
  *
  * Stacked swatch + label, ~48×52 tap target. aria-pressed drives the
@@ -295,32 +169,6 @@ body.sheet-open #logo-overlay {
  * only swatch + diagonal slash + muted label — three independent
  * cues so the state survives greyscale, sunlight, and common
  * color-vision variants. */
-.peek-icon {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 3px;
-    flex: 0 0 auto;
-    /* Every peek button is a fixed-width grid cell — the row is a
-     * uniform rail instead of a ragged-content layout. 64px fits the
-     * widest natural label ("Trailheads" / "Difficulty") with a few
-     * pixels of breathing room; shorter labels sit centered in the
-     * cell. Also means Season's Summer↔Winter swap can't shift the
-     * row's layout. */
-    width: 64px;
-    padding: 2px 4px 4px 4px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--sheet-text);
-    font: inherit;
-    cursor: pointer;
-    -webkit-user-select: none;
-    user-select: none;
-    transition: background 0.12s, border-color 0.12s;
-}
-
 /* Hover background only fires on actual hover-capable devices (mouse,
  * stylus). Without the @media gate, mobile tap-then-release leaves
  * :hover sticky until the next tap elsewhere — which on Chrome/Firefox
@@ -329,41 +177,10 @@ body.sheet-open #logo-overlay {
  * devices get no hover affordance at all, which is the right call:
  * they have no concept of hover state. */
 @media (hover: hover) {
-    .peek-icon:hover {
-        background: var(--sheet-hover);
     }
-}
-
-.peek-icon:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-}
-
-.peek-icon-label {
-    /* Bumped from 11px → 13px (desktop) and 10px → 12px (mobile, see
-     * the @media block below) for better legibility in bright sun on
-     * phone screens. Ellipsis handles the longer labels ("Trailheads",
-     * "Difficulty") on narrow mobile cells. */
-    font-size: 13px;
-    line-height: 1.1;
-    font-weight: 500;
-    color: var(--sheet-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 56px;
-}
 
 /* Swatches inside peek icons sit a touch larger than in expanded rows
  * so the mini markers read clearly. */
-.peek-icon .layer-swatch {
-    position: relative;
-    width: 24px;
-    height: 24px;
-    font-size: 11px;
-    overflow: visible;
-}
-
 /* Feature / Difficulty / Season swatches all inherit the base
  * .peek-icon .layer-swatch size (24×24 desktop, 22×22 mobile) so the
  * row aligns in a clean grid. The distinctive shape content (purple
@@ -373,75 +190,18 @@ body.sheet-open #logo-overlay {
 /* Off state — three independent signals: outline-only swatch, grey
  * label, diagonal slash. Works on B&W displays and for color-vision
  * variants that flatten red/green. */
-.peek-icon[aria-pressed="false"] .layer-swatch {
-    background: transparent !important;
-    border: 1.5px solid #9aa0a6 !important;
-    color: #9aa0a6 !important;
-    box-shadow: none !important;
-}
-
-.peek-icon[aria-pressed="false"] .peek-icon-label {
-    color: #9aa0a6;
-}
-
-.peek-icon[aria-pressed="false"] .layer-swatch::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: -2px;
-    right: -2px;
-    height: 1.5px;
-    background: #9aa0a6;
-    transform: translateY(-50%) rotate(-45deg);
-    transform-origin: center;
-    pointer-events: none;
-}
-
 /* Season swatch — inherits the base 24×24 rounded-rect chip from
  * .layer-swatch (added to the span in index.html) so it sits in
  * line with every other peek-row icon. The accent-blue fill + white
  * SVG glyph (sun/snow — swapped at runtime from app.js) gives it a
  * distinct identity without breaking the shared chip geometry. */
-.peek-season .season-swatch {
-    /* Summer = warm forest green. Winter override is applied
-     * inline from app.js (see reflectSeason) as a cold slate-blue.
-     * Keeping them distinct evokes the season without relying on
-     * just the sun/snow glyph. */
-    background: #2e7d32;
-    color: white;
-}
-
 /* Season cycles — never renders the off slash / outline treatment. */
-.peek-icon.peek-season[aria-pressed="false"] .season-swatch::after {
-    content: none;
-}
-
 /* ----- Peek-icon "bare" variant ------------------------------------
  *
  * Used by the new peek-bar layout (search + locate). No label below
  * the swatch — these are icon-only buttons, the action is unambiguous
  * and the labels are redundant on the always-visible bar. Touch
  * target is preserved by giving the button itself ≥40px hit area. */
-.peek-icon-bare {
-    width: auto;
-    min-width: 40px;
-    height: 40px;
-    padding: 4px;
-    flex-direction: row;
-    justify-content: center;
-    gap: 0;
-}
-
-.peek-icon-bare .peek-icon-label {
-    display: none;
-}
-
-.peek-icon-bare .layer-swatch {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-}
-
 /* Search swatch — matches the locate-swatch idle treatment so the
  * two peek icons look like a coherent pair: white background, darker
  * neutral border, dark icon stroke. Uses the #toggle-search ID
@@ -468,26 +228,8 @@ body.sheet-open #logo-overlay {
  * Sits below the sheet (z-index 4) but above the map (z-index 0–3).
  * Pointer-events handled by the .is-active class so tapping through
  * a hidden backdrop never blocks map interaction. */
-.sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 4;
-    background: rgba(0, 0, 0, 0.45);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.22s ease-out;
-}
-
-.sheet-backdrop.is-active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .sheet-backdrop {
-        transition: none;
     }
-}
 
 /* ----- Drawer accordion sections -----------------------------------
  *
@@ -496,62 +238,32 @@ body.sheet-open #logo-overlay {
  * open/closed by toggling the .is-open class on the parent section.
  * No max-height-zero animation — that fights variable content height.
  * We just toggle display on the body and rotate the chevron. */
-.sheet-section-collapsible .sheet-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 8px 0;
+/* Section headers are uppercase categorical labels (iOS / macOS
+ * Settings convention), not row-like buttons. The body's row list
+ * sits visually as a "group" under each label. Always-visible —
+ * the older accordion behaviour was removed because total row count
+ * (~14) is small enough to scroll without per-section collapse. */
+.opt-section-header {
+    display: block;
+    padding: 16px 16px 6px 16px;
+    margin: 0;
     background: transparent;
     border: none;
-    border-bottom: 1px solid transparent;
-    cursor: pointer;
-    color: var(--sheet-text);
     font: inherit;
     text-align: left;
 }
 
-.sheet-section-collapsible .sheet-section-header:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: 4px;
-}
-
-.sheet-section-collapsible .sheet-section-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--sheet-text);
+.opt-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
     margin: 0;
-    text-transform: none;
-    letter-spacing: 0;
 }
 
-.sheet-section-collapsible .sheet-section-chevron {
-    display: inline-flex;
-    align-items: center;
-    color: var(--sheet-text);
-    opacity: 0.7;
-    transition: transform 0.18s ease-out;
-    transform: rotate(0deg);
-}
-
-.sheet-section-collapsible.is-open .sheet-section-chevron {
-    transform: rotate(180deg);
-}
-
-.sheet-section-collapsible .sheet-section-body {
-    display: none;
-    padding-top: 6px;
-}
-
-.sheet-section-collapsible.is-open .sheet-section-body {
-    display: block;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .sheet-section-collapsible .sheet-section-chevron {
-        transition: none;
-    }
+.opt-section-body {
+    padding: 0 8px 4px 8px;
 }
 
 /* ----- Drawer toggle rows (full-width buttons) ---------------------
@@ -561,28 +273,28 @@ body.sheet-open #logo-overlay {
  * left + label in middle + ON/OFF state on right. aria-pressed is
  * the same authority as the peek version, so wirePeekToggle()
  * needs no changes. */
-.sheet-toggle-row {
+.opt-toggle-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 8px 6px;
+    padding: 10px 10px;
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
     color: var(--sheet-text);
     font: inherit;
     text-align: left;
 }
 
-.sheet-toggle-row:focus-visible {
+.opt-toggle-row:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -1px;
 }
 
 @media (hover: hover) {
-    .sheet-toggle-row:hover {
+    .opt-toggle-row:hover {
         background: var(--sheet-hover);
     }
 }
@@ -598,7 +310,7 @@ body.sheet-open #logo-overlay {
     height: 28px;
 }
 
-.sheet-toggle-row .layer-swatch {
+.opt-toggle-row .layer-swatch {
     flex: 0 0 auto;
     width: 28px;
     height: 28px;
@@ -618,50 +330,30 @@ body.sheet-open #logo-overlay {
     overflow: visible;
 }
 
-.sheet-toggle-row-label {
+.opt-toggle-row-label {
     flex: 1 1 auto;
     font-size: 14px;
     font-weight: 500;
     color: var(--sheet-text);
 }
 
-/* ON/OFF state pill on the right side of each toggle-row. ::after
- * carries the label so we don't need extra DOM. */
-.sheet-toggle-row-state {
-    flex: 0 0 auto;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--accent);
-    color: white;
-}
-
-.sheet-toggle-row-state::after {
-    content: "On";
-}
-
-.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-state {
-    background: #e3e3e3;
-    color: #6a6a6a;
-}
-
-.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-state::after {
-    content: "Off";
-}
+/* (.opt-toggle-row-state was the old single On/Off pill on the
+ * right side of each toggle-row. It's been replaced by the
+ * segmented On/Off pill (.opt-segmented-pill with two buttons),
+ * which matches the Season row's visual pattern. The CSS for the
+ * segmented pill lives further up in the file under "Segmented-
+ * pill (Labels: Routes / Trails / None)".) */
 
 /* Off state on swatches inside drawer toggles — same three-cue
  * treatment as the peek (transparent + grey border + slash). */
-.sheet-toggle-row[aria-pressed="false"] .layer-swatch {
+.opt-toggle-row[aria-pressed="false"] .layer-swatch {
     background: transparent !important;
     border: 1.5px solid #9aa0a6 !important;
     color: #9aa0a6 !important;
     box-shadow: none !important;
 }
 
-.sheet-toggle-row[aria-pressed="false"] .layer-swatch::after {
+.opt-toggle-row[aria-pressed="false"] .layer-swatch::after {
     content: "";
     position: absolute;
     top: 50%;
@@ -674,17 +366,12 @@ body.sheet-open #logo-overlay {
     pointer-events: none;
 }
 
-.sheet-toggle-row[aria-pressed="false"] .sheet-toggle-row-label {
+.opt-toggle-row[aria-pressed="false"] .opt-toggle-row-label {
     color: #6a6a6a;
 }
 
 /* Season toggle never shows the off-slash treatment — it cycles
  * between Summer and Winter, never "off." */
-.sheet-toggle-row.peek-season[aria-pressed="false"] .season-swatch::after,
-.sheet-toggle-row.peek-season[aria-pressed="false"] .layer-swatch::after {
-    content: none;
-}
-
 /* Season pill — same visual weight as the on/off pill, but its text
  * content is set inline by app.js (Summer ↔ Winter) rather than via
  * the ::after pseudo-element. */
@@ -702,18 +389,18 @@ body.sheet-open #logo-overlay {
 
 /* ----- Segmented-pill (Labels: Routes / Trails / None) ------------
  *
- * Sits on the right side of a .sheet-toggle-row-segmented row in the
+ * Sits on the right side of a .opt-toggle-row-segmented row in the
  * same visual weight as the on/off pill. Each child button is a small
  * pill segment; aria-checked drives the active fill. Stays compact
  * enough to fit alongside the row label on a phone screen. */
-.sheet-toggle-row-segmented {
+.opt-toggle-row-segmented {
     /* Row layout matches the toggle-row, but suppress the toggle-row's
      * "tap-anywhere-to-flip" cursor — only the segmented buttons do
      * anything; the rest of the row is passive. */
     cursor: default;
 }
 
-.sheet-segmented-pill {
+.opt-segmented-pill {
     display: inline-flex;
     align-items: center;
     flex: 0 0 auto;
@@ -724,8 +411,8 @@ body.sheet-open #logo-overlay {
     background: #e3e3e3;
 }
 
-.sheet-segmented-pill .sheet-segmented-btn {
-    /* Override the default .sheet-segmented-btn rules so the pill
+.opt-segmented-pill .opt-segmented-btn {
+    /* Override the default .opt-segmented-btn rules so the pill
      * variant doesn't inherit the 36px min-height, flex-grow, or
      * separator border that the original card-style segmented
      * control assumes. */
@@ -747,58 +434,38 @@ body.sheet-open #logo-overlay {
     transition: background 0.12s, color 0.12s;
 }
 
-.sheet-segmented-pill .sheet-segmented-btn:hover {
+.opt-segmented-pill .opt-segmented-btn:hover {
     color: #222;
 }
 
-.sheet-segmented-pill .sheet-segmented-btn[aria-checked="true"] {
+.opt-segmented-pill .opt-segmented-btn[aria-checked="true"] {
     background: var(--accent);
     color: white;
 }
 
-.sheet-segmented-pill .sheet-segmented-btn:focus-visible {
+.opt-segmented-pill .opt-segmented-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .sheet-segmented-pill .sheet-segmented-btn {
+    .opt-segmented-pill .opt-segmented-btn {
         transition: none;
     }
 }
 
 /* ----- Sheet expanded area ----------------------------------------- */
-.sheet-expanded {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 4px 14px 16px 14px;
-    -webkit-overflow-scrolling: touch;
-    /* Hidden by default; revealed when .is-open is set on the parent. */
-    display: none;
-}
-
-.bottom-sheet.is-open .sheet-expanded,
-.bottom-sheet.is-dragging .sheet-expanded {
-    /* is-dragging is set by app.js only while a pointer drag is
-     * active from the closed state; without it, max-height has no
-     * content to reveal and the drag is a no-op (most visible in
-     * Firefox). flex-shrink on .sheet-expanded means max-height on
-     * the parent still clips it correctly during the drag. */
-    display: block;
-}
-
-.sheet-section {
+.opt-section {
     border-top: 1px solid var(--sheet-divider);
     padding: 12px 0;
 }
 
-.sheet-section:first-child {
+.opt-section:first-child {
     border-top: none;
     padding-top: 8px;
 }
 
-.sheet-section-title {
+.opt-section-title {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -807,127 +474,46 @@ body.sheet-open #logo-overlay {
     margin: 0 0 8px 0;
 }
 
-.sheet-row {
+.opt-row {
     display: flex;
     align-items: center;
     min-height: 44px;
     padding: 4px 0;
 }
 
-.sheet-row-stacked {
+.opt-row-stacked {
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
 }
 
-.sheet-row-help {
+.opt-row-help {
     font-size: 12px;
     color: var(--sheet-text-muted);
     line-height: 1.35;
     margin: 0 4px;
 }
 
-.sheet-rows {
+.opt-rows {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
 
 /* ----- Sheet toggle row (POI + emergency rows in expanded sheet) ---- */
-.sheet-toggle {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 44px;
-    padding: 6px 4px;
-    border-radius: 6px;
-    cursor: pointer;
-    -webkit-user-select: none;
-    user-select: none;
-    transition: background 0.1s;
-}
-
-.sheet-toggle:hover {
-    background: var(--sheet-hover);
-}
-
-.sheet-toggle input {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-}
-
-.sheet-toggle-track {
-    width: 38px;
-    height: 22px;
-    border-radius: 11px;
-    background: #ccc;
-    position: relative;
-    transition: background 0.18s;
-    flex-shrink: 0;
-    order: 2;
-}
-
-.sheet-toggle-track::after {
-    content: "";
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    transition: transform 0.18s;
-}
-
-.sheet-toggle input:checked + .sheet-toggle-track {
-    background: var(--accent);
-}
-
-.sheet-toggle input:checked + .sheet-toggle-track::after {
-    transform: translateX(16px);
-}
-
-.sheet-toggle-text {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    order: 1;
-    min-width: 0;
-}
-
-.sheet-toggle-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--sheet-text);
-}
-
-.sheet-toggle-help {
-    font-size: 12px;
-    color: var(--sheet-text-muted);
-    line-height: 1.3;
-}
-
 /* ----- Sheet field rows (Labels / Basemap selects) ----------------- */
-.sheet-row-field {
+.opt-row-field {
     justify-content: space-between;
     gap: 12px;
 }
 
-.sheet-field-label {
+.opt-field-label {
     font-size: 13px;
     font-weight: 500;
     color: var(--sheet-text);
 }
 
-.sheet-select {
+.opt-select {
     flex: 0 1 auto;
     padding: 8px 28px 8px 10px;
     border: 1px solid var(--sheet-border);
@@ -948,13 +534,13 @@ body.sheet-open #logo-overlay {
  * Replaces a native <select> with a three-button group for cases where
  * a tap-sized, glanceable control beats a dropdown. Uses a radiogroup
  * under the hood (aria-checked on each button) for accessibility. */
-.sheet-row-segmented {
+.opt-row-segmented {
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
 }
 
-.sheet-segmented {
+.opt-segmented {
     display: flex;
     gap: 0;
     border: 1px solid var(--sheet-border);
@@ -963,7 +549,7 @@ body.sheet-open #logo-overlay {
     background: white;
 }
 
-.sheet-segmented-btn {
+.opt-segmented-btn {
     flex: 1 1 0;
     min-height: 36px;
     padding: 8px 10px;
@@ -977,26 +563,26 @@ body.sheet-open #logo-overlay {
     transition: background 0.1s, color 0.1s;
 }
 
-.sheet-segmented-btn:first-child {
+.opt-segmented-btn:first-child {
     border-left: none;
 }
 
-.sheet-segmented-btn[aria-checked="true"] {
+.opt-segmented-btn[aria-checked="true"] {
     background: var(--sheet-text);
     color: white;
 }
 
-.sheet-segmented-btn:not([aria-checked="true"]):hover {
+.opt-segmented-btn:not([aria-checked="true"]):hover {
     background: var(--sheet-hover);
 }
 
 /* ----- Action rows (Install / About) ------------------------------- */
-.sheet-section-action {
+.opt-section-action {
     border-top: 1px solid var(--sheet-divider);
     padding: 4px 0;
 }
 
-.sheet-action-row {
+.opt-action-row {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1013,11 +599,11 @@ body.sheet-open #logo-overlay {
     transition: background 0.1s;
 }
 
-.sheet-action-row:hover {
+.opt-action-row:hover {
     background: var(--sheet-hover);
 }
 
-.sheet-action-icon {
+.opt-action-icon {
     width: 28px;
     height: 28px;
     border-radius: 50%;
@@ -1030,25 +616,25 @@ body.sheet-open #logo-overlay {
     flex-shrink: 0;
 }
 
-.sheet-action-text {
+.opt-action-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
 }
 
-.sheet-action-title {
+.opt-action-title {
     font-size: 14px;
     font-weight: 500;
 }
 
-.sheet-action-help {
+.opt-action-help {
     font-size: 12px;
     color: var(--sheet-text-muted);
     line-height: 1.3;
 }
 
-.sheet-install-hint {
+.opt-install-hint {
     padding: 4px 8px 8px 8px;
     font-size: 13px;
     color: var(--sheet-text);
@@ -1062,7 +648,7 @@ body.sheet-open #logo-overlay {
  * after install. Uses the same icon Android/iOS will use post-install
  * so there's no surprise. */
 .install-btn .install-btn-icon {
-    /* Override the inherited .sheet-action-icon-style here in case a
+    /* Override the inherited .opt-action-icon-style here in case a
      * future selector accidentally matches. */
     position: relative;
     width: 40px;
@@ -1159,10 +745,15 @@ body.sheet-open #logo-overlay {
  * "label-y" without claiming a specific layer color (since the
  * Labels segmented control switches WHICH labels render, not a
  * single layer toggle). */
+/* Inverted from the other swatches: white background with the tag
+ * icon stroked in the slate accent. The Labels row isn't a layer
+ * with an on-map equivalent (it's a renderer mode switcher), so the
+ * inverse treatment marks it as a "settings" item rather than a
+ * "what's painted on the map" item. */
 .label-swatch {
-    background: var(--label-color, #5d6d7e);
-    color: var(--label-text-color, #fff);
-    border: 1.5px solid var(--label-border-color, #fff);
+    background: var(--label-text-color, #fff);
+    color: var(--label-color, #5d6d7e);
+    border: 1.5px solid var(--label-color, #5d6d7e);
 }
 
 /* Toilets — neutral slate to read as "facility" without competing
@@ -1215,10 +806,6 @@ body.sheet-open #logo-overlay {
 #toggle-locate[aria-pressed="false"] .layer-swatch::after {
     content: none;
 }
-#toggle-locate[aria-pressed="false"] .peek-icon-label {
-    color: var(--sheet-text);
-}
-
 /* --- State: idle (default, no tracking) --- */
 #toggle-locate.locate-state-idle .locate-swatch {
     color: #333;
@@ -1273,10 +860,6 @@ body.sheet-open #logo-overlay {
     border-radius: 1px;
     pointer-events: none;
 }
-#toggle-locate.locate-state-disabled .peek-icon-label {
-    color: #999;
-}
-
 @keyframes mtb-locate-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(1turn); }
@@ -1339,16 +922,6 @@ body.sheet-open #logo-overlay {
  * rule already greys the chip and draws the slash. Also hollow out
  * the inner ::before shapes (purple dot, black diamond) so they
  * match the outline-only motif instead of staying full-colour. */
-.peek-icon[aria-pressed="false"] .feature-swatch::before {
-    background: transparent;
-    border: 1.5px solid #9aa0a6;
-    box-shadow: none;
-}
-.peek-icon[aria-pressed="false"] .difficulty-swatch::before {
-    background: transparent;
-    border-color: #9aa0a6;
-}
-
 /* ----- Finder ------------------------------------------------------- */
 .finder {
     display: flex;
@@ -1427,8 +1000,14 @@ body.sheet-open #logo-overlay {
     outline: none;
 }
 
+/* Keyboard-navigation active state. Stronger than :hover because
+ * the rider can't see a mouse cursor while their hands are on the
+ * keyboard — the target row needs to be readable at a glance. The
+ * left-edge accent stripe gives it a directional anchor that scans
+ * fast, even in a long list. */
 .finder-row.is-active {
-    background: rgba(41, 128, 185, 0.08);
+    background: rgba(41, 128, 185, 0.18);
+    box-shadow: inset 3px 0 0 var(--accent, #2980b9);
 }
 
 .finder-row-swatch {
@@ -1724,14 +1303,6 @@ body.sheet-open #logo-overlay {
     color: var(--sheet-text) !important;
 }
 
-/* Push the bottom-right attribution above the sheet peek so it doesn't
- * disappear behind it. Uses the JS-published --peek-height (see
- * app.js / #logo-overlay comment) instead of a fixed 72 px. Desktop
- * override below drops it back to the corner. */
-.maplibregl-ctrl-bottom-right {
-    bottom: calc(var(--peek-height, 72px) + var(--safe-bottom) + 6px) !important;
-}
-
 /* ----- Feature markers --------------------------------------------- */
 .feature-marker {
     display: flex;
@@ -2004,40 +1575,9 @@ body.sheet-open #logo-overlay {
 
 /* ----- Mobile / narrow viewport tweaks ----------------------------- */
 @media (max-width: 480px) {
-    #logo-overlay img {
-        max-width: 130px;
-        max-height: 48px;
-    }
-
-    /* Tighten the peek row on narrow screens so 6 buttons fit iPhone SE
+        /* Tighten the peek row on narrow screens so 6 buttons fit iPhone SE
      * (~288 px usable) without clipping. */
-    .sheet-peek {
-        padding: 2px 6px 8px 6px;
-    }
-
-    .sheet-peek-row {
-        gap: 2px;
-    }
-
-    .peek-icon {
-        /* Uniform fixed-width cells, tuned for 10px mobile label.
-         * 56px fits "Trailheads" / "Difficulty" at 10px without
-         * ellipsis. */
-        width: 56px;
-        padding: 2px 3px 4px 3px;
-    }
-
-    .peek-icon-label {
-        font-size: 12px;
-        max-width: 52px;
-    }
-
-    .peek-icon .layer-swatch {
-        width: 22px;
-        height: 22px;
-    }
-
-    .about-modal-content {
+                        .about-modal-content {
         padding: 16px 18px 20px 18px;
         max-height: 85vh;
     }
@@ -2048,32 +1588,633 @@ body.sheet-open #logo-overlay {
 }
 
 /* ----- Desktop-only roomier layout --------------------------------- */
+/* (Stale @media block removed — was an override for the deleted peek bar.) */
+
+/* ============================================================
+ * Floating chrome (Phase 3 of the UI v2 rework)
+ *
+ * The map fills the entire viewport. Three pieces of chrome float
+ * over it:
+ *   - #brand        top-left  : trail-system logo image or title text
+ *   - #fab-stack    bottom-right : 3 round buttons (Options/Search/Locate)
+ *   - .options-overlay  full-screen : settings, opens via Options FAB
+ *   - .search-overlay   half-sheet  : search, opens via Search FAB
+ *
+ * Replaces the bottom-sheet drag-up drawer, which is gone entirely.
+ * ============================================================ */
+
+/* ----- Brand (top-left identity) ----------------------------------- */
+
+#brand {
+    position: fixed;
+    top: calc(12px + var(--safe-top));
+    left: calc(12px + env(safe-area-inset-left, 0));
+    z-index: 4;
+    max-width: min(60vw, 240px);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+}
+
+#brand-img {
+    max-width: 200px;
+    max-height: 48px;
+    width: auto;
+    height: auto;
+    opacity: 0.95;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+/* Title span — visible only when no image is present (build-time
+ * stripping removes the <img> when neither logo nor icon is
+ * configured). When the img IS present, hide the span via :has()
+ * so screen readers still get it as a fallback if the image
+ * fails to load (alt text covers the SR case anyway). */
+#brand-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--sheet-text);
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.85);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#brand:has(#brand-img) #brand-title {
+    /* Visually hidden but kept in the DOM for screen readers. The
+     * <img alt> already names the brand for SR; this is defensive in
+     * case the image never loads. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ----- Floating button stack (bottom-right) ----------------------- */
+
+.fab-stack {
+    position: fixed;
+    bottom: calc(12px + var(--safe-bottom));
+    right: calc(12px + env(safe-area-inset-right, 0));
+    /* Above any open overlay (search z=6, options z=7) so FABs stay
+     * clickable while an overlay is up — required for switching from
+     * one overlay to the other by tapping the other FAB. Below the
+     * About modal (z-index 9 / 10) so About remains true-modal. */
+    z-index: 8;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fab {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    background: #fff;
+    border: 1.5px solid #ccc;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    color: #333;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s, transform 0.06s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.fab:hover {
+    background: #f4f4f4;
+}
+
+.fab:active {
+    transform: scale(0.96);
+}
+
+.fab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Pressed state — when the corresponding overlay is open. Solid
+ * accent fill + white icon so it's obvious which button triggered
+ * the visible overlay. */
+.fab[aria-pressed="true"]:not(#toggle-locate) {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fab {
+        transition: none;
+    }
+    .fab:active {
+        transform: none;
+    }
+}
+
+/* ----- Locate FAB state machine ----------------------------------
+ * Mirrors MapLibre's native GeolocateControl FSM. The state classes
+ * (locate-state-*) are stamped onto #toggle-locate by app.js. Color
+ * on the button cascades into the SVG via currentColor. */
+
+#toggle-locate.locate-state-idle {
+    color: #333;
+}
+
+#toggle-locate.locate-state-waiting .locate-icon {
+    animation: mtb-locate-spin 2s linear infinite;
+    transform-origin: center;
+}
+
+#toggle-locate.locate-state-active {
+    color: #33b5e5;
+}
+
+#toggle-locate.locate-state-background {
+    color: #33b5e5;
+}
+#toggle-locate.locate-state-background .locate-dot {
+    display: none;
+}
+
+#toggle-locate.locate-state-active-error {
+    color: #e58978;
+}
+
+#toggle-locate.locate-state-background-error {
+    color: #e54e33;
+}
+#toggle-locate.locate-state-background-error .locate-dot {
+    display: none;
+}
+
+#toggle-locate.locate-state-disabled {
+    color: #999;
+}
+#toggle-locate.locate-state-disabled::after {
+    /* Red strikethrough across the button when geolocation has been
+     * permission-denied. */
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    right: 6px;
+    height: 2px;
+    background: #d33;
+    transform: translateY(-50%) rotate(-45deg);
+    pointer-events: none;
+}
+
+/* ----- Search overlay (outer backdrop + inner panel) -------------
+ *
+ * Outer .search-overlay: full-viewport layer. Acts as the dim
+ * backdrop AND the click-outside dismissal target. The dim fades
+ * in/out on .is-open. Pointer-events stay auto so the backdrop
+ * area receives clicks (which the JS interprets as dismissal).
+ *
+ * Inner .search-overlay-panel: the visible chrome. On mobile a
+ * half-sheet anchored to the bottom; on desktop a centred card
+ * floating above the bottom edge with margin from all four sides.
+ * Slides up from the bottom on .is-open. */
+
+.search-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    background: rgba(0, 0, 0, 0);  /* transparent → dim on .is-open */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+    transition: background 0.22s ease-out;
+}
+
+.search-overlay.is-open {
+    background: rgba(0, 0, 0, 0.32);
+    pointer-events: auto;
+}
+
+.search-overlay[hidden] {
+    display: none !important;
+}
+
+.search-overlay-panel {
+    /* dvh (dynamic viewport height) so the height shrinks when the
+     * mobile keyboard opens. Combined with `interactive-widget=
+     * resizes-content` in the viewport meta, this keeps the panel
+     * fully visible above the keyboard instead of being half-hidden. */
+    height: var(--search-overlay-height, min(60dvh, 480px));
+    background: var(--sheet-bg);
+    border-top: 1px solid var(--sheet-border);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    box-shadow: 0 -2px 12px var(--sheet-shadow);
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--safe-bottom);
+    transform: translateY(100%);
+    transition: transform 0.22s ease-out;
+    overflow: hidden;
+}
+
+.search-overlay.is-open .search-overlay-panel {
+    transform: translateY(0);
+}
+
+.search-overlay-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    border-bottom: 1px solid var(--sheet-divider);
+    flex-shrink: 0;
+}
+
+/* Wrapper around the input so the clear button can be absolutely
+ * positioned over the input's right edge — Google/Apple-style inline
+ * clear affordance. The wrapper takes the input's flex slot in the
+ * header row. */
+.search-input-wrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.search-overlay-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    /* Right padding reserves space for the absolutely-positioned
+     * clear button so typed text doesn't slide under it. */
+    padding: 0 38px 0 12px;
+    border: 1px solid var(--sheet-border);
+    border-radius: 8px;
+    background: white;
+    color: var(--sheet-text);
+    font: inherit;
+    font-size: 15px;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.search-overlay-input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 0;
+    border-color: var(--accent);
+}
+
+/* Suppress the browser's native search clear button — we render our
+ * own so the affordance looks/behaves identically across browsers
+ * and respects the same accent/focus styling as the rest of the UI. */
+.search-overlay-input::-webkit-search-cancel-button,
+.search-overlay-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+    display: none;
+}
+
+/* Inline clear button — sits over the input's right edge. Hidden via
+ * the .hidden utility class when the input is empty (toggled in JS).
+ * 30×30 hit area is comfortable for touch without looking heavy. */
+.search-clear-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    color: var(--sheet-text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s, color 0.12s;
+}
+
+.search-clear-btn:hover {
+    background: var(--sheet-hover);
+    color: var(--sheet-text);
+}
+
+.search-clear-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.search-overlay-cancel {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 8px 4px;
+}
+
+.search-overlay-filters {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--sheet-divider);
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+}
+
+.search-overlay-filters::-webkit-scrollbar {
+    display: none;
+}
+
+.search-filter-chip {
+    flex: 0 0 auto;
+    background: #ececec;
+    color: var(--sheet-text);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.search-filter-chip[aria-selected="true"] {
+    background: var(--accent);
+    color: white;
+}
+
+.search-overlay-results {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+}
+
+.search-overlay-empty {
+    padding: 20px;
+    color: var(--sheet-text-muted);
+    text-align: center;
+    font-size: 14px;
+}
+
+/* ----- Options overlay (outer backdrop + inner panel) -----------
+ *
+ * Same outer/inner structure as the Search overlay so dimming and
+ * dismissal behave identically. Mobile: panel fills the viewport
+ * (the dim is hidden behind it). Desktop: panel is a centred card
+ * with the dim visible around it. Slides up from the bottom on
+ * mobile, fades in on desktop. */
+
+.options-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 7;
+    background: rgba(0, 0, 0, 0);  /* transparent → dim on .is-open */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+    transition: background 0.22s ease-out;
+}
+
+.options-overlay.is-open {
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+}
+
+.options-overlay[hidden] {
+    display: none !important;
+}
+
+.options-overlay-panel {
+    /* Mobile: fills the viewport. Desktop overrides below cap the
+     * width / height and centre the panel. */
+    flex: 1 1 auto;
+    background: var(--sheet-bg);
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    transform: translateY(100%);
+    transition: transform 0.22s ease-out;
+    overflow: hidden;
+}
+
+.options-overlay.is-open .options-overlay-panel {
+    transform: translateY(0);
+}
+
+.options-overlay-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--sheet-divider);
+    flex-shrink: 0;
+}
+
+.options-overlay-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--sheet-text);
+    margin: 0;
+}
+
+/* Shared close-button style for both overlays. mdi:close icon
+ * inside a 36×36 hit target — generous enough for thumb taps on
+ * mobile (Apple HIG suggests 44px minimum but the icon's visible
+ * size + adjacent header padding gives the same effective tap
+ * area as a 44px button). Subtle hover background so the button
+ * reads as interactive without being a heavy chrome element. */
+.overlay-close-btn {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--sheet-text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.12s, color 0.12s;
+}
+
+.overlay-close-btn:hover {
+    background: var(--sheet-hover);
+    color: var(--sheet-text);
+}
+
+.overlay-close-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.options-overlay-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .search-overlay,
+    .options-overlay,
+    .search-overlay-panel,
+    .options-overlay-panel {
+        transition: none;
+    }
+}
+
+/* ----- Misc fixes after the bottom-sheet rule deletion ------------- */
+
+/* Season swatch background — the previous .peek-season .season-swatch
+ * rule was deleted with the rest of the peek-icon family. Apply the
+ * forest-green summer background through the renamed .peek-season
+ * marker class (still on the season row in the HTML). Winter is
+ * inline-styled by app.js (#3d6b9c slate-blue) so no winter rule
+ * needed. */
+.opt-toggle-row.peek-season .season-swatch {
+    background: #2e7d32;
+    color: white;
+}
+
+/* Off-state hollowing for swatches with ::before fills. Previously
+ * targeted .peek-icon[aria-pressed=false]; now targets
+ * .opt-toggle-row[aria-pressed=false]. Same visual: transparent fill
+ * + grey border so the toggled-off state reads as "outline only." */
+.opt-toggle-row[aria-pressed="false"] .feature-swatch::before {
+    background: transparent;
+    border: 1.5px solid #9aa0a6;
+    box-shadow: none;
+}
+.opt-toggle-row[aria-pressed="false"] .difficulty-swatch::before {
+    background: transparent;
+    border-color: #9aa0a6;
+}
+
+/* MapLibre attribution lives at bottom-left (added to the map via
+ * map.addControl(..., "bottom-left") in app.js). Respect safe-area-
+ * inset-bottom for the iOS home-bar area. Bottom-LEFT is currently
+ * empty (brand is top-left, FAB stack is bottom-right); attribution
+ * fits there cleanly without competing with any other chrome. */
+.maplibregl-ctrl-bottom-left {
+    bottom: calc(8px + var(--safe-bottom)) !important;
+    left: calc(8px + env(safe-area-inset-left, 0)) !important;
+}
+
+/* ============================================================
+ * Desktop overrides for the floating overlays
+ *
+ * Mobile-first: at < 768px the search overlay is a full-width
+ * half-sheet anchored to the bottom, and the options overlay is
+ * full-screen. Both make sense on a phone.
+ *
+ * Desktop has plenty of horizontal space — full-width overlays
+ * leave huge whitespace gutters around what's actually a narrow
+ * column of content. Constrain to readable widths and centre.
+ * ============================================================ */
+
 @media (min-width: 768px) {
-    .bottom-sheet {
-        max-width: 480px;
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-        border-top-left-radius: 14px;
-        border-top-right-radius: 14px;
-        border-left: 1px solid var(--sheet-border);
-        border-right: 1px solid var(--sheet-border);
+    /* Both overlays: centre the .justify-content axis so the panel
+     * lands centred horizontally. (Vertical alignment is set per
+     * overlay — search stays bottom-anchored, options stays
+     * vertically-centred.) */
+    .search-overlay,
+    .options-overlay {
+        align-items: center;
     }
 
-    .bottom-sheet.is-open {
-        max-height: calc(80vh + var(--safe-bottom));
+    /* Both overlay panels target ~440px wide on desktop — narrow
+     * enough that the label-on-left / control-on-right rows feel
+     * "filled" (no awkward whitespace between the label and the
+     * pill), wide enough to show full route names and meaningful
+     * stats. Same width for both gives the two surfaces visual
+     * symmetry when the user toggles between them. */
+    .search-overlay-panel,
+    .options-overlay-panel {
+        width: min(440px, calc(100vw - 48px));
+        border: 1px solid var(--sheet-border);
+        border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
     }
 
-    /* On desktop the peek bar is centered at max-width 480 px, so the
-     * bottom-left and bottom-right corners of the viewport are free.
-     * Drop the logo and attribution back into those corners instead
-     * of floating them above the peek's top edge. */
-    #logo-overlay,
-    body.sheet-open #logo-overlay {
-        bottom: calc(12px + var(--safe-bottom));
+    /* Search panel — anchored ~24px above the bottom. */
+    .search-overlay-panel {
+        height: min(60dvh, 540px);
+        margin-bottom: 24px;
     }
 
-    .maplibregl-ctrl-bottom-right {
-        bottom: calc(12px + var(--safe-bottom)) !important;
+    /* Options panel — vertically-centred card. Override
+     * justify-content on the overlay so it doesn't get pushed to
+     * the bottom. */
+    .options-overlay {
+        justify-content: center;
     }
+    .options-overlay-panel {
+        flex: 0 1 auto;
+        max-height: min(80dvh, 680px);
+        /* Drop safe-area padding — panel doesn't touch the edges
+         * so notches don't intersect it. */
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+}
+
+/* POI persistent highlight — rendered as MapLibre circle layers
+ * (sandwich pattern: dark outer stroke + bright yellow inner stroke,
+ * see ensurePoiHighlightLayers in app.js). No CSS needed; the
+ * stroke colors and widths live on the layers themselves so they
+ * stay aligned with the in-map geometry across pan/zoom. */
+
+/* ============================================================
+ * POI search rows (Phase 3 POI search)
+ *
+ * POI finder rows reuse .finder-row + .finder-row-name + .finder-row-meta
+ * from the existing route/trail rows. The left-side swatch is a
+ * .layer-swatch with the per-type modifier class (.parking-swatch,
+ * .toilet-swatch, etc.) so visual style matches the on-map marker.
+ * Sized down a touch from the drawer's 28px to fit the row's
+ * height. .finder-row-meta carries the type label ("parking",
+ * "toilets") so the rider can disambiguate similarly-named items.
+ * ============================================================ */
+
+.finder-row-poi-swatch {
+    /* Reuse the .layer-swatch base styling but size it for the
+     * finder row. 22px keeps the 14px-wide SVG / text glyph
+     * comfortably centered. */
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    position: relative;  /* for ::before / ::after pseudo-content */
+    overflow: visible;
+    font-size: 11px;
+}
+
+/* Meta label sits right-aligned next to the name. Use auto-margin
+ * to push it to the row's right edge — same visual rhythm as the
+ * route row's stats span. Inherits font/colour from .finder-row-meta. */
+.finder-row-poi .finder-row-meta {
+    flex: 0 0 auto;
+    margin-left: auto;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 10px;
+    font-weight: 600;
 }
