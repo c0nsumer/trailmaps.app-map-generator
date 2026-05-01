@@ -348,6 +348,7 @@ See [Asset layout convention](#asset-layout-convention) for where these files li
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `about` | No | none | Object with optional `description`, `more_information`, `author`, `extra_links` keys (see [About This Map](#about-this-map)) |
+| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint + attribution footer), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). Dismissal persists per-map in `localStorage` |
 
 #### Output
 

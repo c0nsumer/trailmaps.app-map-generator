@@ -1142,6 +1142,13 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["dataDate"] = config.get("_data_date", "")
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
     config_obj["about"] = config.get("about") or None
+    # Welcome modal config: pass through unchanged. Three forms
+    # accepted: omitted (None → framework default), false (modal
+    # suppressed), or a dict with title/body/show_controls_hint.
+    # Distinguish "explicitly false" from "omitted" — `or` would
+    # collapse both to None, which the runtime would interpret as
+    # "use defaults" and still show the modal.
+    config_obj["welcome"] = config.get("welcome") if "welcome" in config else None
 
     # Logo: derived from `logo:` if set, else falls back to `icon:`. Processed
     # in copy_assets() into a normalized `logo.webp` (raster) or `logo.svg`

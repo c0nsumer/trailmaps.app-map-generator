@@ -128,5 +128,16 @@ root_relation_id: 12345678
 #     - label: ""
 #       url: ""
 
+# --- Welcome (first-visit modal) ---
+# Three forms accepted:
+#   - omitted: framework default (controls hint + attribution footer)
+#   - false:   suppress the welcome modal entirely
+#   - dict with optional title/body/show_controls_hint
+# welcome:
+#   title: ""
+#   body: |
+#     Plain-text intro. Paragraphs are separated by blank lines.
+#   show_controls_hint: true   # default true; set false if `body` already explains the controls
+
 # --- Output ---
 # output_dir: build/my-trails

@@ -121,6 +121,7 @@ KNOWN_KEYS = {
     "logo":                          str,
     "icon":                          str,
     "about":                         dict,
+    "welcome":                       (dict, bool),
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
@@ -177,6 +178,7 @@ HANDLED_SPECIALLY = {
     "custom_routes",        # → CONFIG.customRoutes (subset of fields)
     "default_trail_color",  # → CONFIG.defaultTrailColor + dash + cap
     "about",                # → CONFIG.about (object passed through)
+    "welcome",              # → CONFIG.welcome (object or false; passed through)
     "logo",                 # → CONFIG.logoUrl (after asset pipeline)
     "icon",                 # → fallback for logoUrl
 }
@@ -712,6 +714,47 @@ def _validate_custom_routes(report, config):
                            f"unknown key in custom_routes entry{hint}")
 
 
+def _validate_welcome(report, config):
+    """Validate the optional `welcome` key.
+
+    Three forms are accepted:
+      - omitted: framework default welcome modal renders
+      - false: welcome modal is suppressed entirely
+      - dict with optional title/body/show_controls_hint
+    """
+    welcome = config.get("welcome")
+    if welcome is None:
+        return
+    if isinstance(welcome, bool):
+        # Only `false` is meaningful (disable). `true` is harmless
+        # but redundant — the welcome already renders by default —
+        # so accept silently.
+        return
+    if not isinstance(welcome, dict):
+        report.err("welcome",
+                   f"expected dict or false, got {type(welcome).__name__}")
+        return
+    if "title" in welcome and not isinstance(welcome["title"], str):
+        report.err("welcome.title",
+                   f"must be a string, got {type(welcome['title']).__name__}")
+    if "body" in welcome and not isinstance(welcome["body"], str):
+        report.err("welcome.body",
+                   f"must be a string, got {type(welcome['body']).__name__}")
+    if "show_controls_hint" in welcome and not isinstance(
+            welcome["show_controls_hint"], bool):
+        report.err("welcome.show_controls_hint",
+                   f"must be a boolean, got "
+                   f"{type(welcome['show_controls_hint']).__name__}")
+    # Catch typos in welcome's sub-keys.
+    allowed = {"title", "body", "show_controls_hint"}
+    for k in welcome:
+        if k not in allowed:
+            suggestions = difflib.get_close_matches(k, allowed, n=2)
+            hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                    if suggestions else "")
+            report.err(f"welcome.{k}", f"unknown key in welcome{hint}")
+
+
 def _validate_about(report, config):
     about = config.get("about")
     if about is None:
@@ -791,6 +834,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_about(report, config)
+    _validate_welcome(report, config)
     _validate_slug(report, config)
     return report.errors, report.warnings
 

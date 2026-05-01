@@ -1790,8 +1790,10 @@ async function init() {
 // Bridges the gap between landing on the map and understanding the
 // peek bar / routes-vs-trails distinction / where the About button
 // lives. Shown ONCE per map per browser; dismissal stored in
-// localStorage under `mtb.welcomed:<slug>`. Subsequent visits skip
-// it entirely (no flicker).
+// localStorage under `mtb.welcomed`. The LS helper already
+// per-map-prefixes every key with `<slug>.`, so this becomes
+// `<slug>.mtb.welcomed` on disk — no need to put the slug in the
+// key body. Subsequent visits skip it entirely (no flicker).
 //
 // The body copy is built from CONFIG so it reflects the actual
 // features available on the current map (routes vs trails sections,
@@ -1800,47 +1802,61 @@ async function init() {
 function initWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (!modal) return;
-    const slug = CONFIG.slug || "default";
-    const flagKey = `mtb.welcomed:${slug}`;
-    if (LS.get(flagKey) === "true") return;
+    // Welcome can be suppressed entirely per-map by setting
+    // `welcome: false` in the YAML — useful for embeds or maps
+    // where the curator doesn't want a first-visit overlay.
+    if (CONFIG.welcome === false) return;
+    const flagKey = "mtb.welcomed";
+    if (LS.get(flagKey) === true) return;
+
+    const welcome = (CONFIG.welcome && typeof CONFIG.welcome === "object")
+        ? CONFIG.welcome : {};
+    const showControlsHint = welcome.show_controls_hint !== false;
 
     const titleEl = document.getElementById("welcome-modal-title");
     const bodyEl = document.getElementById("welcome-modal-body");
     const closeBtn = document.getElementById("welcome-modal-close");
     const cta = document.getElementById("welcome-modal-cta");
 
-    if (titleEl) titleEl.textContent = `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`;
-
-    // Build body copy reflecting the map's actual features and the
-    // new 3-FAB launcher pattern (Options · Search · Locate at
-    // bottom-right).
-    const showRoutes = CONFIG.showRoutes !== false;
-    const showTrails = CONFIG.showTrails !== false;
-    const searchTargets = (showRoutes && showTrails)
-        ? "routes, trails, and places (parking, toilets, water, trailheads)"
-        : showRoutes
-            ? "routes and places (parking, toilets, water, trailheads)"
-            : showTrails
-                ? "trails and places (parking, toilets, water, trailheads)"
-                : "places (parking, toilets, water, trailheads)";
-
-    const bullets = [];
-    bullets.push("The map fills the whole screen — your controls live as three buttons in the <strong>bottom-right corner</strong>.");
-    bullets.push(`<strong>🔍 Search</strong> &mdash; find ${searchTargets}.`);
-    bullets.push("<strong>⚙ Options</strong> &mdash; configure what's shown on the map (layers, labels, season). Settings are saved between visits.");
-    bullets.push("<strong>📍 Locate</strong> &mdash; track your position on the map.");
-    if (CONFIG.shareButton) {
-        bullets.push("Found a great view? Open Options &rarr; <strong>Share this view</strong> to send a link with the current zoom and any highlighted route.");
+    if (titleEl) {
+        titleEl.textContent = welcome.title
+            || `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`;
     }
-    bullets.push("Open Options &rarr; <strong>About this map</strong> for sources, attribution, and contact info.");
 
+    // Body assembly. Three optional sections, each rendered only
+    // when there's something to say. Curator content first (so the
+    // map-specific intro reads as the headline), then the controls
+    // hint (skippable via show_controls_hint: false if the curator
+    // explained the controls in body), then the sober attribution
+    // footer (always — both legal cover and a thoughtful
+    // acknowledgment). All curator-supplied strings rendered as
+    // textContent to keep XSS surface minimal.
     if (bodyEl) {
-        bodyEl.innerHTML = "<ul>" +
-            bullets.map((b) => `<li>${b}</li>`).join("") + "</ul>";
+        bodyEl.innerHTML = "";
+
+        if (welcome.body) {
+            // Split body into paragraphs on blank lines so YAML's
+            // `|` block scalar reads naturally without HTML.
+            const paragraphs = welcome.body.split(/\n\s*\n/);
+            for (const para of paragraphs) {
+                const text = para.trim();
+                if (!text) continue;
+                const p = document.createElement("p");
+                p.className = "welcome-modal-body-p";
+                p.textContent = text;
+                bodyEl.appendChild(p);
+            }
+        }
+
+        if (showControlsHint) {
+            bodyEl.appendChild(buildWelcomeControlsHint());
+        }
+
+        bodyEl.appendChild(buildWelcomeAttribution());
     }
 
     function dismissWelcome() {
-        LS.set(flagKey, "true");
+        LS.set(flagKey, true);
         modal.classList.add("hidden");
     }
 
@@ -1860,6 +1876,100 @@ function initWelcomeModal() {
     // settled into place first (otherwise the modal can flash before
     // the brand + FAB stack render on slow first paints).
     requestAnimationFrame(() => modal.classList.remove("hidden"));
+}
+
+// MDI SVG paths for the welcome controls hint. Same paths as the
+// FAB buttons — keeps the rider's mental model consistent ("the
+// icon I see in the welcome is the icon I'll see on the map").
+// Inlined here rather than queried from the DOM so the welcome
+// renders correctly even if the FABs haven't mounted yet.
+const _WELCOME_ICON_OPTIONS  = "M19.14,12.94C19.18,12.64 19.2,12.33 19.2,12C19.2,11.68 19.18,11.36 19.13,11.06L21.16,9.48C21.34,9.34 21.39,9.07 21.28,8.87L19.36,5.55C19.24,5.33 18.99,5.26 18.77,5.33L16.38,6.29C15.88,5.91 15.35,5.59 14.76,5.35L14.4,2.81C14.36,2.57 14.16,2.4 13.92,2.4H10.08C9.84,2.4 9.65,2.57 9.61,2.81L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33C5.02,5.25 4.77,5.33 4.65,5.55L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48L4.89,11.06C4.84,11.36 4.8,11.69 4.8,12C4.8,12.31 4.82,12.64 4.87,12.94L2.84,14.52C2.66,14.66 2.61,14.93 2.72,15.13L4.64,18.45C4.76,18.67 5.01,18.74 5.23,18.67L7.62,17.71C8.12,18.09 8.65,18.41 9.24,18.65L9.6,21.19C9.65,21.43 9.84,21.6 10.08,21.6H13.92C14.16,21.6 14.36,21.43 14.39,21.19L14.75,18.65C15.34,18.41 15.88,18.09 16.37,17.71L18.76,18.67C18.98,18.75 19.23,18.67 19.35,18.45L21.27,15.13C21.39,14.91 21.34,14.66 21.15,14.52L19.14,12.94M12,15.6C10.02,15.6 8.4,13.98 8.4,12C8.4,10.02 10.02,8.4 12,8.4C13.98,8.4 15.6,10.02 15.6,12C15.6,13.98 13.98,15.6 12,15.6Z";
+const _WELCOME_ICON_SEARCH   = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
+const _WELCOME_ICON_LOCATE   = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z";
+
+function _welcomeIconSvg(pathD) {
+    // Returns the SVG markup for one welcome-icon glyph. 18×18
+    // matches comfortably with the body text size, currentColor so
+    // it picks up the row's text color.
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${pathD}"/></svg>`;
+}
+
+// Build the controls-hint section: three rows, each with the FAB's
+// icon + the control's name + a one-line description. Helps a
+// first-visit rider learn what each of the three bottom-right
+// buttons does without leaving the welcome modal.
+function buildWelcomeControlsHint() {
+    const wrap = document.createElement("div");
+    wrap.className = "welcome-modal-controls";
+
+    const heading = document.createElement("h3");
+    heading.className = "welcome-modal-section-heading";
+    heading.textContent = "How to use this map";
+    wrap.appendChild(heading);
+
+    const list = document.createElement("ul");
+    list.className = "welcome-modal-controls-list";
+
+    // Compute search targets line based on what's actually
+    // searchable on this map. Routes/trails are gated by config;
+    // POIs (parking, water, etc.) appear if any are present.
+    const showRoutes = CONFIG.showRoutes !== false;
+    const showTrails = CONFIG.showTrails !== false;
+    const searchTargets = (showRoutes && showTrails)
+        ? "routes, trails, and places (parking, water, toilets, trailheads)"
+        : showRoutes
+            ? "routes and places (parking, water, toilets, trailheads)"
+            : showTrails
+                ? "trails and places (parking, water, toilets, trailheads)"
+                : "places (parking, water, toilets, trailheads)";
+
+    const rows = [
+        { icon: _WELCOME_ICON_SEARCH,  name: "Search",
+            desc: `Find ${searchTargets}.` },
+        { icon: _WELCOME_ICON_OPTIONS, name: "Options",
+            desc: "Configure layers, season, share view, and About this map." },
+        { icon: _WELCOME_ICON_LOCATE,  name: "Locate",
+            desc: "Track your position on the map." },
+    ];
+
+    for (const r of rows) {
+        const li = document.createElement("li");
+        li.className = "welcome-modal-control-row";
+
+        const iconSpan = document.createElement("span");
+        iconSpan.className = "welcome-modal-control-icon";
+        iconSpan.innerHTML = _welcomeIconSvg(r.icon);
+        li.appendChild(iconSpan);
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "welcome-modal-control-text";
+        const nameStrong = document.createElement("strong");
+        nameStrong.textContent = r.name;
+        textSpan.appendChild(nameStrong);
+        textSpan.appendChild(document.createTextNode(" — " + r.desc));
+        li.appendChild(textSpan);
+
+        list.appendChild(li);
+    }
+
+    wrap.appendChild(list);
+    return wrap;
+}
+
+// Sober attribution footer for the welcome modal — matches the
+// printed-map convention and mirrors the on-map (i) attribution
+// content. Terrain credit drops when the map doesn't load
+// terrain. Full-credits experience lives in About; this is just
+// acknowledgment.
+function buildWelcomeAttribution() {
+    const p = document.createElement("p");
+    p.className = "welcome-modal-attribution";
+    let text = "Map data © OpenStreetMap contributors. Basemap © Protomaps.";
+    if (CONFIG.showTerrain) {
+        text += " Terrain © Mapterhorn.";
+    }
+    p.textContent = text;
+    return p;
 }
 
 // ============================================================
@@ -2062,13 +2172,6 @@ function buildAboutModalContent() {
         "https://openfontlicense.org/",
         "SIL Open Font License",
         ".");
-
-    const fwP = document.createElement("p");
-    fwP.className = "about-modal-credit";
-    fwP.appendChild(document.createTextNode("Generated with "));
-    fwP.appendChild(aboutExtLink("https://github.com/c0nsumer/mtb-map-framework", "mtb-map-framework"));
-    fwP.appendChild(document.createTextNode("."));
-    tail.appendChild(fwP);
 }
 
 // ============================================================

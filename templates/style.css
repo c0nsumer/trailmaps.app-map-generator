@@ -1216,20 +1216,74 @@ body {
     outline: none;
 }
 
-/* Welcome modal body — bullet list with comfortable spacing.
-   Strong wraps in the JS-generated copy highlight key terms (peek
-   bar / routes / trails / About) so the user can scan quickly. */
+/* Welcome modal body — three optional sections stacked vertically:
+   curator-supplied paragraphs (welcome.body), the controls hint
+   (skippable via show_controls_hint: false), and the sober
+   attribution footer. Each section has its own class so styling
+   stays independent. */
 #welcome-modal-body {
     margin: 0;
 }
 
-#welcome-modal-body ul {
-    padding-left: 20px;
-    margin: 12px 0 0 0;
+.welcome-modal-body-p {
+    margin: 0 0 12px 0;
+    line-height: 1.5;
 }
 
-#welcome-modal-body li {
-    margin-bottom: 10px;
+/* Controls-hint section header — matches the "Map style" / "What
+ * to show" sentence-case pattern used elsewhere in the chrome. */
+.welcome-modal-section-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
+    margin: 18px 0 8px 0;
+}
+
+/* Each control row pairs the FAB icon with name + one-line
+ * description. Icon sits in its own column so multi-line
+ * descriptions wrap cleanly under the text, not under the icon. */
+.welcome-modal-controls-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.welcome-modal-control-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 8px 0;
+    line-height: 1.5;
+}
+
+.welcome-modal-control-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: var(--sheet-text);
+    margin-top: 1px;  /* nudge icon to align with cap-height of text */
+}
+
+.welcome-modal-control-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Sober attribution footer — same muted treatment as the small
+ * meta lines elsewhere. Sits beneath everything else, separated
+ * by a hairline divider so it reads as footer chrome rather than
+ * body content. */
+.welcome-modal-attribution {
+    margin: 18px 0 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--sheet-divider);
+    font-size: 12px;
+    color: var(--sheet-text-muted);
     line-height: 1.5;
 }
 

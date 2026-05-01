@@ -453,10 +453,11 @@ root_relation_id: 12345678
 # =============================================================================
 # About
 # =============================================================================
-# Content shown in the About modal (opened from the bottom sheet). Build
-# date, data freshness, and standard credits (OSM, Protomaps,
-# mtb-map-framework) are always shown; the fields below add map-specific
-# content on top. Entire block is optional.
+# Content shown in the About modal (opened from the Options overlay).
+# Build date, data freshness, and standard data-source credits (OSM,
+# Protomaps, Mapterhorn, USGS 3DEP, MDI, MapLibre, OFL fonts) are always
+# shown; the fields below add map-specific content on top. Entire block
+# is optional.
 #
 # about:
 #   description: |
@@ -476,6 +477,39 @@ root_relation_id: 12345678
 #   extra_links:
 #     - label: "Source on GitHub"
 #       url: "https://github.com/you/your-fork"
+
+
+# =============================================================================
+# Welcome modal (first-visit overlay)
+# =============================================================================
+# Shown the first time a rider visits this map in their browser; dismissal
+# persists in localStorage as `<slug>.mtb.welcomed` so subsequent visits
+# skip it.
+#
+# Three forms accepted:
+#   omitted    — framework default: a controls hint (Search / Options /
+#                Locate, with their on-map icons) plus a sober attribution
+#                footer. Recommended for most maps.
+#   false      — suppress the welcome modal entirely. Useful for embeds
+#                or maps where a first-visit overlay would be intrusive.
+#   dict       — see below; all sub-keys optional.
+#
+# When the dict form is used:
+#   title              — overrides the default "Welcome to {map title}"
+#   body               — plain-text intro shown above the controls hint.
+#                        Paragraphs are separated by blank lines.
+#   show_controls_hint — true (default) shows the Search/Options/Locate
+#                        cheat sheet under your body. Set false if your
+#                        body already explains the controls.
+#
+# welcome:
+#   title: "Welcome to the My Trails Map"
+#   body: |
+#     This unofficial map covers the My Trails network in lower Michigan.
+#     Trail conditions are updated weekly by the maintenance crew.
+#
+#     Please respect closures and pack out what you bring in.
+#   show_controls_hint: true
 
 
 # =============================================================================
