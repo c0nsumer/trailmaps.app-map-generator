@@ -4077,7 +4077,7 @@ function buildPoiIndex() {
         let name = props.name || "";
         let synthesized = false;
         if (!name && type === "trail_marker") {
-            name = props.ref ? `Marker ${props.ref}` : "Trail marker";
+            name = props.ref ? `Marker ${props.ref}` : "Trail Marker";
             if (!props.ref) synthesized = true;
         }
         if (!name) {
@@ -4101,12 +4101,12 @@ function buildPoiIndex() {
 // Display label for each POI type when the OSM feature has no name.
 // Also used for the small "type" meta line under the POI row.
 const POI_TYPE_FALLBACK_NAME = Object.freeze({
-    "trail_marker":   "Trail marker",
+    "trail_marker":   "Trail Marker",
     "parking":        "Parking",
     "trailhead":      "Trailhead",
     "feature":        "Feature",
     "toilet":         "Toilets",
-    "drinking_water": "Drinking water",
+    "drinking_water": "Drinking Water",
 });
 
 const POI_TYPE_META_LABEL = Object.freeze({
@@ -4390,7 +4390,7 @@ function addDrinkingWaterMarkers(addToMap) {
             el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
         },
         popupHtmlFn: (p) => {
-            let h = `<div class="popup-title">${p.name || "Drinking water"}</div>`;
+            let h = `<div class="popup-title">${p.name || "Drinking Water"}</div>`;
             if (p.seasonal && p.seasonal !== "no") {
                 h += `<div class="popup-meta">Seasonal: ${p.seasonal}</div>`;
             }
