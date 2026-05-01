@@ -80,6 +80,12 @@
      * shadow (a 1px dark outline for contrast against the sheet)
      * so this token isn't shared with .layer-swatch. */
     --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* Feature-marker label (DOM text below the dot, painted directly
+     * on the basemap). Mirrors MAP_PAINT_TOKENS for trail labels:
+     * dark text + white halo on light basemap, light text + dark
+     * halo on dark basemap. */
+    --feature-label-color: #1e1e1e;
+    --feature-label-halo: rgba(255, 255, 255, 0.9);
 }
 
 /* Dark-mode token overrides. Selector targets <html data-color-scheme="dark">,
@@ -117,6 +123,8 @@
      * white border has some structural contrast against the basemap. */
     --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.5),
                               0 0 0 1px rgba(255, 255, 255, 0.1);
+    --feature-label-color: #f0f0f0;
+    --feature-label-halo: rgba(0, 0, 0, 0.7);
 }
 
 * {
@@ -1460,23 +1468,29 @@ body {
     box-sizing: border-box;
 }
 
+/* Feature marker label — DOM-rendered text under the dot icon, sits
+ * on the basemap. Light scheme: dark text + white halo (mirrors
+ * MAP_PAINT_TOKENS.light for trail labels). Dark scheme: light
+ * text + dark halo (mirrors MAP_PAINT_TOKENS.dark). The 8-direction
+ * text-shadow stack fakes a 1 px halo around the glyphs since
+ * text-stroke isn't reliable cross-browser. */
 .feature-marker-label {
     margin-top: 3px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.1;
-    color: #1e1e1e;
+    color: var(--feature-label-color);
     text-align: center;
     white-space: nowrap;
     text-shadow:
-        -1px -1px 0 rgba(255, 255, 255, 0.9),
-         1px -1px 0 rgba(255, 255, 255, 0.9),
-        -1px  1px 0 rgba(255, 255, 255, 0.9),
-         1px  1px 0 rgba(255, 255, 255, 0.9),
-         0   -1px 0 rgba(255, 255, 255, 0.9),
-         0    1px 0 rgba(255, 255, 255, 0.9),
-        -1px  0   0 rgba(255, 255, 255, 0.9),
-         1px  0   0 rgba(255, 255, 255, 0.9);
+        -1px -1px 0 var(--feature-label-halo),
+         1px -1px 0 var(--feature-label-halo),
+        -1px  1px 0 var(--feature-label-halo),
+         1px  1px 0 var(--feature-label-halo),
+         0   -1px 0 var(--feature-label-halo),
+         0    1px 0 var(--feature-label-halo),
+        -1px  0   0 var(--feature-label-halo),
+         1px  0   0 var(--feature-label-halo);
 }
 
 /* ----- Popups ------------------------------------------------------ */
