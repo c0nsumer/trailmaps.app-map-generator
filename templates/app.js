@@ -2014,24 +2014,60 @@ function buildAboutModalContent() {
         tail.appendChild(p);
     }
 
-    // Credits (always)
+    // Credits (always). One entry per data source / library, named
+    // and licensed so the rider (or anyone curious about the build)
+    // can trace exactly where each piece came from. Terrain credit
+    // is conditional on show_terrain \u2014 no point crediting a source
+    // whose tiles aren't loaded for this map.
     const creditsHeader = document.createElement("h3");
     creditsHeader.textContent = "Credits";
     tail.appendChild(creditsHeader);
 
-    const osmP = document.createElement("p");
-    osmP.appendChild(document.createTextNode("Trail data \u00a9 "));
-    osmP.appendChild(aboutExtLink("https://www.openstreetmap.org/copyright", "OpenStreetMap contributors"));
-    tail.appendChild(osmP);
+    const credit = (prefix, url, label, suffix) => {
+        const p = document.createElement("p");
+        p.className = "about-modal-credit";
+        if (prefix) p.appendChild(document.createTextNode(prefix));
+        p.appendChild(aboutExtLink(url, label));
+        if (suffix) p.appendChild(document.createTextNode(suffix));
+        tail.appendChild(p);
+    };
 
-    const pmP = document.createElement("p");
-    pmP.appendChild(document.createTextNode("Basemap tiles by "));
-    pmP.appendChild(aboutExtLink("https://protomaps.com", "Protomaps"));
-    tail.appendChild(pmP);
+    credit("Map data \u00a9 ",
+        "https://www.openstreetmap.org/copyright",
+        "OpenStreetMap contributors",
+        " (ODbL).");
+    credit("Basemap tiles \u00a9 ",
+        "https://protomaps.com",
+        "Protomaps",
+        " (BSD).");
+    if (CONFIG.showTerrain) {
+        credit("Terrain tiles \u00a9 ",
+            "https://mapterhorn.com",
+            "Mapterhorn",
+            " \u2014 aggregates public-domain elevation sources (USGS 3DEP, EU-DEM, JAXA AW3D30, etc.).");
+    }
+    credit("Route elevation profiles from ",
+        "https://www.usgs.gov/3d-elevation-program",
+        "USGS 3DEP",
+        " (US government, public domain).");
+    credit("UI iconography from ",
+        "https://pictogrammers.com/library/mdi/",
+        "Material Design Icons",
+        " by Pictogrammers (Apache 2.0).");
+    credit("Map rendering by ",
+        "https://maplibre.org",
+        "MapLibre GL JS",
+        " (BSD-3-Clause).");
+    credit("Map labels rendered with fonts under the ",
+        "https://openfontlicense.org/",
+        "SIL Open Font License",
+        ".");
 
     const fwP = document.createElement("p");
+    fwP.className = "about-modal-credit";
     fwP.appendChild(document.createTextNode("Generated with "));
     fwP.appendChild(aboutExtLink("https://github.com/c0nsumer/mtb-map-framework", "mtb-map-framework"));
+    fwP.appendChild(document.createTextNode("."));
     tail.appendChild(fwP);
 }
 
@@ -2078,6 +2114,18 @@ function buildStyle() {
     const flavor = "light";
     const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
 
+    // Attribution: each source gets its own © assertion so it reads
+    // unambiguously about who owns what. Terrain credit (Mapterhorn)
+    // only appears when terrain is actually loaded — no point
+    // crediting a source whose data isn't on the map.
+    const attrParts = [
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        '&copy; <a href="https://protomaps.com">Protomaps</a>',
+    ];
+    if (CONFIG.showTerrain) {
+        attrParts.push('&copy; <a href="https://mapterhorn.com">Mapterhorn</a>');
+    }
+
     return {
         version: 8,
         glyphs: `${base}fonts/{fontstack}/{range}.pbf`,
@@ -2086,7 +2134,7 @@ function buildStyle() {
             basemap: {
                 type: "vector",
                 url: "pmtiles://basemap.pmtiles",
-                attribution: '<a href="https://protomaps.com">Protomaps</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+                attribution: attrParts.join(" "),
             },
         },
         layers: basemapLayers,
