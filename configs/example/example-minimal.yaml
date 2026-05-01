@@ -87,7 +87,15 @@ root_relation_id: 12345678
 # show_route_elevation: false
 
 # --- Display ---
-# default_labels: routes
+# Default-visibility for layer toggles on first-visit. Three accepted
+# forms — see README "Display" table for full layer-name list:
+#   omitted / []  → everything off (rider opts in via Options)
+#   "all"          → everything on (legacy behavior)
+#   list of names  → only those layers on
+# Maps with one-way trails should include "direction_arrows" or use
+# "all" so first-visit riders see directional indicators.
+# default_visible: []
+# default_labels: none   # routes / trails / none
 # map_dim_on_highlight: true
 # url_hash: false
 # Units used for ALL distance and elevation values shown in the app —

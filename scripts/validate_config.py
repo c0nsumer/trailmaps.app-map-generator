@@ -122,6 +122,7 @@ KNOWN_KEYS = {
     "icon":                          str,
     "about":                         dict,
     "welcome":                       (dict, bool),
+    "default_visible":               (list, str),
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
@@ -179,6 +180,7 @@ HANDLED_SPECIALLY = {
     "default_trail_color",  # → CONFIG.defaultTrailColor + dash + cap
     "about",                # → CONFIG.about (object passed through)
     "welcome",              # → CONFIG.welcome (object or false; passed through)
+    "default_visible",      # → CONFIG.defaultVisible (list; "all" expanded at build time)
     "logo",                 # → CONFIG.logoUrl (after asset pipeline)
     "icon",                 # → fallback for logoUrl
 }
@@ -714,6 +716,64 @@ def _validate_custom_routes(report, config):
                            f"unknown key in custom_routes entry{hint}")
 
 
+DEFAULT_VISIBLE_LAYERS = {
+    "parking",
+    "trailheads",
+    "features",
+    "trail_markers",
+    "toilets",
+    "drinking_water",
+    "difficulty",
+    "emergency",
+    "direction_arrows",
+}
+
+
+def _validate_default_visible(report, config):
+    """Validate the optional `default_visible` key.
+
+    Three forms accepted:
+      - omitted: every layer toggle defaults to OFF on first visit
+      - the literal string "all": every supported layer defaults to ON
+      - list of layer names: those layers default to ON; everything
+        else defaults to OFF
+
+    Layer names are validated against DEFAULT_VISIBLE_LAYERS with a
+    fuzzy suggestion on typos so a misspelled "parkings" doesn't
+    silently produce a map with no parking visible.
+    """
+    val = config.get("default_visible")
+    if val is None:
+        return
+    if isinstance(val, str):
+        if val != "all":
+            report.err("default_visible",
+                       f"string form must be 'all', got {val!r}")
+        return
+    if not isinstance(val, list):
+        report.err("default_visible",
+                   f"expected list or 'all', got {type(val).__name__}")
+        return
+    seen = set()
+    for i, item in enumerate(val):
+        if not isinstance(item, str):
+            report.err(f"default_visible[{i}]",
+                       f"expected string, got {type(item).__name__}")
+            continue
+        if item not in DEFAULT_VISIBLE_LAYERS:
+            suggestions = difflib.get_close_matches(
+                item, DEFAULT_VISIBLE_LAYERS, n=2)
+            hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                    if suggestions else "")
+            report.err(f"default_visible[{i}]",
+                       f"unknown layer name {item!r}{hint}")
+            continue
+        if item in seen:
+            report.warn(f"default_visible[{i}]",
+                        f"{item!r} listed more than once")
+        seen.add(item)
+
+
 def _validate_welcome(report, config):
     """Validate the optional `welcome` key.
 
@@ -835,6 +895,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_custom_routes(report, config)
     _validate_about(report, config)
     _validate_welcome(report, config)
+    _validate_default_visible(report, config)
     _validate_slug(report, config)
     return report.errors, report.warnings
 

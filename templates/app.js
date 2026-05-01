@@ -47,6 +47,19 @@
 // trail-marker layer), mtb.poi.parking, mtb.poi.trailheads,
 // mtb.poi.features, mtb.labels, mtb.difficulty.
 // ============================================================
+// Per-map "what's visible by default on first visit" gate. The build
+// emits CONFIG.defaultVisible as a list of layer names that should
+// default to ON; everything else defaults to OFF. Empty list (the
+// framework default) → minimal map, rider opts in via Options. The
+// YAML knob `default_visible: all` expands to the full layer list at
+// build time, so the runtime always sees a clean array. Persistence
+// semantics unchanged: once the rider toggles a layer, their LS
+// preference wins on subsequent visits — defaults only apply on
+// first visit (empty LS for that key).
+function isDefaultVisible(name) {
+    return (CONFIG.defaultVisible || []).includes(name);
+}
+
 const LS_PREFIX = (CONFIG && CONFIG.slug ? CONFIG.slug + "." : "");
 const LS = {
     get(key, fallback) {
@@ -191,7 +204,7 @@ function registerDifficultyIcons() {
 }
 
 function difficultyToggleOn() {
-    return LS.get("mtb.difficulty", true) === true;
+    return LS.get("mtb.difficulty", isDefaultVisible("difficulty")) === true;
 }
 
 // ============================================================
@@ -884,8 +897,17 @@ function addDecorationLayers() {
             // Register in the collision index so labels avoid us; see
             // the matching comment on decor-diamond above.
             "icon-ignore-placement": false,
+            // Initial visibility from the rider's persisted toggle
+            // state (or the per-map default_visible default if no
+            // LS value yet). Wired to the Direction-arrows toggle in
+            // setupBottomSheet.
+            "visibility": directionArrowsToggleOn() ? "visible" : "none",
         },
     });
+}
+
+function directionArrowsToggleOn() {
+    return LS.get("mtb.directionArrows", isDefaultVisible("direction_arrows")) === true;
 }
 
 // Build kind-filter + (optionally) highlight-filter for a decor layer.
@@ -931,11 +953,14 @@ let poisData = null;
 let clipEndpointsData = null;
 let visibleRoutes = new Set(); // route IDs currently shown (strings)
 let basemapMode = "default"; // "default" or "custom:<id>"
-let labelMode = LS.get("mtb.labels", CONFIG.defaultLabels || "routes");
+// Labels: 3-state mode (routes / trails / none). CONFIG.defaultLabels
+// is the per-map default (defaults to "none" framework-wide). Once
+// the rider picks a mode, LS persists their choice.
+let labelMode = LS.get("mtb.labels", CONFIG.defaultLabels || "none");
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
-let emergencyOn = LS.get("mtb.emergencyOn", false);
+let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 
 // Single-highlight invariant: at most one route OR trail highlighted.
 let highlight = null; // { kind: "route"|"trail", key: string } | null
@@ -4398,13 +4423,16 @@ async function loadPOIs() {
     const wcCount = poiCounts[POI.TOILET];
     const dwCount = poiCounts[POI.DRINKING_WATER];
 
-    // Read persisted toggle state (default on for everything that has data).
-    const mkDefault = LS.get("mtb.poi.markers", true);
-    const pkDefault = LS.get("mtb.poi.parking", true);
-    const thDefault = LS.get("mtb.poi.trailheads", true);
-    const ftDefault = LS.get("mtb.poi.features", true);
-    const wcDefault = LS.get("mtb.poi.toilets", true);
-    const dwDefault = LS.get("mtb.poi.drinking_water", true);
+    // Read persisted toggle state. Per-layer default-on/off is
+    // driven by the per-map default_visible YAML list (see
+    // isDefaultVisible) — empty list means everything starts off
+    // until the rider opts in via Options.
+    const mkDefault = LS.get("mtb.poi.markers", isDefaultVisible("trail_markers"));
+    const pkDefault = LS.get("mtb.poi.parking", isDefaultVisible("parking"));
+    const thDefault = LS.get("mtb.poi.trailheads", isDefaultVisible("trailheads"));
+    const ftDefault = LS.get("mtb.poi.features", isDefaultVisible("features"));
+    const wcDefault = LS.get("mtb.poi.toilets", isDefaultVisible("toilets"));
+    const dwDefault = LS.get("mtb.poi.drinking_water", isDefaultVisible("drinking_water"));
 
     // Hide a peek-row button when its layer has no data.
     const hidePeekBtn = (id) => {
@@ -4970,7 +4998,8 @@ function setupBottomSheet() {
     const hasEmergencyRoutes = anyRouteHas("emergency");
     if (emBtn && hasEmergencyRoutes) {
         emBtn.classList.remove("hidden");
-        wirePeekToggle("toggle-emergency-routes", "mtb.emergencyOn", false, (on) => {
+        wirePeekToggle("toggle-emergency-routes", "mtb.emergencyOn",
+                isDefaultVisible("emergency"), (on) => {
             emergencyOn = on;
             applyVisibilityChange();
         });
@@ -5063,7 +5092,8 @@ function setupBottomSheet() {
     // the rider takes manual control. Without this, clearing the
     // highlight afterwards would yank markers the rider explicitly
     // turned on.
-    wirePeekToggle("toggle-markers", "mtb.poi.markers", true, (on) => {
+    wirePeekToggle("toggle-markers", "mtb.poi.markers",
+            isDefaultVisible("trail_markers"), (on) => {
         if (on) {
             updateMarkerProximity();  // already invalidates cache
         } else {
@@ -5075,7 +5105,8 @@ function setupBottomSheet() {
     });
 
     // Features — proximity-filtered.
-    wirePeekToggle("toggle-features", "mtb.poi.features", true, (on) => {
+    wirePeekToggle("toggle-features", "mtb.poi.features",
+            isDefaultVisible("features"), (on) => {
         if (on) {
             updateMarkerProximity();  // already invalidates cache
         } else {
@@ -5089,7 +5120,8 @@ function setupBottomSheet() {
     // Parking / trailheads — always shown when on (no proximity
     // filter). Toggling either flips the obstacle set, so recompute
     // decorations after the marker visibility flips.
-    wirePeekToggle("toggle-parking", "mtb.poi.parking", true, (on) => {
+    wirePeekToggle("toggle-parking", "mtb.poi.parking",
+            isDefaultVisible("parking"), (on) => {
         for (const m of parkingMarkers) {
             if (on) m.addTo(map);
             else m.remove();
@@ -5098,7 +5130,8 @@ function setupBottomSheet() {
         updateDecorationsSource();
         _onPoiToggleChange("parking");
     });
-    wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads", true, (on) => {
+    wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads",
+            isDefaultVisible("trailheads"), (on) => {
         for (const m of trailheadMarkers) {
             if (on) m.addTo(map);
             else m.remove();
@@ -5112,7 +5145,8 @@ function setupBottomSheet() {
     // parking and trailheads. wirePeekToggle skips buttons that are
     // still hidden (no data); loadPOIs reveals them when the build
     // produced features for that POI type.
-    wirePeekToggle("toggle-toilets", "mtb.poi.toilets", true, (on) => {
+    wirePeekToggle("toggle-toilets", "mtb.poi.toilets",
+            isDefaultVisible("toilets"), (on) => {
         for (const m of toiletMarkers) {
             if (on) m.addTo(map);
             else m.remove();
@@ -5121,7 +5155,8 @@ function setupBottomSheet() {
         updateDecorationsSource();
         _onPoiToggleChange("toilet");
     });
-    wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water", true, (on) => {
+    wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
+            isDefaultVisible("drinking_water"), (on) => {
         for (const m of drinkingWaterMarkers) {
             if (on) m.addTo(map);
             else m.remove();
@@ -5140,12 +5175,13 @@ function setupBottomSheet() {
         // before wiring; wirePeekToggle reads the LS state again
         // and applies it via the onChange callback only on user
         // interaction, not on mount.
-        const initial = LS.get("mtb.difficulty", true);
+        const initial = LS.get("mtb.difficulty", isDefaultVisible("difficulty"));
         if (map.getLayer("decor-diamond")) {
             map.setLayoutProperty("decor-diamond", "visibility",
                 initial ? "visible" : "none");
         }
-        wirePeekToggle("toggle-difficulty", "mtb.difficulty", true, (on) => {
+        wirePeekToggle("toggle-difficulty", "mtb.difficulty",
+                isDefaultVisible("difficulty"), (on) => {
             if (map.getLayer("decor-diamond")) {
                 map.setLayoutProperty("decor-diamond", "visibility",
                     on ? "visible" : "none");
@@ -5153,6 +5189,32 @@ function setupBottomSheet() {
         });
     } else if (difficultyBtn) {
         difficultyBtn.classList.add("hidden");
+    }
+
+    // Direction arrows — drives the decor-arrow MapLibre layer
+    // (chevrons placed along one-way / reversible trails). Reveal
+    // the toggle row only when the layer actually has features —
+    // a map with no one-way trails has no arrows to toggle. Same
+    // wirePeekToggle pattern as Difficulty.
+    const arrowsBtn = document.getElementById("toggle-direction-arrows");
+    const arrowFeatureCount = (function () {
+        const src = map.getSource("trail-decorations");
+        if (!src || !src._data) return 0;
+        return (src._data.features || [])
+            .filter((f) => (f.properties || {}).kind === KIND.ARROW)
+            .length;
+    })();
+    if (arrowsBtn && arrowFeatureCount > 0) {
+        arrowsBtn.classList.remove("hidden");
+        wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
+                isDefaultVisible("direction_arrows"), (on) => {
+            if (map.getLayer("decor-arrow")) {
+                map.setLayoutProperty("decor-arrow", "visibility",
+                    on ? "visible" : "none");
+            }
+        });
+    } else if (arrowsBtn) {
+        arrowsBtn.classList.add("hidden");
     }
 
     // ----- Show Routes / Show Trails gating -----

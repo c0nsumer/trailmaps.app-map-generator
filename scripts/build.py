@@ -35,7 +35,7 @@ from fetch_terrain import fetch_terrain
 from font_trimmer import copy_trimmed_fonts
 from inject_clip_arrow import inject_clip_arrow
 from generate_icons import generate_icons, generate_manifest
-from validate_config import validate_config
+from validate_config import validate_config, DEFAULT_VISIBLE_LAYERS
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -809,7 +809,10 @@ CONFIG_SPEC = [
     ("show_trails",             "showTrails",           True),
 
     # Display
-    ("default_labels",          "defaultLabels",        "routes"),
+    # Labels mode default. Was "routes" historically; now defaults to
+    # "none" so a fresh-LS visit produces a clean map with the rider
+    # opting into labels via the Labels segmented control.
+    ("default_labels",          "defaultLabels",        "none"),
     ("color_by",                "colorBy",              "relation"),
     ("suppress_path_labels",    "suppressPathLabels",   False),
     ("suppress_basemap_pois",   "suppressBasemapPois",  False),
@@ -1149,6 +1152,20 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # collapse both to None, which the runtime would interpret as
     # "use defaults" and still show the modal.
     config_obj["welcome"] = config.get("welcome") if "welcome" in config else None
+    # default_visible: list of layer names that default to ON for
+    # first-visit riders. Three accepted YAML forms:
+    #   - omitted: empty list (everything off)
+    #   - "all":   expand to the full layer list
+    #   - list:   pass through (validator already checked names)
+    # Runtime always sees a list, so isDefaultVisible() can do a
+    # plain .includes() check.
+    raw_default_visible = config.get("default_visible")
+    if raw_default_visible == "all":
+        config_obj["defaultVisible"] = sorted(DEFAULT_VISIBLE_LAYERS)
+    elif isinstance(raw_default_visible, list):
+        config_obj["defaultVisible"] = list(raw_default_visible)
+    else:
+        config_obj["defaultVisible"] = []
     # Per-type POI counts (computed from pois.geojson at build
     # time — see _poi_counts stash). Drives the dynamic Welcome
     # Search line so it only mentions place types actually present
@@ -1669,6 +1686,31 @@ def main():
         if yaml_th:
             poi_counts["trailhead"] = poi_counts.get("trailhead", 0) + len(yaml_th)
     config["_poi_counts"] = poi_counts
+
+    # Safety warning: a map with one-way trails should normally
+    # surface the direction-arrow layer by default, otherwise a
+    # first-visit rider on a flow trail won't see which way they're
+    # supposed to ride. Detect oneway segments in trails_geojson and
+    # warn if direction_arrows isn't included in default_visible.
+    raw_dv = config.get("default_visible")
+    arrows_default_on = (
+        raw_dv == "all"
+        or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
+    )
+    if not arrows_default_on:
+        oneway_count = 0
+        for f in (trails_geojson.get("features") or []):
+            ow = (f.get("properties") or {}).get("oneway")
+            if ow in ("yes", True, "-1", "reversible"):
+                oneway_count += 1
+        if oneway_count > 0:
+            print(
+                f"  WARNING: Map has {oneway_count} one-way trail segment(s) "
+                "but direction_arrows is not in default_visible. Riders "
+                "won't see directional indicators on first visit — "
+                "consider adding 'direction_arrows' to default_visible "
+                "(or use default_visible: all)."
+            )
 
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, and append any

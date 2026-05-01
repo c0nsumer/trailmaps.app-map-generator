@@ -826,6 +826,17 @@ body {
     border: var(--poi-marker-border) solid var(--parking-border-color, #fff);
 }
 
+/* Direction arrows — neutral charcoal background with the white
+ * chevron glyph. The on-map arrows themselves are drawn as a
+ * canvas-rendered icon (see makeArrowIcon in app.js); the swatch
+ * here just signals "directional indicator" without trying to
+ * pixel-match that canvas icon. Charcoal differentiates from the
+ * filled-color amenity swatches so arrows read as a different
+ * kind of layer. */
+.direction-arrows-swatch {
+    background: #444;
+}
+
 .trailhead-swatch {
     background: var(--trailhead-color, #27ae60);
     color: var(--trailhead-text-color, #fff);

@@ -358,10 +358,39 @@ root_relation_id: 12345678
 # Display
 # =============================================================================
 
-# Initial label mode: routes (one label per route), trails (one label
-# per named trail), or none. The bottom sheet always offers all three;
-# this just sets the starting choice. Default: routes.
-# default_labels: routes
+# First-visit visibility for the layer toggles in Options. Three forms:
+#
+#   omitted / []   — everything off; the rider opts into each layer
+#                    via the Options drawer. Recommended starting point
+#                    for a clean map.
+#   "all"          — everything on (the legacy framework behavior).
+#                    One-line opt-in for maps that want every annotation
+#                    visible by default.
+#   list of names  — only the listed layers default to ON. All others
+#                    default to OFF.
+#
+# Valid layer names:
+#   parking, trailheads, features, trail_markers,
+#   toilets, drinking_water, difficulty, emergency, direction_arrows
+#
+# Once the rider toggles a layer in Options, their preference persists
+# in localStorage and overrides the default on subsequent visits.
+#
+# Safety note: maps with one-way trails should normally include
+# "direction_arrows" (or use "all") — without it, first-visit riders
+# won't see directional indicators on flow trails. The build emits a
+# warning if oneway segments exist but direction_arrows is omitted.
+# default_visible:
+#   - parking
+#   - trailheads
+#   - direction_arrows
+
+# Initial label mode for first-visit riders: routes (one label per
+# route), trails (one label per named trail), or none. The Labels
+# segmented control always offers all three; this just sets the
+# starting choice. Defaults to "none" so a fresh-LS visit produces
+# a clean map; set "routes" or "trails" to put labels on by default.
+# default_labels: none
 
 # When true, highlighting a route or trail dims the rest of the map —
 # basemap gets a dark tint, non-highlighted labels/arrows/difficulty are
