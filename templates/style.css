@@ -778,15 +778,47 @@ body {
     border: var(--poi-marker-border) solid var(--parking-border-color, #fff);
 }
 
-/* Direction arrows — neutral charcoal background with the white
- * chevron glyph. The on-map arrows themselves are drawn as a
- * canvas-rendered icon (see makeArrowIcon in app.js); the swatch
- * here just signals "directional indicator" without trying to
- * pixel-match that canvas icon. Charcoal differentiates from the
- * filled-color amenity swatches so arrows read as a different
- * kind of layer. */
+/* Direction arrows — chrome indicator (not a sign), so it adapts to
+ * colour scheme like the rest of the chrome and mirrors the on-map
+ * arrow's fill+halo pairing. Light scheme: light-grey chip with a
+ * black arrow + white halo (matches drawArrow's "#000 fill, white
+ * halo" on a light basemap; the chip is intentionally NOT pure
+ * white so the white halo reads against it the same way it reads
+ * against a tinted basemap). Dark scheme: charcoal chip with a
+ * white arrow + dark halo (matches drawArrow's "#fff fill, black
+ * halo" on a dark basemap; charcoal rather than pure black so the
+ * chip retains an edge against the dark panel).
+ *
+ * The halo is rendered as an SVG stroke under the fill (paint-order:
+ * stroke fill) so the path's silhouette matches drawArrow's
+ * stroke-then-fill rendering. stroke-width 4.36 in the 24-unit
+ * viewBox is the same proportion as drawArrow's lineWidth=4 in its
+ * 22-unit canvas. overflow: visible on the SVG keeps the halo from
+ * being clipped at the path corners (which sit close to the
+ * viewBox edges). */
 .direction-arrows-swatch {
+    background: var(--pill-bg);
+    color: #000;
+}
+
+.direction-arrows-swatch svg {
+    overflow: visible;
+}
+
+.direction-arrows-swatch path {
+    stroke: rgba(255, 255, 255, 0.9);
+    stroke-width: 4.36;
+    stroke-linejoin: round;
+    paint-order: stroke fill markers;
+}
+
+[data-color-scheme="dark"] .direction-arrows-swatch {
     background: #444;
+    color: #fff;
+}
+
+[data-color-scheme="dark"] .direction-arrows-swatch path {
+    stroke: rgba(0, 0, 0, 0.7);
 }
 
 .trailhead-swatch {

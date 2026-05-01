@@ -228,16 +228,20 @@
                          (set by app.js after the layer renders). -->
                     <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-direction-arrows" data-poi="direction_arrows" aria-pressed="true">
                         <span class="layer-swatch direction-arrows-swatch" aria-hidden="true">
-                            <!-- Custom arrow path matching the on-map drawArrow()
-                                 canvas shape (see app.js): chunky right-pointing
-                                 triangle with a shallow notch on the back edge.
-                                 Tip at (22.5, 12), back corners at (3.5, 2) and
-                                 (3.5, 22), notch at (7.5, 12). Same proportions
-                                 as drawArrow's tip=0.94, back=0.14, notch=0.32,
-                                 half=0.42 multipliers, so the swatch reads as a
-                                 miniature of what the rider sees on the map. -->
+                            <!-- Arrow path pixel-matched to the on-map
+                                 drawArrow() canvas shape (see app.js).
+                                 Coordinates are drawArrow's tip=0.94,
+                                 back=0.14, notch=0.32, half=0.42
+                                 multipliers applied at size=22, then
+                                 scaled into a 24-unit viewBox (×24/22).
+                                 The path's stroke is the on-map halo
+                                 (lineWidth=4 in 22-unit space → 4.36
+                                 in 24-unit space) with paint-order
+                                 stroke-then-fill so the halo sits
+                                 under the fill, exactly like
+                                 drawArrow's stroke-then-fill order. -->
                             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M22.5,12 L3.5,2 L7.5,12 L3.5,22 Z"/>
+                                <path d="M22.56,12 L3.36,1.92 L7.68,12 L3.36,22.08 Z"/>
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label">Direction Arrows</span>
