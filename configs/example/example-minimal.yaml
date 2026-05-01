@@ -1,10 +1,16 @@
+# Minimal map config — every supported key in canonical order, commented
+# out at the framework default. Uncomment only the lines you need to
+# customise. The README "Configuration → Config Reference" tables are
+# the canonical description for each knob (what it does, accepted
+# values, why the default is what it is); this file is the copy-paste
+# skeleton for a new map.
+
+# --- Identity (REQUIRED) ---
 name: My Trails
 slug: my-trails
 title: "My Trails Map"
-# OSM relation ID anchoring this map. May be a super-relation (its
-# member relations become routes) or a single route relation (used
-# directly as the only route). See README "Concepts" for terminology
-# and "Config Reference -> Data Sources" for how to find the ID.
+# OSM relation ID. May be a super-relation (its members become routes)
+# or a single route relation. See README "Quick Start → Build a Map".
 root_relation_id: 12345678
 
 # --- Data sources ---
@@ -16,6 +22,37 @@ root_relation_id: 12345678
 # emergency_access_relations: []
 # custom_routes: []
 
+# --- View geometry ---
+# bbox: [-87.66, 46.47, -87.59, 46.53]
+# pan_padding: 0.5
+# pan_bbox: [-87.70, 46.44, -87.55, 46.56]
+# center: [-87.635, 46.495]
+# zoom: 14
+# min_zoom: 10
+# max_zoom: 18
+# basemap_maxzoom: 15
+# terrain_maxzoom: 13
+
+# --- Build-time data gates ---
+# Skip the relevant Overpass query / asset generation when false.
+# Per-toggle visibility on FIRST visit is controlled by default_visible
+# (Display section below), not by these flags.
+# show_markers: true
+# show_features: true
+# show_parking: true
+# show_trailheads: true
+# show_toilets: true
+# show_drinking_water: true
+# show_terrain: true
+# show_difficulty: false
+# show_routes: true
+# show_trails: true
+# poi_proximity_m: 50
+# suppress_path_labels: false
+# suppress_basemap_pois: false
+# show_route_distance: false
+# show_route_elevation: false
+
 # --- Per-route style overrides ---
 # color_by: relation
 # default_trail_color: "#808080"
@@ -24,7 +61,23 @@ root_relation_id: 12345678
 # default_direction_schedule: {}
 # direction_schedules: {}
 
-# --- Marker colours ---
+# --- Display ---
+# First-visit visibility for layer toggles. Three forms (see README):
+#   omitted / []   → everything off (rider opts in via Options)
+#   "all"          → everything on (legacy behaviour)
+#   list of names  → only those layers on
+# Maps with one-way trails should include "direction_arrows" or use
+# "all" so first-visit riders see directional indicators.
+# default_visible: []
+# default_labels: none           # routes / trails / none
+# default_color_scheme: light    # light / dark / auto (auto = OS preference)
+# invert_logo_dark: true         # CSS-invert the logo in dark mode
+# map_dim_on_highlight: true
+# url_hash: false
+# distance_units: mi             # mi / km
+# share_button: true
+
+# --- Marker + accent colours (per-map branding) ---
 # marker_color: "#795548"
 # marker_text_color: "white"
 # marker_border_color: "white"
@@ -36,99 +89,14 @@ root_relation_id: 12345678
 # trailhead_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
-# UI accent colour (active toggle pill, focus ring, link, FAB pressed,
-# etc.). Three forms:
-#   omitted       → framework default (#2980b9), shown below
-#   "#FF5733"     → explicit hex
-#   "auto"        → derive from logo (or icon if logo is SVG) at
-#                   build time; auto-darkens for WCAG AA contrast.
-# Build prints a warning if the resolved colour fails contrast on
-# either the light- or dark-mode sheet background.
+# UI accent (active toggle pill, focus ring, link, FAB pressed, etc.).
+# Three forms: omitted = framework default (#2980b9); "#FF5733" = hex;
+# "auto" = derive from the logo (or icon) at build time, auto-darkens
+# for WCAG AA contrast. Build warns when the resolved colour fails
+# contrast on either light- or dark-mode sheet background.
 # accent_color: "#2980b9"
 
-# --- View geometry ---
-# bbox: [-87.66, 46.47, -87.59, 46.53]
-# pan_padding: 0.5
-# center: [-87.635, 46.495]
-# zoom: 14
-# min_zoom: 10
-# max_zoom: 18
-# basemap_maxzoom: 15
-# terrain_maxzoom: 13
-
-# --- PWA ---
-# pwa: true
-# Surface PWA install affordances on platforms that support them.
-# When true: Chrome's native mini-infobar shows AND our custom Install
-# button (in the expanded sheet) is visible alongside it; iOS Safari
-# users see manual Add-to-Home-Screen instructions. When false
-# (default): the beforeinstallprompt handler is not registered at all
-# — silences Chrome's "page must call prompt()" console warning — and
-# the custom Install button is hidden everywhere.
-# pwa_install_prompt: false
-
-# --- Build-time data gates ---
-# show_markers: true
-# show_parking: true
-# show_trailheads: true
-# show_features: true
-# show_toilets: true
-# show_drinking_water: true
-# poi_proximity_m: 50
-# show_terrain: true
-# show_difficulty: false
-# show_routes: true
-# show_trails: true
-# suppress_path_labels: false
-# suppress_basemap_pois: false
-# Per-route stats in the Finder + highlight chip. Distance is cheap
-# (haversine sum at build time, no data dependency). Elevation gain
-# + loss come from USGS 3DEP's getSamples endpoint at build time —
-# 1m lidar bare-earth data where available (most US, including all
-# UP MI counties), 10m/30m fallback elsewhere. Sampled every 5m
-# along each route, cached in cache/route_stats/. The build
-# auto-retries transient errors (occasional 502s) with backoff and
-# degrades to no-data on persistent failure rather than failing.
-# Independent of show_terrain — elevation stats and the hillshade
-# layer come from different data paths and can be toggled
-# separately. US-only (non-US routes will have no elevation stats).
-# show_route_distance: false
-# show_route_elevation: false
-
-# --- Display ---
-# Default-visibility for layer toggles on first-visit. Three accepted
-# forms — see README "Display" table for full layer-name list:
-#   omitted / []  → everything off (rider opts in via Options)
-#   "all"          → everything on (legacy behavior)
-#   list of names  → only those layers on
-# Maps with one-way trails should include "direction_arrows" or use
-# "all" so first-visit riders see directional indicators.
-# default_visible: []
-# default_labels: none   # routes / trails / none
-# Initial colour scheme on first visit: light / dark / auto.
-# Default "light" preserves existing behaviour; "auto" matches OS
-# prefers-color-scheme. Riders override via Options → Appearance
-# and their choice persists per-map in localStorage.
-# default_color_scheme: light
-# Whether the logo auto-inverts in dark mode. Default true; set
-# false if your logo is colourful and inverts badly.
-# invert_logo_dark: true
-# map_dim_on_highlight: true
-# url_hash: false
-# Units used for ALL distance and elevation values shown in the app —
-# off-screen-indicator distance pill, route stats in the Finder,
-# highlight chip, any future distance display. The underlying data is
-# always meters; this only affects render-time formatting. Values:
-# "mi" → ft + decimal mi (and ft for elevation gain) — default.
-# "km" → m + decimal km (and m for elevation gain) — metric regions.
-# distance_units: mi
-# Share button in the expanded sheet. Generates a shareable URL of
-# the current view + highlighted route/trail and surfaces it via the
-# Web Share API (or clipboard fallback). Default true. Set false for
-# private/family maps where you don't want the affordance.
-# share_button: true
-
-# --- Base layers ---
+# --- Base layers (custom raster basemaps) ---
 # base_layers: []
 
 # --- Branding ---
@@ -139,7 +107,11 @@ root_relation_id: 12345678
 # trailheads: []
 # parking: []
 
-# --- About ---
+# --- PWA ---
+# pwa: true
+# pwa_install_prompt: false      # show our Install button + Chrome's mini-infobar
+
+# --- About modal ---
 # about:
 #   description: |
 #     Description text.
@@ -153,11 +125,9 @@ root_relation_id: 12345678
 #     - label: ""
 #       url: ""
 
-# --- Welcome (first-visit modal) ---
-# Three forms accepted:
-#   - omitted: framework default (controls hint + attribution footer)
-#   - false:   suppress the welcome modal entirely
-#   - dict with optional title/body/show_controls_hint
+# --- Welcome modal (first-visit) ---
+# Three forms: omitted (framework default with controls hint +
+# attribution footer), `false` (suppress entirely), or dict below.
 # welcome:
 #   title: ""
 #   body: |

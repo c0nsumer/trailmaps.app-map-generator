@@ -23,7 +23,7 @@ YAML config keys like `extra_relations`, `dashed_relations`, `relation_colors`, 
 
 - **Fully self-hosted** — all tiles, fonts, sprites, and vendor libraries served from your own infrastructure; zero runtime CDN or API dependencies
 - **Locally bundled libraries** — MapLibre GL JS, PMTiles, and Protomaps basemap JS/CSS are downloaded from CDNs at build time and bundled into the output; required for PWA offline support and eliminates external runtime dependencies
-- **Progressive Web App** — installable PWA with service worker for complete offline use after first visit; PMTiles range requests served from cache; install row shown in the bottom sheet on supported browsers, with an iOS Add-to-Home-Screen hint for Safari
+- **Progressive Web App** — installable PWA with service worker for complete offline use after first visit; PMTiles range requests served from cache; install action row shown in Options on supported browsers, with an iOS Add-to-Home-Screen hint for Safari
 - **Config-driven** — create a new map by writing a single YAML file; no code changes needed
 - **Static output** — builds to a plain directory of files deployable to any static server supporting HTTP Range requests (Caddy, nginx, Apache)
 
@@ -35,14 +35,20 @@ YAML config keys like `extra_relations`, `dashed_relations`, `relation_colors`, 
 - **Custom base layers** — add external raster tile layers (satellite, aerial, topo) with optional authentication headers; trail overlays and interactive features work on top. When no custom layers are configured, the basemap selector is hidden entirely
 - **Light theme** — single light theme tuned for outdoor readability; no dark-mode variant to maintain
 
-### Bottom-sheet UI
+### Floating chrome + overlays
 
-A single bottom sheet is the home for all controls. Two states:
+The map fills the whole viewport. Three floating elements sit on top:
 
-- **Peek** (always visible): map title plus a horizontal row of labelled icon toggles — Season (Summer ↔ Winter), Parking, Trailheads, Features, Difficulty, Markers, and Locate. Buttons for categories the map doesn't carry are auto-hidden so each map only shows what it has.
-- **Expanded** (~70% of viewport): a combined routes-and-trails finder, map-options (Labels, Emergency Access Routes when relevant, Basemap picker when configured), an Install-as-app row (when applicable), and the About button.
+- **Brand element** (top-left): the trail-system logo (or the map title text when no logo is configured) — pure identity, not interactive.
+- **FAB stack** (bottom-right): three round 48 px buttons — **Options** · **Search** · **Locate**, with Locate at the bottom (closest to a one-handed thumb on a phone).
+- **Highlight chip** (top-centre, when active): shows what's currently highlighted (route name, trail name, or "Toilets × N" for grouped POI highlights) and tap to dismiss.
 
-Drag the handle up/down, tap the peek area, swipe down to close, or press Escape on desktop. Safe-area insets keep the sheet clear of the iOS home bar.
+Tapping a FAB opens its overlay:
+
+- **Search overlay** (half-sheet on mobile, centred card on desktop): an input with type-filter chips (All / Routes / Trails / Places) above a sectioned result list. Map stays visible above the sheet so riders can keep their bearings while searching.
+- **Options overlay** (full-screen on mobile, centred card on desktop): all per-layer toggles ("What to show" — Labels mode, Difficulty, Direction Arrows, Trail Markers, Trailheads, Parking, Features, Toilets, Drinking Water, Emergency Access Routes when relevant, Season, Appearance scheme), basemap picker (when `base_layers` is configured), and Share / Install / About action rows.
+
+Both overlays dismiss via their close X, the Esc key, or re-tapping the FAB that opened them. Safe-area insets keep chrome clear of iOS notches and home bars. Tap targets ≥ 44 px throughout.
 
 ### Trail data and styling
 
@@ -51,7 +57,7 @@ Drag the handle up/down, tap the peek area, swipe down to close, or press Escape
 - **Highlight layers** — four overlay layers render a glow+stroke emphasis when a route or trail is picked. Route highlights use the route's own colour; trail highlights use amber so they read consistently across differently-coloured parent routes
 - **Trail colouring** — colour by route (OSM `colour` tag per relation, overridable via `relation_colors`) or by IMBA difficulty rating (`mtb:scale:imba` per way)
 - **Trail difficulty symbols** — optional IMBA difficulty rating symbols (`mtb:scale:imba` 0–5) rendered along trail segments with a toggleable checkbox. Defaults to **on** when the build generates the sprite; state persists in localStorage
-- **Direction arrows** — arrows along ways tagged `oneway=yes`/`oneway=-1`/`oneway=reversible`; optional day-of-week direction schedule via `default_direction_schedule` (system-wide) or `direction_schedules` (per-relation overrides), required for `reversible` ways. Toggleable via the Options drawer. To show them on first visit, add `direction_arrows` to `default_visible`. The build flags any map that has one-way trails but leaves arrows off by default — without that visual cue, a new rider wouldn't know which way to go on a flow trail
+- **Direction arrows** — arrows along ways tagged `oneway=yes`/`oneway=-1`/`oneway=reversible`; optional day-of-week direction schedule via `default_direction_schedule` (system-wide) or `direction_schedules` (per-relation overrides), required for `reversible` ways. Toggleable via the Options overlay. To show them on first visit, add `direction_arrows` to `default_visible`. The build flags any map that has one-way trails but leaves arrows off by default — without that visual cue, a new rider wouldn't know which way to go on a flow trail
 - **Dashed line styles** — config-driven dash patterns per route (dots, dashes, etc.) with round or square caps and optional two-colour alternating dashes
 - **Colour overrides** — override OSM `colour` tag per route from config
 - **Trail labels** — switchable between route names, individual trail names, or off
@@ -76,10 +82,10 @@ Drag the handle up/down, tap the peek area, swipe down to close, or press Escape
 
 ### Mobile and UX
 
-- **Mobile-first** — bottom sheet thumb-reachable on phones, roomier on desktop; tap targets ≥ 44 px; safe-area insets on iOS/Android
+- **Mobile-first** — FAB stack thumb-reachable on phones; tap targets ≥ 44 px; safe-area insets on iOS/Android; overlays adapt (half-sheet / full-screen on mobile, centred card on desktop)
 - **Geolocation** — locate-me button for on-trail use; off-screen indicator and toast when the device is outside the map area
 - **Per-origin state persistence** — season mode, Emergency toggle, POI toggles, Labels, and Difficulty state all persist in localStorage under `mtb.*` keys (see [Privacy](#privacy))
-- **About This Map modal** — button at the bottom of the expanded sheet opens a dialog with a configurable description, links, author info, and auto-generated data/build version info and credits
+- **About This Map modal** — action row at the bottom of the Options overlay opens a dialog with a configurable description, links, author info, and auto-generated data/build version info and credits
 
 ## Quick Start
 
@@ -251,7 +257,7 @@ See [Custom routes](#custom-routes) for details.
 | `feature_ring_color` | No | `"#ffffff"` | Feature marker outer ring colour |
 | `accent_color` | No | `"#2980b9"` | UI accent colour: active toggle pill, search input focus ring, link colour, FAB pressed state, segmented-control active fill, etc. Three accepted forms: omitted (framework default blue), 6-digit hex (e.g. `"#FF5733"`), or the literal string `"auto"` (derive from the logo at build time via Pillow — picks the most common saturated colour, auto-darkens for WCAG AA contrast against white text, caches per-source-hash). The build prints a warning when the resolved colour fails WCAG AA against either the light-mode or dark-mode sheet background. SVG-only logos fall back to the `icon:` raster as the derive source; if neither is raster, falls back to the default with a warning |
 
-Each POI type follows the same three-knob pattern (fill + glyph/dot + halo/ring). Values flow to CSS custom properties on `:root` so the peek-bar swatch, the on-map marker, and any popup badge all read the same hex — one source of truth per colour. The accent colour follows the same pattern: setting `accent_color` updates `--accent` on `:root`; `--link-color` and `--accent-strong` (the darker hover/pressed variant) derive from `--accent` via `color-mix()`, so a single override cascades to every accented surface.
+Each POI type follows the same three-knob pattern (fill + glyph/dot + halo/ring). Values flow to CSS custom properties on `:root` so the Options swatch, the on-map marker, and any popup badge all read the same hex — one source of truth per colour. The accent colour follows the same pattern: setting `accent_color` updates `--accent` on `:root`; `--link-color` and `--accent-strong` (the darker hover/pressed variant) derive from `--accent` via `color-mix()`, so a single override cascades to every accented surface.
 
 #### Map View
 
@@ -285,7 +291,7 @@ See [Direction Arrows](#direction-arrows) for the full model.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `pwa` | No | `true` | Enable PWA support (service worker, offline caching, install row). When false, no service worker or install UI is generated. Vendor libraries are always bundled locally regardless of this setting |
-| `pwa_install_prompt` | No | `false` | When `true`, surface PWA install affordances on platforms that support them. On Chrome/Android: the page does **not** call `preventDefault()` on `beforeinstallprompt` so Chrome's native mini-infobar appears, AND the custom Install button (in the expanded sheet, above About) is visible alongside it as a persistent fallback for second-visit installs. On iOS Safari: the Install button opens manual Add-to-Home-Screen instructions. When `false` (the default), no `beforeinstallprompt` handler is registered at all — silences Chrome's `"Banner not shown: beforeinstallpromptevent.preventDefault() called"` console warning — and the custom Install button is hidden everywhere. Use `false` for maps that don't want install promotion (e.g. personal/family maps); use `true` for production/community maps where install is encouraged. Requires `pwa: true`. |
+| `pwa_install_prompt` | No | `false` | When `true`, surface PWA install affordances on platforms that support them. On Chrome/Android: the page does **not** call `preventDefault()` on `beforeinstallprompt` so Chrome's native mini-infobar appears, AND the custom Install action row (in the Options overlay, above About) is visible alongside it as a persistent fallback for second-visit installs. On iOS Safari: the Install action row opens manual Add-to-Home-Screen instructions. When `false` (the default), no `beforeinstallprompt` handler is registered at all — silences Chrome's `"Banner not shown: beforeinstallpromptevent.preventDefault() called"` console warning — and the custom Install action row is hidden everywhere. Use `false` for maps that don't want install promotion (e.g. personal/family maps); use `true` for production/community maps where install is encouraged. Requires `pwa: true`. |
 
 #### Build-time Data Gates
 
@@ -293,13 +299,13 @@ These gate **data fetching and build-time asset generation**, not UI visibility.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `show_markers` | No | `true` | When false, skips the Overpass query for trail markers (guideposts + emergency-access points, merged into one category). Hides the peek-bar Markers toggle too. |
+| `show_markers` | No | `true` | When false, skips the Overpass query for trail markers (guideposts + emergency-access points, merged into one category). Hides the Options Markers toggle too. |
 | `show_parking` | No | `true` | When false, parking markers from the config are not rendered |
 | `show_trailheads` | No | `true` | When false, trailhead markers from the config are not rendered |
 | `show_features` | No | `true` | When false, skips the Overpass query for `tourism=attraction` feature nodes |
-| `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The drawer's Toilets toggle auto-hides if the build emitted no toilet features (e.g. trail systems where OSM hasn't tagged any). |
-| `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The drawer's Drinking water toggle auto-hides if the build emitted none. |
-| `poi_proximity_m` | No | `50` | Distance in meters from the nearest visible trail within which a feature or trail-marker POI is allowed to render. Tight values (~10 m) hide POIs that aren't directly on the trail; loose values (~75 m+) include nearby attractions but risk surfacing bbox-incidental POIs. The peek-bar Features toggle auto-hides if no feature POI passes this distance check. |
+| `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The Options Toilets toggle auto-hides if the build emitted no toilet features (e.g. trail systems where OSM hasn't tagged any). |
+| `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Options Drinking Water toggle auto-hides if the build emitted none. |
+| `poi_proximity_m` | No | `50` | Distance in meters from the nearest visible trail within which a feature or trail-marker POI is allowed to render. Tight values (~10 m) hide POIs that aren't directly on the trail; loose values (~75 m+) include nearby attractions but risk surfacing bbox-incidental POIs. The Options Features toggle auto-hides if no feature POI passes this distance check. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted |
 | `show_difficulty` | No | `false` | When true, generates the IMBA difficulty sprite and enables the in-UI toggle; when false, no sprite is generated and no difficulty symbols appear. The toggle defaults **on** when enabled and persists state via localStorage. |
 | `show_routes` | No | `true` | When false, hides the Routes section of the Finder and removes "Routes" from the Labels dropdown. Useful for maps that have no curated route relations. |
@@ -320,7 +326,7 @@ These gate **data fetching and build-time asset generation**, not UI visibility.
 | `map_dim_on_highlight` | No | `true` | When a route or trail is highlighted (via Finder tap or in-map click), dim every non-highlighted route/trail. Set `false` to keep the rest of the network at full saturation. |
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the user pans/zooms, and honour any hash on page load — enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely: return visitors always open framed on `bbox`, URLs stay clean, and the last-viewed location doesn't leak via address bar / screenshots / screen-shares. See [Privacy](#privacy) for the trade-off. |
 | `distance_units` | No | `"mi"` | Units used for **all** distance and elevation values shown in the app — off-screen-indicator distance pill, route stats in the Finder (gated by `show_route_distance` / `show_route_elevation`), highlight chip, any future distance display. The underlying data is always meters; this only affects render-time formatting. `"mi"` → ft + decimal mi (and ft for elevation gain). `"km"` → m + decimal km (and m for elevation gain). The mixed elevation convention (ft for `mi`, m for `km`) matches what riders in each unit system actually expect. |
-| `share_button` | No | `true` | Show the **Share this view** button in the expanded sheet (above the Install button). Tapping it captures the current view (zoom + center) and any highlighted route/trail as a deep-link URL, then surfaces it via the Web Share API (mobile native share sheet) or `navigator.clipboard.writeText()` fallback (desktop). Recipient opens the URL → the runtime restores the view + highlight and strips the hash. The shared URL works regardless of `url_hash` — Share is a deliberate, consensual one-shot, not ambient URL writing. Set `false` to remove the button entirely (the section is stripped from `index.html` at build time) for private/family maps where the affordance is unwanted. Open Graph + Twitter Card meta tags are always emitted (no separate gate) so the share preview cards render polished on Android. |
+| `share_button` | No | `true` | Show the **Share this view** action row in the Options overlay (above Install + About). Tapping it captures the current view (zoom + center) and any highlighted route/trail as a deep-link URL, then surfaces it via the Web Share API (mobile native share sheet) or `navigator.clipboard.writeText()` fallback (desktop). Recipient opens the URL → the runtime restores the view + highlight and strips the hash. The shared URL works regardless of `url_hash` — Share is a deliberate, consensual one-shot, not ambient URL writing. Set `false` to remove the row entirely (it's stripped from `index.html` at build time) for private/family maps where the affordance is unwanted. Open Graph + Twitter Card meta tags are always emitted (no separate gate) so the share preview cards render polished on Android. |
 
 #### Base Layers
 
@@ -393,7 +399,7 @@ When `directions_url` is omitted, the app auto-detects the browser and generates
 
 ### About This Map
 
-The bottom sheet's expanded state includes an **About this map** button (below the Install row when installable). Clicking it opens a modal with information about the map. The modal header shows the map **title** on the left and, when `logo:` (or `icon:` as fallback) is configured, the brand **logo** on the right. The `about` YAML block is optional; when omitted, the modal still renders the always-on version and credits sections.
+The Options overlay includes an **About this map** action row (below Share and Install when those are visible). Tapping it opens a modal with information about the map. The modal header shows the map **title** on the left and, when `logo:` (or `icon:` as fallback) is configured, the brand **logo** on the right. The `about` YAML block is optional; when omitted, the modal still renders the always-on version and credits sections.
 
 ```yaml
 about:
@@ -554,7 +560,7 @@ When `show_difficulty: true`, the map displays IMBA trail difficulty rating symb
 | 4 | Double diamond | Black (expert) |
 | 5 | Double diamond | Orange (pro) |
 
-The symbols use ski-trail-style iconography, are always oriented vertically (not rotated to follow the trail line), and include a white halo for visibility against any background. The Difficulty toggle appears under "Show on map" in the expanded bottom sheet; it defaults **on** when the build generates the sprite, and the state persists in localStorage (`mtb.difficulty`).
+The symbols use ski-trail-style iconography, are always oriented vertically (not rotated to follow the trail line), and include a white halo for visibility against any background. The Difficulty toggle appears under "What to show" in the Options overlay; first-visit visibility is controlled by `default_visible` (include `difficulty` to default on; otherwise off), and the rider's choice persists in localStorage (`mtb.difficulty`).
 
 Difficulty symbols only appear on segments where the trail casing is visible — hiding a trail (e.g., by switching season) also hides its difficulty symbols.
 
@@ -634,8 +640,8 @@ Every route in the map carries three independent boolean flags:
 
 ### UI behaviour
 
-- **Summer / Winter is a mode switch.** The bottom sheet has a segmented Season control with two options. The app is in one mode at a time. Summer mode renders routes with `summer: true`; Winter mode renders routes with `winter: true`.
-- **Emergency is an additive overlay.** A separate Emergency toggle (also in the bottom sheet) adds routes with `emergency: true` on top of whatever mode is currently active, without changing the mode. Toggling Emergency off hides those routes again but leaves the mode untouched.
+- **Summer / Winter is a mode switch.** The Options overlay has a segmented Season control with two options. The app is in one mode at a time. Summer mode renders routes with `summer: true`; Winter mode renders routes with `winter: true`.
+- **Emergency is an additive overlay.** A separate Emergency Access Routes toggle (also in Options) adds routes with `emergency: true` on top of whatever mode is currently active, without changing the mode. Toggling Emergency off hides those routes again but leaves the mode untouched.
 - **First-visit default is Summer.** The user's explicit choice persists in localStorage (`mtb.seasonMode`, `mtb.emergencyOn`) and restores on subsequent visits. No month-based auto-detection.
 
 ### How the flags are computed
@@ -713,7 +719,7 @@ Custom routes are indistinguishable from OSM routes in every runtime behaviour:
 
 ## Trail Finder
 
-The expanded bottom sheet contains a combined routes-and-trails finder with one search input and two sections:
+The Search overlay (opened via the Search FAB) contains a combined routes/trails/places finder with one search input, type-filter chips, and sectioned results:
 
 ```
  🔍 Search routes & trails
@@ -1037,7 +1043,7 @@ When `pwa: true` (the default), every generated map is a fully installable Progr
 
 2. **PMTiles offline** — The service worker handles HTTP Range requests for `.pmtiles` files by slicing from the cached full file. Map tiles work fully offline.
 
-3. **Install row** — An "Install as app" row appears near the bottom of the expanded bottom sheet on supported browsers. On iOS, tapping it reveals a Share → Add to Home Screen hint instead of firing an install prompt.
+3. **Install row** — An "Install as an app" action row appears in the Options overlay on supported browsers. On iOS, tapping it reveals a Share → Add to Home Screen hint instead of firing an install prompt.
 
 4. **Cache updates** — Each build produces a unique cache version. On the next visit after a rebuild, the new service worker installs, re-caches all files, and activates immediately. Old caches are automatically cleaned up.
 
@@ -1111,7 +1117,7 @@ The `root_relation_id` (or one of `extra_relations`, `clipped_relations`, `winte
 
 Most often a season-bucket filtering issue. Each route belongs to non-exclusive Summer / Winter / Emergency buckets (see [Route Buckets](#route-buckets)).
 
-- The peek-bar season switch hides the inactive bucket. If your map is showing summer mode, winter-only trails won't appear (and vice versa).
+- The Options Season toggle hides the inactive bucket. If your map is showing summer mode, winter-only trails won't appear (and vice versa).
 - Check `winter_relations` / `summer_relations` / `emergency_access_relations` in your YAML — a route in the wrong list won't render under the season the user expects.
 - For routes you want visible in BOTH seasons, list them in `summer_relations` AND tag them as `seasonal=winter` in OSM (or just put them in `summer_relations` to make them year-round).
 
@@ -1186,10 +1192,14 @@ If a build takes much longer, the slowest steps are usually terrain extraction (
 UI icons are inlined SVG paths from **[Material Design Icons](https://pictogrammers.com/library/mdi/)** (Pictogrammers community), used under the **Apache License 2.0**. Each inline SVG is annotated with an HTML comment naming its source (e.g. `<!-- mdi:magnify (Apache 2.0, Pictogrammers) -->`). No icon files are bundled — only the path data for the specific icons in use is embedded directly in the templates.
 
 Icons currently in use:
-- `mdi:magnify` — peek-bar search button
-- `mdi:crosshairs-gps` — peek-bar locate button
-- `mdi:label` — drawer Labels row
-- `mdi:weather-sunny` / `mdi:snowflake` — drawer Season toggle (swap based on selection)
-- `mdi:human-male-female` — drawer Toilets row + on-map markers
-- `mdi:water` — drawer Drinking water row + on-map markers
-- `mdi:chevron-down` — drawer accordion section headers
+- `mdi:cog` — Options FAB (bottom-right, top of stack)
+- `mdi:magnify` — Search FAB + Search overlay header
+- `mdi:crosshairs-gps` — Locate FAB (inner dot split into its own `<circle>` so CSS can hide it in the `background[-error]` states)
+- `mdi:close` — Search overlay, Options overlay, and About-modal close buttons
+- `mdi:label` — Options "Labels" row
+- `mdi:weather-sunny` / `mdi:snowflake` — Options "Season" toggle (swapped at runtime by `reflectSeason()`)
+- `mdi:human-male-female` — Options "Toilets" row + on-map markers
+- `mdi:water` — Options "Drinking water" row + on-map markers
+- `mdi:information-outline` — About-modal header
+
+The direction-arrows row swatch uses a custom SVG path that mirrors the on-map `drawArrow()` chevron geometry (tip 0.94, back 0.14, notch 0.32) rather than an MDI icon — keeps the Options swatch and the painted decoration visually identical.

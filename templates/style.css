@@ -56,7 +56,7 @@
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
 
-    /* POI marker design tokens — shared between Options drawer
+    /* POI marker design tokens — shared between Options-overlay
      * swatches AND on-map markers so each Options chip is a true
      * miniature of the marker it represents. Tweaking any of these
      * updates both surfaces in lockstep.
@@ -172,16 +172,6 @@ body {
     display: none !important;
 }
 
-/* ----- Logo overlay (bottom-left, above sheet peek) ----------------
- *
- * Mobile: peek spans full width, so the logo must sit above it.
- * `--peek-height` is published from app.js from the peek's actual
- * rendered height (title + icon row + handle + padding). The old
- * hard-coded 72 px was left over from a slimmer peek and clipped the
- * logo after the title was added. 6 px gap keeps it off the border.
- * Desktop rule below tucks it in the corner instead. */
-/* When the bottom sheet is expanded, slide the logo above the expanded
- * area so it doesn't disappear behind the sheet. */
 /* ----- Highlight chip (top of map, when a route/trail is highlighted) */
 .highlight-chip {
     position: absolute;
@@ -282,100 +272,13 @@ body {
     color: var(--sheet-text);
 }
 
-/* ----- Bottom sheet -------------------------------------------------- */
-/* ----- Sheet peek (always visible) ----------------------------------
+/* ----- Options-overlay section headers -----------------------------
  *
- * UI v2: peek shows just the map title (left) + a small action row
- * with the search button and the locate button (right). All set-once
- * toggles (markers, parking, season, etc.) live in the drawer's
- * accordion sections. Whole peek surface (outside individual button
- * hit targets) is tappable to expand the sheet. */
-/* Icon buttons must remain tappable — touch-action: manipulation is
- * enough to allow taps without letting the browser steal drag. */
-/* Map title — left-aligned in the peek row alongside the search +
- * locate icons. Truncates with ellipsis on narrow phones. */
-/* Action cluster on the right of the peek row — search + locate. */
-/* ----- Peek icon buttons -------------------------------------------
- *
- * Stacked swatch + label, ~48×52 tap target. aria-pressed drives the
- * on/off state. On: saturated swatch + coloured label. Off: outline-
- * only swatch + diagonal slash + muted label — three independent
- * cues so the state survives greyscale, sunlight, and common
- * color-vision variants. */
-/* Hover background only fires on actual hover-capable devices (mouse,
- * stylus). Without the @media gate, mobile tap-then-release leaves
- * :hover sticky until the next tap elsewhere — which on Chrome/Firefox
- * Android shows a visible gray-bg "flash" of the just-tapped icon
- * (and reads as the lower part of the peek bar lighting up). Touch
- * devices get no hover affordance at all, which is the right call:
- * they have no concept of hover state. */
-@media (hover: hover) {
-    }
-
-/* Swatches inside peek icons sit a touch larger than in expanded rows
- * so the mini markers read clearly. */
-/* Feature / Difficulty / Season swatches all inherit the base
- * .peek-icon .layer-swatch size (24×24 desktop, 22×22 mobile) so the
- * row aligns in a clean grid. The distinctive shape content (purple
- * dot, black diamond, sun/snow) sits inside the chip via ::before
- * or inline SVG rather than replacing the chip itself. */
-
-/* Off state — three independent signals: outline-only swatch, grey
- * label, diagonal slash. Works on B&W displays and for color-vision
- * variants that flatten red/green. */
-/* Season swatch — inherits the base 24×24 rounded-rect chip from
- * .layer-swatch (added to the span in index.html) so it sits in
- * line with every other peek-row icon. The accent-blue fill + white
- * SVG glyph (sun/snow — swapped at runtime from app.js) gives it a
- * distinct identity without breaking the shared chip geometry. */
-/* Season cycles — never renders the off slash / outline treatment. */
-/* ----- Peek-icon "bare" variant ------------------------------------
- *
- * Used by the new peek-bar layout (search + locate). No label below
- * the swatch — these are icon-only buttons, the action is unambiguous
- * and the labels are redundant on the always-visible bar. Touch
- * target is preserved by giving the button itself ≥40px hit area. */
-/* Search swatch — matches the locate-swatch idle treatment so the
- * two peek icons look like a coherent pair: white background, darker
- * neutral border, dark icon stroke. Uses the #toggle-search ID
- * prefix to ensure it WINS over the base .layer-swatch rule (which
- * sets `color: white` and lives later in this file) — without the
- * extra specificity, the inherited `currentColor` on the SVG stroke
- * resolves to white and the icon disappears into the swatch
- * background. */
-#toggle-search .search-swatch {
-    background: #fff;
-    color: #333;
-    border: 1.5px solid #ccc;
-}
-
-#toggle-search:hover .search-swatch {
-    background: #f0f0f0;
-}
-
-/* ----- Backdrop ----------------------------------------------------
- *
- * Covers the whole map behind the bottom sheet when the drawer is
- * open. Fades in with the sheet's open transition; tap-to-close is
- * wired in app.js via the existing document-level click handler.
- * Sits below the sheet (z-index 4) but above the map (z-index 0–3).
- * Pointer-events handled by the .is-active class so tapping through
- * a hidden backdrop never blocks map interaction. */
-@media (prefers-reduced-motion: reduce) {
-    }
-
-/* ----- Drawer accordion sections -----------------------------------
- *
- * Collapsible groups inside the expanded sheet. Each section has a
- * tappable header (title + chevron) and a body that slides
- * open/closed by toggling the .is-open class on the parent section.
- * No max-height-zero animation — that fights variable content height.
- * We just toggle display on the body and rotate the chevron. */
-/* Section headers are uppercase categorical labels (iOS / macOS
- * Settings convention), not row-like buttons. The body's row list
- * sits visually as a "group" under each label. Always-visible —
- * the older accordion behaviour was removed because total row count
- * (~14) is small enough to scroll without per-section collapse. */
+ * Uppercase categorical labels in the iOS / macOS Settings style. Not
+ * interactive — the older accordion behaviour was removed because the
+ * total row count (~14) scrolls comfortably without per-section
+ * collapse. The body's row list sits visually as a group under each
+ * label. */
 .opt-section-header {
     display: block;
     padding: 16px 16px 6px 16px;
@@ -399,13 +302,11 @@ body {
     padding: 0 8px 4px 8px;
 }
 
-/* ----- Drawer toggle rows (full-width buttons) ---------------------
+/* ----- Options-overlay toggle rows (full-width buttons) ------------
  *
- * Replaces the peek-icon vertical-stack pattern when the same toggle
- * lives in the drawer instead of the peek bar. Layout: swatch on
- * left + label in middle + ON/OFF state on right. aria-pressed is
- * the same authority as the peek version, so wirePeekToggle()
- * needs no changes. */
+ * Layout: swatch on left + label in middle + ON/OFF state on right.
+ * Driven by aria-pressed. Wired up by wirePeekToggle() in app.js
+ * (the helper kept its peek-era name; behaviour is unchanged). */
 .opt-toggle-row {
     display: flex;
     align-items: center;
@@ -453,10 +354,9 @@ body {
     width: 28px;
     height: 28px;
     /* Swatch text labels (#, P, TH) inherit font-size 10px from the
-     * base .layer-swatch rule which was sized for a 22px swatch. In
-     * the drawer's larger 28px swatches the same 10px text reads as
-     * tiny — bump to 13px (the same proportion as the peek's
-     * 24px-swatch / 11px-text pairing). "TH" still fits at this size
+     * base .layer-swatch rule. In the Options overlay's larger 28px
+     * swatches that reads as tiny — bump to 13px to keep proportion
+     * with the swatch dimensions. "TH" still fits at this size
      * (~2.4 ex per character × 2 chars = ~5 ex, swatch inner is ~25px
      * after 1.5px borders → comfortable). */
     font-size: 13px;
@@ -482,8 +382,8 @@ body {
  * segmented pill lives further up in the file under "Segmented-
  * pill (Labels: Routes / Trails / None)".) */
 
-/* Off state on swatches inside drawer toggles — same three-cue
- * treatment as the peek (transparent + grey border + slash). The
+/* Off state on swatches inside Options-overlay toggles — three-cue
+ * treatment (transparent fill + grey border + slash). The
  * `data-multi-off="true"` selector is for multi-option rows whose
  * "off" state isn't a binary aria-pressed=false but a specific
  * value choice (e.g. Labels = "None" → row visually reads as off
@@ -646,8 +546,7 @@ body {
     gap: 0;
 }
 
-/* ----- Sheet toggle row (POI + emergency rows in expanded sheet) ---- */
-/* ----- Sheet field rows (Labels / Basemap selects) ----------------- */
+/* ----- Field rows (Labels / Basemap selects in Options overlay) ---- */
 .opt-row-field {
     justify-content: space-between;
     gap: 12px;
@@ -818,10 +717,11 @@ body {
 /* ----- Layer swatches (POI marker color cues in toggle rows) -------
  *
  * Sized via the shared --poi-marker-* tokens so each swatch in the
- * Options drawer is a true miniature of the on-map marker it stands
- * for. The dark outline (box-shadow) is unique to swatches — gives
- * the chip an edge against the sheet background. The on-map markers
- * use --poi-marker-map-shadow instead (drop-shadow, not outline).
+ * Options overlay is a true miniature of the on-map marker it stands
+ * for. The thin outline (box-shadow with --swatch-outline) is unique
+ * to swatches — gives the chip an edge against the panel background.
+ * The on-map markers use --poi-marker-map-shadow instead (drop-shadow,
+ * not outline).
  */
 .layer-swatch {
     display: inline-flex;
@@ -998,49 +898,16 @@ body {
     pointer-events: none;
 }
 
-/* Off-state: the base .peek-icon[aria-pressed="false"] .layer-swatch
- * rule already greys the chip and draws the slash. Also hollow out
- * the inner ::before shapes (purple dot, black diamond) so they
- * match the outline-only motif instead of staying full-colour. */
-/* ----- Finder ------------------------------------------------------- */
-.finder {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.finder-search {
-    position: relative;
-}
-
-.finder-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--sheet-border);
-    border-radius: 8px;
-    font: inherit;
-    font-size: 14px;
-    background: white;
-    color: var(--sheet-text);
-    min-height: 40px;
-    appearance: none;
-    -webkit-appearance: none;
-}
-
-.finder-input:focus {
-    outline: 2px solid var(--accent);
-    outline-offset: -1px;
-}
-
-.finder-list {
-    display: flex;
-    flex-direction: column;
-    max-height: 38vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--sheet-divider);
-    border-radius: 8px;
-}
+/* Off-state: the base .opt-toggle-row[aria-pressed="false"]
+ * .layer-swatch rule above already greys the chip and draws the
+ * slash. Also hollow out the inner ::before shapes (purple dot,
+ * black diamond) so they match the outline-only motif instead of
+ * staying full-colour. */
+/* ----- Finder rows --------------------------------------------------
+ * (Pre-search-overlay finder container styles — .finder, .finder-search,
+ * .finder-input, .finder-list — removed; the current Search overlay
+ * uses .search-overlay-* classes for the chrome and these per-row
+ * classes for the result rows it builds dynamically.) */
 
 .finder-section-header {
     font-size: 11px;
@@ -1116,22 +983,10 @@ body {
     flex-shrink: 0;
 }
 
-.finder-row-text {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-.finder-row-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--sheet-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* (Removed: .finder-row-text + .finder-row-title — orphan classes
+ * from the pre-search-overlay finder layout. Current row rendering
+ * (makeRouteRow / makeTrailRow / makePoiRow in app.js) doesn't use
+ * a wrapping text container or a separate title class.) */
 
 .finder-row-meta {
     font-size: 12px;
@@ -1433,10 +1288,10 @@ body {
 }
 
 /* Native MapLibre geolocate control is hidden — its function has
- * been promoted to the peek menu's Locate button, which calls
- * geolocate.trigger() directly. The control is still added to the
- * map because that's what wires up its event handlers / state
- * machine; we just don't want the redundant top-left button. */
+ * been promoted to the Locate FAB (bottom of the bottom-right stack),
+ * which calls geolocate.trigger() directly. The control is still
+ * added to the map because that's what wires up its event handlers /
+ * state machine; we just don't want the redundant top-left button. */
 .maplibregl-ctrl-geolocate {
     display: none !important;
 }
@@ -1658,8 +1513,10 @@ body {
  * carry inline cssText from `markerStyle`, so keeping the fade on the
  * same style layer avoids any specificity/override surprises. */
 
-/* ----- Off-screen location indicator ------------------------------- */
-.location-indicator,
+/* ----- Off-screen location indicator -------------------------------
+ * (The legacy .location-indicator class was renamed to
+ * .off-screen-indicator earlier in the UI rework; the comma-paired
+ * selectors below have been trimmed to just the live class.) */
 .off-screen-indicator {
     position: absolute;
     z-index: 3;
@@ -1674,7 +1531,6 @@ body {
     user-select: none;
 }
 
-.location-indicator-arrow,
 .off-screen-indicator-arrow {
     font-size: 22px;
     line-height: 1;
@@ -1682,7 +1538,6 @@ body {
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-.location-indicator-dist,
 .off-screen-indicator-dist {
     display: inline-flex;
     align-items: center;
@@ -1703,11 +1558,10 @@ body {
 }
 
 /* ----- Toasts ------------------------------------------------------ */
-/* Centered both axes — the previous bottom-anchored placement left
- * the toast competing with the peek bar (and getting clipped or
- * partially covered on phones). Center is more visible and away
- * from any UI surface. Drops `white-space: nowrap` so longer messages
- * wrap to multiple lines instead of overflowing off the viewport. */
+/* Centered both axes — keeps toasts well clear of the FAB stack and
+ * the safe-area edges on phones. Drops `white-space: nowrap` so
+ * longer messages wrap to multiple lines instead of overflowing off
+ * the viewport. */
 .map-toast {
     position: fixed;
     top: 50%;
@@ -1814,9 +1668,7 @@ body {
 
 /* ----- Mobile / narrow viewport tweaks ----------------------------- */
 @media (max-width: 480px) {
-        /* Tighten the peek row on narrow screens so 6 buttons fit iPhone SE
-     * (~288 px usable) without clipping. */
-                        .about-modal-content {
+    .about-modal-content {
         padding: 16px 18px 20px 18px;
         max-height: 85vh;
     }
@@ -1825,9 +1677,6 @@ body {
         font-size: 16px;
     }
 }
-
-/* ----- Desktop-only roomier layout --------------------------------- */
-/* (Stale @media block removed — was an override for the deleted peek bar.) */
 
 /* ============================================================
  * Floating chrome (Phase 3 of the UI v2 rework)
@@ -1838,8 +1687,6 @@ body {
  *   - #fab-stack    bottom-right : 3 round buttons (Options/Search/Locate)
  *   - .options-overlay  full-screen : settings, opens via Options FAB
  *   - .search-overlay   half-sheet  : search, opens via Search FAB
- *
- * Replaces the bottom-sheet drag-up drawer, which is gone entirely.
  * ============================================================ */
 
 /* ----- Brand (top-left identity) ----------------------------------- */
@@ -2357,7 +2204,7 @@ body {
     }
 }
 
-/* ----- Misc fixes after the bottom-sheet rule deletion ------------- */
+/* ----- Season + difficulty/feature off-state hollowing ------------- */
 
 /* Season swatch background — summer (default) is a forest green
  * matching the warm growing-season palette; winter (.is-winter
@@ -2365,18 +2212,17 @@ body {
  * reads as glacier / ice rather than generic "blue", and is
  * distinctly cooler than the parking blue (#2980b9) and water
  * blue (#3498db) it shares the chrome with. */
-.opt-toggle-row.peek-season .season-swatch {
+.opt-toggle-row.season-toggle-row .season-swatch {
     background: #2e7d32;
     color: white;
 }
-.opt-toggle-row.peek-season .season-swatch.is-winter {
+.opt-toggle-row.season-toggle-row .season-swatch.is-winter {
     background: #0e7490;
 }
 
-/* Off-state hollowing for swatches with ::before fills. Previously
- * targeted .peek-icon[aria-pressed=false]; now targets
- * .opt-toggle-row[aria-pressed=false]. Same visual: transparent fill
- * + grey border so the toggled-off state reads as "outline only." */
+/* Off-state hollowing for swatches with ::before fills. Same visual
+ * as the row's aria-pressed=false slash treatment: transparent fill
+ * + grey border so the toggled-off swatch reads as "outline only." */
 .opt-toggle-row[aria-pressed="false"] .feature-swatch::before {
     background: transparent;
     border: 1.5px solid #9aa0a6;
@@ -2468,7 +2314,7 @@ body {
  * from the existing route/trail rows. The left-side swatch is a
  * .layer-swatch with the per-type modifier class (.parking-swatch,
  * .toilet-swatch, etc.) so visual style matches the on-map marker.
- * Sized down a touch from the drawer's 28px to fit the row's
+ * Sized down a touch from the Options-overlay 28px to fit the row's
  * height. .finder-row-meta carries the type label ("parking",
  * "toilets") so the rider can disambiguate similarly-named items.
  * ============================================================ */

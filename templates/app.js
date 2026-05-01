@@ -10,10 +10,10 @@
 // needed; the first paint carries the real brand.
 
 // Push YAML-configured POI colours onto :root as CSS custom
-// properties so the peek-bar swatches, on-map markers, and popup
-// badges all read the same single source of truth. Done before
-// any markers or stylesheets evaluate against the default values
-// so the first paint carries the real colours.
+// properties so the Options-overlay swatches, on-map markers, and
+// popup badges all read the same single source of truth. Done
+// before any markers or stylesheets evaluate against the default
+// values so the first paint carries the real colours.
 (function setPoiColorVars() {
     const root = document.documentElement;
     // Trail markers (merged guideposts + emergency access)
@@ -425,7 +425,7 @@ function todaysReverseRoutes() {
     return out;
 }
 
-// Recomputed on day-tick (see setInterval in setupBottomSheet); each
+// Recomputed on day-tick (see setInterval in setupFloatingChrome); each
 // arrow's rotation is baked into its feature properties at decoration
 // build time, so a change here forces a full updateDecorationsSource().
 let reverseRoutesToday = todaysReverseRoutes();
@@ -568,7 +568,7 @@ const DECOR_RADIUS_M = {
 // emergency mode flip) often triggers several updateDecorationsSource
 // calls in a row, all asking for the same obstacle set. invalidate-
 // ObstaclesCache() must be called at every site that adds/removes a
-// marker (initial creation, updateMarkerProximity, peek-toggle
+// marker (initial creation, updateMarkerProximity, layer-toggle
 // handlers) — otherwise stale obstacles will let labels/arrows
 // render through markers that have just appeared/disappeared.
 let _obstaclesCache = null;
@@ -1036,7 +1036,7 @@ function addDecorationLayers() {
             // Initial visibility from the rider's persisted toggle
             // state (or the per-map default_visible default if no
             // LS value yet). Wired to the Direction-arrows toggle in
-            // setupBottomSheet.
+            // setupFloatingChrome.
             "visibility": directionArrowsToggleOn() ? "visible" : "none",
         },
     });
@@ -1116,7 +1116,7 @@ let currentSearchFilter = "all";
 let _finderActiveIndex = -1;
 
 // Marker arrays — trailMarkerMarkers covers the merged guidepost +
-// emergency-access-point category (single "Markers" peek button).
+// emergency-access-point category (single "Markers" toggle).
 let trailMarkerMarkers = [];
 let parkingMarkers = [];
 let trailheadMarkers = [];
@@ -1300,7 +1300,7 @@ function fallbackCopyShareUrl(url) {
     }
 }
 
-// Reveal + wire up the Share button. Called from setupBottomSheet
+// Reveal + wire up the Share button. Called from setupFloatingChrome
 // during boot. Does nothing when share_button: false at build time
 // (the section is stripped from index.html, button doesn't exist).
 function setupShareButton() {
@@ -1534,8 +1534,8 @@ async function init() {
     // scroll-wheel, and double-tap cover zoom on every platform the
     // app targets, and dropping the button reclaims the top-left
     // corner for a cleaner map. GeolocateControl IS added (hidden via
-    // CSS) because we still need its event/state machine; the peek
-    // menu's Locate button drives it via geolocate.trigger().
+    // CSS) because we still need its event/state machine; the
+    // Locate FAB drives it via geolocate.trigger().
     //
     // ============================================================
     // GeolocateControl + off-screen indicator state machine
@@ -1757,10 +1757,10 @@ async function init() {
         }
     });
 
-    // Wire the peek menu's Locate button to the GeolocateControl and
-    // mirror its FULL state machine (idle / waiting / active /
-    // background / active-error / background-error / disabled) so the
-    // peek swatch renders identically to MapLibre's native control —
+    // Wire the Locate FAB to the GeolocateControl and mirror its FULL
+    // state machine (idle / waiting / active / background /
+    // active-error / background-error / disabled) so the floating
+    // button renders identically to MapLibre's native control —
     // same hex colors, same iconography, same spinner during
     // acquisition. The native control is hidden via CSS but remains in
     // the DOM because its classList is the canonical state source;
@@ -1800,9 +1800,10 @@ async function init() {
         });
         locateBtn.classList.add("locate-state-" + state);
         // aria-pressed mirrors "is tracking" (any state other than
-        // idle/waiting/disabled). The peek-icon off-state styling is
-        // overridden in CSS for #toggle-locate so idle doesn't render
-        // the slash — our state classes control appearance.
+        // idle/waiting/disabled). The base aria-pressed=false off-state
+        // styling is overridden in CSS for #toggle-locate so idle
+        // doesn't render the slash — our state classes control
+        // appearance.
         const tracking = state === "active" ||
             state === "background" ||
             state === "active-error" ||
@@ -1942,7 +1943,7 @@ async function init() {
         buildRouteIndex();
         buildTrailIndex();
         buildPoiIndex();
-        setupBottomSheet();
+        setupFloatingChrome();
         setupInteractions();
         promoteBasemapLabels();
         suppressPathLabels();
@@ -1975,7 +1976,7 @@ async function init() {
 // ============================================================
 //
 // Bridges the gap between landing on the map and understanding the
-// peek bar / routes-vs-trails distinction / where the About button
+// FAB stack / routes-vs-trails distinction / where the About button
 // lives. Shown ONCE per map per browser; dismissal stored in
 // localStorage under `mtb.welcomed`. The LS helper already
 // per-map-prefixes every key with `<slug>.`, so this becomes
@@ -2232,11 +2233,7 @@ function initAbout() {
     btn.addEventListener("click", openAboutModal);
     // Close via the X, Escape, or backdrop click — matches the
     // dismissal pattern of the Search and Options overlays so any
-    // window over the map closes the same way. The earlier "X-only"
-    // restriction was a workaround for the old bottom-sheet drawer
-    // (which had its own backdrop click-outside handler that would
-    // collapse the sheet too); with the floating-chrome / overlays
-    // model that conflict is gone.
+    // window over the map closes the same way.
     closeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         closeAboutModal();
@@ -2808,9 +2805,9 @@ function updateMarkerDimState() {
 }
 
 function updateMarkerProximity() {
-    // Peek toggles use aria-pressed semantics (not checkbox .checked).
+    // Toggle rows use aria-pressed semantics (not checkbox .checked).
     // Trail markers (guideposts + emergency access points) share the
-    // single "Markers" button.
+    // single "Markers" toggle.
     const mkBtn = document.getElementById("toggle-markers");
     const ftBtn = document.getElementById("toggle-features");
     const mkOn = !!mkBtn && mkBtn.getAttribute("aria-pressed") === "true";
@@ -2841,10 +2838,10 @@ function updateMarkerProximity() {
         updateDecorationsSource();
     }
 
-    // Re-evaluate the Features peek button after every proximity pass.
-    // If the current visible-routes set leaves zero features within
-    // POI_PROXIMITY_METERS of any trail, the button is a dead control —
-    // hide it. It comes back the moment a route change brings a
+    // Re-evaluate the Features toggle after every proximity pass. If
+    // the current visible-routes set leaves zero features within
+    // POI_PROXIMITY_METERS of any trail, the toggle is a dead control —
+    // hide its row. It comes back the moment a route change brings a
     // near-trail feature into scope.
     updateFeatureButtonVisibility();
 }
@@ -2865,12 +2862,12 @@ function hasVisibleFeatures() {
     return false;
 }
 
-// Show/hide the Features peek button based on (a) the YAML gate,
+// Show/hide the Features toggle based on (a) the YAML gate,
 // (b) whether the build emitted any feature POIs at all, and (c)
 // whether the proximity filter would currently let any of them
 // render. Called on initial POI load and after every route-
-// visibility change. The button is `.hidden` when dead so the
-// peek row collapses cleanly; persisted aria-pressed state is
+// visibility change. The toggle row is `.hidden` when dead so the
+// Options list collapses cleanly; persisted aria-pressed state is
 // untouched, so toggling features back on once a near-trail
 // feature reappears just works.
 function updateFeatureButtonVisibility() {
@@ -3824,7 +3821,7 @@ function highlightRoute(routeId) {
     highlight = { kind: "route", key: routeId };
 
     // Highlight the route in its OWN colour, not a non-native accent
-    // colour. Routes have an identity (a chip swatch, a peek-icon
+    // colour. Routes have an identity (a chip swatch, an Options-row
     // colour, OSM's `colour` tag); the highlight inherits that
     // identity by colouring the stroke with effectiveRouteColor().
     // Structural emphasis comes from the layered architecture: a
@@ -4535,7 +4532,7 @@ async function loadPOIs() {
     // pois.geojson is optional in spirit — if it fails, the map still
     // works without POI markers. Fall back to an empty collection and
     // toast a warning; downstream count-based gating (`hasTrailMarkers`,
-    // `hasParking`, etc.) auto-hides the relevant peek buttons.
+    // `hasParking`, etc.) auto-hides the relevant toggle rows.
     try {
         const resp = await fetch("pois.geojson");
         if (!resp.ok) {
@@ -4580,37 +4577,38 @@ async function loadPOIs() {
     const wcDefault = LS.get("mtb.poi.toilets", isDefaultVisible("toilets"));
     const dwDefault = LS.get("mtb.poi.drinking_water", isDefaultVisible("drinking_water"));
 
-    // Hide a peek-row button when its layer has no data.
-    const hidePeekBtn = (id) => {
+    // Hide a toggle row in the Options overlay when its layer has no
+    // data — keeps the rider from seeing a dead control.
+    const hideToggleRow = (id) => {
         const el = document.getElementById(id);
         if (el) el.classList.add("hidden");
     };
 
-    // Reveal a drawer toggle row that starts hidden by default (so
-    // maps with no data for that POI type don't show a dead control).
-    const showDrawerRow = (id) => {
+    // Reveal a toggle row that starts hidden by default (so maps with
+    // no data for that POI type don't show a dead control).
+    const showToggleRow = (id) => {
         const el = document.getElementById(id);
         if (el) el.classList.remove("hidden");
     };
 
     // Trail markers — merged guideposts + emergency-access layer. The
-    // button is shown whenever the layer has any data.
+    // toggle is shown whenever the layer has any data.
     if (CONFIG.showMarkers && tmCount > 0) {
         addTrailMarkers(mkDefault);
     } else {
-        hidePeekBtn("toggle-markers");
+        hideToggleRow("toggle-markers");
     }
 
     if (CONFIG.showParking && pkCount > 0) {
         addParkingMarkers(pkDefault);
     } else {
-        hidePeekBtn("toggle-parking");
+        hideToggleRow("toggle-parking");
     }
 
     if (CONFIG.showTrailheads && thCount > 0) {
         addTrailheadMarkers(thDefault);
     } else {
-        hidePeekBtn("toggle-trailheads");
+        hideToggleRow("toggle-trailheads");
     }
 
     // Toilets + drinking water — toggle rows start hidden in the
@@ -4618,13 +4616,13 @@ async function loadPOIs() {
     // row only when the build emitted at least one feature for it.
     if (CONFIG.showToilets && wcCount > 0) {
         addToiletMarkers(wcDefault);
-        showDrawerRow("toggle-toilets");
+        showToggleRow("toggle-toilets");
         const wcBtn = document.getElementById("toggle-toilets");
         if (wcBtn) wcBtn.setAttribute("aria-pressed", wcDefault ? "true" : "false");
     }
     if (CONFIG.showDrinkingWater && dwCount > 0) {
         addDrinkingWaterMarkers(dwDefault);
-        showDrawerRow("toggle-drinking-water");
+        showToggleRow("toggle-drinking-water");
         const dwBtn = document.getElementById("toggle-drinking-water");
         if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
     }
@@ -4706,7 +4704,7 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 
 // Single helper covering the merged trail-marker POI category — OSM
 // guideposts and emergency-access points now render with the same
-// style. Shown/hidden together via the "Markers" peek toggle.
+// style. Shown/hidden together via the "Markers" toggle.
 // Note on className strings below: each map marker carries TWO
 // classes — the .poi-marker base (shared geometry, drop-shadow,
 // font weight, etc.) plus a per-type modifier (.parking-marker,
@@ -4720,9 +4718,10 @@ function addTrailMarkers(addToMap) {
         poiType: POI.TRAIL_MARKER,
         className: "poi-marker trail-marker",
         // Fall back to "#" when OSM carries neither ref nor name —
-        // matches the peek-bar swatch, preserves the marker's physical
-        // footprint (empty string would collapse it via min-width),
-        // and signals "guidepost / trail marker" to the rider.
+        // matches the Options-row swatch, preserves the marker's
+        // physical footprint (empty string would collapse it via
+        // min-width), and signals "guidepost / trail marker" to the
+        // rider.
         labelFn: (p) => p.ref || p.name || "#",
         addToMap,
         targetArray: trailMarkerMarkers,
@@ -4820,8 +4819,8 @@ function addDrinkingWaterMarkers(addToMap) {
 
 // Feature marker fill — YAML-overridable via `feature_color`.
 // Used by the on-map marker's inner dot (.feature-marker-icon).
-// The peek-bar chip and any other references read the same hex
-// via the --feature-color CSS custom property set at boot.
+// The Options-row swatch and any other references read the same
+// hex via the --feature-color CSS custom property set at boot.
 const FEATURE_COLOR = CONFIG.featureColor || "#8e44ad";
 
 function addFeatureMarkers(addToMap) {
@@ -4847,13 +4846,10 @@ function addFeatureMarkers(addToMap) {
 }
 
 // ============================================================
-// Floating chrome (Phase 3 of the UI v2 rework) — brand element TL,
-// FAB stack BR, plus two overlays (search half-sheet + options
-// full-screen). Replaces the old bottom-sheet drawer entirely. Function
-// retains the historic name for git-blame readability; what it sets
-// up is "everything that used to live in or around the bottom sheet."
+// Floating chrome — brand element top-left, FAB stack bottom-right,
+// plus two overlays (Search half-sheet + Options full-screen).
 // ============================================================
-function setupBottomSheet() {
+function setupFloatingChrome() {
     // ----- Brand element (top-left) ---------------------------------
     // The brand-img and brand-title are both rendered by the build at
     // template-substitution time — the build replaces __BRAND_TITLE__
@@ -5074,11 +5070,11 @@ function setupBottomSheet() {
     // selection commits. Replaces the old window.__closeSearchOverlay.
     window.__closeSearchOverlay = closeSearchOverlay;
 
-    // ----- Season cycle button (peek) --------------------------------
+    // ----- Season toggle ---------------------------------------------
     //
-    // Single button that cycles summer ⇌ winter on tap. Hidden entirely
-    // when the current map has no winter routes — a control that never
-    // does anything is worse than no control.
+    // Segmented Summer / Winter row in the Options overlay. Hidden
+    // entirely when the current map has no winter routes — a control
+    // that never does anything is worse than no control.
     //
     // Icons are inline SVG rather than emoji (☀ / ❄). Platform emoji
     // rendering varies wildly — iOS draws a full-colour glyph, Android
@@ -5163,8 +5159,8 @@ function setupBottomSheet() {
     }
 
     // ----- POI swatches ---------------------------------------------
-    // All peek chip colours flow from YAML via CSS custom properties
-    // on :root (see setPoiColorVars near the top of this file). The
+    // All swatch colours flow from YAML via CSS custom properties on
+    // :root (see setPoiColorVars near the top of this file). The
     // matching CSS rules in style.css consume --marker-color /
     // --marker-text-color / --marker-border-color (and the parking /
     // trailhead equivalents). No JS-driven inline-style overrides
@@ -5175,15 +5171,14 @@ function setupBottomSheet() {
     // on-map marker appearance (coloured dot + ring + drop shadow)
     // is rendered by .feature-swatch::before whose fill lives in CSS.
 
-    // ----- Peek-row POI toggles (aria-pressed buttons) ---------------
+    // ----- POI toggle rows (aria-pressed buttons) -------------------
     //
-    // Each button carries on/off state via aria-pressed. The wirePeekToggle
+    // Each row carries on/off state via aria-pressed. The wirePeekToggle
     // helper reads persisted state, sets the initial pressed value, and
-    // wires the click handler. Buttons already hidden (no data) are skipped.
-    // Wire a toggle row that uses the segmented On/Off pattern (the
-    // visible UI matches the Season row: two side-by-side segments
-    // labelled "On" and "Off"). aria-pressed lives on the row div
-    // for the existing CSS off-state-slash treatment to keep
+    // wires the click handler. Rows already hidden (no data) are skipped.
+    // The visible UI is a segmented On/Off pair (matches the Season
+    // row's two side-by-side segments). aria-pressed lives on the row
+    // div for the existing CSS off-state-slash treatment to keep
     // working; aria-checked drives the visible "fill the active
     // segment" appearance.
     function wirePeekToggle(id, lsKey, defaultOn, onChange) {
@@ -6097,7 +6092,7 @@ function makePoiRow(p) {
     row.setAttribute("role", "option");
     row.dataset.poiUid = p.uid;
 
-    // Swatch — same .layer-swatch + per-type class as the drawer
+    // Swatch — same .layer-swatch + per-type class as the Options
     // toggle row uses, so styling/colour matches the on-map marker.
     const swatch = document.createElement("span");
     swatch.className = "layer-swatch finder-row-poi-swatch";
@@ -6477,7 +6472,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 }
 
 // ============================================================
-// PWA Install — promoted out of About into a dedicated bottom-sheet row.
+// PWA Install — promoted out of About into a dedicated Options row.
 // Per-map opt-in via CONFIG.pwaInstallPrompt (default false). Two modes:
 //
 //   pwaInstallPrompt: false (default) — DO NOT register beforeinstallprompt
