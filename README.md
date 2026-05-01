@@ -168,6 +168,14 @@ mytrailmaps.com {
 }
 ```
 
+### Service worker update cadence
+
+Deploying a new build ticks `CACHE_VERSION` (a content-based hash of every output file), so any code, data, or asset change cuts a new service worker. How fast riders see it without reloading the page:
+
+- **On any page load or refresh** within the map's scope, the browser fetches `sw.js`, byte-compares it, and installs a new SW into the "waiting" state if it differs. The page detects this via `updatefound` and shows an "Updated map available" toast with a Reload button.
+- **Without a refresh**, the browser performs its own automatic update check **~every 24 hours**. Per the SW spec, modern browsers cap `sw.js` at a 24h staleness threshold regardless of `Cache-Control`, then bypass HTTP cache for that fetch — so a stale `max-age=86400` response from the origin can't keep the old SW pinned past a day. The check fires when the SW handles a fetch event after the threshold has elapsed; if a new SW is found, the same "Updated map available" toast appears live on the open page.
+- **The framework does not call `registration.update()` on a timer.** Update cadence is entirely the browser's default behaviour. Riders who keep a tab open across days will typically see the toast within a day of any deploy, on the next request the SW handles. Riders who close + re-open the map see the toast almost immediately on the next launch.
+
 ## Configuration
 
 Each map lives in its own folder under `configs/`: `configs/<slug>/<slug>.yaml` plus all of its asset files (logo, icon, optional offline OSM snapshot, optional custom-route GeoJSONs). Copy the whole folder to start a new map — everything the framework needs for that map is self-contained.

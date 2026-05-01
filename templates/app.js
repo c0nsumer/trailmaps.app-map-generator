@@ -1801,10 +1801,7 @@ function initWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (!modal) return;
     const slug = CONFIG.slug || "default";
-    // Bumped from `mtb.welcomed:<slug>` to `mtb.welcomed.v2:<slug>` for
-    // the floating-chrome rework — riders who dismissed the old peek-
-    // bar welcome get one fresh showing of the new launcher copy.
-    const flagKey = `mtb.welcomed.v2:${slug}`;
+    const flagKey = `mtb.welcomed:${slug}`;
     if (LS.get(flagKey) === "true") return;
 
     const titleEl = document.getElementById("welcome-modal-title");
@@ -3623,6 +3620,125 @@ const POI_HIGHLIGHT_OUTER  = "poi-highlight-outer";
 const POI_HIGHLIGHT_INNER  = "poi-highlight-inner";
 const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
 
+// Force-show plumbing: when a highlight lands on POIs whose layer
+// toggle is currently OFF, we'd otherwise paint rings over empty
+// space. Instead, temporarily mount the markers for those types so
+// the rings have content underneath. Toggle state in localStorage is
+// NOT touched — the rider's persistent preference is respected.
+// On highlight clear (or replacement) we roll the markers back.
+//
+// _forcedPoiTypes tracks which types we currently own. Each entry
+// means "we mounted this type's markers; we'll unmount them on
+// clear unless the rider has, in the meantime, flipped the toggle
+// on themselves (the toggle handler drops us from the set in that
+// case so we don't yank their markers afterwards)."
+let _forcedPoiTypes = new Set();
+
+const _PROXIMITY_TYPES = new Set(["trail_marker", "feature"]);
+
+function _markerArrayForType(type) {
+    switch (type) {
+        case "parking":         return parkingMarkers;
+        case "trailhead":       return trailheadMarkers;
+        case "toilet":          return toiletMarkers;
+        case "drinking_water":  return drinkingWaterMarkers;
+        case "trail_marker":    return trailMarkerMarkers;
+        case "feature":         return featureMarkers;
+    }
+    return null;
+}
+
+function _lsKeyForType(type) {
+    switch (type) {
+        case "parking":         return "mtb.poi.parking";
+        case "trailhead":       return "mtb.poi.trailheads";
+        case "toilet":          return "mtb.poi.toilets";
+        case "drinking_water":  return "mtb.poi.drinking_water";
+        case "trail_marker":    return "mtb.poi.markers";
+        case "feature":         return "mtb.poi.features";
+    }
+    return null;
+}
+
+// Mount all markers of a type if the rider's toggle is currently
+// off. No-op if the toggle is on (markers already on the map) or
+// if we've already force-mounted this type for the current
+// highlight.
+function _forcePoiType(type) {
+    if (_forcedPoiTypes.has(type)) return;
+    const lsKey = _lsKeyForType(type);
+    if (!lsKey) return;
+    const isOn = LS.get(lsKey, true);
+    if (isOn) return;
+    const arr = _markerArrayForType(type);
+    if (!arr) return;
+    for (const m of arr) m.addTo(map);
+    _forcedPoiTypes.add(type);
+    invalidateObstaclesCache();
+    if (map && map.getSource("trail-decorations")) {
+        updateDecorationsSource();
+    }
+}
+
+// Roll back a previously force-mounted type. For non-proximity
+// types this just unmounts everything (the toggle is still off,
+// so that's the correct end state). For proximity-filtered types
+// (trail markers, features) we hand off to updateMarkerProximity()
+// which respects both the toggle AND the proximity filter — so if
+// the toggle was flipped on during the highlight (and our delete
+// from _forcedPoiTypes was skipped somehow), the proximity gate
+// ends up at the right state regardless.
+function _unforcePoiType(type) {
+    if (!_forcedPoiTypes.has(type)) return;
+    _forcedPoiTypes.delete(type);
+    const arr = _markerArrayForType(type);
+    if (!arr) return;
+    if (_PROXIMITY_TYPES.has(type)) {
+        updateMarkerProximity();
+    } else {
+        for (const m of arr) m.remove();
+    }
+    invalidateObstaclesCache();
+    if (map && map.getSource("trail-decorations")) {
+        updateDecorationsSource();
+    }
+}
+
+// Reconcile the force-show set against the types in the current
+// highlight. Anything we'd previously forced that's no longer
+// represented gets unforced; anything new whose toggle is off gets
+// forced. Invoked by highlightPoiSet.
+function _reconcileForcedTypes(newTypes) {
+    // Snapshot before iterating — _unforcePoiType mutates the set.
+    for (const t of Array.from(_forcedPoiTypes)) {
+        if (!newTypes.has(t)) _unforcePoiType(t);
+    }
+    for (const t of newTypes) _forcePoiType(t);
+}
+
+// Called by every POI toggle handler AFTER its own marker logic
+// has run. Releases prior force-show ownership of the toggled
+// type (the rider took manual control) and then, if there's an
+// active highlight, re-reconciles against it. Handles two
+// otherwise-leaky scenarios:
+//   1. Rider turns the type OFF while it's currently highlighted:
+//      the toggle just removed the markers, so reconcile re-mounts
+//      them via force-show and the chip note re-appears.
+//   2. Rider turns the type ON while it's currently highlighted:
+//      _forcePoiType reads LS=true and no-ops, the set stays empty,
+//      and the chip note is correctly absent.
+// In both cases the chip note is refreshed so it always reflects
+// the current state of the world rather than the state at
+// highlight time.
+function _onPoiToggleChange(type) {
+    _forcedPoiTypes.delete(type);
+    if (_highlightedPois.length > 0) {
+        const types = new Set(_highlightedPois.map((p) => p.type));
+        _reconcileForcedTypes(types);
+    }
+    refreshChipNote();
+}
+
 function ensurePoiHighlightLayers() {
     if (!map.getSource(POI_HIGHLIGHT_SOURCE)) {
         map.addSource(POI_HIGHLIGHT_SOURCE, {
@@ -3683,6 +3799,13 @@ function highlightPoiSet(pois, label) {
     _highlightedPois = pois.slice();
     setPoiHighlightData(_highlightedPois);
 
+    // Force-show any POI types whose layer toggle is off so the
+    // rings have markers underneath instead of hovering over empty
+    // ground. Reconciles against any previous highlight's forced
+    // set — types no longer represented get unforced.
+    const newTypes = new Set(_highlightedPois.map((p) => p.type));
+    _reconcileForcedTypes(newTypes);
+
     // Fit map. Single → flyTo with zoom-up. Multiple → fitBounds.
     if (_highlightedPois.length === 1) {
         const p = _highlightedPois[0];
@@ -3717,20 +3840,31 @@ function highlightPoiSet(pois, label) {
 
     // Highlight chip — re-uses the existing chip element. Yellow
     // swatch matches the inner ring color so the visual link
-    // between chip and on-map highlights is obvious.
+    // between chip and on-map highlights is obvious. When the
+    // highlight included types whose layer toggle was off (and so
+    // got force-shown by _reconcileForcedTypes above), surface that
+    // as a second-line note so the rider knows why these markers
+    // are visible — and that clearing the highlight will hide them
+    // again.
     showHighlightChip({
         label,
         color: "#FFEC00",
         stats: "",
+        note: _forcedPoiTypes.size > 0 ? "hidden in Options" : "",
     });
 }
 
 function clearPoiHighlight() {
-    if (_highlightedPois.length === 0) return;
+    if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
     _highlightedPois = [];
     const src = map.getSource(POI_HIGHLIGHT_SOURCE);
     if (src) {
         src.setData({ type: "FeatureCollection", features: [] });
+    }
+    // Roll back any types we'd force-mounted for this highlight.
+    // Snapshot — _unforcePoiType mutates the set.
+    for (const t of Array.from(_forcedPoiTypes)) {
+        _unforcePoiType(t);
     }
     hideHighlightChip();
 }
@@ -3793,12 +3927,13 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats }) {
+function showHighlightChip({ label, color, stats, note }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
     const labelEl = chip.querySelector(".highlight-chip-label");
     const statsEl = chip.querySelector(".highlight-chip-stats");
+    const noteEl = chip.querySelector(".highlight-chip-note");
     if (swatch) swatch.style.background = color;
     if (labelEl) labelEl.textContent = label;
     // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
@@ -3814,7 +3949,42 @@ function showHighlightChip({ label, color, stats }) {
             statsEl.classList.add("hidden");
         }
     }
+    // note is an optional second-line message under the label.
+    // POI force-show uses this to surface "hidden in Options" when
+    // a search highlight has temporarily mounted markers whose
+    // layer toggle is off. Other highlight types (route / trail /
+    // POI without force-show) pass nothing → row stays single-line.
+    if (noteEl) {
+        if (note) {
+            noteEl.textContent = note;
+            noteEl.classList.remove("hidden");
+        } else {
+            noteEl.textContent = "";
+            noteEl.classList.add("hidden");
+        }
+    }
     chip.classList.remove("hidden");
+}
+
+// Re-evaluate the chip's force-show note from current state. Called
+// whenever _forcedPoiTypes changes mid-highlight (e.g. the rider
+// flips a POI toggle on in Options) so the note stays accurate
+// rather than silently lying about the current visibility state.
+// No-op when the chip is hidden or not currently labelled by a POI
+// highlight (route/trail highlights don't carry a note).
+function refreshChipNote() {
+    const chip = document.getElementById("highlight-chip");
+    if (!chip || chip.classList.contains("hidden")) return;
+    const noteEl = chip.querySelector(".highlight-chip-note");
+    if (!noteEl) return;
+    const note = _forcedPoiTypes.size > 0 ? "hidden in Options" : "";
+    if (note) {
+        noteEl.textContent = note;
+        noteEl.classList.remove("hidden");
+    } else {
+        noteEl.textContent = "";
+        noteEl.classList.add("hidden");
+    }
 }
 
 function hideHighlightChip() {
@@ -3894,19 +4064,28 @@ function buildPoiIndex() {
         //   - feature: name from OSM (sometimes empty)
         //   - trail_marker: ref or name
         //   - toilet / drinking_water: name from OSM (often empty)
-        // For empty names we synthesize something searchable.
+        // For empty names we synthesize something searchable. Track
+        // whether the name was synthesized so groupPoisForFinder can
+        // suppress the "unnamed cluster" row when a category-group
+        // covers it (otherwise the rider sees two same-labelled rows
+        // with no way to tell them apart — see Toilets (All) × N
+        // pattern below).
         let name = props.name || "";
+        let synthesized = false;
         if (!name && type === "trail_marker") {
             name = props.ref ? `Marker ${props.ref}` : "Trail marker";
+            if (!props.ref) synthesized = true;
         }
         if (!name) {
             name = POI_TYPE_FALLBACK_NAME[type] || type;
+            synthesized = true;
         }
 
         poiIndex.push({
             uid: `poi:${type}:${coords[0].toFixed(6)},${coords[1].toFixed(6)}`,
             type,
             name,
+            synthesized,
             lng: coords[0],
             lat: coords[1],
             ref: props.ref || "",
@@ -4589,20 +4768,40 @@ function setupBottomSheet() {
             onBtn.setAttribute("aria-checked", isOn ? "true" : "false");
             offBtn.setAttribute("aria-checked", isOn ? "false" : "true");
         }
+        function setState(isOn) {
+            // No-op if the state isn't changing — avoids spurious
+            // onChange calls (which can trigger expensive recomputes
+            // like updateMarkerProximity) when the user re-taps the
+            // already-active button.
+            const already = row.getAttribute("aria-pressed") === "true";
+            if (already === isOn) return;
+            applyState(isOn);
+            LS.set(lsKey, isOn);
+            onChange(isOn);
+        }
         applyState(initial);
         onBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (onBtn.getAttribute("aria-checked") === "true") return;
-            applyState(true);
-            LS.set(lsKey, true);
-            onChange(true);
+            setState(true);
         });
         offBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (offBtn.getAttribute("aria-checked") === "true") return;
-            applyState(false);
-            LS.set(lsKey, false);
-            onChange(false);
+            setState(false);
+        });
+
+        // Whole-row click toggles the binary state. The buttons'
+        // stopPropagation above keeps direct button clicks from
+        // double-firing here. Mouse/touch only — keyboard users
+        // still tab through the inner buttons (no separate row tab
+        // stop, otherwise every binary row would add visual noise to
+        // the keyboard tour without providing new functionality).
+        // The marker class drives the cursor + hover affordance in
+        // CSS so non-binary rows (Labels / Season) stay inert
+        // outside their buttons.
+        row.classList.add("opt-toggle-row-clickable");
+        row.addEventListener("click", () => {
+            const currentlyOn = row.getAttribute("aria-pressed") === "true";
+            setState(!currentlyOn);
         });
     }
 
@@ -4611,6 +4810,11 @@ function setupBottomSheet() {
     // already triggers a decoration recompute (markers are obstacles
     // for arrow/diamond placement); the off-branch needs to do the
     // same explicitly because it bypasses proximity entirely.
+    // Each POI toggle drops its type from _forcedPoiTypes at the
+    // top so the highlight system relinquishes ownership the moment
+    // the rider takes manual control. Without this, clearing the
+    // highlight afterwards would yank markers the rider explicitly
+    // turned on.
     wirePeekToggle("toggle-markers", "mtb.poi.markers", true, (on) => {
         if (on) {
             updateMarkerProximity();  // already invalidates cache
@@ -4619,6 +4823,7 @@ function setupBottomSheet() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
+        _onPoiToggleChange("trail_marker");
     });
 
     // Features — proximity-filtered.
@@ -4630,6 +4835,7 @@ function setupBottomSheet() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
+        _onPoiToggleChange("feature");
     });
 
     // Parking / trailheads — always shown when on (no proximity
@@ -4642,6 +4848,7 @@ function setupBottomSheet() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
+        _onPoiToggleChange("parking");
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads", true, (on) => {
         for (const m of trailheadMarkers) {
@@ -4650,6 +4857,7 @@ function setupBottomSheet() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
+        _onPoiToggleChange("trailhead");
     });
 
     // Toilets + drinking water — same always-visible pattern as
@@ -4663,6 +4871,7 @@ function setupBottomSheet() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
+        _onPoiToggleChange("toilet");
     });
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water", true, (on) => {
         for (const m of drinkingWaterMarkers) {
@@ -4671,6 +4880,7 @@ function setupBottomSheet() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
+        _onPoiToggleChange("drinking_water");
     });
 
     // Difficulty — drives the decor-diamond layer. Uses the shared
@@ -4870,9 +5080,9 @@ function setupFinder() {
     // Desktop keyboard navigation. Up/Down move through the result
     // list, Home/End jump to the ends, Enter triggers the active row
     // (or the first row if nothing's active yet — common shortcut for
-    // "search and go"). preventDefault so Up/Down don't move the
-    // text-input caret around. Esc is handled globally elsewhere
-    // (closes the overlay).
+    // "search and go"). Esc has two-stage behaviour: clears the input
+    // first if it has text, closes the overlay otherwise. preventDefault
+    // on Up/Down so the text-input caret doesn't jump around.
     input.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -4889,6 +5099,25 @@ function setupFinder() {
                 e.preventDefault();
                 setFinderActive(rows.length - 1);
             }
+        } else if (e.key === "Escape") {
+            // Two-stage Esc when the input is focused: first press
+            // clears the search text (if any); second press falls
+            // through to the document-level handler which closes the
+            // overlay. preventDefault overrides Safari's native
+            // search-input Esc-clear behaviour so we always run our
+            // own clear path (keeps clear-button visibility, active
+            // index, and result list in sync). stopPropagation
+            // prevents the document handler from also closing the
+            // overlay on the same keystroke.
+            if ((input.value || "").length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                input.value = "";
+                syncClearVisibility();
+                rebuildFinderList();
+            }
+            // else: empty input — let Esc bubble to the global
+            // handler, which closes the search overlay.
         } else if (e.key === "Enter") {
             const rows = getFinderRows();
             if (!rows.length) return;
@@ -5056,7 +5285,10 @@ function rebuildFinderList() {
         // POIs with unique names (e.g. "South Trailhead", "Visitor
         // Center Toilets") stay as individual rows since they're
         // already distinguishable.
-        const grouped = groupPoisByName(matchedPois);
+        // groupPoisForFinder collapses by category when the query
+        // matches a type's label (so "parking" → one "Parking × N"
+        // row), and otherwise falls back to name-grouping.
+        const grouped = groupPoisForFinder(matchedPois, query);
         for (const item of grouped) {
             list.appendChild(makePoiRow(item));
         }
@@ -5096,6 +5328,129 @@ function groupPoisByName(pois) {
     }
     // Preserve original alphabetical order
     out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+}
+
+// Top-level grouping for the finder. Splits POIs into two paths:
+//
+//   1. Category sections — when the query matches a POI type's
+//      category label (e.g. "parking" matches typeLabel "parking",
+//      "trail" matches "trailhead" and "trail marker"), the type
+//      gets a category-group row at the top ("Parking × N",
+//      highlights ALL members at once) followed by the individual
+//      name-grouped rows for that type below. The rider can pick
+//      "highlight all" or a specific named one without losing
+//      either affordance.
+//
+//      Dedup: if name-grouping for the type collapses to a single
+//      entry (e.g. every toilet shares the generic name "Toilets"),
+//      that one entry IS the category group — no point showing it
+//      twice. The single name-group row stands in for both.
+//
+//   2. Name-based groups — POIs whose names match the query (but
+//      whose type didn't) fall through to groupPoisByName, which
+//      keeps unique-named entries as individual rows and collapses
+//      duplicates by (type, name) as before.
+//
+// Empty query → no category grouping (browsing the unfiltered list
+// shouldn't collapse every category and hide the names).
+function groupPoisForFinder(matchedPois, query) {
+    const q = (query || "").toLowerCase().trim();
+
+    const queryMatchesType = (type) => {
+        if (!q) return false;
+        const label = (POI_TYPE_META_LABEL[type] || "").toLowerCase();
+        return label.includes(q);
+    };
+
+    // Partition matched POIs by whether their type's label matches
+    // the query. Type-matched POIs get the category-section
+    // treatment below; everything else falls through to plain
+    // name-based grouping at the end.
+    const categoryGroupTypes = new Set();
+    const byType = new Map();
+    const remaining = [];
+    for (const p of matchedPois) {
+        if (queryMatchesType(p.type)) {
+            categoryGroupTypes.add(p.type);
+            if (!byType.has(p.type)) byType.set(p.type, []);
+            byType.get(p.type).push(p);
+        } else {
+            remaining.push(p);
+        }
+    }
+
+    // Sort the type-matched categories by display name so result
+    // order is stable across queries (Parking before Trailhead,
+    // etc.).
+    const sortedTypes = Array.from(categoryGroupTypes).sort((a, b) => {
+        const na = POI_TYPE_FALLBACK_NAME[a] || a;
+        const nb = POI_TYPE_FALLBACK_NAME[b] || b;
+        return na.localeCompare(nb);
+    });
+
+    const out = [];
+    for (const type of sortedTypes) {
+        const members = byType.get(type);
+        if (!members || members.length === 0) continue;
+        // Build the per-(type, name) groups for this type using the
+        // existing helper so duplicate names collapse normally.
+        const namedGroups = groupPoisByName(members);
+
+        if (namedGroups.length === 1) {
+            // Single name-group means every POI of this type
+            // shares the same name (typical for generic-named OSM
+            // amenities like toilets / drinking water). The lone
+            // name-group already represents the whole category;
+            // adding a sibling category row above it would be
+            // visual duplication. Just push the name-group.
+            out.push(namedGroups[0]);
+        } else if (members.length === 1) {
+            // Single POI of this type, period. No group needed —
+            // just show the row as itself. (Edge case: same as
+            // namedGroups.length === 1 above, but worth keeping
+            // explicit for readability.)
+            out.push(members[0]);
+        } else {
+            // 2+ name-groups for this type. Push a category-level
+            // "× N" row first, then the individual name-grouped
+            // rows below it. The category row's name gets a " (All)"
+            // suffix so it reads as the aggregate-of-the-rows-below
+            // rather than another peer row — important when the
+            // unnamed cluster's synthesized name happens to match
+            // the category's display name (e.g. both labelled
+            // "Toilets" before this fix).
+            const baseName = POI_TYPE_FALLBACK_NAME[type] || type;
+            out.push({
+                isGroup: true,
+                uid: `category:${type}`,
+                type,
+                name: `${baseName} (All)`,
+                count: members.length,
+                members,
+            });
+            // Suppress fully-synthesized name-groups — they
+            // represent the "unnamed cluster" which is already
+            // covered by the category row above. Without this
+            // we'd ship two visually-identical rows ("Toilets ×
+            // N" twice) with no way to tell them apart.
+            for (const ng of namedGroups) {
+                const allSynth = ng.isGroup
+                    ? ng.members.every((m) => m.synthesized)
+                    : ng.synthesized;
+                if (allSynth) continue;
+                out.push(ng);
+            }
+        }
+    }
+
+    // Append name-grouped rows for the non-type-matched
+    // remainder. groupPoisByName applies its own alphabetical
+    // sort, so the two blocks read as category sections first,
+    // name-only matches below.
+    const remainingGrouped = groupPoisByName(remaining);
+    out.push(...remainingGrouped);
+
     return out;
 }
 

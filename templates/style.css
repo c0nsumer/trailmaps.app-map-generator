@@ -119,11 +119,47 @@ body {
     flex-shrink: 0;
 }
 
+/* Text container — primary label on top, optional second-line note
+ * below. Column-flex with min-width:0 so each child can ellipsis-
+ * truncate independently. The wrapper is always present in the DOM;
+ * the .highlight-chip-note inside it is .hidden until there's
+ * something to say (POI force-show "hidden in Options" message). */
+.highlight-chip-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 1px;
+}
+
 .highlight-chip-label {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 60vw;
+}
+
+/* Second-line note — smaller, muted. Kept lighter weight than the
+ * primary label so the count/name reads as primary content and the
+ * note reads as explanatory meta. Same ellipsis treatment so a
+ * narrow viewport doesn't blow out the chip width. */
+.highlight-chip-note {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--sheet-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60vw;
+}
+
+/* When the note is present (sibling .highlight-chip-note is NOT
+ * .hidden), drop the chip to a less-aggressive border-radius. The
+ * default 999px stadium shape looks oblong at two lines; 14px still
+ * reads as a rounded pill but sits more comfortably with the taller
+ * footprint. :has() is universally supported in evergreen browsers
+ * and degrades gracefully (chip stays a stadium) in any holdouts. */
+.highlight-chip:has(.highlight-chip-note:not(.hidden)) {
+    border-radius: 14px;
 }
 
 /* Per-route stats ("8.2 mi · 410 ft ↑") rendered next to the route
@@ -282,19 +318,24 @@ body {
     background: transparent;
     border: none;
     border-radius: 10px;
-    cursor: pointer;
     color: var(--sheet-text);
     font: inherit;
     text-align: left;
 }
 
-.opt-toggle-row:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: -1px;
+/* Binary on/off rows opt into whole-row click via the
+ * .opt-toggle-row-clickable marker class added by wirePeekToggle().
+ * Multi-option rows (Labels / Season) deliberately stay inert
+ * outside their inner buttons — there's no sensible "toggle" for
+ * a 3-state choice, and a row-level cycle would clash with
+ * direct-click on the buttons. */
+.opt-toggle-row-clickable {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
 
 @media (hover: hover) {
-    .opt-toggle-row:hover {
+    .opt-toggle-row-clickable:hover {
         background: var(--sheet-hover);
     }
 }
@@ -741,19 +782,17 @@ body {
     font-size: 9px;
 }
 
-/* Labels — neutral slate-grey swatch with white tag glyph. Read as
- * "label-y" without claiming a specific layer color (since the
- * Labels segmented control switches WHICH labels render, not a
- * single layer toggle). */
-/* Inverted from the other swatches: white background with the tag
- * icon stroked in the slate accent. The Labels row isn't a layer
- * with an on-map equivalent (it's a renderer mode switcher), so the
- * inverse treatment marks it as a "settings" item rather than a
- * "what's painted on the map" item. */
+/* Labels — same "settings, not a layer toggle" treatment as the
+ * Difficulty chip: white background, neutral icon, white border
+ * (inherited from .layer-swatch base). The dark halo from the base
+ * box-shadow gives the chip its visible edge so it reads cleanly
+ * against the sheet without claiming a specific layer color. The
+ * background mirrors the on-map label text colour and the icon
+ * mirrors the on-map label backing colour, so the chip doubles as
+ * a tiny "label colour sample." */
 .label-swatch {
     background: var(--label-text-color, #fff);
     color: var(--label-color, #5d6d7e);
-    border: 1.5px solid var(--label-color, #5d6d7e);
 }
 
 /* Toilets — neutral slate to read as "facility" without competing
