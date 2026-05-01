@@ -1423,14 +1423,24 @@ body {
     width: var(--poi-marker-size-trailhead-w);
 }
 
+/* Toilets + drinking water — no popup wired (the marker IS the
+ * signal). Mirror .trail-marker's pointer-events: none + cursor:
+ * default so the cursor doesn't lie about clickability and so taps
+ * pass through to the trail underneath (where they DO open a
+ * popup). The base .poi-marker rule sets cursor: pointer, which
+ * is correct for parking/trailheads but wrong here. */
 .toilet-marker {
     background: var(--toilet-color, #6c5ce7);
     border-color: var(--toilet-border-color, #fff);
+    pointer-events: none;
+    cursor: default;
 }
 
 .drinking-water-marker {
     background: var(--drinking-water-color, #3498db);
     border-color: var(--drinking-water-border-color, #fff);
+    pointer-events: none;
+    cursor: default;
 }
 
 /* Trail markers — variable-width to accommodate ref strings of

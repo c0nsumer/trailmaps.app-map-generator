@@ -4804,7 +4804,12 @@ function addTrailheadMarkers(addToMap) {
 // Toilet markers — OSM amenity=toilets. Always-visible (no proximity
 // filter) like parking/trailheads — these are points riders need to
 // FIND, not contextual decoration. Square swatch with a stylised
-// figure glyph; popup carries access/fee metadata when present.
+// figure glyph. No popup: the marker IS the entire signal a rider
+// needs ("there's a toilet here"); name + access/fee metadata are
+// noise mid-ride and the popup-card adds tap friction. Search-
+// overlay selection still pans + ring-pulses; createPoiMarkers and
+// highlightPoi both gate popup attachment behind a popupHtmlFn
+// check so omitting it cleanly skips the popup path.
 function addToiletMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.TOILET,
@@ -4816,26 +4821,14 @@ function addToiletMarkers(addToMap) {
             // a single source of truth (--poi-marker-svg-size).
             el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
         },
-        popupHtmlFn: (p) => {
-            let h = `<div class="popup-title">${p.name || "Toilets"}</div>`;
-            const meta = [];
-            if (p.access && p.access !== "yes" && p.access !== "permissive") {
-                meta.push(`Access: ${p.access}`);
-            }
-            if (p.fee === "yes") meta.push("Fee required");
-            if (meta.length) {
-                h += `<div class="popup-meta">${meta.join(" · ")}</div>`;
-            }
-            return h;
-        },
-        popupMaxWidth: "220px",
         addToMap,
         targetArray: toiletMarkers,
     });
 }
 
 // Drinking-water markers — OSM amenity=drinking_water. Same
-// always-visible pattern as toilets. Droplet glyph, blue swatch.
+// always-visible, no-popup pattern as toilets — the marker IS the
+// signal ("there's water here"). Droplet glyph, blue swatch.
 function addDrinkingWaterMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.DRINKING_WATER,
@@ -4845,14 +4838,6 @@ function addDrinkingWaterMarkers(addToMap) {
             // from .poi-marker svg in CSS — see toilet note above.
             el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
         },
-        popupHtmlFn: (p) => {
-            let h = `<div class="popup-title">${p.name || "Drinking Water"}</div>`;
-            if (p.seasonal && p.seasonal !== "no") {
-                h += `<div class="popup-meta">Seasonal: ${p.seasonal}</div>`;
-            }
-            return h;
-        },
-        popupMaxWidth: "220px",
         addToMap,
         targetArray: drinkingWaterMarkers,
     });
