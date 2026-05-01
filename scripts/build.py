@@ -1149,6 +1149,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # collapse both to None, which the runtime would interpret as
     # "use defaults" and still show the modal.
     config_obj["welcome"] = config.get("welcome") if "welcome" in config else None
+    # Per-type POI counts (computed from pois.geojson at build
+    # time — see _poi_counts stash). Drives the dynamic Welcome
+    # Search line so it only mentions place types actually present
+    # on this map.
+    config_obj["poiCounts"] = config.get("_poi_counts") or {}
 
     # Logo: derived from `logo:` if set, else falls back to `icon:`. Processed
     # in copy_assets() into a normalized `logo.webp` (raster) or `logo.svg`
@@ -1630,6 +1635,40 @@ def main():
     # skip the fetch entirely.
     config["_has_clip_endpoints"] = os.path.exists(
         os.path.join(output_dir, "clip_endpoints.geojson"))
+
+    # Count POI features by type so the runtime can render an
+    # accurate Welcome modal Search line (e.g. "Find ... places
+    # (parking, toilets)" instead of always claiming every POI
+    # type exists). Two sources: pois.geojson for OSM-fetched POIs
+    # (toilets, drinking water, trail markers, OSM-tagged features
+    # and trailheads), AND the curator-supplied parking /
+    # trailheads YAML lists which the runtime renders as separate
+    # markers. Both are user-visible POIs from the rider's
+    # perspective, so both should count toward the Search line.
+    pois_path = os.path.join(output_dir, "pois.geojson")
+    poi_counts = {}
+    if os.path.exists(pois_path):
+        try:
+            with open(pois_path) as f:
+                pois_data = json.load(f)
+            for feat in pois_data.get("features", []):
+                ptype = (feat.get("properties") or {}).get("poi_type")
+                if not ptype:
+                    continue
+                poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"  WARNING: could not count pois.geojson: {exc}")
+    # Curator-supplied YAML lists (gated by their show_* flags so
+    # we don't credit hidden ones).
+    if config.get("show_parking", True):
+        yaml_pk = config.get("parking") or []
+        if yaml_pk:
+            poi_counts["parking"] = poi_counts.get("parking", 0) + len(yaml_pk)
+    if config.get("show_trailheads", True):
+        yaml_th = config.get("trailheads") or []
+        if yaml_th:
+            poi_counts["trailhead"] = poi_counts.get("trailhead", 0) + len(yaml_th)
+    config["_poi_counts"] = poi_counts
 
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, and append any

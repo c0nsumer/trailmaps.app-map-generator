@@ -1924,6 +1924,67 @@ function _welcomeIconSvg(pathD) {
 // icon + the control's name + a one-line description. Helps a
 // first-visit rider learn what each of the three bottom-right
 // buttons does without leaving the welcome modal.
+// Join a list of phrases with comma + Oxford "and" — "x", "x and y",
+// "x, y, and z". Used by the dynamic welcome descriptions to read
+// naturally regardless of how many items survive the per-map filter.
+function _joinHumanList(items) {
+    if (!items.length) return "";
+    if (items.length === 1) return items[0];
+    if (items.length === 2) return `${items[0]} and ${items[1]}`;
+    return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+// Build the Search row description from what's actually present on
+// this map. Routes/trails are gated by CONFIG.showRoutes/showTrails;
+// POI types come from CONFIG.poiCounts (populated at build time
+// from pois.geojson). Avoids the previous claim that every map has
+// "(parking, water, toilets, trailheads)" regardless of reality.
+function _welcomeSearchDescription() {
+    const targets = [];
+    if (CONFIG.showRoutes !== false) targets.push("routes");
+    if (CONFIG.showTrails !== false) targets.push("trails");
+
+    // Specific POI types — order roughly follows the rhythm of a
+    // ride: where you start (parking, trailheads), what you may
+    // encounter on-trail (features), amenities along the way
+    // (water, toilets). Only include types that have at least one
+    // feature in the build's pois.geojson (or a curator-supplied
+    // YAML entry for parking/trailheads — both folded together at
+    // build time).
+    const counts = CONFIG.poiCounts || {};
+    const poiNames = [];
+    if (counts.parking)        poiNames.push("parking");
+    if (counts.trailhead)      poiNames.push("trailheads");
+    if (counts.feature)        poiNames.push("features");
+    if (counts.drinking_water) poiNames.push("water");
+    if (counts.toilet)         poiNames.push("toilets");
+    // Trail markers are intentionally NOT mentioned — they're
+    // numbered guideposts / emergency-access points scattered
+    // through the trail network, not search targets in the way
+    // amenities and features are.
+
+    if (poiNames.length) {
+        targets.push(`places (${poiNames.join(", ")})`);
+    }
+
+    if (!targets.length) return "Find anything on the map.";
+    return `Find ${_joinHumanList(targets)}.`;
+}
+
+// Build the Options row description from what affordances are
+// actually wired into this map. "Layers" is always present; share /
+// install / About each appear only when their corresponding feature
+// is enabled. "Season" is omitted from the default copy because
+// detecting "this map has both summer + winter routes" requires
+// extra build-time plumbing — added separately if needed.
+function _welcomeOptionsDescription() {
+    const items = ["layers"];
+    if (CONFIG.shareButton) items.push("share view");
+    if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
+    items.push("view info About this map");
+    return `Configure ${_joinHumanList(items)}.`;
+}
+
 function buildWelcomeControlsHint() {
     const wrap = document.createElement("div");
     wrap.className = "welcome-modal-controls";
@@ -1936,27 +1997,14 @@ function buildWelcomeControlsHint() {
     const list = document.createElement("ul");
     list.className = "welcome-modal-controls-list";
 
-    // Compute search targets line based on what's actually
-    // searchable on this map. Routes/trails are gated by config;
-    // POIs (parking, water, etc.) appear if any are present.
-    const showRoutes = CONFIG.showRoutes !== false;
-    const showTrails = CONFIG.showTrails !== false;
-    const searchTargets = (showRoutes && showTrails)
-        ? "routes, trails, and places (parking, water, toilets, trailheads)"
-        : showRoutes
-            ? "routes and places (parking, water, toilets, trailheads)"
-            : showTrails
-                ? "trails and places (parking, water, toilets, trailheads)"
-                : "places (parking, water, toilets, trailheads)";
-
     // Order matches the FAB stack on the map (top to bottom:
     // Options, Search, Locate) so the rider sees the same sequence
     // here that they'll see on the screen.
     const rows = [
         { icon: _WELCOME_ICON_OPTIONS, name: "Options",
-            desc: "Configure layers, season, share view, and About this map." },
+            desc: _welcomeOptionsDescription() },
         { icon: _WELCOME_ICON_SEARCH,  name: "Search",
-            desc: `Find ${searchTargets}.` },
+            desc: _welcomeSearchDescription() },
         { icon: _WELCOME_ICON_LOCATE,  name: "Locate",
             desc: "Track your position on the map." },
     ];
@@ -1987,17 +2035,28 @@ function buildWelcomeControlsHint() {
 
 // Sober attribution footer for the welcome modal — matches the
 // printed-map convention and mirrors the on-map (i) attribution
-// content. Terrain credit drops when the map doesn't load
-// terrain. Full-credits experience lives in About; this is just
-// acknowledgment.
+// content. Source names are real anchor tags pointing at the
+// canonical pages (same URLs as the About credits) so a curious
+// rider can follow the link without hunting for it. Terrain credit
+// drops when the map doesn't load terrain. Full-credits experience
+// lives in About; this is just acknowledgment + a way out.
 function buildWelcomeAttribution() {
     const p = document.createElement("p");
     p.className = "welcome-modal-attribution";
-    let text = "Map data © OpenStreetMap contributors. Basemap © Protomaps.";
+
+    p.appendChild(document.createTextNode("Map data © "));
+    p.appendChild(aboutExtLink(
+        "https://www.openstreetmap.org/copyright",
+        "OpenStreetMap contributors"));
+    p.appendChild(document.createTextNode(". Basemap © "));
+    p.appendChild(aboutExtLink("https://protomaps.com", "Protomaps"));
+    p.appendChild(document.createTextNode("."));
     if (CONFIG.showTerrain) {
-        text += " Terrain © Mapterhorn.";
+        p.appendChild(document.createTextNode(" Terrain © "));
+        p.appendChild(aboutExtLink("https://mapterhorn.com", "Mapterhorn"));
+        p.appendChild(document.createTextNode("."));
     }
-    p.textContent = text;
+
     return p;
 }
 
