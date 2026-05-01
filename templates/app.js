@@ -2484,12 +2484,18 @@ function buildStyle() {
     // unambiguously about who owns what. Terrain credit (Mapterhorn)
     // only appears when terrain is actually loaded — no point
     // crediting a source whose data isn't on the map.
+    //
+    // target=_blank + rel=noopener: tapping a credit shouldn't yank
+    // the rider out of the map (loses zoom/pan/highlight/geolocate
+    // state, and is genuinely disorienting in standalone PWA mode
+    // where there's no browser back button visible).
+    const ATTR_LINK_ATTRS = 'target="_blank" rel="noopener"';
     const attrParts = [
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        '&copy; <a href="https://protomaps.com">Protomaps</a>',
+        `&copy; <a href="https://www.openstreetmap.org/copyright" ${ATTR_LINK_ATTRS}>OpenStreetMap</a>`,
+        `&copy; <a href="https://protomaps.com" ${ATTR_LINK_ATTRS}>Protomaps</a>`,
     ];
     if (CONFIG.showTerrain) {
-        attrParts.push('&copy; <a href="https://mapterhorn.com">Mapterhorn</a>');
+        attrParts.push(`&copy; <a href="https://mapterhorn.com" ${ATTR_LINK_ATTRS}>Mapterhorn</a>`);
     }
 
     return {
