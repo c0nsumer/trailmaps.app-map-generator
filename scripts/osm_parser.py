@@ -173,21 +173,48 @@ def extract_ways(parsed, relation_ids):
     return all_ways
 
 
+def _way_centroid(way, nodes):
+    """Centroid of a way as the arithmetic mean of its node coords.
+
+    Used to give building-shaped POIs (closed ways tagged
+    amenity=toilets / drinking_water) a single point location for the
+    map. Arithmetic mean is exact for axis-aligned rectangles and a
+    reasonable approximation for any small near-convex polygon, which
+    covers the typical "toilet building" case. Returns (lon, lat) or
+    None if no referenced nodes are present in the parsed file.
+    """
+    coords = [nodes[nid][:2] for nid in way["nd_refs"] if nid in nodes]
+    if not coords:
+        return None
+    # Closed ways repeat the first node as the last; drop the dupe so
+    # the centroid isn't biased toward that corner.
+    if len(coords) > 1 and coords[0] == coords[-1]:
+        coords = coords[:-1]
+    n = len(coords)
+    return (sum(c[0] for c in coords) / n, sum(c[1] for c in coords) / n)
+
+
 def extract_guideposts(parsed, bbox):
     """Extract trail-relevant POI nodes within a bounding box.
 
     Despite the legacy name, this also yields tourism=attraction,
-    amenity=toilets, and amenity=drinking_water nodes — anything the
-    Overpass query in fetch_pois_from_osm() would emit. Kept for now
-    as a single function since the local-osm-file path mirrors the
-    network path.
+    amenity=toilets, and amenity=drinking_water — both the node form
+    AND closed-way (building polygon) form for the two amenity tags,
+    matching the Overpass query in fetch_pois_from_osm(). Building
+    polygons are reduced to a single (lon, lat) via _way_centroid()
+    and emitted as ``type: way`` elements with a ``center`` field so
+    the output shape matches what Overpass returns with ``out center;``.
 
     Returns the same format as fetch_pois_from_osm():
-        {"elements": [{"type": "node", "id", "lon", "lat", "tags": {}}, ...]}
+        {"elements": [
+            {"type": "node", "id", "lon", "lat", "tags": {}},
+            {"type": "way",  "id", "center": {"lon", "lat"}, "tags": {}},
+            ...
+        ]}
 
     bbox is [west, south, east, north].
     """
-    nodes, _ways, _relations = parsed
+    nodes, ways, _relations = parsed
     west, south, east, north = bbox
 
     elements = []
@@ -210,6 +237,28 @@ def extract_guideposts(parsed, bbox):
                 "lat": lat,
                 "tags": tags,
             })
+
+    # Building-polygon toilets / drinking water — common enough in OSM
+    # (mappers trace the building rather than placing a node) that
+    # ignoring them leaves obvious gaps. Centroid → point, bbox-filter
+    # on the centroid (matches Overpass's bbox-on-center semantics).
+    for way_id, way in ways.items():
+        tags = way["tags"]
+        if not (tags.get("amenity") == "toilets"
+                or tags.get("amenity") == "drinking_water"):
+            continue
+        c = _way_centroid(way, nodes)
+        if c is None:
+            continue
+        lon, lat = c
+        if not (west <= lon <= east and south <= lat <= north):
+            continue
+        elements.append({
+            "type": "way",
+            "id": way_id,
+            "center": {"lon": lon, "lat": lat},
+            "tags": tags,
+        })
 
     return {"elements": elements}
 

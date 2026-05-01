@@ -42,6 +42,12 @@ def fetch_pois_from_osm(bbox, cache_dir=None):
 
     Each maps to a distinct ``poi_type`` in the output GeoJSON; runtime
     toggle visibility per category.
+
+    Toilets and drinking water are queried as both nodes AND ways —
+    OSM mappers commonly tag the toilet building polygon (a closed
+    way) rather than placing a node. ``out center;`` asks Overpass
+    to compute the centroid of any non-node geometry so the rest of
+    the pipeline can treat them as point POIs.
     """
     south, west, north, east = bbox[1], bbox[0], bbox[3], bbox[2]
     q = f"""
@@ -51,7 +57,9 @@ def fetch_pois_from_osm(bbox, cache_dir=None):
   node["highway"="emergency_access_point"]({south},{west},{north},{east});
   node["tourism"="attraction"]({south},{west},{north},{east});
   node["amenity"="toilets"]({south},{west},{north},{east});
+  way["amenity"="toilets"]({south},{west},{north},{east});
   node["amenity"="drinking_water"]({south},{west},{north},{east});
+  way["amenity"="drinking_water"]({south},{west},{north},{east});
 );
 out center;
 """
@@ -222,9 +230,9 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     if config.get("show_features", True) and feature_count == 0:
         print(f"  NOTE: show_features is enabled but no tourism=attraction nodes found in data")
     if config.get("show_toilets", True) and toilet_count == 0:
-        print(f"  NOTE: show_toilets is enabled but no amenity=toilets nodes found in data")
+        print(f"  NOTE: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
     if config.get("show_drinking_water", True) and water_count == 0:
-        print(f"  NOTE: show_drinking_water is enabled but no amenity=drinking_water nodes found in data")
+        print(f"  NOTE: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data")
     if config.get("show_parking", True) and len(config_parking) == 0:
         print(f"  NOTE: show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
