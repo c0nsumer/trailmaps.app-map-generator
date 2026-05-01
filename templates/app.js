@@ -2735,6 +2735,15 @@ function difficultyCasingExpr() {
 // via the `poi_proximity_m` YAML key.
 const POI_PROXIMITY_METERS = CONFIG.poiProximityMeters ?? 50;
 
+// Wider proximity threshold for amenity POIs (toilets, drinking
+// water). These are utility points a rider will deliberately detour
+// for — and they're commonly placed at trailheads or parking lots
+// that sit further than POI_PROXIMITY_METERS off the trail polyline
+// itself. 500 m ≈ a 5–7 minute walk, the right ballpark for "still
+// useful to know about." Not currently a YAML knob; promote to one
+// if multiple curators ask.
+const POI_AMENITY_PROXIMITY_METERS = 500;
+
 // Threshold (meters) for "on the highlighted route" during the
 // spotlight dim. Intentionally tight — when a single route/trail is
 // highlighted, only POIs that sit essentially on its geometry stay at
@@ -2849,17 +2858,17 @@ function updateMarkerProximity() {
     // Toggle rows use aria-pressed semantics (not checkbox .checked).
     // Trail markers (guideposts + emergency access points) share the
     // single "Markers" toggle.
-    const mkBtn = document.getElementById("toggle-markers");
-    const ftBtn = document.getElementById("toggle-features");
-    const mkOn = !!mkBtn && mkBtn.getAttribute("aria-pressed") === "true";
-    const ftOn = !!ftBtn && ftBtn.getAttribute("aria-pressed") === "true";
+    const isOn = (id) => {
+        const btn = document.getElementById(id);
+        return !!btn && btn.getAttribute("aria-pressed") === "true";
+    };
 
-    const filterMarkers = (markers, on) => {
+    const filterMarkers = (markers, on, threshold) => {
         if (!on) return;
         for (const marker of markers) {
             const { lng, lat } = marker.getLngLat();
             const dist = distanceToVisibleTrails(lng, lat);
-            if (dist <= POI_PROXIMITY_METERS) {
+            if (dist <= threshold) {
                 marker.addTo(map);
             } else {
                 marker.remove();
@@ -2867,8 +2876,10 @@ function updateMarkerProximity() {
         }
     };
 
-    filterMarkers(trailMarkerMarkers, mkOn);
-    filterMarkers(featureMarkers, ftOn);
+    filterMarkers(trailMarkerMarkers,    isOn("toggle-markers"),         POI_PROXIMITY_METERS);
+    filterMarkers(featureMarkers,        isOn("toggle-features"),        POI_PROXIMITY_METERS);
+    filterMarkers(toiletMarkers,         isOn("toggle-toilets"),         POI_AMENITY_PROXIMITY_METERS);
+    filterMarkers(drinkingWaterMarkers,  isOn("toggle-drinking-water"),  POI_AMENITY_PROXIMITY_METERS);
 
     // Markers are obstacles for the decoration placer (gatherObstacles
     // walks the four marker arrays). When any marker is added/removed
@@ -2879,43 +2890,53 @@ function updateMarkerProximity() {
         updateDecorationsSource();
     }
 
-    // Re-evaluate the Features toggle after every proximity pass. If
-    // the current visible-routes set leaves zero features within
-    // POI_PROXIMITY_METERS of any trail, the toggle is a dead control —
-    // hide its row. It comes back the moment a route change brings a
-    // near-trail feature into scope.
-    updateFeatureButtonVisibility();
+    // Re-evaluate the proximity-gated toggle rows (Features, Toilets,
+    // Drinking water). If the visible-routes set leaves zero of a
+    // type within POI_PROXIMITY_METERS of any trail, that toggle is
+    // a dead control — hide its row. The row comes back the moment
+    // a route change brings a near-trail member into scope.
+    updatePoiToggleVisibility();
 }
 
-// True iff at least one POI.FEATURE POI is within
-// POI_PROXIMITY_METERS of a currently-visible trail. Independent of
-// the Features toggle state (we ask "would anything show if it were
-// on?", not "is anything showing now?").
-function hasVisibleFeatures() {
+// True iff at least one POI of the given type is within `threshold`
+// meters of a currently-visible trail. Independent of the toggle's
+// aria-pressed state (we ask "would anything show if it were on?",
+// not "is anything showing now?"). Used by
+// updatePoiToggleVisibility() to decide which proximity-gated
+// toggle rows to render.
+function hasVisibleProximityPois(poiType, threshold) {
     if (!poisData || !routesData) return false;
     for (const f of poisData.features) {
-        if (f.properties.poi_type !== POI.FEATURE) continue;
+        if (f.properties.poi_type !== poiType) continue;
         const [lng, lat] = f.geometry.coordinates;
-        if (distanceToVisibleTrails(lng, lat) <= POI_PROXIMITY_METERS) {
+        if (distanceToVisibleTrails(lng, lat) <= threshold) {
             return true;
         }
     }
     return false;
 }
 
-// Show/hide the Features toggle based on (a) the YAML gate,
-// (b) whether the build emitted any feature POIs at all, and (c)
-// whether the proximity filter would currently let any of them
-// render. Called on initial POI load and after every route-
-// visibility change. The toggle row is `.hidden` when dead so the
-// Options list collapses cleanly; persisted aria-pressed state is
-// untouched, so toggling features back on once a near-trail
-// feature reappears just works.
-function updateFeatureButtonVisibility() {
-    const btn = document.getElementById("toggle-features");
-    if (!btn) return;
-    const show = CONFIG.showFeatures && hasVisibleFeatures();
-    btn.classList.toggle("hidden", !show);
+// Show/hide each proximity-gated POI toggle (Features, Toilets,
+// Drinking water) based on (a) its YAML show_* gate and
+// (b) whether the proximity filter would currently let any of that
+// type render at the per-type threshold. Called on initial POI load
+// and after every route-visibility change. The toggle row is
+// `.hidden` when dead so the Options list collapses cleanly;
+// persisted aria-pressed state is untouched, so toggling a
+// category back on once a near-trail POI of that type reappears
+// just works.
+function updatePoiToggleVisibility() {
+    const flips = [
+        ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS],
+        ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS],
+        ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS],
+    ];
+    for (const [id, gate, type, threshold] of flips) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        const show = gate && hasVisibleProximityPois(type, threshold);
+        btn.classList.toggle("hidden", !show);
+    }
 }
 
 // ============================================================
@@ -4652,34 +4673,35 @@ async function loadPOIs() {
         hideToggleRow("toggle-trailheads");
     }
 
-    // Toilets + drinking water — toggle rows start hidden in the
-    // template (most maps don't have data for either). Reveal each
-    // row only when the build emitted at least one feature for it.
+    // Toilets + drinking water — proximity-gated like Features. Set
+    // aria-pressed from persisted state (used by updateMarkerProximity
+    // when it filters), but the toggle ROW visibility is decided by
+    // updatePoiToggleVisibility() on the first applyVisibilityChange()
+    // pass after init, based on whether anything is in proximity range
+    // (POI_AMENITY_PROXIMITY_METERS = 500 m, wider than features).
     if (CONFIG.showToilets && wcCount > 0) {
         addToiletMarkers(wcDefault);
-        showToggleRow("toggle-toilets");
         const wcBtn = document.getElementById("toggle-toilets");
         if (wcBtn) wcBtn.setAttribute("aria-pressed", wcDefault ? "true" : "false");
     }
     if (CONFIG.showDrinkingWater && dwCount > 0) {
         addDrinkingWaterMarkers(dwDefault);
-        showToggleRow("toggle-drinking-water");
         const dwBtn = document.getElementById("toggle-drinking-water");
         if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
     }
 
-    // Features are gated by both data-presence AND proximity: a build
-    // can emit `tourism=attraction` POIs that all sit > POI_PROXIMITY_METERS
-    // off the trail (Shelden's "Shelden Estate Wall" / "Old Tennis Court"
-    // are ~12 m and ~33 m off, respectively), in which case the runtime
-    // proximity filter hides every marker — the toggle would just be a
-    // dead control. We always create the markers so they can pop in if
-    // a route change later brings them into scope; updateFeatureButtonVisibility()
-    // is the source of truth for whether the button shows.
+    // Features + toilets + water are all gated by data-presence AND
+    // proximity: a build can emit POIs that all sit beyond their
+    // proximity threshold from the trail (Shelden's "Shelden Estate
+    // Wall" / "Old Tennis Court" features are ~12 m and ~33 m off,
+    // respectively; toilets are often at parking lots beyond the
+    // trail polyline). Always create the markers so they can pop in
+    // if a route change brings them into scope; updatePoiToggleVisibility
+    // is the source of truth for whether each toggle row is shown.
     if (CONFIG.showFeatures && ftCount > 0) {
         addFeatureMarkers(ftDefault);
     }
-    updateFeatureButtonVisibility();
+    updatePoiToggleVisibility();
 }
 
 // ============================================================
@@ -4801,15 +4823,17 @@ function addTrailheadMarkers(addToMap) {
     });
 }
 
-// Toilet markers — OSM amenity=toilets. Always-visible (no proximity
-// filter) like parking/trailheads — these are points riders need to
-// FIND, not contextual decoration. Square swatch with a stylised
-// figure glyph. No popup: the marker IS the entire signal a rider
-// needs ("there's a toilet here"); name + access/fee metadata are
-// noise mid-ride and the popup-card adds tap friction. Search-
-// overlay selection still pans + ring-pulses; createPoiMarkers and
-// highlightPoi both gate popup attachment behind a popupHtmlFn
-// check so omitting it cleanly skips the popup path.
+// Toilet markers — OSM amenity=toilets. Proximity-filtered at the
+// wider POI_AMENITY_PROXIMITY_METERS (500 m) threshold so riders
+// see toilets that are usefully close to the trail without the
+// noise of every distant building polygon in the bbox. Square
+// swatch with a stylised figure glyph. No popup: the marker IS
+// the entire signal a rider needs ("there's a toilet here"); name
+// + access/fee metadata are noise mid-ride and the popup-card adds
+// tap friction. Search-overlay selection still pans + ring-pulses;
+// createPoiMarkers and highlightPoi both gate popup attachment
+// behind a popupHtmlFn check so omitting it cleanly skips the
+// popup path.
 function addToiletMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.TOILET,
@@ -4827,8 +4851,9 @@ function addToiletMarkers(addToMap) {
 }
 
 // Drinking-water markers — OSM amenity=drinking_water. Same
-// always-visible, no-popup pattern as toilets — the marker IS the
-// signal ("there's water here"). Droplet glyph, blue swatch.
+// proximity-filtered (500 m), no-popup pattern as toilets — the
+// marker IS the signal ("there's water here"). Droplet glyph,
+// blue swatch.
 function addDrinkingWaterMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.DRINKING_WATER,
@@ -5315,28 +5340,30 @@ function setupFloatingChrome() {
         _onPoiToggleChange("trailhead");
     });
 
-    // Toilets + drinking water — same always-visible pattern as
-    // parking and trailheads. wirePeekToggle skips buttons that are
-    // still hidden (no data); loadPOIs reveals them when the build
-    // produced features for that POI type.
+    // Toilets + drinking water — proximity-filtered (500 m threshold,
+    // see POI_AMENITY_PROXIMITY_METERS). Same on/off pattern as
+    // Markers and Features: when toggled on, defer to updateMarkerProximity
+    // which adds only the in-range markers; when off, sweep them all.
     wirePeekToggle("toggle-toilets", "mtb.poi.toilets",
             isDefaultVisible("toilets"), (on) => {
-        for (const m of toiletMarkers) {
-            if (on) m.addTo(map);
-            else m.remove();
+        if (on) {
+            updateMarkerProximity();  // already invalidates cache
+        } else {
+            for (const m of toiletMarkers) m.remove();
+            invalidateObstaclesCache();
+            updateDecorationsSource();
         }
-        invalidateObstaclesCache();
-        updateDecorationsSource();
         _onPoiToggleChange("toilet");
     });
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
             isDefaultVisible("drinking_water"), (on) => {
-        for (const m of drinkingWaterMarkers) {
-            if (on) m.addTo(map);
-            else m.remove();
+        if (on) {
+            updateMarkerProximity();  // already invalidates cache
+        } else {
+            for (const m of drinkingWaterMarkers) m.remove();
+            invalidateObstaclesCache();
+            updateDecorationsSource();
         }
-        invalidateObstaclesCache();
-        updateDecorationsSource();
         _onPoiToggleChange("drinking_water");
     });
 
