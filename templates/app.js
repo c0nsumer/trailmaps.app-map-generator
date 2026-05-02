@@ -4111,146 +4111,21 @@ const POI_HIGHLIGHT_OUTER  = "poi-highlight-outer";
 const POI_HIGHLIGHT_INNER  = "poi-highlight-inner";
 const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
 
-// Force-show plumbing: when a highlight lands on POIs whose layer
-// toggle is currently OFF, we'd otherwise paint rings over empty
-// space. Instead, temporarily mount the markers for those types so
-// the rings have content underneath. Toggle state in localStorage is
-// NOT touched — the rider's persistent preference is respected.
-// On highlight clear (or replacement) we roll the markers back.
+// WYSIWYG search policy: a POI shows up in search results only
+// when its marker is currently mounted on the map. Hidden POIs
+// (toggle off, or proximity filter beyond threshold) are excluded
+// from search entirely — selecting a result that wasn't visible
+// would just paint a ring over empty space, and the older "force-
+// mount on selection" workaround surprised riders by materialising
+// markers out of nowhere. Search is fundamentally a "what's
+// nearby in scope" tool, not an "explore the entire dataset" one.
 //
-// _forcedPoiTypes tracks which types we currently own. Each entry
-// means "we mounted this type's markers; we'll unmount them on
-// clear unless the rider has, in the meantime, flipped the toggle
-// on themselves (the toggle handler drops us from the set in that
-// case so we don't yank their markers afterwards)."
-let _forcedPoiTypes = new Set();
-// Subset of _forcedPoiTypes whose force-mount was triggered by a
-// toggle being OFF (vs by the proximity filter hiding individual
-// markers when the toggle is on). Drives the chip note: "hidden in
-// Options" only applies when the rider explicitly turned the type
-// off — proximity-filtered hides aren't an Options choice.
-let _forcedToggleOffTypes = new Set();
-
-// POI types whose markers can be hidden by the proximity filter
-// (distanceToVisibleTrails > threshold). These types need
-// updateMarkerProximity() on unforce to restore the correct mount
-// state; non-proximity types just unmount everything.
-const _PROXIMITY_TYPES = new Set(["trail_marker", "feature", "toilet", "drinking_water"]);
-
-function _markerArrayForType(type) {
-    switch (type) {
-        case "parking":         return parkingMarkers;
-        case "trailhead":       return trailheadMarkers;
-        case "toilet":          return toiletMarkers;
-        case "drinking_water":  return drinkingWaterMarkers;
-        case "trail_marker":    return trailMarkerMarkers;
-        case "feature":         return featureMarkers;
-    }
-    return null;
-}
-
-function _lsKeyForType(type) {
-    switch (type) {
-        case "parking":         return "mtb.poi.parking";
-        case "trailhead":       return "mtb.poi.trailheads";
-        case "toilet":          return "mtb.poi.toilets";
-        case "drinking_water":  return "mtb.poi.drinking_water";
-        case "trail_marker":    return "mtb.poi.markers";
-        case "feature":         return "mtb.poi.features";
-    }
-    return null;
-}
-
-// Mount all markers of a type so a highlight has visible markers
-// underneath the rings, regardless of whether they'd been hidden
-// by (a) the rider toggling the type off, or (b) the proximity
-// filter dropping individual markers that sit too far from any
-// visible trail. No-op if we've already force-mounted this type
-// for the current highlight, OR if the toggle is on AND the type
-// isn't proximity-filtered (the markers are already mounted, so
-// there's nothing to do).
-function _forcePoiType(type) {
-    if (_forcedPoiTypes.has(type)) return;
-    const lsKey = _lsKeyForType(type);
-    if (!lsKey) return;
-    const isOn = LS.get(lsKey, true);
-    const isProximityFiltered = _PROXIMITY_TYPES.has(type);
-    if (isOn && !isProximityFiltered) return;
-    const arr = _markerArrayForType(type);
-    if (!arr) return;
-    for (const m of arr) m.addTo(map);
-    _forcedPoiTypes.add(type);
-    if (!isOn) _forcedToggleOffTypes.add(type);
-    invalidateObstaclesCache();
-    if (map && map.getSource("trail-decorations")) {
-        updateDecorationsSource();
-    }
-}
-
-// Roll back a previously force-mounted type. Behaviour depends on
-// the toggle state and whether the type is proximity-filtered:
-//   - toggle OFF: unmount all markers (toggle's the source of
-//     truth, so back to fully hidden).
-//   - toggle ON + proximity-filtered: defer to
-//     updateMarkerProximity() to remove markers that the proximity
-//     gate would hide while keeping the in-range ones mounted.
-//   - toggle ON + not proximity-filtered: no-op. The markers were
-//     already mounted before we force-mounted (force was a no-op),
-//     and they should stay mounted now.
-function _unforcePoiType(type) {
-    if (!_forcedPoiTypes.has(type)) return;
-    _forcedPoiTypes.delete(type);
-    _forcedToggleOffTypes.delete(type);
-    const arr = _markerArrayForType(type);
-    if (!arr) return;
-    const lsKey = _lsKeyForType(type);
-    const isOn = lsKey ? LS.get(lsKey, true) : true;
-    if (!isOn) {
-        for (const m of arr) m.remove();
-    } else if (_PROXIMITY_TYPES.has(type)) {
-        updateMarkerProximity();
-    }
-    // toggle ON + not proximity-filtered → no-op
-    invalidateObstaclesCache();
-    if (map && map.getSource("trail-decorations")) {
-        updateDecorationsSource();
-    }
-}
-
-// Reconcile the force-show set against the types in the current
-// highlight. Anything we'd previously forced that's no longer
-// represented gets unforced; anything new whose toggle is off gets
-// forced. Invoked by highlightPoiSet.
-function _reconcileForcedTypes(newTypes) {
-    // Snapshot before iterating — _unforcePoiType mutates the set.
-    for (const t of Array.from(_forcedPoiTypes)) {
-        if (!newTypes.has(t)) _unforcePoiType(t);
-    }
-    for (const t of newTypes) _forcePoiType(t);
-}
-
-// Called by every POI toggle handler AFTER its own marker logic
-// has run. Releases prior force-show ownership of the toggled
-// type (the rider took manual control) and then, if there's an
-// active highlight, re-reconciles against it. Handles two
-// otherwise-leaky scenarios:
-//   1. Rider turns the type OFF while it's currently highlighted:
-//      the toggle just removed the markers, so reconcile re-mounts
-//      them via force-show and the chip note re-appears.
-//   2. Rider turns the type ON while it's currently highlighted:
-//      _forcePoiType reads LS=true and no-ops, the set stays empty,
-//      and the chip note is correctly absent.
-// In both cases the chip note is refreshed so it always reflects
-// the current state of the world rather than the state at
-// highlight time.
-function _onPoiToggleChange(type) {
-    _forcedPoiTypes.delete(type);
-    _forcedToggleOffTypes.delete(type);
-    if (_highlightedPois.length > 0) {
-        const types = new Set(_highlightedPois.map((p) => p.type));
-        _reconcileForcedTypes(types);
-    }
-    refreshChipNote();
+// Marker-mount detection uses MapLibre's internal Marker._map
+// reference (set by addTo(map), nulled by remove()). It's a
+// private field but stable — MapLibre's own code reads it.
+function _isPoiCurrentlyVisible(p) {
+    const m = findPoiMarker(p);
+    return !!(m && m._map);
 }
 
 function ensurePoiHighlightLayers() {
@@ -4313,12 +4188,9 @@ function highlightPoiSet(pois, label) {
     _highlightedPois = pois.slice();
     setPoiHighlightData(_highlightedPois);
 
-    // Force-show any POI types whose layer toggle is off so the
-    // rings have markers underneath instead of hovering over empty
-    // ground. Reconciles against any previous highlight's forced
-    // set — types no longer represented get unforced.
-    const newTypes = new Set(_highlightedPois.map((p) => p.type));
-    _reconcileForcedTypes(newTypes);
+    // No force-mount here — under WYSIWYG search, only currently-
+    // visible POIs are reachable from the search overlay, so any
+    // POI in `pois` is already mounted on the map.
 
     // Fit map. Single → flyTo with zoom-up. Multiple → fitBounds.
     if (_highlightedPois.length === 1) {
@@ -4354,31 +4226,21 @@ function highlightPoiSet(pois, label) {
 
     // Highlight chip — re-uses the existing chip element. Yellow
     // swatch matches the inner ring color so the visual link
-    // between chip and on-map highlights is obvious. When the
-    // highlight included types whose layer toggle was off (and so
-    // got force-shown by _reconcileForcedTypes above), surface that
-    // as a second-line note so the rider knows why these markers
-    // are visible — and that clearing the highlight will hide them
-    // again.
+    // between chip and on-map highlights is obvious.
     showHighlightChip({
         label,
         color: "#FFEC00",
         stats: "",
-        note: _forcedToggleOffTypes.size > 0 ? "hidden in Options" : "",
+        note: "",
     });
 }
 
 function clearPoiHighlight() {
-    if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
+    if (_highlightedPois.length === 0) return;
     _highlightedPois = [];
     const src = map.getSource(POI_HIGHLIGHT_SOURCE);
     if (src) {
         src.setData({ type: "FeatureCollection", features: [] });
-    }
-    // Roll back any types we'd force-mounted for this highlight.
-    // Snapshot — _unforcePoiType mutates the set.
-    for (const t of Array.from(_forcedPoiTypes)) {
-        _unforcePoiType(t);
     }
     hideHighlightChip();
 }
@@ -4464,10 +4326,10 @@ function showHighlightChip({ label, color, stats, note }) {
         }
     }
     // note is an optional second-line message under the label.
-    // POI force-show uses this to surface "hidden in Options" when
-    // a search highlight has temporarily mounted markers whose
-    // layer toggle is off. Other highlight types (route / trail /
-    // POI without force-show) pass nothing → row stays single-line.
+    // Currently unused (POIs no longer surface a "hidden in Options"
+    // note since hidden POIs are excluded from search entirely).
+    // Kept in the API as a hook for future highlight types that
+    // might want a second-line annotation.
     if (noteEl) {
         if (note) {
             noteEl.textContent = note;
@@ -4478,27 +4340,6 @@ function showHighlightChip({ label, color, stats, note }) {
         }
     }
     chip.classList.remove("hidden");
-}
-
-// Re-evaluate the chip's force-show note from current state. Called
-// whenever _forcedPoiTypes changes mid-highlight (e.g. the rider
-// flips a POI toggle on in Options) so the note stays accurate
-// rather than silently lying about the current visibility state.
-// No-op when the chip is hidden or not currently labelled by a POI
-// highlight (route/trail highlights don't carry a note).
-function refreshChipNote() {
-    const chip = document.getElementById("highlight-chip");
-    if (!chip || chip.classList.contains("hidden")) return;
-    const noteEl = chip.querySelector(".highlight-chip-note");
-    if (!noteEl) return;
-    const note = _forcedToggleOffTypes.size > 0 ? "hidden in Options" : "";
-    if (note) {
-        noteEl.textContent = note;
-        noteEl.classList.remove("hidden");
-    } else {
-        noteEl.textContent = "";
-        noteEl.classList.add("hidden");
-    }
 }
 
 function hideHighlightChip() {
@@ -5337,15 +5178,13 @@ function setupFloatingChrome() {
     }
 
     // Trail markers — merged guideposts + emergency access points.
-    // Proximity-filtered, same as features. updateMarkerProximity()
-    // already triggers a decoration recompute (markers are obstacles
-    // for arrow/diamond placement); the off-branch needs to do the
-    // same explicitly because it bypasses proximity entirely.
-    // Each POI toggle drops its type from _forcedPoiTypes at the
-    // top so the highlight system relinquishes ownership the moment
-    // the rider takes manual control. Without this, clearing the
-    // highlight afterwards would yank markers the rider explicitly
-    // turned on.
+    // POI toggle handlers — each mutates marker visibility and then
+    // rebuilds the finder so the search list stays in sync (WYSIWYG:
+    // toggling a type off removes its rows from search, on adds them
+    // back). updateMarkerProximity() already triggers a decoration
+    // recompute (markers are obstacles for arrow/diamond placement);
+    // the off-branches do the same explicitly because they bypass
+    // proximity entirely.
     wirePeekToggle("toggle-markers", "mtb.poi.markers",
             isDefaultVisible("trail_markers"), (on) => {
         if (on) {
@@ -5355,7 +5194,7 @@ function setupFloatingChrome() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
-        _onPoiToggleChange("trail_marker");
+        rebuildFinderList();
     });
 
     // Features — proximity-filtered.
@@ -5368,7 +5207,7 @@ function setupFloatingChrome() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
-        _onPoiToggleChange("feature");
+        rebuildFinderList();
     });
 
     // Parking / trailheads — always shown when on (no proximity
@@ -5382,7 +5221,7 @@ function setupFloatingChrome() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
-        _onPoiToggleChange("parking");
+        rebuildFinderList();
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads",
             isDefaultVisible("trailheads"), (on) => {
@@ -5392,7 +5231,7 @@ function setupFloatingChrome() {
         }
         invalidateObstaclesCache();
         updateDecorationsSource();
-        _onPoiToggleChange("trailhead");
+        rebuildFinderList();
     });
 
     // Toilets + drinking water — proximity-filtered (500 m threshold,
@@ -5408,7 +5247,7 @@ function setupFloatingChrome() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
-        _onPoiToggleChange("toilet");
+        rebuildFinderList();
     });
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
             isDefaultVisible("drinking_water"), (on) => {
@@ -5419,7 +5258,7 @@ function setupFloatingChrome() {
             invalidateObstaclesCache();
             updateDecorationsSource();
         }
-        _onPoiToggleChange("drinking_water");
+        rebuildFinderList();
     });
 
     // Difficulty — drives the decor-diamond layer. Uses the shared
@@ -5833,10 +5672,9 @@ function rebuildFinderList() {
     }
 
     // Filter routes/trails to the currently-visible bucket, then by
-    // query. POIs aren't gated by visibility — a rider should be
-    // able to find a hidden marker by name (the search-then-toggle
-    // pattern is too friction-laden), so the POI list is the full
-    // index regardless of which layer toggles are on.
+    // query. Routes hidden by season/emergency toggles are still
+    // searchable — selecting one force-shows it (rider toggle is the
+    // explicit choice, search lets them work around it).
     const routes = routeIndex.filter((r) => visibleRoutes.has(r.id));
     const visibleRouteIds = new Set(routes.map((r) => r.id));
     const trails = trailIndex.filter((t) =>
@@ -5848,20 +5686,21 @@ function rebuildFinderList() {
     const matchedTrails = !includeTrails ? []
         : (query ? trails.filter((t) => t.name.toLowerCase().includes(query))
                  : trails);
-    // Search query matches either a POI's name OR its type label
-    // (the meta text shown on the row — "parking", "trailhead",
-    // "toilets", "drinking water", "trail marker", "feature").
-    // Lets the rider use category-style queries like "parking" or
-    // "toilet" and surface every POI of that type, even when the
-    // individual OSM features have specific names like "Cassidy Lot"
-    // or "Pit Latrine" that don't contain the category word.
+    // POIs follow a WYSIWYG rule: only show a POI in search if its
+    // marker is currently mounted on the map. Hidden POIs (toggle
+    // off, or beyond the proximity threshold) are excluded — selecting
+    // them would have painted a ring over empty ground. Search query
+    // matches either the POI's name OR its type label so category-
+    // style queries ("parking" / "toilet") still work and surface
+    // every visible POI of that type.
+    const visiblePois = poiIndex.filter(_isPoiCurrentlyVisible);
     const matchedPois = !includePois ? []
-        : (query ? poiIndex.filter((p) => {
+        : (query ? visiblePois.filter((p) => {
             const name = p.name.toLowerCase();
             const typeLabel = (POI_TYPE_META_LABEL[p.type] || "").toLowerCase();
             return name.includes(query) || typeLabel.includes(query);
         })
-                 : poiIndex);
+                 : visiblePois);
 
     const total = matchedRoutes.length + matchedTrails.length + matchedPois.length;
     if (total === 0) {
