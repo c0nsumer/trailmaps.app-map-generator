@@ -35,6 +35,15 @@
     --input-bg: white;
     --pill-bg: #e3e3e3;
     --section-header-bg: #fafafa;
+    /* html/body background — only visible in the slivers around the
+     * map canvas (notch / gesture-nav safe-area insets, scrollbar
+     * gutters). Light scheme = the historical #f7f7f7 page tone.
+     * Flips to a dark slate in dark mode (see [data-color-scheme]
+     * override) so that on devices like the Pixel 8 PWA — where
+     * safe-area-inset-right is non-zero and the map's `width: 100%`
+     * doesn't extend into the inset — the strip doesn't show as a
+     * bright white line against the otherwise-dark UI. */
+    --page-bg: #f7f7f7;
     /* Popup body background — same as sheet in light mode (no
      * change). In dark mode, overridden to a slightly lighter
      * shade than --sheet-bg so popups read as a raised surface
@@ -119,6 +128,11 @@
     --input-bg: #1c1c1e;
     --pill-bg: #3a3a3c;
     --section-header-bg: #2c2c2e;
+    /* Dark page bg — matches the dark basemap's background tone so
+     * any sliver of body showing through (safe-area insets, etc.)
+     * blends into the rest of the dark UI rather than flashing
+     * white. */
+    --page-bg: #1c1c1e;
     /* Popup raised-surface override — Material elevation pattern. */
     --popup-bg: #2c2c2e;
     /* Light hairline against the dark sheet so chips have a visible
@@ -166,7 +180,7 @@ body {
     overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--sheet-text);
-    background: #f7f7f7;
+    background: var(--page-bg);
     /* Suppress the Chrome/Safari mobile default tap-highlight (a
      * brief translucent gray rectangle painted over the tapped
      * element). Our UI controls communicate tap feedback through
@@ -178,11 +192,19 @@ body {
 }
 
 #map {
+    /* Pin all four edges instead of width/height: 100% so the map
+     * canvas fills the viewport precisely without leaving a sub-
+     * pixel sliver on any side. Earlier `width: 100%; height: 100%`
+     * showed a thin (1-2 px) bright strip on the right edge of the
+     * Pixel 8 PWA, visible as light grey in light mode and stark
+     * white-on-dark in dark mode (because html/body's --page-bg
+     * shows through). Using `right: 0; bottom: 0` makes the map
+     * size itself from the actual viewport rectangle each frame,
+     * matching MapLibre's resize observer behaviour without depending
+     * on devicePixelRatio rounding or browser-specific 100% inter-
+     * pretation in PWA mode. */
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
 }
 
 .hidden {
