@@ -964,6 +964,27 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         routes[cid] = info
         changed = True
 
+    # ----- Subway-style parallel-route smoothing (opt-in) -----
+    # Runs LAST so custom routes are included in the junction analysis.
+    # Idempotent: strips prior stub features (isStub: true) before
+    # re-emitting. The toggle is build-only — runtime reads the same
+    # geojson shape regardless.
+    style = config.get("parallel_routes_style", "default")
+    pre_stub_count = len(trails_geojson["features"])
+    trails_geojson["features"] = [
+        f for f in trails_geojson["features"]
+        if not f.get("properties", {}).get("isStub")
+    ]
+    stripped_stubs = pre_stub_count - len(trails_geojson["features"])
+    if stripped_stubs:
+        changed = True
+    if style == "subway":
+        from parallel_routes import apply_subway_style
+        added = apply_subway_style(trails_geojson)
+        if added:
+            print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
+            changed = True
+
     return changed
 
 

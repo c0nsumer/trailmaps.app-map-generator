@@ -126,6 +126,7 @@ KNOWN_KEYS = {
     "accent_color":                  str,
     "default_color_scheme":          str,
     "invert_logo_dark":              bool,
+    "parallel_routes_style":         str,
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
@@ -171,6 +172,11 @@ BUILD_ONLY_KEYS = {
     "trailheads",
     # Build output destination
     "output_dir",
+    # Subway-style parallel-route smoothing — applied during
+    # _enrich_trails_geojson at build time. The output trails.geojson
+    # carries the result; the runtime reads the same geojson shape
+    # regardless of mode and doesn't need to know about this gate.
+    "parallel_routes_style",
 }
 
 # Keys whose YAML name doesn't match a CONFIG_SPEC entry directly because
@@ -193,6 +199,7 @@ VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
+VALID_PARALLEL_ROUTES_STYLES = {"default", "subway"}
 VALID_DAYS = {"sunday", "monday", "tuesday", "wednesday",
               "thursday", "friday", "saturday",
               # Parity tokens: reverse on even or odd calendar dates
@@ -321,6 +328,12 @@ def _validate_enums(report, config):
         report.err("default_color_scheme",
                    f"must be one of {sorted(VALID_COLOR_SCHEMES)}, "
                    f"got {config['default_color_scheme']!r}")
+
+    if ("parallel_routes_style" in config
+            and config["parallel_routes_style"] not in VALID_PARALLEL_ROUTES_STYLES):
+        report.err("parallel_routes_style",
+                   f"must be one of {sorted(VALID_PARALLEL_ROUTES_STYLES)}, "
+                   f"got {config['parallel_routes_style']!r}")
 
     # (Historical note: an earlier draft cross-checked
     # show_route_elevation against show_terrain because the original

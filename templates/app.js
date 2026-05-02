@@ -3599,6 +3599,18 @@ function computeOffsetsAndFilter() {
     const features = routesData.features.map((f) => {
         const props = f.properties;
         const routeId = props.route_id;
+
+        // Subway-style transition micro-features (isStub: true,
+        // emitted by parallel_routes.apply_subway_style at build
+        // time) come with their offset_index pre-baked — a fractional
+        // value that interpolates between adjacent corridors' offsets.
+        // Recomputing from shared_routes would clobber that with 0
+        // (since their shared_routes is just [route_id]). Pass them
+        // through unchanged.
+        if (props.isStub === true) {
+            return f;
+        }
+
         const shared = props.shared_routes || [routeId];
 
         const visibleShared = shared
@@ -3613,7 +3625,13 @@ function computeOffsetsAndFilter() {
         }
 
         let geometry = f.geometry;
-        if (offsetIndex !== 0 && geometry.type === "LineString") {
+        // Apply Chaikin corner-cutting to ALL non-stub line features.
+        // The earlier gate (offsetIndex !== 0) produced a visual
+        // inconsistency where solo segments stayed sharp-cornered
+        // while shared segments got smoothed — most visible at the
+        // boundary between a shared corridor and the route's solo
+        // section. Smoothing everything keeps corners consistent.
+        if (geometry.type === "LineString" && geometry.coordinates.length >= 3) {
             geometry = {
                 ...geometry,
                 coordinates: smoothLine(geometry.coordinates),
