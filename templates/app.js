@@ -1332,12 +1332,12 @@ function fallbackCopyShareUrl(url) {
 
 // Reveal + wire up the Share button. Called from setupFloatingChrome
 // during boot. Does nothing when share_button: false at build time
-// (the section is stripped from index.html, button doesn't exist).
+// (the whole button is stripped from index.html before render, so
+// getElementById returns null and we early-return).
 function setupShareButton() {
-    const section = document.getElementById("sheet-share-section");
     const btn = document.getElementById("share-btn");
-    if (!section || !btn) return;
-    section.classList.remove("hidden");
+    if (!btn) return;
+    btn.classList.remove("hidden");
     btn.addEventListener("click", shareCurrentView);
 }
 
