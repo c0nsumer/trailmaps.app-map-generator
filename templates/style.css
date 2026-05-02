@@ -1835,12 +1835,14 @@ body {
 /* ============================================================
  * Floating chrome (Phase 3 of the UI v2 rework)
  *
- * The map fills the entire viewport. Three pieces of chrome float
- * over it:
- *   - #brand        top-left  : trail-system logo image or title text
- *   - #fab-stack    bottom-right : 3 round buttons (Options/Search/Locate)
- *   - .options-overlay  full-screen : settings, opens via Options FAB
- *   - .search-overlay   half-sheet  : search, opens via Search FAB
+ * The map fills the entire viewport. Pieces of chrome float over
+ * it, occupying corners:
+ *   - #brand              top-left     : logo or title text
+ *   - #fab-stack-top      top-right    : Locate + Options (vertical)
+ *   - #fab-stack-bottom   bottom-right : Search
+ *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
+ *   - .options-overlay    full-screen  : opens via Options FAB
+ *   - .search-overlay     half-sheet   : opens via Search FAB
  * ============================================================ */
 
 /* ----- Brand (top-left identity) ----------------------------------- */
@@ -1907,20 +1909,30 @@ body {
     white-space: nowrap;
 }
 
-/* ----- Floating button stack (bottom-right) ----------------------- */
-
+/* ----- Floating button stacks ------------------------------------- */
+/* Two corner-anchored vertical stacks on the right edge: top-right
+ * holds Locate + Options, bottom-right holds Search alone. Both
+ * keep the same 12 px corner inset as the brand element on the left.
+ * z-index sits ABOVE any open overlay (search z=6, options z=7) so
+ * FABs stay clickable while an overlay is up — required for
+ * switching from one overlay to the other by tapping the other
+ * FAB. Below the About modal (z-index 9 / 10) so About remains
+ * true-modal. */
 .fab-stack {
     position: fixed;
-    bottom: calc(12px + var(--safe-bottom));
     right: calc(12px + env(safe-area-inset-right, 0));
-    /* Above any open overlay (search z=6, options z=7) so FABs stay
-     * clickable while an overlay is up — required for switching from
-     * one overlay to the other by tapping the other FAB. Below the
-     * About modal (z-index 9 / 10) so About remains true-modal. */
     z-index: 8;
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.fab-stack-top {
+    top: calc(12px + var(--safe-top));
+}
+
+.fab-stack-bottom {
+    bottom: calc(12px + var(--safe-bottom));
 }
 
 .fab {

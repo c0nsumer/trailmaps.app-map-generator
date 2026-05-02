@@ -6851,17 +6851,23 @@ function updateLocationIndicator() {
     const h = canvas.clientHeight;
 
     // Inset rectangle the indicator is allowed to occupy. The bottom
-    // edge accounts for safe-area-inset-bottom (notch / home bar). The
-    // FAB stack at bottom-right is corner-localised so the standard
-    // 48px edgeMargin already keeps the indicator clear of it; no
-    // separate reserve needed. The brand at top-left + highlight chip
-    // at top-center are similarly handled by the same margin.
+    // edge accounts for safe-area-inset-bottom (notch / home bar).
+    // FAB stacks live at top-right (Locate + Options, ~118 px tall:
+    // 12 inset + 48 + 10 gap + 48) and bottom-right (Search alone,
+    // ~60 px tall). yTop is bumped to clear the taller top-right
+    // stack so the indicator never overlaps the buttons; yBottom +
+    // the standard edgeMargin handles the bottom-right Search FAB.
+    // The brand at top-left + highlight chip at top-center are
+    // similarly handled by the standard edge margin (none of those
+    // chrome pieces extend more than ~50 px from their edge).
     const cs = getComputedStyle(document.documentElement);
     const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
+    const safeTop = parseFloat(cs.getPropertyValue("--safe-top")) || 0;
     const edgeMargin = 48;
+    const topRightStackReserve = 130;  // 12 inset + 48 + 10 gap + 48 + 12 buffer
     const xLeft = edgeMargin;
     const xRight = w - edgeMargin;
-    const yTop = edgeMargin;
+    const yTop = safeTop + topRightStackReserve;
     const yBottom = h - safeBottom - edgeMargin;
 
     // Degenerate rectangle (canvas too short for the reserve) — skip.
