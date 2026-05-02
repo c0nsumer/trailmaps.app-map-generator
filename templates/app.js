@@ -4722,7 +4722,8 @@ function directionsLink(coords, directionsUrl) {
 }
 
 function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
-                            popupHtmlFn, popupMaxWidth, addToMap, targetArray }) {
+                            popupHtmlFn, popupMaxWidth, popupClass,
+                            addToMap, targetArray }) {
     const features = poisData.features.filter((f) => f.properties.poi_type === poiType);
     for (const feature of features) {
         const coords = feature.geometry.coordinates;
@@ -4753,6 +4754,17 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
                 maxWidth: popupMaxWidth,
                 closeButton: false,
                 focusAfterOpen: false,
+                // Per-type accent strip on the popup's left edge —
+                // colour comes from the per-type CSS variable
+                // (parking_color, trailhead_color). The class is
+                // added to the popup wrapper (.maplibregl-popup);
+                // see the popup-parking / popup-trailhead rules in
+                // style.css. Must be passed at construction
+                // (NOT via addClassName afterwards) because
+                // MapLibre creates the container lazily on first
+                // open — addClassName has no container to act on
+                // yet at construction time.
+                className: popupClass || "",
             }).setHTML(popupHtmlFn(props, coords));
             marker.setPopup(popup);
         }
@@ -4802,6 +4814,7 @@ function addParkingMarkers(addToMap) {
             return h;
         },
         popupMaxWidth: "220px",
+        popupClass: "popup-parking",
         addToMap,
         targetArray: parkingMarkers,
     });
@@ -4818,6 +4831,7 @@ function addTrailheadMarkers(addToMap) {
             return h;
         },
         popupMaxWidth: "220px",
+        popupClass: "popup-trailhead",
         addToMap,
         targetArray: trailheadMarkers,
     });

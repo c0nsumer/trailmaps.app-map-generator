@@ -35,6 +35,13 @@
     --input-bg: white;
     --pill-bg: #e3e3e3;
     --section-header-bg: #fafafa;
+    /* Popup body background — same as sheet in light mode (no
+     * change). In dark mode, overridden to a slightly lighter
+     * shade than --sheet-bg so popups read as a raised surface
+     * against the dark basemap (which has roughly the same
+     * luminance as --sheet-bg, causing them to blend without
+     * either an outline or an elevation cue). */
+    --popup-bg: var(--sheet-bg);
     /* Faint hairline outline for layer-swatch chips in Options.
      * Light scheme: dark line on a white-ish sheet. Dark scheme:
      * light line on a dark sheet. Both hover at low opacity so the
@@ -112,6 +119,8 @@
     --input-bg: #1c1c1e;
     --pill-bg: #3a3a3c;
     --section-header-bg: #2c2c2e;
+    /* Popup raised-surface override — Material elevation pattern. */
+    --popup-bg: #2c2c2e;
     /* Light hairline against the dark sheet so chips have a visible
      * edge in dark mode (the dark-line variant from the light scheme
      * disappears against the dark sheet). */
@@ -1504,21 +1513,94 @@ body {
 }
 
 /* ----- Popups ------------------------------------------------------ */
+/* Popup wrapper — shadow lives here (not on .content) so it
+ * follows the COMBINED silhouette of body + tip as a single
+ * shape. With the shadow on .content alone, the tip cast no
+ * shadow of its own and the body's edge "ended" abruptly at
+ * the tip's connection point, looking visually broken. Using
+ * filter: drop-shadow on the wrapper paints one continuous
+ * shadow around the rectangle-plus-triangle outline. */
+.maplibregl-popup {
+    filter: drop-shadow(0 3px 12px var(--sheet-shadow));
+}
+
 .maplibregl-popup-content {
     font-family: inherit;
     font-size: 13px;
     padding: 8px 14px 10px 14px;
     border-radius: 8px;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
-    background: var(--sheet-bg);
+    background: var(--popup-bg);
     color: var(--sheet-text);
+    /* Pseudo-element accent strip needs a positioned ancestor + a
+     * clip boundary so the strip respects the popup's rounded
+     * corners. */
+    position: relative;
+    overflow: hidden;
 }
 
-.maplibregl-popup-tip {
-    /* MapLibre paints the tip as a triangle with border-top-color
-     * on bottom-anchored popups (the common case for our markers).
-     * Match the popup body so the tip blends seamlessly. */
-    border-top-color: var(--sheet-bg);
+/* Type-coded accent strip on the left edge — visually links the
+ * popup back to its marker. 4 px wide, full body height. Uses the
+ * same per-type CSS variables that drive marker fill, so curator
+ * colour overrides (parking_color, trailhead_color) cascade
+ * automatically. The popup-parking / popup-trailhead class is
+ * added to the OUTER wrapper (.maplibregl-popup) by MapLibre's
+ * Popup.addClassName() — that's why the selectors below pair the
+ * wrapper class with a descendant .maplibregl-popup-content. */
+.maplibregl-popup.popup-parking .maplibregl-popup-content::before,
+.maplibregl-popup.popup-trailhead .maplibregl-popup-content::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 4px;
+}
+
+.maplibregl-popup.popup-parking .maplibregl-popup-content::before {
+    background: var(--parking-color, #2980b9);
+}
+
+.maplibregl-popup.popup-trailhead .maplibregl-popup-content::before {
+    background: var(--trailhead-color, #27ae60);
+}
+
+/* Bump left padding by the strip's width so text doesn't sit on
+ * top of the colored bar. Only applies to popups that actually
+ * have a strip; default popups keep their original 14 px padding. */
+.maplibregl-popup.popup-parking .maplibregl-popup-content,
+.maplibregl-popup.popup-trailhead .maplibregl-popup-content {
+    padding-left: 18px;
+}
+
+/* Popup tip — the triangle pointing from the popup body to its
+ * anchor point. MapLibre's vendor CSS hardcodes border colors per
+ * anchor position with two-class specificity (e.g.
+ * `.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-
+ * top-color: #fff }`), which beats a bare `.maplibregl-popup-tip`
+ * override. We mirror MapLibre's selector shape here so the tip
+ * picks up `var(--sheet-bg)` regardless of which side of the
+ * marker the popup landed on (and therefore adapts to dark mode
+ * the same way the popup body does). Each anchor uses a different
+ * border-side to form its triangle, so each rule sets the right
+ * one. */
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: var(--popup-bg);
+}
+
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: var(--popup-bg);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: var(--popup-bg);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: var(--popup-bg);
 }
 
 .maplibregl-popup-close-button {
