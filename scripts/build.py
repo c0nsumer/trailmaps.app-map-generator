@@ -1571,6 +1571,15 @@ def copy_templates(config, output_dir, trails_geojson):
                 "s=matchMedia(\"(prefers-color-scheme: dark)\").matches?\"dark\":\"light\";"
                 "}"
                 "document.documentElement.setAttribute(\"data-color-scheme\",s);"
+                # Sync the meta theme-color tag in the same pass so
+                # the Android Chrome PWA status bar paints the right
+                # colour on first frame (the static value in the
+                # template is just a fallback; without this update,
+                # a dark-mode PWA would show a light status bar
+                # until applyColorScheme runs much later in app.js).
+                "var m=document.querySelector('meta[name=\"theme-color\"]');"
+                "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
+                "m.setAttribute('content',s===\"dark\"?\"#1c1c1e\":\"#ffffff\");"
                 "}catch(e){}"
                 "})();"
                 "</script>"

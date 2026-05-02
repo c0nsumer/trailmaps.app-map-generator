@@ -156,6 +156,7 @@ function applyColorScheme(rawScheme) {
     }
     if (resolved !== "light" && resolved !== "dark") resolved = "light";
     document.documentElement.setAttribute("data-color-scheme", resolved);
+    updateThemeColorMeta(resolved);
 
     // Rebuild basemap layers via the existing helper that's already
     // careful to preserve trail/decoration/highlight overlays. A
@@ -166,6 +167,26 @@ function applyColorScheme(rawScheme) {
     // and stitches the overlays back in via setStyle({diff: true}).
     // It also re-registers icons and re-applies map paint tokens.
     if (map) rebuildBasemapLayers();
+}
+
+// Sync the <meta name="theme-color"> tag with the current scheme so
+// installed-PWA mode on Android (and any other UA that paints
+// browser chrome from theme-color) flips its status bar between
+// the light and dark sheet backgrounds. The static value in
+// index.html is just the boot-time default; once app.js runs we
+// own the value and update it on every applyColorScheme call.
+function updateThemeColorMeta(resolved) {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+        meta = document.createElement("meta");
+        meta.setAttribute("name", "theme-color");
+        document.head.appendChild(meta);
+    }
+    // Match the chrome surface the rider's status bar will sit
+    // against. These hex values are the resolved colors of the
+    // --sheet-bg token (rgba alpha not allowed in theme-color, so
+    // we use the equivalent opaque hex).
+    meta.setAttribute("content", resolved === "dark" ? "#1c1c1e" : "#ffffff");
 }
 
 // Wire the OS prefers-color-scheme listener. Only takes effect when
@@ -6860,22 +6881,17 @@ function updateLocationIndicator() {
 
     // Inset rectangle the indicator is allowed to occupy. The bottom
     // edge accounts for safe-area-inset-bottom (notch / home bar).
-    // FAB stacks live at top-right (Locate + Options, ~118 px tall:
-    // 12 inset + 48 + 10 gap + 48) and bottom-right (Search alone,
-    // ~60 px tall). yTop is bumped to clear the taller top-right
-    // stack so the indicator never overlaps the buttons; yBottom +
-    // the standard edgeMargin handles the bottom-right Search FAB.
-    // The brand at top-left + highlight chip at top-center are
-    // similarly handled by the standard edge margin (none of those
-    // chrome pieces extend more than ~50 px from their edge).
+    // The FAB stack at bottom-right is corner-localised so the
+    // standard 48px edgeMargin already keeps the indicator clear of
+    // it; no separate reserve needed. The brand at top-left and the
+    // highlight chip at top-center are similarly handled by the same
+    // margin.
     const cs = getComputedStyle(document.documentElement);
     const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
-    const safeTop = parseFloat(cs.getPropertyValue("--safe-top")) || 0;
     const edgeMargin = 48;
-    const topRightStackReserve = 130;  // 12 inset + 48 + 10 gap + 48 + 12 buffer
     const xLeft = edgeMargin;
     const xRight = w - edgeMargin;
-    const yTop = safeTop + topRightStackReserve;
+    const yTop = edgeMargin;
     const yBottom = h - safeBottom - edgeMargin;
 
     // Degenerate rectangle (canvas too short for the reserve) — skip.

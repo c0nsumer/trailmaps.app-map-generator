@@ -1837,8 +1837,9 @@ body {
  * The map fills the entire viewport. Pieces of chrome float over
  * it, occupying corners:
  *   - #brand              top-left     : logo or title text
- *   - #fab-stack-top      top-right    : Locate + Options (vertical)
- *   - #fab-stack-bottom   bottom-right : Search
+ *   - #fab-stack          bottom-right : Locate / Options / Search
+ *                                        (top → bottom; Search
+ *                                        closest to one-handed thumb)
  *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
  *   - .options-overlay    full-screen  : opens via Options FAB
  *   - .search-overlay     half-sheet   : opens via Search FAB
@@ -1908,10 +1909,10 @@ body {
     white-space: nowrap;
 }
 
-/* ----- Floating button stacks ------------------------------------- */
-/* Two corner-anchored vertical stacks on the right edge: top-right
- * holds Locate + Options, bottom-right holds Search alone. Both
- * keep the same 12 px corner inset as the brand element on the left.
+/* ----- Floating button stack (bottom-right) ----------------------- */
+/* Single corner-anchored vertical stack with Locate / Options /
+ * Search top-to-bottom, Search closest to a one-handed thumb. Same
+ * 12 px corner inset as the brand element on the left.
  * z-index sits ABOVE any open overlay (search z=6, options z=7) so
  * FABs stay clickable while an overlay is up — required for
  * switching from one overlay to the other by tapping the other
@@ -1919,19 +1920,12 @@ body {
  * true-modal. */
 .fab-stack {
     position: fixed;
+    bottom: calc(12px + var(--safe-bottom));
     right: calc(12px + env(safe-area-inset-right, 0));
     z-index: 8;
     display: flex;
     flex-direction: column;
     gap: 10px;
-}
-
-.fab-stack-top {
-    top: calc(12px + var(--safe-top));
-}
-
-.fab-stack-bottom {
-    bottom: calc(12px + var(--safe-bottom));
 }
 
 .fab {
