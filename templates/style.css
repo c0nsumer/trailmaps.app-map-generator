@@ -1967,6 +1967,11 @@ body {
     padding: 0;
     transition: background 0.12s, transform 0.06s;
     -webkit-tap-highlight-color: transparent;
+    /* Positioning context for ::after pseudo-elements (e.g. the
+     * locate-state-disabled red strike). Without this, abs-positioned
+     * descendants resolve against the .fab-stack ancestor and the
+     * strike lands centred on the whole stack, not on the FAB. */
+    position: relative;
 }
 
 .fab:hover {
