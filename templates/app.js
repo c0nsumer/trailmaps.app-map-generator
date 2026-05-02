@@ -4048,14 +4048,15 @@ function highlightPoi(p) {
 // highlightPoiSet which fits bounds + draws a persistent ring on
 // each member. No popups (would be visually noisy with multiple
 // overlapping cards); the rider can tap an individual marker for
-// details, or read the chip ("Toilets × 3") for the count.
+// details, or read the chip ("Toilets (× 3)") for the count.
 function highlightPoiGroup(group) {
     if (!group || !group.members || !group.members.length) return;
-    // Mirror the row's display: the "(All)" suffix appears in the
-    // chip when the group is a category aggregate, so the chip and
-    // the row the rider tapped read identically.
-    const suffix = group.isCategoryAll ? " (All)" : "";
-    const label = `${group.name}${suffix} × ${group.count}`;
+    // "Toilets (× 4)" rather than "Toilets × 4" — the parenthetical
+    // count reads as "Toilets — 4 of them" rather than "Toilets
+    // multiplied by 4". The earlier "(All)" suffix on category
+    // aggregates is gone — the count IS the aggregate signal, no
+    // need to also flag the row as "All".
+    const label = `${group.name} (× ${group.count})`;
     highlightPoiSet(group.members, label);
 }
 
@@ -4407,16 +4408,12 @@ function highlightPoiSet(pois, label) {
 
     // Highlight chip — re-uses the existing chip element. Yellow
     // swatch matches the inner ring color so the visual link
-    // between chip and on-map highlights is obvious. The "hidden
-    // in Options" note appears when the highlight forced any
-    // toggle-hidden types back on, so the rider knows why those
-    // markers are visible (and that clearing the highlight will
-    // restore the toggle-driven visibility).
+    // between chip and on-map highlights is obvious.
     showHighlightChip({
         label,
         color: "#FFEC00",
         stats: "",
-        note: _forcedPoiTypes.size > 0 ? "hidden in Options" : "",
+        note: "",
     });
 }
 
@@ -4612,9 +4609,8 @@ function buildPoiIndex() {
         // For empty names we synthesize something searchable. Track
         // whether the name was synthesized so groupPoisForFinder can
         // suppress the "unnamed cluster" row when a category-group
-        // covers it (otherwise the rider sees two same-labelled rows
-        // with no way to tell them apart — see Toilets (All) × N
-        // pattern below).
+        // covers it (otherwise the rider sees two same-labelled
+        // "Toilets (× N)" rows with no way to tell them apart).
         let name = props.name || "";
         let synthesized = false;
         if (!name && type === "trail_marker") {
@@ -6001,7 +5997,7 @@ function groupPoisByName(pois) {
 //      duplicates by (type, name) as before.
 //
 // Empty query → every type gets the category treatment (so the
-// blank-search overlay surfaces "Parking (All) × 5" + lots, etc.,
+// blank-search overlay surfaces "Parking (× 5)" + lots, etc.,
 // giving zero-keystroke access to category-level highlighting).
 function groupPoisForFinder(matchedPois, query) {
     const q = (query || "").toLowerCase().trim();
@@ -6055,17 +6051,9 @@ function groupPoisForFinder(matchedPois, query) {
             // amenities like toilets / drinking water). The lone
             // name-group already represents the whole category;
             // adding a sibling category row above it would be
-            // visual duplication. Push the name-group, but if
-            // every member is synthesized (the cluster is the
-            // category aggregate, not a real shared name), tag it
-            // with isCategoryAll so it visually carries the same
-            // "(All)" marker the explicit category rows get below.
-            // A real-name group like "Fountain × 2" stays plain.
-            const lone = namedGroups[0];
-            if (lone.isGroup && lone.members.every((m) => m.synthesized)) {
-                lone.isCategoryAll = true;
-            }
-            out.push(lone);
+            // visual duplication. Just push the lone group — its
+            // "(× N)" count makes the aggregate nature clear.
+            out.push(namedGroups[0]);
         } else if (members.length === 1) {
             // Single POI of this type, period. No group needed —
             // just show the row as itself. (Edge case: same as
@@ -6074,16 +6062,13 @@ function groupPoisForFinder(matchedPois, query) {
             out.push(members[0]);
         } else {
             // 2+ name-groups for this type. Push a category-level
-            // "× N" row first, then the individual name-grouped
-            // rows below it. isCategoryAll is the flag the row
-            // renderer + chip use to append a styled "(All)"
-            // suffix — it lives outside the data field so the
-            // search matcher (which compares against `name`) doesn't
-            // try to match the literal string "(All)".
+            // "(× N)" row first, then the individual name-grouped
+            // rows below it. The category row's count reads as
+            // "all of them" to the rider; no need for a separate
+            // "(All)" decoration.
             const baseName = POI_TYPE_FALLBACK_NAME[type] || type;
             out.push({
                 isGroup: true,
-                isCategoryAll: true,
                 uid: `category:${type}`,
                 type,
                 name: baseName,
@@ -6242,27 +6227,16 @@ function makePoiRow(p) {
     name.textContent = p.name;
     row.appendChild(name);
 
-    // "(All)" suffix for category-aggregate rows. Rendered as a
-    // separate styled span (muted, not part of the name text) so
-    // the search matcher only sees the base name — typing "(All)"
-    // wouldn't have surfaced these rows when the suffix lived in
-    // the name field, which read as a quirk.
-    if (p.isCategoryAll) {
-        const all = document.createElement("span");
-        all.className = "finder-row-all";
-        all.textContent = "(All)";
-        all.setAttribute("aria-hidden", "true");
-        row.appendChild(all);
-    }
-
     // Meta line: type label, plus a count badge for groups so the
-    // rider sees "TOILETS × 5" instead of just "TOILETS" — makes it
-    // obvious that the row represents multiple POIs.
+    // rider sees "toilets (× 5)" instead of just "toilets" — makes
+    // it obvious the row represents multiple POIs. The earlier
+    // "(All)" decoration on category-aggregate rows is gone — the
+    // "(× N)" count IS the aggregate signal.
     const meta = document.createElement("span");
     meta.className = "finder-row-meta";
     const typeLabel = POI_TYPE_META_LABEL[p.type] || p.type;
     meta.textContent = p.isGroup
-        ? `${typeLabel} × ${p.count}`
+        ? `${typeLabel} (× ${p.count})`
         : typeLabel;
     row.appendChild(meta);
 

@@ -1061,20 +1061,6 @@ body {
     white-space: nowrap;
 }
 
-/* "(All)" suffix on category-aggregate rows. Sits right after the
- * name span — same baseline, slightly smaller and muted so it
- * reads as a qualifier rather than part of the name itself.
- * Doesn't shrink (the name truncates first if space is tight) so
- * the suffix remains visible. flex-shrink: 0 + small left margin
- * to separate from the truncated name. */
-.finder-row-all {
-    flex: 0 0 auto;
-    margin-left: 4px;
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--sheet-text-muted);
-}
-
 /* Make the route name flex-grow so the stats span gets right-aligned
    on the row. min-width: 0 lets the ellipsis kick in for long route
    names instead of pushing the stats off-screen. Only applies when
