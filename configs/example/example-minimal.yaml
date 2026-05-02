@@ -56,7 +56,6 @@ root_relation_id: 12345678
 # --- Per-route style overrides ---
 # color_by: relation
 # default_trail_color: "#808080"
-# parallel_routes_style: default   # default / subway
 # dashed_relations: {}
 # relation_colors: {}
 # default_direction_schedule: {}

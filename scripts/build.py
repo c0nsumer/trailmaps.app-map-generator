@@ -964,15 +964,13 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         routes[cid] = info
         changed = True
 
-    # ----- Subway-style parallel-route smoothing (opt-in) -----
+    # ----- Subway-style parallel-route smoothing (always on) -----
     # Runs LAST so custom routes are included in the junction analysis.
     # Idempotent: strips prior stub features (isStub: true) AND
     # restores any host corridors whose first vertex was truncated by
-    # a previous subway-style pass. Without the restore, re-runs (or
-    # toggling the style off after a previous on-build) would leave
-    # the truncation baked in; with it, every build starts from the
-    # canonical fetched geometry.
-    style = config.get("parallel_routes_style", "default")
+    # a previous subway-style pass. Without the restore, re-runs would
+    # leave the truncation baked in; with it, every build starts from
+    # the canonical fetched geometry.
     pre_stub_count = len(trails_geojson["features"])
     trails_geojson["features"] = [
         f for f in trails_geojson["features"]
@@ -982,9 +980,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     if stripped_stubs:
         changed = True
     # Restore any prior subway-style truncations so re-runs don't
-    # compound (and so toggling style off restores the canonical
-    # geometry). apply_subway_style stashes the original first
-    # vertex in _subwayOriginalCoord0 when it truncates.
+    # compound. apply_subway_style stashes the original first vertex
+    # in _subwayOriginalCoord0 when it truncates.
     for feat in trails_geojson["features"]:
         geom = feat.get("geometry", {}) or {}
         if geom.get("type") != "LineString":
@@ -995,12 +992,11 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
             geom["coordinates"][0] = list(orig)
             del props["_subwayOriginalCoord0"]
             changed = True
-    if style == "subway":
-        from parallel_routes import apply_subway_style
-        added = apply_subway_style(trails_geojson)
-        if added:
-            print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
-            changed = True
+    from parallel_routes import apply_subway_style
+    added = apply_subway_style(trails_geojson)
+    if added:
+        print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
+        changed = True
 
     return changed
 
