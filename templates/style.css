@@ -1837,12 +1837,15 @@ body {
  * The map fills the entire viewport. Pieces of chrome float over
  * it, occupying corners:
  *   - #brand              top-left     : logo or title text
- *   - #fab-stack          bottom-right : Locate / Options / Search
- *                                        (top → bottom; Search
- *                                        closest to one-handed thumb)
+ *   - #fab-stack-top      top-right    : Locate (corner) + Options
+ *   - #fab-stack-bottom   bottom-right : Search (one-handed thumb)
  *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
  *   - .options-overlay    full-screen  : opens via Options FAB
  *   - .search-overlay     half-sheet   : opens via Search FAB
+ *
+ * FAB stacks sit BELOW open overlays in the z-stack so the overlay
+ * panel cleanly covers them at the same corner — see .fab-stack
+ * below for the full reasoning.
  * ============================================================ */
 
 /* ----- Brand (top-left identity) ----------------------------------- */
@@ -1909,23 +1912,49 @@ body {
     white-space: nowrap;
 }
 
-/* ----- Floating button stack (bottom-right) ----------------------- */
-/* Single corner-anchored vertical stack with Locate / Options /
- * Search top-to-bottom, Search closest to a one-handed thumb. Same
- * 12 px corner inset as the brand element on the left.
- * z-index sits ABOVE any open overlay (search z=6, options z=7) so
- * FABs stay clickable while an overlay is up — required for
- * switching from one overlay to the other by tapping the other
- * FAB. Below the About modal (z-index 9 / 10) so About remains
- * true-modal. */
+/* ----- Floating button stacks (split: top-right + bottom-right) --- */
+/* Two corner-anchored vertical stacks. Top-right holds Locate
+ * (corner) + Options. Bottom-right holds Search alone, where a
+ * one-handed thumb naturally rests. Same 12 px corner inset as the
+ * brand element on the left.
+ *
+ * z-index sits BELOW any open overlay (search z=6, options z=7) so
+ * the overlay panel and its close-X cleanly cover the FABs at the
+ * same corner — no visual overlap at the close button. Trade-off:
+ * cross-FAB switching (tap the other FAB while one overlay is open)
+ * doesn't work because the FAB is hidden behind the overlay; rider
+ * closes the current overlay first, then taps the other FAB.
+ *
+ * Below the About modal (z-index 9 / 10) so About remains true-modal. */
 .fab-stack {
     position: fixed;
-    bottom: calc(12px + var(--safe-bottom));
     right: calc(12px + env(safe-area-inset-right, 0));
-    z-index: 8;
+    z-index: 5;
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.fab-stack-top {
+    top: calc(12px + var(--safe-top));
+}
+
+.fab-stack-bottom {
+    bottom: calc(12px + var(--safe-bottom));
+}
+
+/* Hide FAB stacks when ANY overlay is open. Without this, the
+ * top-right stack stays visible through the search-overlay dim
+ * (the dim is only 32% opaque) — the FABs would look interactive
+ * but tapping them dismisses the overlay instead of activating
+ * the FAB, which is confusing. Hiding them clarifies the modal
+ * relationship: while an overlay is up, the FABs are not the
+ * active control surface; close the overlay to get them back. */
+body:has(.search-overlay.is-open) .fab-stack,
+body:has(.options-overlay.is-open) .fab-stack {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-out;
 }
 
 .fab {
