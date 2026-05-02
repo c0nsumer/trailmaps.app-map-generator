@@ -3745,6 +3745,7 @@ function applyVisibilityChange() {
     updateTrailDisplay();
     updateMarkerProximity();
     rebuildFinderList();
+    pruneInvisibleHighlights();
     // If the highlighted entity is no longer visible, clear it.
     if (highlight) {
         if (highlight.kind === "route" && !visibleRoutes.has(highlight.key)) {
@@ -4126,6 +4127,26 @@ const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
 function _isPoiCurrentlyVisible(p) {
     const m = findPoiMarker(p);
     return !!(m && m._map);
+}
+
+// Drop POIs from the active highlight set if their markers have
+// been hidden since the highlight was set. Called whenever something
+// changes marker mount state (POI toggle flipped, route visibility
+// changed, etc.). If every highlighted POI is now hidden, clear the
+// highlight entirely; if some remain visible, re-render with just
+// those (chip label intentionally not updated — the rider's mental
+// model is "I highlighted Toilets × 4", and 3-of-4 still being on
+// the map is a degraded but coherent state).
+function pruneInvisibleHighlights() {
+    if (_highlightedPois.length === 0) return;
+    const stillVisible = _highlightedPois.filter(_isPoiCurrentlyVisible);
+    if (stillVisible.length === _highlightedPois.length) return;
+    if (stillVisible.length === 0) {
+        clearPoiHighlight();  // also hides the chip
+    } else {
+        _highlightedPois = stillVisible;
+        setPoiHighlightData(_highlightedPois);
+    }
 }
 
 function ensurePoiHighlightLayers() {
@@ -5195,6 +5216,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
 
     // Features — proximity-filtered.
@@ -5208,6 +5230,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
 
     // Parking / trailheads — always shown when on (no proximity
@@ -5222,6 +5245,7 @@ function setupFloatingChrome() {
         invalidateObstaclesCache();
         updateDecorationsSource();
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads",
             isDefaultVisible("trailheads"), (on) => {
@@ -5232,6 +5256,7 @@ function setupFloatingChrome() {
         invalidateObstaclesCache();
         updateDecorationsSource();
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
 
     // Toilets + drinking water — proximity-filtered (500 m threshold,
@@ -5248,6 +5273,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
             isDefaultVisible("drinking_water"), (on) => {
@@ -5259,6 +5285,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         rebuildFinderList();
+        pruneInvisibleHighlights();
     });
 
     // Difficulty — drives the decor-diamond layer. Uses the shared
