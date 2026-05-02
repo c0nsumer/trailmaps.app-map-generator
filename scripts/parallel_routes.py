@@ -29,13 +29,15 @@ Why it has to be N micro-features and not a single stub:
   scalar — to interpolate the offset along a trail we need separate
   features each with their own constant offset.
 
+To prevent the corridor B's main rendering from doubling-up with the
+transition zone, the host corridor's first vertex is replaced with
+the transition zone's endpoint. The micro-features REPLACE that
+~10 m section of B's geometry instead of overlaying it. The original
+first vertex is stashed in `_subwayOriginalCoord0` so re-runs
+(idempotency) and toggle-off restoration both work cleanly — see
+the restore step in build.py's _enrich_trails_geojson.
+
 Caveats:
-- The transition zone overlays corridor B's first ~10m. Both render
-  in that area: the micro-features fade from offset_a to offset_b
-  while corridor B's main rendering is at offset_b throughout.
-  Visually the eye sees corridor A's line "extending" into the
-  junction zone and gradually merging with corridor B. Intentional —
-  this IS the smooth merge.
 - We do NOT walk past corridor B's first vertex. The transition zone
   is capped to 80% of the first segment's length so we never have
   to traverse multiple OSM ways. Trails with very short first
@@ -214,6 +216,10 @@ def apply_subway_style(trails_geojson):
         by_route.setdefault(rid, []).append(feat)
 
     new_micro_features = []
+    # (route_id, feature_index) → endpoint to truncate the host's
+    # first vertex to. Filled during the per-junction walk below;
+    # applied after the loop so each host is truncated at most once.
+    truncations = {}
 
     for rid, route_features in by_route.items():
         # Index endpoints by node coordinate so we can find pairs
@@ -367,6 +373,35 @@ def apply_subway_style(trails_geojson):
                             },
                         }
                         new_micro_features.append(micro)
+
+                    # Mark the host's first vertex for truncation —
+                    # the transition zone REPLACES the host's first
+                    # span_m of geometry instead of overlaying it.
+                    # Without this, corridor B's main rendering would
+                    # double-up with the transition zone for that
+                    # first ~10 m, creating visible "wavy thickening"
+                    # at the junction (the v1 artefact this fix
+                    # addresses).
+                    #
+                    # If the same host has multiple transitions on
+                    # the same start (rare Y-junction case), we keep
+                    # the FIRST recorded endpoint — they all sample
+                    # against the same first segment with the same
+                    # span_m, so the endpoint is identical anyway.
+                    truncation_key = (rid, f_idx_b if end_b == "start" else f_idx_a)
+                    if truncation_key not in truncations:
+                        truncations[truncation_key] = points[-1]
+
+    # Apply truncations. Stash the original first vertex in
+    # _subwayOriginalCoord0 so build.py's _enrich_trails_geojson can
+    # restore it on re-runs (and the truncation doesn't compound).
+    for (truncate_rid, host_idx), endpoint in truncations.items():
+        host_feat = by_route[truncate_rid][host_idx]
+        coords = host_feat["geometry"]["coordinates"]
+        props = host_feat.setdefault("properties", {})
+        if "_subwayOriginalCoord0" not in props:
+            props["_subwayOriginalCoord0"] = list(coords[0])
+        coords[0] = list(endpoint)
 
     if new_micro_features:
         features.extend(new_micro_features)

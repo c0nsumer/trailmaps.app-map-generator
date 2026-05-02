@@ -966,9 +966,12 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
 
     # ----- Subway-style parallel-route smoothing (opt-in) -----
     # Runs LAST so custom routes are included in the junction analysis.
-    # Idempotent: strips prior stub features (isStub: true) before
-    # re-emitting. The toggle is build-only — runtime reads the same
-    # geojson shape regardless.
+    # Idempotent: strips prior stub features (isStub: true) AND
+    # restores any host corridors whose first vertex was truncated by
+    # a previous subway-style pass. Without the restore, re-runs (or
+    # toggling the style off after a previous on-build) would leave
+    # the truncation baked in; with it, every build starts from the
+    # canonical fetched geometry.
     style = config.get("parallel_routes_style", "default")
     pre_stub_count = len(trails_geojson["features"])
     trails_geojson["features"] = [
@@ -978,6 +981,20 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     stripped_stubs = pre_stub_count - len(trails_geojson["features"])
     if stripped_stubs:
         changed = True
+    # Restore any prior subway-style truncations so re-runs don't
+    # compound (and so toggling style off restores the canonical
+    # geometry). apply_subway_style stashes the original first
+    # vertex in _subwayOriginalCoord0 when it truncates.
+    for feat in trails_geojson["features"]:
+        geom = feat.get("geometry", {}) or {}
+        if geom.get("type") != "LineString":
+            continue
+        props = feat.get("properties", {}) or {}
+        orig = props.get("_subwayOriginalCoord0")
+        if orig is not None:
+            geom["coordinates"][0] = list(orig)
+            del props["_subwayOriginalCoord0"]
+            changed = True
     if style == "subway":
         from parallel_routes import apply_subway_style
         added = apply_subway_style(trails_geojson)
