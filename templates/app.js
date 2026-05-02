@@ -4124,8 +4124,18 @@ const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
 // on themselves (the toggle handler drops us from the set in that
 // case so we don't yank their markers afterwards)."
 let _forcedPoiTypes = new Set();
+// Subset of _forcedPoiTypes whose force-mount was triggered by a
+// toggle being OFF (vs by the proximity filter hiding individual
+// markers when the toggle is on). Drives the chip note: "hidden in
+// Options" only applies when the rider explicitly turned the type
+// off — proximity-filtered hides aren't an Options choice.
+let _forcedToggleOffTypes = new Set();
 
-const _PROXIMITY_TYPES = new Set(["trail_marker", "feature"]);
+// POI types whose markers can be hidden by the proximity filter
+// (distanceToVisibleTrails > threshold). These types need
+// updateMarkerProximity() on unforce to restore the correct mount
+// state; non-proximity types just unmount everything.
+const _PROXIMITY_TYPES = new Set(["trail_marker", "feature", "toilet", "drinking_water"]);
 
 function _markerArrayForType(type) {
     switch (type) {
@@ -4151,44 +4161,56 @@ function _lsKeyForType(type) {
     return null;
 }
 
-// Mount all markers of a type if the rider's toggle is currently
-// off. No-op if the toggle is on (markers already on the map) or
-// if we've already force-mounted this type for the current
-// highlight.
+// Mount all markers of a type so a highlight has visible markers
+// underneath the rings, regardless of whether they'd been hidden
+// by (a) the rider toggling the type off, or (b) the proximity
+// filter dropping individual markers that sit too far from any
+// visible trail. No-op if we've already force-mounted this type
+// for the current highlight, OR if the toggle is on AND the type
+// isn't proximity-filtered (the markers are already mounted, so
+// there's nothing to do).
 function _forcePoiType(type) {
     if (_forcedPoiTypes.has(type)) return;
     const lsKey = _lsKeyForType(type);
     if (!lsKey) return;
     const isOn = LS.get(lsKey, true);
-    if (isOn) return;
+    const isProximityFiltered = _PROXIMITY_TYPES.has(type);
+    if (isOn && !isProximityFiltered) return;
     const arr = _markerArrayForType(type);
     if (!arr) return;
     for (const m of arr) m.addTo(map);
     _forcedPoiTypes.add(type);
+    if (!isOn) _forcedToggleOffTypes.add(type);
     invalidateObstaclesCache();
     if (map && map.getSource("trail-decorations")) {
         updateDecorationsSource();
     }
 }
 
-// Roll back a previously force-mounted type. For non-proximity
-// types this just unmounts everything (the toggle is still off,
-// so that's the correct end state). For proximity-filtered types
-// (trail markers, features) we hand off to updateMarkerProximity()
-// which respects both the toggle AND the proximity filter — so if
-// the toggle was flipped on during the highlight (and our delete
-// from _forcedPoiTypes was skipped somehow), the proximity gate
-// ends up at the right state regardless.
+// Roll back a previously force-mounted type. Behaviour depends on
+// the toggle state and whether the type is proximity-filtered:
+//   - toggle OFF: unmount all markers (toggle's the source of
+//     truth, so back to fully hidden).
+//   - toggle ON + proximity-filtered: defer to
+//     updateMarkerProximity() to remove markers that the proximity
+//     gate would hide while keeping the in-range ones mounted.
+//   - toggle ON + not proximity-filtered: no-op. The markers were
+//     already mounted before we force-mounted (force was a no-op),
+//     and they should stay mounted now.
 function _unforcePoiType(type) {
     if (!_forcedPoiTypes.has(type)) return;
     _forcedPoiTypes.delete(type);
+    _forcedToggleOffTypes.delete(type);
     const arr = _markerArrayForType(type);
     if (!arr) return;
-    if (_PROXIMITY_TYPES.has(type)) {
-        updateMarkerProximity();
-    } else {
+    const lsKey = _lsKeyForType(type);
+    const isOn = lsKey ? LS.get(lsKey, true) : true;
+    if (!isOn) {
         for (const m of arr) m.remove();
+    } else if (_PROXIMITY_TYPES.has(type)) {
+        updateMarkerProximity();
     }
+    // toggle ON + not proximity-filtered → no-op
     invalidateObstaclesCache();
     if (map && map.getSource("trail-decorations")) {
         updateDecorationsSource();
@@ -4223,6 +4245,7 @@ function _reconcileForcedTypes(newTypes) {
 // highlight time.
 function _onPoiToggleChange(type) {
     _forcedPoiTypes.delete(type);
+    _forcedToggleOffTypes.delete(type);
     if (_highlightedPois.length > 0) {
         const types = new Set(_highlightedPois.map((p) => p.type));
         _reconcileForcedTypes(types);
@@ -4341,7 +4364,7 @@ function highlightPoiSet(pois, label) {
         label,
         color: "#FFEC00",
         stats: "",
-        note: _forcedPoiTypes.size > 0 ? "hidden in Options" : "",
+        note: _forcedToggleOffTypes.size > 0 ? "hidden in Options" : "",
     });
 }
 
@@ -4468,7 +4491,7 @@ function refreshChipNote() {
     if (!chip || chip.classList.contains("hidden")) return;
     const noteEl = chip.querySelector(".highlight-chip-note");
     if (!noteEl) return;
-    const note = _forcedPoiTypes.size > 0 ? "hidden in Options" : "";
+    const note = _forcedToggleOffTypes.size > 0 ? "hidden in Options" : "";
     if (note) {
         noteEl.textContent = note;
         noteEl.classList.remove("hidden");
