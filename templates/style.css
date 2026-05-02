@@ -1374,6 +1374,19 @@ body {
     color: var(--sheet-text) !important;
 }
 
+/* MapLibre's collapsed-attribution (i) button — when collapsed, the
+ * chip shows just this round button with a circle-i SVG inside.
+ * Vendor CSS embeds the SVG as a background-image with the path
+ * defaulting to black fill, which is fine on light mode but reads
+ * as a near-invisible dark glyph on the near-black popup chip in
+ * dark mode. Override the background-image with the same path but
+ * a light fill, so the (i) glyph stays readable. The path data is
+ * identical to vendor's, only the fill='%23f0f0f0' attribute is
+ * added to colour the glyph. */
+[data-color-scheme="dark"] .maplibregl-ctrl-attrib-button {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%23f0f0f0' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E");
+}
+
 /* ----- Feature markers --------------------------------------------- */
 /* ============================================================
  * On-map POI markers — base + per-type modifiers
