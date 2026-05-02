@@ -4122,8 +4122,9 @@ const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
 //     search index. The rider knows the category exists; this
 //     gives them a way to find a specific item without re-enabling
 //     the entire category. Selecting a toggle-hidden result
-//     force-mounts the type's markers (with a "hidden in Options"
-//     chip note) and clearing the highlight rolls them back.
+//     force-mounts the type's markers; clearing the highlight
+//     rolls them back to hidden. (No chip note — riders figure
+//     out the "marker disappears on dismiss" behaviour by trying.)
 //
 // Marker-mount detection (used by pruneInvisibleHighlights and
 // other paths) reads MapLibre's internal Marker._map reference,
@@ -4261,29 +4262,12 @@ function _reconcileForcedTypes(newTypes) {
 //       its types — covers "rider toggled off the type that's
 //       highlighted" by re-mounting via force-show, and "rider
 //       toggled on a force-mounted type" by no-op'ing (markers are
-//       now mounted by the toggle handler itself);
-//   (c) refresh the chip note so "hidden in Options" stays accurate.
+//       now mounted by the toggle handler itself).
 function _onPoiToggleChange(type) {
     _forcedPoiTypes.delete(type);
     if (_highlightedPois.length > 0) {
         const types = new Set(_highlightedPois.map((p) => p.type));
         _reconcileForcedTypes(types);
-    }
-    refreshChipNote();
-}
-
-function refreshChipNote() {
-    const chip = document.getElementById("highlight-chip");
-    if (!chip || chip.classList.contains("hidden")) return;
-    const noteEl = chip.querySelector(".highlight-chip-note");
-    if (!noteEl) return;
-    const note = _forcedPoiTypes.size > 0 ? "hidden in Options" : "";
-    if (note) {
-        noteEl.textContent = note;
-        noteEl.classList.remove("hidden");
-    } else {
-        noteEl.textContent = "";
-        noteEl.classList.add("hidden");
     }
 }
 
@@ -4513,10 +4497,8 @@ function showHighlightChip({ label, color, stats, note }) {
         }
     }
     // note is an optional second-line message under the label.
-    // Currently unused (POIs no longer surface a "hidden in Options"
-    // note since hidden POIs are excluded from search entirely).
-    // Kept in the API as a hook for future highlight types that
-    // might want a second-line annotation.
+    // Currently unused; kept in the API as a hook for future
+    // highlight types that might want a second-line annotation.
     if (noteEl) {
         if (note) {
             noteEl.textContent = note;
