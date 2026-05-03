@@ -215,12 +215,14 @@ root_relation_id: 12425503
 |-----|----------|---------|-------------|
 | `root_relation_id` | Yes | — | OSM relation ID anchoring this map. Either a super-relation (its child relations become routes) or a single route relation (used directly as the only route — for small parks with no super-relation wrapper). |
 | `osm_file` | No | — | Path to local `.osm` XML file; when set, uses this instead of the Overpass API |
-| `extra_relations` | No | `[]` | Additional OSM relation IDs to include that aren't children of the root super-relation |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g., rail trails) |
+| `extra_relations` | No | `[]` | Additional OSM relation IDs to include that aren't children of the root super-relation. **Each ID may be a leaf route relation OR a super-relation** — super-relations are auto-expanded into their child routes so you don't have to enumerate the children by hand (useful for combining two adjacent trail systems on one map). |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g., rail trails). Super-relations are auto-expanded the same way as `extra_relations`. |
 
 #### Route Buckets
 
 See [Route Buckets](#route-buckets) for how Summer / Winter / Emergency flags are computed from these lists plus OSM tags.
+
+Each list below accepts either leaf route relation IDs OR super-relation IDs. A super-relation in any of these keys propagates the bucket assignment to every child route (so listing one super-relation in `winter_relations` marks all its children as winter without enumerating them).
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|

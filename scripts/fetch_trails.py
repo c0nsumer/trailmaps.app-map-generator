@@ -31,14 +31,33 @@ def load_config(config_path):
     return config
 
 
+def _expand_through_supers(relation_ids, expansions):
+    """Replace any super-relation IDs in `relation_ids` with their
+    children, leaving leaf IDs alone. Returns a set."""
+    out = set()
+    for rid in relation_ids:
+        if rid in expansions:
+            out.update(expansions[rid])
+        else:
+            out.add(rid)
+    return out
+
+
 def _parse_relations(data):
-    """Parse relation elements from an Overpass response into a dict."""
+    """Parse relation elements from an Overpass response into a dict.
+
+    `members` is preserved on each entry (not just tags) so super-
+    relation expansion can identify type=relation member references.
+    The original Overpass `out tags;` directive omits members; the
+    caller must use `out body;` (or equivalent) to include them.
+    """
     relations = {}
     for element in data.get("elements", []):
         if element["type"] == "relation":
             tags = element.get("tags", {})
             relations[element["id"]] = {
                 "id": element["id"],
+                "members": element.get("members", []),
                 "name": tags.get("name", f"Route {element['id']}"),
                 "colour": tags.get("colour", "#808080"),
                 "ref": tags.get("ref", ""),
@@ -56,32 +75,79 @@ def fetch_all_relations(root_relation_id, extra_ids=None, clipped_ids=None, cach
     case, the root itself is dropped from the results (it has no ways);
     in the single-relation case, the root is returned as the sole member.
 
-    Returns (members, extras, clipped) — three dicts of relation info.
+    Each entry in `extra_ids` and `clipped_ids` may ALSO be a super-
+    relation. Super-relations in those lists expand to their child
+    routes the same way `root_relation_id` does — the parent itself
+    is dropped from the result, and its children take its slot in
+    `extras` / `clipped`. One level deep only (a super whose member
+    is itself a super treats the inner one as a leaf), mirroring the
+    root path. The expansion mapping is returned so the caller can
+    propagate per-list semantics (winter / summer / emergency
+    tagging) from the parent's config slot to its children.
+
+    Returns (members, extras, clipped, expansions) — three dicts of
+    relation info, plus expansions: {parent_id: [child_id, ...]} for
+    any IDs that were expanded.
     """
     extra_ids = extra_ids or []
     clipped_ids = clipped_ids or []
     additional_ids = list(extra_ids) + list(clipped_ids)
 
     # Build a single query that fetches the root + any child relations + extras
+    # Each additional ID gets `rel(r)` recursion too so super-relations expand.
     parts = [
         f"relation({root_relation_id});rel(r);",
     ]
     if additional_ids:
         parts.append(
-            ";".join(f"relation({rid})" for rid in additional_ids) + ";"
+            ";".join(
+                f"(relation({rid});rel(r);)"
+                for rid in additional_ids
+            ) + ";"
         )
 
+    # `out body;` instead of `out tags;` so member lists come back too.
+    # Super-relation detection below needs to see type=relation members.
+    # The size delta is small (members are 3 fields each) and we already
+    # cache the response.
     query = f"""
 [out:json][timeout:120];
 ({" ".join(parts)});
-out tags;
+out body;
 """
     data = overpass_query(query, cache_dir, label="relations", require_elements=True)
     all_rels = _parse_relations(data)
 
-    # Split results into the three groups
-    extra_set = set(extra_ids)
-    clipped_set = set(clipped_ids)
+    # Detect super-relations among the inputs. A super-relation has
+    # type=relation members that we ALSO fetched (via rel(r)). If a
+    # parent has no fetched relation children, it's treated as a leaf
+    # — same fallback the root path uses.
+    expansions = {}
+    for parent_id in additional_ids:
+        parent = all_rels.get(parent_id)
+        if not parent:
+            continue
+        child_ids = [
+            m["ref"] for m in parent["members"]
+            if m["type"] == "relation" and m["ref"] in all_rels
+        ]
+        if child_ids:
+            expansions[parent_id] = child_ids
+
+    # Build the resolved sets accounting for expansions: replace each
+    # super-parent with its children, leave leaves alone.
+    def _resolve(ids):
+        out = set()
+        for rid in ids:
+            if rid in expansions:
+                out.update(expansions[rid])
+            else:
+                out.add(rid)
+        return out
+
+    extra_set = _resolve(extra_ids)
+    clipped_set = _resolve(clipped_ids)
+    expanded_parents = set(expansions.keys())
 
     members = {}
     extras = {}
@@ -91,7 +157,11 @@ out tags;
         if rel_id == root_relation_id:
             root_info = info  # remember it; may use as sole member below
             continue
-        elif rel_id in clipped_set:
+        if rel_id in expanded_parents:
+            # Super-relation parent — drop. Its children carry the
+            # bucket assignment in extras/clipped already.
+            continue
+        if rel_id in clipped_set:
             clipped[rel_id] = info
         elif rel_id in extra_set:
             extras[rel_id] = info
@@ -102,7 +172,7 @@ out tags;
     if not members and root_info is not None:
         members[root_relation_id] = root_info
 
-    return members, extras, clipped
+    return members, extras, clipped, expansions
 
 
 def fetch_all_ways_bulk(relation_ids, cache_dir=None):
@@ -549,6 +619,17 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     else:
         print(f"Fetching trails for {config['name']} (relation {root_relation_id})...")
 
+    # Tracks any super-relation IDs that get expanded during fetch.
+    # Both code paths populate this; it's persisted to trails.geojson
+    # metadata so build.py can apply the same expansion when computing
+    # winter / summer / emergency bucket flags from the config.
+    super_relation_expansions = {}
+
+    def _log_expansions(label, expansions):
+        for parent_id, child_ids in sorted(expansions.items()):
+            print(f"    {label}: super-relation {parent_id} → "
+                  f"{len(child_ids)} child route(s)")
+
     if osm_file:
         from osm_parser import parse_osm_file, extract_relations, extract_extra_relations, extract_ways
         if not os.path.isabs(osm_file):
@@ -566,7 +647,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
         if extra_relation_ids:
             print(f"  Loading {len(extra_relation_ids)} extra relations...")
-            extra = extract_extra_relations(parsed, extra_relation_ids)
+            extra, extra_expansions = extract_extra_relations(
+                parsed, extra_relation_ids)
+            super_relation_expansions.update(extra_expansions)
+            _log_expansions("extra", extra_expansions)
             for rel_id, info in sorted(extra.items(), key=lambda x: x[1]["name"]):
                 print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
             relations.update(extra)
@@ -574,10 +658,21 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         clipped_relations = {}
         if clipped_relation_ids:
             print(f"  Loading {len(clipped_relation_ids)} clipped relations...")
-            clipped_relations = extract_extra_relations(parsed, clipped_relation_ids)
+            clipped_relations, clipped_expansions = extract_extra_relations(
+                parsed, clipped_relation_ids)
+            super_relation_expansions.update(clipped_expansions)
+            _log_expansions("clipped", clipped_expansions)
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
                 print(f"    {info['name']} ({rel_id}) colour={info['colour']} [clipped]")
             relations.update(clipped_relations)
+
+        # Expand winter sets through the super-relation map BEFORE
+        # tagging, so a curator listing one super-relation in
+        # `winter_relations` propagates seasonal=winter to every child
+        # route. Same logic applies in build.py for summer/emergency
+        # bucket flags via the persisted expansion mapping.
+        winter_relation_ids = _expand_through_supers(
+            winter_relation_ids, super_relation_expansions)
 
         for rel_id in winter_relation_ids:
             if rel_id in relations:
@@ -593,9 +688,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     else:
         # Stage A: Fetch all relation metadata in a single query
         print("Stage A: Fetching relation metadata...")
-        members, extra, clipped_relations = fetch_all_relations(
+        members, extra, clipped_relations, super_relation_expansions = fetch_all_relations(
             root_relation_id, extra_relation_ids, clipped_relation_ids, cache_dir
         )
+        _log_expansions("expanded", super_relation_expansions)
 
         print(f"  Found {len(members)} relations from root:")
         for rel_id, info in sorted(members.items(), key=lambda x: x[1]["name"]):
@@ -622,7 +718,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             relations.update(clipped_relations)
 
         # Apply winter_relations config override (marks relations as winter
-        # even if they don't have seasonal=winter in OSM)
+        # even if they don't have seasonal=winter in OSM). Expand super-
+        # relations through the fetch-time expansion map so the seasonal
+        # tag propagates to every child route — the parent itself is
+        # gone (replaced by children in `relations`).
+        winter_relation_ids = _expand_through_supers(
+            winter_relation_ids, super_relation_expansions)
         for rel_id in winter_relation_ids:
             if rel_id in relations:
                 relations[rel_id]["seasonal"] = "winter"
@@ -826,7 +927,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     print(f"  Generated {len(geojson['features'])} features")
 
-    # Also embed route (relation) metadata for the viewer
+    # Also embed route (relation) metadata for the viewer + the
+    # super-relation expansion mapping so build.py can apply the
+    # same parent→children expansion to its summer/winter/emergency
+    # config sets when computing per-route bucket flags.
     geojson["metadata"] = {
         "routes": {
             str(rel_id): {
@@ -836,7 +940,11 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
                 "seasonal": info.get("seasonal", ""),
             }
             for rel_id, info in relations.items()
-        }
+        },
+        "super_relation_expansions": {
+            str(parent_id): [str(c) for c in child_ids]
+            for parent_id, child_ids in super_relation_expansions.items()
+        },
     }
 
     # Write output

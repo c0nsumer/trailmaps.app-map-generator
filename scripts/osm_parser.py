@@ -117,20 +117,51 @@ def extract_relations(parsed, root_relation_id):
 def extract_extra_relations(parsed, relation_ids):
     """Extract metadata for specific relation IDs.
 
-    Returns the same dict format as fetch_extra_relations():
-        {rel_id: {"id", "name", "colour", "ref", "route", "seasonal"}, ...}
+    Each ID may be a leaf route relation OR a super-relation (a
+    relation whose members are themselves type=relation entries — the
+    OSM convention for grouping multiple route relations under a
+    single umbrella). Super-relations are expanded into their child
+    routes; the parent itself is dropped from the result (a super-
+    relation has no ways of its own to render). One level deep only —
+    a super-relation containing another super-relation treats the
+    inner one as a leaf, which mirrors how `root_relation_id`
+    expansion works in `extract_relations` above.
+
+    Returns (resolved, expansions) where:
+        resolved: {rel_id: {"id", "name", "colour", "ref", "route",
+                            "seasonal"}, ...} — leaf-route entries
+                  only (parents replaced by children)
+        expansions: {parent_id: [child_id, ...]} for any input IDs
+                    that were expanded as super-relations. Empty when
+                    every input was a leaf. The caller uses this to
+                    propagate seasonal / emergency tagging from the
+                    parent's config-keyed bucket to its children.
     """
     _nodes, _ways, relations = parsed
 
     result = {}
+    expansions = {}
     for rel_id in relation_ids:
         rel = relations.get(rel_id)
-        if rel:
-            result[rel_id] = _relation_info(rel)
-        else:
+        if not rel:
             print(f"  WARNING: Relation {rel_id} not found in .osm file")
+            continue
+        # A super-relation has at least one type=relation member that
+        # also exists in the parsed set. (Members pointing at relations
+        # outside the .osm file fall through to the leaf path — we
+        # can't render what we don't have.)
+        child_ids = [
+            m["ref"] for m in rel["members"]
+            if m["type"] == "relation" and m["ref"] in relations
+        ]
+        if child_ids:
+            expansions[rel_id] = child_ids
+            for cid in child_ids:
+                result[cid] = _relation_info(relations[cid])
+        else:
+            result[rel_id] = _relation_info(rel)
 
-    return result
+    return result, expansions
 
 
 def extract_ways(parsed, relation_ids):

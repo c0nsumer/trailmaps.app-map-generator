@@ -788,11 +788,30 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # ----- Bucket flags on OSM routes -----
     # Config lists are ints (OSM relation ids); metadata.routes is keyed
     # by string. Stringify config values for lookup.
-    summer_ids = {str(x) for x in (config.get("summer_relations") or [])}
-    winter_ids = {str(x) for x in (config.get("winter_relations") or [])}
-    emergency_ids = {
-        str(x) for x in (config.get("emergency_access_relations") or [])
-    }
+    #
+    # Super-relation expansion: if the curator listed a super-relation
+    # ID in any of these config keys, fetch_trails.py expanded it into
+    # the child route IDs and persisted the parent→children map to
+    # trails.geojson metadata. We replay that expansion here so each
+    # child route inherits the parent's bucket assignment (winter /
+    # summer / emergency) without the curator having to enumerate the
+    # children individually in YAML.
+    super_expansions = trails_geojson.get("metadata", {}).get(
+        "super_relation_expansions", {}) or {}
+
+    def _expand(config_ids):
+        out = set()
+        for x in config_ids or []:
+            sx = str(x)
+            if sx in super_expansions:
+                out.update(super_expansions[sx])
+            else:
+                out.add(sx)
+        return out
+
+    summer_ids = _expand(config.get("summer_relations"))
+    winter_ids = _expand(config.get("winter_relations"))
+    emergency_ids = _expand(config.get("emergency_access_relations"))
 
     for rid_str, info in routes.items():
         is_winter = (info.get("seasonal") == "winter") \
