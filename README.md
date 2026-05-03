@@ -293,7 +293,7 @@ See [Direction Arrows](#direction-arrows) for the full model.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `pwa` | No | `true` | Enable PWA support (service worker, offline caching, install row). When false, no service worker or install UI is generated. Vendor libraries are always bundled locally regardless of this setting |
-| `pwa_install_prompt` | No | `false` | When `true`, surface PWA install affordances on platforms that support them. On Chrome/Android: the page does **not** call `preventDefault()` on `beforeinstallprompt` so Chrome's native mini-infobar appears, AND the custom Install action row (in the Options overlay, above About) is visible alongside it as a persistent fallback for second-visit installs. On iOS Safari: the Install action row opens manual Add-to-Home-Screen instructions. When `false` (the default), no `beforeinstallprompt` handler is registered at all — silences Chrome's `"Banner not shown: beforeinstallpromptevent.preventDefault() called"` console warning — and the custom Install action row is hidden everywhere. Use `false` for maps that don't want install promotion (e.g. personal/family maps); use `true` for production/community maps where install is encouraged. Requires `pwa: true`. |
+| `pwa_install_prompt` | No | `true` | When `true` (the default), surface PWA install affordances on platforms that support them. On Chrome/Android: the page does **not** call `preventDefault()` on `beforeinstallprompt` so Chrome's native mini-infobar appears, AND the custom Install action row (in the Options overlay, above About) is visible alongside it as a persistent fallback for second-visit installs. On iOS Safari: the Install action row opens manual Add-to-Home-Screen instructions. Set `false` to suppress install promotion entirely — no `beforeinstallprompt` handler is registered (silences Chrome's `"Banner not shown: beforeinstallpromptevent.preventDefault() called"` console warning) and the custom Install action row is hidden everywhere. Use `false` for personal/family maps where install nagging would be unwanted. Requires `pwa: true`. |
 
 #### Build-time Data Gates
 
@@ -1162,7 +1162,7 @@ Overpass is a shared public service and can be slow during peak hours.
 
 ### Console warning: `Banner not shown: beforeinstallpromptevent.preventDefault() called`
 
-You're running an older build that registered a `beforeinstallprompt` handler unconditionally. Set `pwa_install_prompt: false` in your YAML (the new default) or `true` if you want to surface the install prompt — either silences the warning. Default `false` doesn't register the handler at all.
+The default `pwa_install_prompt: true` registers a `beforeinstallprompt` handler so we can show our own Install row in the Options overlay. We deliberately do NOT call `preventDefault()`, which lets Chrome's native mini-infobar appear — but Chrome logs this warning anyway because it expects either preventDefault() or an immediate prompt() call. The warning is benign and can be ignored. Set `pwa_install_prompt: false` to opt out of install promotion entirely (no handler registered, no warning, no Install row).
 
 ### Off-screen indicator appears at the wrong location
 

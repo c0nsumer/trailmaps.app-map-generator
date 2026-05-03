@@ -110,7 +110,7 @@ root_relation_id: 12345678
 
 # --- PWA ---
 # pwa: true
-# pwa_install_prompt: false      # show our Install button + Chrome's mini-infobar
+# pwa_install_prompt: true       # show our Install button + Chrome's mini-infobar
 
 # --- About modal ---
 # about:

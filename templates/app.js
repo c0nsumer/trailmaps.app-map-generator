@@ -6597,18 +6597,26 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 
 // ============================================================
 // PWA Install — promoted out of About into a dedicated Options row.
-// Per-map opt-in via CONFIG.pwaInstallPrompt (default false). Two modes:
+// Per-map opt-out via CONFIG.pwaInstallPrompt (default true). Two modes:
 //
-//   pwaInstallPrompt: false (default) — DO NOT register beforeinstallprompt
-//     at all. This silences the Chrome console warning ("Banner not
-//     shown: beforeinstallpromptevent.preventDefault() called...") that
-//     fires when a handler is registered but never calls prompt().
-//     Chrome still shows its native mini-infobar / omnibox install icon
-//     on its own (browser behavior, not ours), and Chrome's three-dot
-//     menu still has "Install app". Our custom Install button is hidden
-//     everywhere — this is the "no install promotion on this map" mode.
+//   pwaInstallPrompt: true (default) — show-both strategy: register
+//     beforeinstallprompt without preventDefault so Chrome's native
+//     mini-infobar still appears, AND show our custom Install row in
+//     the Options overlay as a persistent surface for second-visit
+//     installs. The flow is described in the second mode block below.
 //
-//   pwaInstallPrompt: true (per-map opt-in) — show-both strategy:
+//   pwaInstallPrompt: false (per-map opt-out) — DO NOT register
+//     beforeinstallprompt at all. This silences the Chrome console
+//     warning ("Banner not shown: beforeinstallpromptevent.preventDefault()
+//     called...") that fires when a handler is registered but never
+//     calls prompt(). Chrome still shows its native mini-infobar /
+//     omnibox install icon on its own (browser behavior, not ours),
+//     and Chrome's three-dot menu still has "Install app". Our custom
+//     Install button is hidden everywhere — this is the "no install
+//     promotion on this map" mode (use for personal/family maps where
+//     install nagging would be unwanted).
+//
+//   pwaInstallPrompt: true — show-both strategy details:
 //     * Register beforeinstallprompt and DO NOT preventDefault — let
 //       Chrome show its native mini-infobar (transient, one-shot per
 //       cooldown). Stash the event for our button.

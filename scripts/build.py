@@ -1179,7 +1179,7 @@ CONFIG_SPEC = [
     # beforeinstallprompt handler is not registered at all — silencing
     # Chrome's "page must call prompt()" warning — and the custom
     # Install button is hidden everywhere.
-    ("pwa_install_prompt",      "pwaInstallPrompt",     False),
+    ("pwa_install_prompt",      "pwaInstallPrompt",     True),
 
     # User-supplied
     ("parking",                 "parking",              []),
@@ -1973,7 +1973,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     # ---- PWA / sharing ----
     print("Runtime features:")
     print(f"  pwa: {bool(config.get('pwa', True))}")
-    print(f"  pwa_install_prompt: {bool(config.get('pwa_install_prompt', False))}")
+    print(f"  pwa_install_prompt: {bool(config.get('pwa_install_prompt', True))}")
     print(f"  share_button: {bool(config.get('share_button', True))}")
     print(f"  url_hash: {bool(config.get('url_hash', False))}")
     print(f"  distance_units: {config.get('distance_units', 'mi')}")
