@@ -158,11 +158,20 @@ def generate_manifest(config, output_dir):
     - `name` (full app name) shows in the install prompt and the
       uninstall confirmation toast.
     - `short_name` shows under the home-screen icon.
-    - `id` gives the PWA a stable identity. Without it, the identity
-      derives from `start_url`, which can drift if the deploy path
-      changes (`/test/<slug>/` → `/<slug>/`), making Android treat the
-      "moved" install as a brand-new app. We pin id to the absolute
-      slug-rooted path so it stays stable across deploy moves.
+    - `id` is omitted intentionally — Chrome falls back to start_url
+      as the identity. An earlier version pinned `id` to a slug-rooted
+      absolute path (`/<slug>/`) anticipating a future deploy move
+      from `/test/<slug>/` to `/<slug>/`, but that put the id OUTSIDE
+      the manifest's scope (which resolves to `/test/<slug>/` via
+      start_url). Per Chrome's installability docs, an id outside
+      scope "may report an installability warning" — and field-test
+      on Pixel 8 confirmed that Chrome was suppressing install
+      prompts entirely. Defaulting id to start_url means the identity
+      changes if/when we move the deploy path, orphaning existing
+      installs (riders see Install prompt for the "new" app, end up
+      with two; manual cleanup of the old one). That one-time
+      migration cost is the right trade for installability working
+      today.
     - The 192 + 512 icon pair is required for a real WebAPK install.
       Without 512, Chrome silently degrades to a bare home-screen
       shortcut and Android shows the package name in the uninstall
@@ -174,7 +183,6 @@ def generate_manifest(config, output_dir):
     manifest = {
         "name": title,
         "short_name": name,
-        "id": f"/{slug}/",
         "start_url": "../",
         "scope": "../",
         "display": "standalone",
