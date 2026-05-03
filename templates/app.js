@@ -1094,6 +1094,12 @@ function addDecorationLayers() {
 }
 
 function directionArrowsToggleOn() {
+    // Curator-forced visibility: when CONFIG.directionArrowsRequired
+    // is set, the layer is always visible regardless of LS / default.
+    // The toggle row is hidden in setupFloatingChrome so the rider
+    // never sees an off control. Use for safety-critical maps where
+    // wrong-way travel on directional flow trails would be dangerous.
+    if (CONFIG.directionArrowsRequired) return true;
     return LS.get("mtb.directionArrows", isDefaultVisible("direction_arrows")) === true;
 }
 
@@ -5477,9 +5483,13 @@ function setupFloatingChrome() {
 
     // Direction arrows — drives the decor-arrow MapLibre layer
     // (chevrons placed along one-way / reversible trails). Reveal
-    // the toggle row only when the layer actually has features —
-    // a map with no one-way trails has no arrows to toggle. Same
-    // wirePeekToggle pattern as Difficulty.
+    // the toggle row only when the layer actually has features AND
+    // the curator hasn't forced arrows on via the
+    // `direction_arrows_required` YAML key. With required=true, the
+    // layer's initial visibility (set in addArrowLayer) is already
+    // forced visible by directionArrowsToggleOn() reading CONFIG —
+    // we just keep the toggle row hidden so the rider has no off
+    // affordance. Same wirePeekToggle pattern as Difficulty otherwise.
     const arrowsBtn = document.getElementById("toggle-direction-arrows");
     const arrowFeatureCount = (function () {
         const src = map.getSource("trail-decorations");
@@ -5488,7 +5498,7 @@ function setupFloatingChrome() {
             .filter((f) => (f.properties || {}).kind === KIND.ARROW)
             .length;
     })();
-    if (arrowsBtn && arrowFeatureCount > 0) {
+    if (arrowsBtn && arrowFeatureCount > 0 && !CONFIG.directionArrowsRequired) {
         arrowsBtn.classList.remove("hidden");
         wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
                 isDefaultVisible("direction_arrows"), (on) => {

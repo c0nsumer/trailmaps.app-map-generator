@@ -1083,6 +1083,18 @@ CONFIG_SPEC = [
     ("show_routes",             "showRoutes",           True),
     ("show_trails",             "showTrails",           True),
 
+    # Force direction-arrow visibility on for every visit, removing
+    # the rider-toggleable on/off in Options. Use for maps where one-
+    # way trails are a safety/critical-info concern (flow trails
+    # where wrong-way travel is dangerous, IMBA-graded directional
+    # singletrack systems, etc). When True AND the data has at least
+    # one one-way trail, the layer is forced visible and the toggle
+    # row is hidden entirely. When True AND no one-way trails exist,
+    # the toggle is hidden as usual (nothing to force on). When False
+    # (default), normal toggle behaviour: default_visible drives the
+    # initial state, the rider can flip it via Options, LS persists.
+    ("direction_arrows_required", "directionArrowsRequired", False),
+
     # Display
     # Labels mode default. Was "routes" historically; now defaults to
     # "none" so a fresh-LS visit produces a clean map with the rider
@@ -2074,10 +2086,14 @@ def main():
     # first-visit rider on a flow trail won't see which way they're
     # supposed to ride. Detect oneway segments in trails_geojson and
     # warn if direction_arrows isn't included in default_visible.
+    # Skip the warning when direction_arrows_required is true — that
+    # flag forces arrows on at every visit, so default_visible is
+    # irrelevant.
     raw_dv = config.get("default_visible")
     arrows_default_on = (
         raw_dv == "all"
         or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
+        or bool(config.get("direction_arrows_required"))
     )
     if not arrows_default_on:
         oneway_count = 0

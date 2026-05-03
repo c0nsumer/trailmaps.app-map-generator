@@ -102,6 +102,7 @@ KNOWN_KEYS = {
     "show_difficulty":               bool,
     "show_routes":                   bool,
     "show_trails":                   bool,
+    "direction_arrows_required":     bool,
     "suppress_path_labels":          bool,
     "suppress_basemap_pois":         bool,
     "map_dim_on_highlight":          bool,
