@@ -2200,7 +2200,7 @@ function _welcomeOptionsDescription() {
     const items = ["layers"];
     if (CONFIG.shareButton) items.push("share view");
     if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
-    items.push("view info About this map");
+    items.push("view info about this map");
     return `Configure ${_joinHumanList(items)}.`;
 }
 
