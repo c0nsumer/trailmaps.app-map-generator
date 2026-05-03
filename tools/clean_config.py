@@ -11,8 +11,8 @@ sections renamed, etc. This tool re-aligns a config to the canonical
 template without losing any explicitly-set values.
 
 Usage:
-    python scripts/clean_config.py configs/potoloo/potoloo.yaml
-    python scripts/clean_config.py configs/potoloo/potoloo.yaml \\
+    python tools/clean_config.py configs/potoloo/potoloo.yaml
+    python tools/clean_config.py configs/potoloo/potoloo.yaml \\
         --template configs/example/example-minimal.yaml
 
 The output file is `<input-stem>-cleaned.yaml` in the same directory.
@@ -42,11 +42,12 @@ import sys
 
 import yaml
 
-# Pull KNOWN_KEYS from validate_config so we can distinguish "real
-# top-level key line" from "prose comment that happens to contain a
-# colon" (e.g. `# Skip the relevant Overpass query / asset generation
-# when false.`).
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Pull KNOWN_KEYS from scripts/validate_config so we can distinguish
+# "real top-level key line" from "prose comment that happens to
+# contain a colon" (e.g. `# Skip the relevant Overpass query / asset
+# generation when false.`).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
 from validate_config import KNOWN_KEYS  # noqa: E402
 
 KEY_NAMES = set(KNOWN_KEYS.keys())
@@ -256,11 +257,19 @@ def main():
         "production",
         help="Path to the production YAML to clean.",
     )
+    # Resolve the default template relative to project root (the
+    # parent of tools/) so the tool works from any cwd, not just
+    # the project root. Curators running it via `python tools/...`
+    # from the project root see the same default either way.
+    _PROJECT_ROOT = os.path.dirname(_HERE)
+    default_template = os.path.join(
+        _PROJECT_ROOT, "configs", "example", "example-minimal.yaml")
     parser.add_argument(
         "--template",
-        default="configs/example/example-minimal.yaml",
+        default=default_template,
         help=("Path to the canonical template YAML "
-              "(default: configs/example/example-minimal.yaml)."),
+              "(default: configs/example/example-minimal.yaml relative "
+              "to the project root)."),
     )
     parser.add_argument(
         "-o", "--output",
