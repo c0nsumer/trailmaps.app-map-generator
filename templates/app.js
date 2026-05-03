@@ -6616,46 +6616,58 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 //     promotion on this map" mode (use for personal/family maps where
 //     install nagging would be unwanted).
 //
-//   pwaInstallPrompt: true — show-both strategy details:
-//     * Register beforeinstallprompt and DO NOT preventDefault — let
-//       Chrome show its native mini-infobar (transient, one-shot per
-//       cooldown). Stash the event for our button.
-//     * Always show our custom Install button on Chrome alongside
-//       Chrome's native UI. Chrome's mini-infobar is one-shot; our
-//       button is the persistent surface for second-visit installs.
-//     * Tapping our button calls prompt() on the stashed event and
-//       awaits userChoice. After it resolves (accepted OR dismissed),
-//       the event is spent — disable the button. A future
-//       beforeinstallprompt re-arms it.
-//     * On accepted (or window 'appinstalled' event from Chrome's
-//       native UI), hide the button in this tab. On subsequent
-//       page loads, Chrome doesn't re-fire beforeinstallprompt for
-//       installed apps, so the button stays at its HTML-default
-//       hidden state — no persistent state of our own needed.
-//     * iOS Safari (no beforeinstallprompt) shows the manual
-//       Add-to-Home-Screen instructions instead of the prompt-button
-//       path.
+//   pwaInstallPrompt: true — show-on-supported-platforms strategy:
+//     * Feature-detect platform install capability. The Install
+//       button is shown UNCONDITIONALLY on Chromium-based browsers
+//       (Chrome, Edge, Brave, etc.) — not gated on Chrome's
+//       beforeinstallprompt firing, which is unreliable (engagement
+//       gate, dismissal cooldown, suppressed when already installed).
+//       iOS Safari shows the manual Add-to-Home-Screen hint instead.
+//       Other browsers (Firefox, Chrome on iOS) show nothing — no
+//       PWA install path exists.
+//     * Register beforeinstallprompt without preventDefault so
+//       Chrome's native mini-infobar still appears, AND stash the
+//       event so the button click can call prompt() on it.
+//     * Click handler:
+//         - Have a deferred prompt? Call prompt() and await
+//           userChoice. On accept, hide the row.
+//         - No deferred prompt (Chrome silent for any of its
+//           reasons)? Reveal a fallback hint pointing the rider
+//           at their browser's three-dot menu.
+//     * On 'appinstalled' (any UI triggered it), hide the row in
+//       this tab for immediate feedback.
 //
 // CONFIG.pwa still gates the entire block — maps without PWA support
 // at build time skip all of this.
 // ============================================================
 if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     let deferredInstallPrompt = null;
-    // Single source of truth: the browser. Two signals, no
-    // persistent state of our own:
+    // Three signals, no persistent state of our own:
+    //
     //   standalone — definitive "currently running as the PWA";
-    //                short-circuits everything (Chrome won't fire
-    //                beforeinstallprompt in standalone mode anyway).
-    //   beforeinstallprompt — Chrome's authoritative "the PWA is
-    //                installable AND not currently installed"
-    //                signal. Its firing un-hides our Install
-    //                button; its silence (and the HTML default
-    //                `hidden` class on #install-btn) keeps the
-    //                button hidden. Uninstall is handled
-    //                automatically: Chrome re-fires
-    //                beforeinstallprompt on the rider's next
-    //                visit after they remove the app.
+    //                short-circuits everything (no install UI ever).
+    //   hasBeforeInstallPrompt — feature-detect Chromium-style PWA
+    //                install support. When true, we show the Install
+    //                button UNCONDITIONALLY (not just when the event
+    //                fires), because Chrome's beforeinstallprompt
+    //                isn't reliable: it gates on user engagement
+    //                (~30 s of interaction), suppresses for 90 days
+    //                after a dismissal, and never fires for already-
+    //                installed apps. Waiting for the event to show
+    //                the button means riders who CAN install often
+    //                see no install UI at all. The click handler
+    //                falls back to a written "use your browser's
+    //                menu" hint when the deferred prompt isn't
+    //                available.
+    //   isIOS — iOS Safari lacks beforeinstallprompt entirely; show
+    //                the manual Add-to-Home-Screen hint instead.
+    //
+    // Uninstall is handled by Chrome (when re-installing later, the
+    // OS recognises an existing install and dedupes / replaces) and
+    // by the `appinstalled` event (we hide the button on success).
     const standalone = window.matchMedia("(display-mode: standalone)").matches;
+    const hasBeforeInstallPrompt = "BeforeInstallPromptEvent" in window;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     function revealInstallSection(showButton, showHint) {
         const section = document.getElementById("sheet-install-section");
@@ -6675,64 +6687,75 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
         btn.classList.toggle("is-disabled", !enabled);
     }
 
-    if (!standalone) {
+    function showFallbackHint(show) {
+        const hint = document.getElementById("install-fallback-hint");
+        if (hint) hint.classList.toggle("hidden", !show);
+    }
+
+    if (!standalone && hasBeforeInstallPrompt) {
         window.addEventListener("beforeinstallprompt", (e) => {
             // NOTE: deliberately NOT calling e.preventDefault(). That
             // lets Chrome's native mini-infobar appear (free, one-shot
-            // install affordance). We also stash the event so our own
-            // Install button can call prompt() on it later — Chrome
-            // allows both UIs as long as we eventually call prompt()
-            // (which silences the "page must call prompt()" warning).
+            // install affordance). We stash the event so the click
+            // handler can call prompt() on it — Chrome allows both
+            // UIs as long as we eventually call prompt() (which
+            // silences the "page must call prompt()" warning).
             deferredInstallPrompt = e;
-            revealInstallSection(true, false);
-            setInstallButtonEnabled(true);
+            // Hide the fallback hint if it was showing — we have a
+            // working native prompt now, so the click will succeed.
+            showFallbackHint(false);
         });
     }
 
     // 'appinstalled' fires regardless of which UI triggered the install
     // (mini-infobar, omnibox icon, our button). Hide the install UI in
     // this tab so the rider sees immediate feedback that the install
-    // succeeded — without this, the button would linger until the
-    // next page load (where Chrome would simply not fire
-    // beforeinstallprompt, leaving it at the HTML-default hidden state).
+    // succeeded.
     window.addEventListener("appinstalled", () => {
         deferredInstallPrompt = null;
         revealInstallSection(false, false);
+        showFallbackHint(false);
     });
 
     document.addEventListener("DOMContentLoaded", () => {
-        // Wire the install button. The HTML keeps it `hidden` by
-        // default; beforeinstallprompt above un-hides it when fired.
+        // Initial visibility, by platform:
+        //   standalone:                   nothing (already installed)
+        //   Chromium (BeforeInstallPromptEvent in window): button
+        //   iOS Safari:                   hint (no programmatic install)
+        //   anything else:                nothing (no PWA install path)
+        if (!standalone) {
+            if (hasBeforeInstallPrompt) {
+                revealInstallSection(true, false);
+            } else if (isIOS) {
+                revealInstallSection(false, true);
+            }
+        }
+
         const installBtn = document.getElementById("install-btn");
         if (installBtn) {
             installBtn.addEventListener("click", async () => {
-                if (!deferredInstallPrompt) return;
-                setInstallButtonEnabled(false);
-                deferredInstallPrompt.prompt();
-                const result = await deferredInstallPrompt.userChoice;
-                if (result.outcome === "accepted") {
-                    revealInstallSection(false, false);
+                if (deferredInstallPrompt) {
+                    setInstallButtonEnabled(false);
+                    deferredInstallPrompt.prompt();
+                    const result = await deferredInstallPrompt.userChoice;
+                    if (result.outcome === "accepted") {
+                        revealInstallSection(false, false);
+                    }
+                    // Either way, the BeforeInstallPromptEvent is
+                    // single-use. Discard it; if Chrome re-fires the
+                    // event later (its own heuristics) the listener
+                    // above will re-arm.
+                    deferredInstallPrompt = null;
+                    setInstallButtonEnabled(true);
+                } else {
+                    // Chrome hasn't given us a prompt — could be the
+                    // engagement gate, a dismissal cooldown, or the
+                    // PWA is already installed. Reveal the menu-path
+                    // hint so the rider has agency without us guessing
+                    // which case it is.
+                    showFallbackHint(true);
                 }
-                // Either way, the BeforeInstallPromptEvent is
-                // single-use. Discard it; if Chrome re-fires the event
-                // later (its own heuristics) the listener above will
-                // re-arm.
-                deferredInstallPrompt = null;
             });
-        }
-
-        // iOS detection — show manual Add-to-Home-Screen instructions
-        // since iOS Safari lacks beforeinstallprompt. Skip when the
-        // page is currently standalone (already installed). There's
-        // no way to detect "previously installed but now back in
-        // regular Safari" on iOS (no appinstalled / appuninstalled
-        // events, no beforeinstallprompt to correct via re-fire), so
-        // the hint always appears in regular Safari. Re-running
-        // Add-to-Home-Screen on an already-installed PWA is a no-op
-        // anyway.
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        if (isIOS && !standalone) {
-            revealInstallSection(false, true);
         }
     });
 }
