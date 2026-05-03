@@ -47,6 +47,7 @@ root_relation_id: 12345678
 # show_difficulty: false
 # show_routes: true
 # show_trails: true
+# direction_arrows_required: false   # force arrows on, hide the toggle
 # poi_proximity_m: 50
 # suppress_path_labels: false
 # suppress_basemap_pois: false
