@@ -1528,6 +1528,48 @@ def inject_config_into_template(template_content, config, trails_geojson):
     return template_content.replace("/*__CONFIG__*/", f"const CONFIG = {config_json};")
 
 
+# Pillow-readable raster extensions used by the icon-source resolver
+# below. SVG and PDF aren't readable by Pillow, so a logo with one of
+# those extensions can't fall back to icon source — generate_icons
+# would crash. Defined at module scope so resolve_icon_source() and
+# the icon-generation call site (copy_assets) share one definition.
+_PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp",
+                      ".gif", ".bmp", ".tiff", ".tif"}
+
+
+def resolve_icon_source(config, project_root):
+    """Return the resolved icon source path, or "" if none exists.
+
+    Three input shapes, in priority order:
+      1. config["icon"]: explicit. Returned as-is when set (any value,
+         even non-raster, is the curator's call — generate_icons will
+         flag the failure if Pillow can't read it).
+      2. config["logo"]: automatic fallback when icon: is unset, but
+         only when the logo file exists AND has a Pillow-readable
+         extension. SVG logos can't fall back (Pillow won't read).
+      3. Empty string: no usable source. Caller should skip icon
+         generation AND strip the icon links from the HTML.
+
+    Used by both copy_templates (to decide whether to keep the icons
+    HTML block) AND copy_assets (to decide whether to call
+    generate_icons). One function so they can't drift — the previous
+    bug was copy_templates checking only `icon:` while copy_assets
+    also accepted `logo:`, producing builds with manifest+icons on
+    disk but no <link rel="manifest"> in the HTML.
+    """
+    icon_path = config.get("icon", "")
+    if icon_path:
+        return icon_path
+    logo_path = config.get("logo", "")
+    if logo_path:
+        ext = os.path.splitext(logo_path)[1].lower()
+        if ext in _PIL_READABLE_EXTS:
+            candidate = os.path.join(project_root, logo_path)
+            if os.path.isfile(candidate):
+                return logo_path
+    return ""
+
+
 def copy_templates(config, output_dir, trails_geojson):
     """Copy and process HTML/JS/CSS templates."""
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -1679,10 +1721,17 @@ def copy_templates(config, output_dir, trails_geojson):
                     '', content, flags=re.DOTALL,
                 )
 
-            # Strip icon links when no icon is configured
-            icon_path = config.get("icon", "")
+            # Strip icon links when no icon source is resolvable.
+            # Uses the same fallback logic as copy_assets so a config
+            # with `logo:` set but no `icon:` keeps the manifest /
+            # apple-touch / theme-color links — the icons get
+            # generated from the logo and the HTML correctly points
+            # at them. (Without this consistency, the HTML strip
+            # would remove the manifest link even though copy_assets
+            # would happily generate a manifest from the logo,
+            # leaving a build with icons on disk but no PWA install.)
             icons_dir_legacy = config.get("icons_dir", "")
-            if not icon_path and not icons_dir_legacy:
+            if not resolve_icon_source(config, project_root) and not icons_dir_legacy:
                 content = re.sub(
                     r'\s*<!-- Icons start -->.*?<!-- Icons end -->\n',
                     '', content, flags=re.DOTALL,
@@ -1721,29 +1770,14 @@ def copy_assets(config, output_dir):
         process_logo(logo_src, out_path)
 
     # Icons — generate from source image or copy from legacy icons_dir.
-    # Source resolution mirrors the logo fallback above:
-    #   icon:    explicit, wins when set (any value, even non-raster
-    #            like .svg, is passed through — that's a curator
-    #            decision and an explicit error is the right outcome
-    #            if the format isn't Pillow-readable)
-    #   logo:    automatic fallback when icon: isn't configured. Gated
-    #            on a raster extension because generate_icons uses
-    #            Pillow, which can't read SVG. Map with logo.svg and
-    #            no icon: gets no icons (and the PWA warning fires);
-    #            curator can either supply a raster icon or drop a
-    #            raster logo to opt into icon generation
-    #   icons_dir (legacy): pre-built icons dir to copy verbatim
-    icon_path = config.get("icon", "")
-    fallback_logo_path = config.get("logo", "")
+    # Source resolution (icon: → logo: → none) is shared with the HTML
+    # icons-block strip in copy_templates via resolve_icon_source().
     icons_dir_legacy = config.get("icons_dir", "")
-    PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp",
-                         ".gif", ".bmp", ".tiff", ".tif"}
-    if not icon_path and fallback_logo_path:
-        ext = os.path.splitext(fallback_logo_path)[1].lower()
-        candidate = os.path.join(project_root, fallback_logo_path)
-        if ext in PIL_READABLE_EXTS and os.path.isfile(candidate):
-            icon_path = fallback_logo_path
-            print(f"  No icon configured — using logo as icon source")
+    icon_path = resolve_icon_source(config, project_root)
+    if icon_path and icon_path != config.get("icon", ""):
+        # The fallback fired — the resolved source is the logo, not
+        # an explicit icon: setting. Log it so the curator knows.
+        print(f"  No icon configured — using logo as icon source")
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
