@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Automatic icon generation for MTB Trail Map Framework.
 
-Generates all favicon/icon variants from a single square source image
-using Pillow. Optionally generates safari-pinned-tab.svg via potrace.
+Generates all favicon/icon variants from a single source image using
+Pillow. Optionally generates safari-pinned-tab.svg via potrace.
+
+Source may be any aspect ratio — non-square images are auto-padded
+to square (centered, transparent background) before resizing. Use
+a square source if you want a specific framing; otherwise the
+auto-pad gives reasonable defaults.
 
 Usage as standalone:
     python scripts/generate_icons.py source.png output_dir/ "Map Title" "ShortName"
@@ -43,6 +48,38 @@ def _composite_on_white(img):
         bg.paste(img, mask=img.split()[3])
         return bg.convert("RGB")
     return img.convert("RGB")
+
+
+def _pad_to_square(img):
+    """Pad a non-square image to square by centering on a transparent
+    canvas of side = max(width, height). Returns the original image
+    unchanged if already square. The transparent padding flows
+    through correctly for every icon variant we generate:
+
+    - PNG icons with composite_on_white=False (favicons, Android
+      Chrome): transparent padding preserved, icon shows the logo
+      against whatever background the platform paints (usually
+      transparent → renders against the address bar / launcher bg).
+    - PNG icons with composite_on_white=True (apple-touch-icon,
+      which iOS forbids transparency on): the existing
+      _composite_on_white step pastes the padded RGBA onto a white
+      background, so transparent padding becomes white — same
+      result as if the curator had padded the source to white
+      themselves.
+    - favicon.ico: ICO format supports transparency natively.
+    - safari-pinned-tab.svg: convert to "1" (bilevel) treats
+      transparent and white the same way (both become white in
+      bitmap), so potrace traces just the logo silhouette.
+    """
+    if img.width == img.height:
+        return img
+    side = max(img.width, img.height)
+    src = img if img.mode == "RGBA" else img.convert("RGBA")
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    x = (side - src.width) // 2
+    y = (side - src.height) // 2
+    canvas.paste(src, (x, y), src)
+    return canvas
 
 
 def generate_png_icons(source_img, output_dir):
@@ -187,11 +224,18 @@ def generate_icons(source_path, output_dir, config):
 
     img = Image.open(source_path)
 
-    # Validate square aspect ratio
+    # Non-square sources used to error out, forcing the curator to
+    # crop or pad by hand. We now auto-pad to square (centered on a
+    # transparent canvas of side = max(w, h)) so any logo aspect
+    # ratio can flow through icon generation. The print line is the
+    # curator's signal that padding happened — if they want a tighter
+    # crop or a coloured background, they can pre-process the source
+    # themselves; otherwise this is "good enough" for every variant.
     if img.width != img.height:
-        print(f"  ERROR: Icon source must be square (got {img.width}x{img.height})")
-        print(f"         Crop or pad to square dimensions: {source_path}")
-        return False
+        side = max(img.width, img.height)
+        print(f"  Icon source {img.width}x{img.height} is not square — "
+              f"padding to {side}x{side} with transparent background.")
+        img = _pad_to_square(img)
 
     if img.width < 256:
         print(f"  WARNING: Icon source is {img.width}x{img.height}, recommend at least 256x256")
