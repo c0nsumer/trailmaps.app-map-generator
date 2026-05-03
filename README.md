@@ -614,11 +614,25 @@ direction_schedules:
     reverse_days: []                  # this route opts out of the default
 ```
 
+A super-relation key fans out to every child route — useful for multi-system maps where a whole second trail system shouldn't reverse:
+
+```yaml
+extra_relations:
+  - 99999999                          # super-relation for "the system across town"
+
+direction_schedules:
+  99999999:                           # whole second system opts out
+    reverse_days: []
+  87654321:                           # one specific child of 99999999 still reverses
+    reverse_days: [tuesday]           # explicit child entry always wins over the super
+```
+
 Rules:
 
-- Keys are OSM relation IDs. The relation is purely a grouping handle for "the ways under this relation share this schedule" — relations themselves don't have direction.
+- Keys are OSM relation IDs. Each may be a leaf route relation OR a super-relation; super-relations are auto-expanded to their child routes the same way as `extra_relations` (see [Route Lists](#route-lists)).
+- The relation is purely a grouping handle for "the ways under this relation share this schedule" — relations themselves don't have direction.
 - `reverse_days` lists day tokens (case-insensitive; `monday`, `Mon`, `MONDAY`, and `mo` all parse). Alongside the seven weekday names, two parity tokens are accepted: **`even_days`** matches every even calendar date (2, 4, 6 …) and **`odd_days`** matches odd dates (1, 3, 5 …). Parity is calendar-date parity (`getDate() % 2`), so month boundaries such as Mar 31 → Apr 1 can produce two same-parity days in a row; that's expected. Weekday and parity tokens can coexist in one list — any match triggers reversal ("today is Monday OR today is even").
-- A per-relation entry in `direction_schedules` always wins over `default_direction_schedule`. An entry with `reverse_days: []` is the way to opt one route out of the default.
+- A per-relation entry in `direction_schedules` always wins over `default_direction_schedule`. An entry with `reverse_days: []` is the way to opt one route out of the default. **An explicit per-child entry always wins over a super-relation entry** that would otherwise fan out to that child.
 - On a reverse day, every way that is (a) OSM-tagged `oneway=yes`/`oneway=-1`/`oneway=reversible` **and** (b) a member of a relation whose effective schedule lists today has its arrow rotated 180°.
 - Setting a schedule (default or per-relation) does **not** make untagged ways one-way — OSM tagging still controls which ways get arrows. The schedule is purely a rotation hook.
 

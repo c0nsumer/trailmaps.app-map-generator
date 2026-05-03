@@ -756,15 +756,43 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     #   - direction_schedules[<rel>] is a per-relation override. An entry with
     #     non-empty reverse_days schedules that relation; an explicit empty
     #     reverse_days opts that relation out of the default.
+    #   - A super-relation key fans out to every child route, except where
+    #     a child has its own explicit entry (which always wins). Mirrors
+    #     the two-pass logic in build.py — leaves first, then supers fill
+    #     in unset children.
     sched_raw = config.get("direction_schedules") or {}
     def_sched = config.get("default_direction_schedule") or {}
     default_active = bool((def_sched or {}).get("reverse_days"))
 
+    # Build per-child resolved entries through the expansion table. The
+    # resolved set drives both validation here and CONFIG.directionSchedules
+    # in build.py (re-derived there from the persisted metadata so the
+    # cached-build path stays consistent).
     overrides_active = set()      # relations explicitly scheduled
     overrides_optout = set()      # relations explicitly opted out (empty list)
+    deferred_supers = []          # super entries to fan out after leaves
+
+    def _classify(target_rid, days):
+        (overrides_active if days else overrides_optout).add(target_rid)
+
+    # Pass 1: leaves.
     for k, v in sched_raw.items():
+        rid_int = int(k)
+        if rid_int in super_relation_expansions:
+            deferred_supers.append((rid_int, v))
+            continue
         days = (v or {}).get("reverse_days") or []
-        (overrides_active if days else overrides_optout).add(int(k))
+        _classify(rid_int, days)
+
+    # Pass 2: supers fan out to children that aren't already classified.
+    already_set = overrides_active | overrides_optout
+    for super_rid, v in deferred_supers:
+        days = (v or {}).get("reverse_days") or []
+        for child_id in super_relation_expansions[super_rid]:
+            if child_id in already_set:
+                continue
+            _classify(child_id, days)
+            already_set.add(child_id)
 
     def _relation_is_scheduled(rid):
         if rid in overrides_active:

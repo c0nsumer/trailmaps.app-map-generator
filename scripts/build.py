@@ -1242,10 +1242,31 @@ def inject_config_into_template(template_content, config, trails_geojson):
     )
     def_sched_norm = {"reverse_days": def_sched_days} if def_sched_days else None
 
-    # Per-relation overrides (plural).
+    # Per-relation overrides (plural). Two-pass processing so super-
+    # relation entries (auto-expanded via metadata.super_relation_
+    # expansions) propagate to children, but explicit per-child
+    # entries always win:
+    #   Pass 1 — process every entry whose key is a LEAF (or absent
+    #            from the expansion table). These take precedence.
+    #   Pass 2 — process super-relation entries, fanning out to
+    #            children only if the child wasn't already set in
+    #            Pass 1.
+    # This lets a curator write `direction_schedules: { 99999999: {
+    # reverse_days: [] } }` for a whole second trail system that
+    # doesn't reverse, while still individually overriding one of
+    # its child routes if needed.
+    super_expansions = trails_geojson.get("metadata", {}).get(
+        "super_relation_expansions", {}) or {}
     sched_raw = config.get("direction_schedules") or {}
     sched_processed = {}
+
+    # Pass 1: explicit leaves and any keys not in the expansion table.
+    deferred_supers = []
     for rel_id, spec in sched_raw.items():
+        rel_id_str = str(rel_id)
+        if rel_id_str in super_expansions:
+            deferred_supers.append((rel_id, spec))
+            continue
         days = _normalise_days(
             (spec or {}).get("reverse_days"),
             f"direction_schedules[{rel_id}].reverse_days",
@@ -1253,6 +1274,18 @@ def inject_config_into_template(template_content, config, trails_geojson):
         # Even an empty list is recorded — that's how a user opts a single
         # route out of the system-wide default.
         sched_processed[int(rel_id)] = {"reverse_days": days}
+
+    # Pass 2: super-relations fan out to children (without clobbering
+    # an explicit per-child entry from Pass 1).
+    for rel_id, spec in deferred_supers:
+        days = _normalise_days(
+            (spec or {}).get("reverse_days"),
+            f"direction_schedules[{rel_id}].reverse_days",
+        )
+        for child_id in super_expansions[str(rel_id)]:
+            child_int = int(child_id)
+            if child_int not in sched_processed:
+                sched_processed[child_int] = {"reverse_days": days}
 
     # Resolve the effective schedule for each route: per-relation override if
     # present (whether empty or not), else the default if any.
