@@ -1720,9 +1720,30 @@ def copy_assets(config, output_dir):
         out_path = os.path.join(output_dir, out_name)
         process_logo(logo_src, out_path)
 
-    # Icons — generate from source image or copy from legacy icons_dir
+    # Icons — generate from source image or copy from legacy icons_dir.
+    # Source resolution mirrors the logo fallback above:
+    #   icon:    explicit, wins when set (any value, even non-raster
+    #            like .svg, is passed through — that's a curator
+    #            decision and an explicit error is the right outcome
+    #            if the format isn't Pillow-readable)
+    #   logo:    automatic fallback when icon: isn't configured. Gated
+    #            on a raster extension because generate_icons uses
+    #            Pillow, which can't read SVG. Map with logo.svg and
+    #            no icon: gets no icons (and the PWA warning fires);
+    #            curator can either supply a raster icon or drop a
+    #            raster logo to opt into icon generation
+    #   icons_dir (legacy): pre-built icons dir to copy verbatim
     icon_path = config.get("icon", "")
+    fallback_logo_path = config.get("logo", "")
     icons_dir_legacy = config.get("icons_dir", "")
+    PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp",
+                         ".gif", ".bmp", ".tiff", ".tif"}
+    if not icon_path and fallback_logo_path:
+        ext = os.path.splitext(fallback_logo_path)[1].lower()
+        candidate = os.path.join(project_root, fallback_logo_path)
+        if ext in PIL_READABLE_EXTS and os.path.isfile(candidate):
+            icon_path = fallback_logo_path
+            print(f"  No icon configured — using logo as icon source")
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
@@ -2247,8 +2268,9 @@ def main():
         manifest_path = os.path.join(output_dir, "icons", "site.webmanifest")
         if not os.path.exists(manifest_path):
             pwa_warnings.append(
-                "No web manifest (site.webmanifest) — set 'icon:' in your config "
-                "to generate icons and a manifest from a source image"
+                "No web manifest (site.webmanifest) — set 'icon:' (or "
+                "'logo:') in your config so icons + manifest are generated "
+                "from a source image"
             )
         else:
             icons_dir = os.path.join(output_dir, "icons")

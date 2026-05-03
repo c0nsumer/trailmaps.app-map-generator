@@ -222,7 +222,18 @@ def generate_icons(source_path, output_dir, config):
         print(f"  WARNING: Icon source not found: {source_path}")
         return False
 
-    img = Image.open(source_path)
+    try:
+        img = Image.open(source_path)
+    except Exception as e:
+        # Pillow raises UnidentifiedImageError for SVG / PDF / other
+        # vector formats, plus a handful of image-format-specific
+        # decode errors. Catch broadly: any failure here means we
+        # can't generate icons from this source. Caller (build.py)
+        # will fail the PWA-manifest check and warn the curator.
+        print(f"  WARNING: Cannot read icon source {source_path}")
+        print(f"           {type(e).__name__}: {e}")
+        print(f"           Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
+        return False
 
     # Non-square sources used to error out, forcing the curator to
     # crop or pad by hand. We now auto-pad to square (centered on a

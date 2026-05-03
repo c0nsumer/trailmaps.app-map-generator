@@ -344,7 +344,7 @@ See [Asset layout convention](#asset-layout-convention) for where these files li
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `logo` | No | — | Path (repo-root-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200×80 px box (map overlay) and a 140×56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
-| `icon` | No | — | Path (repo-root-relative) to square source image (PNG/WebP, ≥256 px) for automatic icon generation. Also used as the logo source if `logo:` is omitted. |
+| `icon` | No | — | Path (repo-root-relative) to source image (PNG/WebP, ≥256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works — non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically (so most maps only need to set one of the two). |
 
 #### User-supplied Points
 
