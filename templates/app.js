@@ -6639,8 +6639,26 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 // ============================================================
 if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     let deferredInstallPrompt = null;
-    let installed = LS.get("mtb.installed") === "true"
-        || window.matchMedia("(display-mode: standalone)").matches;
+    // Two install signals, layered for different staleness windows:
+    //   standalone — definitive "currently running as the PWA";
+    //                used to skip beforeinstallprompt registration
+    //                entirely (Chrome doesn't fire it in standalone
+    //                mode anyway, but explicit gate is clearer).
+    //   LS flag    — initial-render HINT only, NOT source of truth.
+    //                The flag can go stale: the rider may install
+    //                via our button (we set it), then uninstall
+    //                later via the OS app drawer or Chrome's
+    //                three-dot "Uninstall app" — neither path can
+    //                signal back to a regular browser tab. The
+    //                browser also doesn't expose any "appuninstalled"
+    //                event. So the LS flag drives the FIRST paint
+    //                only; if Chrome subsequently fires
+    //                beforeinstallprompt (which it only does when
+    //                the PWA is installable AND not currently
+    //                installed), we treat that as ground truth and
+    //                clear the stale flag.
+    const standalone = window.matchMedia("(display-mode: standalone)").matches;
+    let installed = standalone || LS.get("mtb.installed") === "true";
 
     function revealInstallSection(showButton, showHint) {
         const section = document.getElementById("sheet-install-section");
@@ -6660,7 +6678,13 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
         btn.classList.toggle("is-disabled", !enabled);
     }
 
-    if (!installed) {
+    // Always register beforeinstallprompt (unless we're CURRENTLY
+    // running standalone, where Chrome won't fire it anyway). Chrome
+    // only fires this event when the PWA is installable AND not
+    // currently installed, so its firing is the canonical "you can
+    // install" signal — AND a corrective signal when the LS flag is
+    // stale (rider uninstalled since we last saw appinstalled).
+    if (!standalone) {
         window.addEventListener("beforeinstallprompt", (e) => {
             // NOTE: deliberately NOT calling e.preventDefault(). That
             // lets Chrome's native mini-infobar appear (free, one-shot
@@ -6669,6 +6693,14 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
             // allows both UIs as long as we eventually call prompt()
             // (which silences the "page must call prompt()" warning).
             deferredInstallPrompt = e;
+            if (installed) {
+                // The LS flag was stale — rider uninstalled the PWA
+                // outside the browser (or via Chrome's three-dot
+                // menu) since we last saw appinstalled. Reset and
+                // re-surface the install UI.
+                installed = false;
+                LS.set("mtb.installed", "false");
+            }
             revealInstallSection(true, false);
             setInstallButtonEnabled(true);
         });
@@ -6686,13 +6718,20 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     });
 
     document.addEventListener("DOMContentLoaded", () => {
+        // Initial-paint visibility is driven by the install belief at
+        // page load: hide if we think we're installed, otherwise show
+        // (the button starts disabled until beforeinstallprompt fires
+        // and arms it). beforeinstallprompt later may flip this — if
+        // it fires while we believed we were installed, the listener
+        // above clears the LS flag and re-shows the button.
         if (installed) {
-            // Already installed (either via prior session or current
-            // standalone display mode). Don't surface install UI at all.
             revealInstallSection(false, false);
-            return;
         }
 
+        // Wire the install button regardless of believed-installed
+        // state. If beforeinstallprompt later corrects a stale
+        // flag (rider uninstalled), the button needs to already be
+        // wired so the click works without another reload.
         const installBtn = document.getElementById("install-btn");
         if (installBtn) {
             installBtn.addEventListener("click", async () => {
@@ -6714,11 +6753,15 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
         }
 
         // iOS detection — show manual instructions since iOS Safari
-        // lacks beforeinstallprompt. Only when the page is *not* already
-        // a standalone PWA (otherwise the user already installed it).
+        // lacks beforeinstallprompt. Skip when the page is currently
+        // standalone (already installed) OR when the LS flag says
+        // installed (user installed via our button on a previous
+        // visit; the flag may go stale on uninstall, but iOS has no
+        // beforeinstallprompt to correct it, so we accept that
+        // edge case — re-installing on iOS via the same Add-to-
+        // Home-Screen flow is harmless either way).
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
-        if (isIOS && !isStandalone) {
+        if (isIOS && !standalone && !installed) {
             revealInstallSection(false, true);
         }
     });
