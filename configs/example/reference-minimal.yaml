@@ -11,13 +11,14 @@
 name: My Trails
 slug: my-trails
 title: "My Trails Map"
-# OSM relation ID. May be a super-relation (its members become routes)
-# or a single route relation. See README "Quick Start → Build a Map".
-root_relation_id: 12345678
 
-# --- Data sources ---
+# --- Data sources (REQUIRED: at least one entry in `relations`) ---
+# OSM relation IDs to render as routes. Each entry may be a leaf
+# route relation OR a super-relation (auto-expanded into its child
+# routes one level deep).
+relations:
+  - 12345678
 # osm_file: osm.osm
-# extra_relations: []
 # clipped_relations: []
 # winter_relations: []
 # summer_relations: []

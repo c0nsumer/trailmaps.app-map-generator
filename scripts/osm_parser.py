@@ -80,52 +80,22 @@ def _relation_info(rel):
     }
 
 
-def extract_relations(parsed, root_relation_id):
-    """Extract route relations starting from a root relation.
-
-    The root may be a super-relation (whose child relations become routes)
-    or a single route relation (used directly as the only route when it has
-    no child relations as members).
-
-    Returns the same dict format as fetch_member_relations():
-        {rel_id: {"id", "name", "colour", "ref", "route", "seasonal"}, ...}
-    """
-    _nodes, _ways, relations = parsed
-
-    root_rel = relations.get(root_relation_id)
-    if not root_rel:
-        raise ValueError(
-            f"Relation {root_relation_id} not found in .osm file. "
-            f"Available relations: {sorted(relations.keys())}"
-        )
-
-    result = {}
-    for member in root_rel["members"]:
-        if member["type"] == "relation":
-            child_id = member["ref"]
-            child = relations.get(child_id)
-            if child:
-                result[child_id] = _relation_info(child)
-
-    # Single-relation mode: no child relations found, so the root IS the route.
-    if not result:
-        result[root_relation_id] = _relation_info(root_rel)
-
-    return result
-
-
-def extract_extra_relations(parsed, relation_ids):
-    """Extract metadata for specific relation IDs.
+def extract_source_relations(parsed, relation_ids):
+    """Extract route relations for every entry in `relation_ids`.
 
     Each ID may be a leaf route relation OR a super-relation (a
     relation whose members are themselves type=relation entries — the
     OSM convention for grouping multiple route relations under a
     single umbrella). Super-relations are expanded into their child
     routes; the parent itself is dropped from the result (a super-
-    relation has no ways of its own to render). One level deep only —
-    a super-relation containing another super-relation treats the
-    inner one as a leaf, which mirrors how `root_relation_id`
-    expansion works in `extract_relations` above.
+    relation has no ways of its own to render). Leaf relations pass
+    through unchanged. One level deep only: a super-relation containing
+    another super-relation treats the inner one as a leaf.
+
+    A relation ID that isn't present in the parsed file is reported as
+    a warning and skipped; the build continues with whatever else
+    resolved. If NO inputs resolve, the caller's downstream code
+    (fetch_trails) errors on the empty result.
 
     Returns (resolved, expansions) where:
         resolved: {rel_id: {"id", "name", "colour", "ref", "route",
@@ -298,12 +268,14 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <file.osm> <root_relation_id>")
+        print(f"Usage: {sys.argv[0]} <file.osm> <relation_id> [<relation_id> ...]")
         print(f"  Dry-run: shows what would be extracted from the .osm file")
+        print(f"  Each <relation_id> may be a leaf route relation OR a super-")
+        print(f"  relation (auto-expanded into its child routes one level deep).")
         sys.exit(1)
 
     osm_path = sys.argv[1]
-    root_id = int(sys.argv[2])
+    relation_ids = [int(x) for x in sys.argv[2:]]
 
     print(f"Parsing: {osm_path}")
     parsed = parse_osm_file(osm_path)
@@ -312,16 +284,19 @@ if __name__ == "__main__":
     print(f"  Ways: {len(ways)}")
     print(f"  Relations: {len(relations)}")
 
-    print(f"\nExtracting relations from root {root_id}:")
-    try:
-        rels = extract_relations(parsed, root_id)
-        for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
-            print(f"  {info['name']} ({rel_id}) colour={info['colour']}")
+    print(f"\nExtracting relations from {relation_ids}:")
+    rels, expansions = extract_source_relations(parsed, relation_ids)
+    if expansions:
+        for parent_id, child_ids in sorted(expansions.items()):
+            print(f"  super-relation {parent_id} → {len(child_ids)} child route(s)")
+    if not rels:
+        print(f"  ERROR: No relations resolved from {relation_ids} in {osm_path}")
+        sys.exit(1)
+    for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
+        print(f"  {info['name']} ({rel_id}) colour={info['colour']}")
 
-        print(f"\nExtracting ways for {len(rels)} relations:")
-        all_ways = extract_ways(parsed, list(rels.keys()))
-        for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
-            way_count = len(all_ways.get(rel_id, {}))
-            print(f"  {info['name']}: {way_count} ways")
-    except ValueError as e:
-        print(f"  ERROR: {e}")
+    print(f"\nExtracting ways for {len(rels)} relations:")
+    all_ways = extract_ways(parsed, list(rels.keys()))
+    for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
+        way_count = len(all_ways.get(rel_id, {}))
+        print(f"  {info['name']}: {way_count} ways")

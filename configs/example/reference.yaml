@@ -19,7 +19,8 @@
 # ============================================================
 # Identity (REQUIRED)
 # ============================================================
-# Every map needs these four keys. The build aborts if any are missing.
+# Every map needs these three keys plus a non-empty `relations:` list
+# (Data sources, below). The build aborts if any are missing.
 
 # Short name used in build logs and as the PWA icon label on mobile
 # home screens. Keep it under ~20 characters: long names truncate on
@@ -40,19 +41,29 @@ slug: my-trails
 # app.
 title: "My Trails Map"
 
-# OSM relation ID anchoring this map. Two valid forms:
-#   - A super-relation: its child relations become routes (the common
-#     case at established trail systems).
-#   - A single route relation: used directly as the only route on the
-#     map (for small parks with no super-relation wrapper).
-# Find the ID at https://www.openstreetmap.org/relation/<id>.
-root_relation_id: 12345678
-
 
 # ============================================================
 # Data sources
 # ============================================================
-# How the build pulls trail data and which extra relations participate.
+# Where the build pulls trail data from. `relations:` is required and
+# must be non-empty; everything else in this section is optional.
+
+# OSM relation IDs to render as routes on this map. The required
+# source list:
+#
+#   - Each entry may be a LEAF route relation OR a SUPER-RELATION.
+#     A super-relation (a relation whose members are themselves
+#     type=relation entries) is auto-expanded into its child routes
+#     one level deep at fetch time; the parent itself is dropped
+#     since it has no ways of its own. A super whose member is also
+#     a super treats the inner one as a leaf (one level deep only).
+#   - Order doesn't matter. Each entry is fetched independently and
+#     all results merge into a single route set.
+#   - Multi-system maps just list every entry-point relation
+#     (e.g. two adjacent super-relations get two list entries).
+#   - Find each ID at https://www.openstreetmap.org/relation/<id>.
+relations:
+  - 12345678
 
 # Path to a local .osm XML file (typically next to the YAML). When set,
 # the build skips the Overpass API entirely and reads from this file.
@@ -60,37 +71,33 @@ root_relation_id: 12345678
 # experiments before pushing edits to OSM.
 # osm_file: osm.osm
 
-# Additional OSM relation IDs to include that aren't children of the
-# root super-relation. Each ID may be a leaf route relation OR a
-# super-relation; super-relations are auto-expanded into their child
-# routes at fetch time. Useful for combining two adjacent trail
-# systems on one map without enumerating every child by hand.
-# extra_relations: []
-
 # OSM relation IDs to include but clip to the core trail bounding box
 # (e.g. long rail trails or XC ski trails that pass through the area).
 # Clipped routes get continuation arrowheads at every cut endpoint
 # pointing in the direction the route keeps going off-map.
-# Super-relations are auto-expanded the same way as `extra_relations`.
+# Super-relations are auto-expanded the same way as `relations:`.
 # clipped_relations: []
 
 # Relation IDs to flag `winter=true`. Use for winter-only routes not
 # already tagged `seasonal=winter` in OSM (snowshoe relations, fatbike
 # loops, etc.). Being in this list removes the route from Summer
 # unless also in `summer_relations`. Super-relations are accepted and
-# fanned out to all child routes.
+# fanned out to all child routes. Entries here are auto-fetched even
+# if not already covered by `relations:`.
 # winter_relations: []
 
 # Relation IDs to flag `summer=true`. The opt-back-in list for
 # year-round routes that would otherwise sit only in Winter or
 # Emergency. Overlap with `winter_relations` is how you express a
 # route that lives in both buckets (e.g. a Snow Bike Route groomed
-# for fatbikes in winter AND rideable on knobbies in summer).
+# for fatbikes in winter AND rideable on knobbies in summer). Entries
+# here are auto-fetched even if not already covered by `relations:`.
 # summer_relations: []
 
 # Relation IDs to flag `emergency=true`. Rendered only when the
 # rider toggles Emergency Access on, regardless of season mode.
-# Super-relations are accepted.
+# Super-relations are accepted. Entries here are auto-fetched even if
+# not already covered by `relations:`.
 # emergency_access_relations: []
 
 # Inline-declared non-OSM routes (race courses, event loops, demo

@@ -30,7 +30,10 @@ import yaml
 # ----------------------------------------------------------------------
 
 # Top-level keys that are required. Empty values still fail.
-REQUIRED_KEYS = {"name", "slug", "root_relation_id"}
+# `relations` carries an additional non-empty check via _validate_relations
+# below (an empty list is structurally a value but useless: the build has
+# no source data to fetch).
+REQUIRED_KEYS = {"name", "slug", "relations"}
 
 # All known top-level keys with expected Python types. None means "no type
 # check" (handled by a custom validator below). Using tuples for "any of".
@@ -45,7 +48,6 @@ KNOWN_KEYS = {
     "name":                          str,
     "slug":                          str,
     "title":                         str,
-    "root_relation_id":              int,
 
     # Map view / geometry
     "bbox":                          list,
@@ -58,9 +60,12 @@ KNOWN_KEYS = {
     "basemap_maxzoom":               (int, float),
     "terrain_maxzoom":               (int, float),
 
-    # Data sources
+    # Data sources. `relations` is the unified source list: every entry
+    # may be a leaf route relation OR a super-relation (auto-expanded
+    # to its child routes one level deep). It replaces the historical
+    # `root_relation_id` (scalar) + `extra_relations` (list) split.
+    "relations":                     list,
     "osm_file":                      str,
-    "extra_relations":               list,
     "clipped_relations":             list,
     "winter_relations":              list,
     "summer_relations":              list,
@@ -142,8 +147,7 @@ KNOWN_KEYS = {
 BUILD_ONLY_KEYS = {
     # OSM data fetching (fetch_trails.py, fetch_pois.py, osm_parser.py)
     "osm_file",
-    "root_relation_id",
-    "extra_relations",
+    "relations",
     "clipped_relations",
     "winter_relations",
     "summer_relations",
@@ -272,6 +276,9 @@ def _is_color(value):
 # Per-key validators
 # ----------------------------------------------------------------------
 
+_LEGACY_KEYS = {"root_relation_id", "extra_relations"}
+
+
 def _validate_unknown_keys(report, config):
     """Catch typos in top-level keys via fuzzy match against KNOWN_KEYS."""
     for key in config.keys():
@@ -280,6 +287,11 @@ def _validate_unknown_keys(report, config):
         # Internal fields populated by the build pipeline shouldn't error
         # if they leak in (defensive — users won't write these).
         if key.startswith("_"):
+            continue
+        # Legacy keys handled by `_validate_legacy_keys` get a pointed
+        # migration message there; suppress the generic "unknown key"
+        # warning so the curator sees one clear error per key, not two.
+        if key in _LEGACY_KEYS:
             continue
         suggestions = difflib.get_close_matches(key, KNOWN_KEYS.keys(), n=2)
         hint = f" — did you mean {' or '.join(repr(s) for s in suggestions)}?" \
@@ -459,7 +471,7 @@ def _validate_relation_id_dicts(report, config):
                 continue
             report.err(f"{key}", f"key {rid!r} is not an OSM relation ID (int)")
 
-    for key in ("extra_relations", "clipped_relations", "winter_relations",
+    for key in ("relations", "clipped_relations", "winter_relations",
                 "summer_relations", "emergency_access_relations"):
         lst = config.get(key)
         if not isinstance(lst, list):
@@ -614,7 +626,7 @@ def _validate_custom_routes(report, config):
     Cross-checks:
       - ids are unique across custom_routes
       - ids don't collide (stringified) with any OSM relation id in
-        extra_relations / clipped_relations / winter_relations /
+        relations / clipped_relations / winter_relations /
         summer_relations / emergency_access_relations
       - at least one of summer/winter/emergency resolves to true
     """
@@ -628,16 +640,13 @@ def _validate_custom_routes(report, config):
     # Collect OSM relation ids (stringified) from relation-id lists for
     # collision checks.
     osm_ids = set()
-    for key in ("extra_relations", "clipped_relations", "winter_relations",
+    for key in ("relations", "clipped_relations", "winter_relations",
                 "summer_relations", "emergency_access_relations"):
         lst = config.get(key)
         if isinstance(lst, list):
             for rid in lst:
                 if isinstance(rid, int) and not isinstance(rid, bool):
                     osm_ids.add(str(rid))
-    root = config.get("root_relation_id")
-    if isinstance(root, int) and not isinstance(root, bool):
-        osm_ids.add(str(root))
 
     seen_ids = set()
     for i, entry in enumerate(cr):
@@ -884,6 +893,46 @@ def _validate_about(report, config):
                        "must be {name, [url]}")
 
 
+def _validate_relations(report, config):
+    """`relations` must be a non-empty list of OSM relation IDs.
+
+    The required-key check upstream already ensures the key is present;
+    this catches the structural-but-useless `relations: []` form. Type
+    and per-element int checks live in `_validate_types` and
+    `_validate_relation_id_dicts` respectively, so this validator only
+    asserts non-emptiness.
+    """
+    rels = config.get("relations")
+    if rels is None:
+        # Already reported by _validate_required.
+        return
+    if isinstance(rels, list) and not rels:
+        report.err("relations",
+                   "must be a non-empty list of OSM relation IDs "
+                   "(at least one entry required)")
+
+
+def _validate_legacy_keys(report, config):
+    """Reject the pre-collapse `root_relation_id` / `extra_relations` keys
+    with a pointed migration message.
+
+    Both keys were removed when the unified `relations:` list shipped.
+    A YAML still carrying them would otherwise produce a generic
+    "unknown top-level key" warning that doesn't tell the curator what
+    the fix is. This validator runs before `_validate_unknown_keys`
+    short-circuits the message, so the migration prompt wins."""
+    if "root_relation_id" in config:
+        report.err("root_relation_id",
+                   "renamed to `relations:` (now a list). Replace "
+                   "`root_relation_id: <id>` with `relations: [<id>]`. "
+                   "Fold any `extra_relations:` entries into the same list.")
+    if "extra_relations" in config:
+        report.err("extra_relations",
+                   "merged into `relations:`. Move every entry into "
+                   "the `relations:` list (alongside the former "
+                   "`root_relation_id` value).")
+
+
 def _validate_slug(report, config):
     slug = config.get("slug")
     if isinstance(slug, str) and not re.match(r"^[a-z0-9_-]+$", slug):
@@ -921,9 +970,14 @@ def validate_config(config, *, config_path=None, project_root=None):
         config_dir = config.get("_config_dir")
 
     report = _Report()
+    # Run the legacy-keys check FIRST so the migration message (e.g.
+    # "root_relation_id: ... renamed to `relations:`") wins over the
+    # generic "unknown top-level key" warning that follows.
+    _validate_legacy_keys(report, config)
     _validate_unknown_keys(report, config)
     _validate_required(report, config)
     _validate_types(report, config)
+    _validate_relations(report, config)
     _validate_enums(report, config)
     _validate_geometry(report, config)
     _validate_colors(report, config)

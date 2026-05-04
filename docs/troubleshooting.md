@@ -19,11 +19,10 @@ issues](#known-issues).
 
 ## Build fails with "OSM relation not found" or "0 elements"
 
-The `root_relation_id` (or one of `extra_relations`,
-`clipped_relations`, `winter_relations`, `summer_relations`,
-`emergency_access_relations`) refers to an OSM relation that no
-longer exists, has been redacted, or is currently unreachable from
-Overpass.
+One of the relation IDs in `relations`, `clipped_relations`,
+`winter_relations`, `summer_relations`, or
+`emergency_access_relations` refers to an OSM relation that no longer
+exists, has been redacted, or is currently unreachable from Overpass.
 
 - **Verify the relation still exists**: open
   `https://www.openstreetmap.org/relation/<id>` in a browser. If you

@@ -67,44 +67,52 @@ def _parse_relations(data):
     return relations
 
 
-def fetch_all_relations(root_relation_id, extra_ids=None, clipped_ids=None, cache_dir=None):
-    """Fetch relation metadata for the root relation + extras in a single query.
+def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None):
+    """Fetch relation metadata for every entry in `relation_ids` and
+    `clipped_ids` in a single Overpass query.
 
-    The root relation may be either a super-relation (with child route
-    relations as members) or a single route relation. In the super-relation
-    case, the root itself is dropped from the results (it has no ways);
-    in the single-relation case, the root is returned as the sole member.
+    Each input ID may be a leaf route relation OR a super-relation
+    (whose child relations become routes). Super-relations are
+    auto-expanded one level deep: the parent itself is dropped from
+    the result, and its children take its slot. Leaf relations pass
+    through unchanged. A super-relation whose member is itself a
+    super treats the inner one as a leaf (still one level deep).
 
-    Each entry in `extra_ids` and `clipped_ids` may ALSO be a super-
-    relation. Super-relations in those lists expand to their child
-    routes the same way `root_relation_id` does — the parent itself
-    is dropped from the result, and its children take its slot in
-    `extras` / `clipped`. One level deep only (a super whose member
-    is itself a super treats the inner one as a leaf), mirroring the
-    root path. The expansion mapping is returned so the caller can
-    propagate per-list semantics (winter / summer / emergency
-    tagging) from the parent's config slot to its children.
+    A relation ID with no resolvable children AND no own ways is
+    treated as a leaf and returned directly (the "single-relation map"
+    fallback: the relation IS the route).
 
-    Returns (members, extras, clipped, expansions) — three dicts of
-    relation info, plus expansions: {parent_id: [child_id, ...]} for
-    any IDs that were expanded.
+    Returns (members, clipped, expansions):
+        members:    {rel_id: info} for every leaf route resolved from
+                    `relation_ids` (and the children of any super-
+                    relations therein).
+        clipped:    {rel_id: info} same shape, but resolved from
+                    `clipped_ids` (these get clipped to the core trail
+                    bbox downstream).
+        expansions: {parent_id: [child_id, ...]} for any input IDs
+                    (from either list) that expanded as super-relations.
+                    Empty when every input was a leaf. Used by the
+                    caller to propagate per-list semantics (winter /
+                    summer / emergency tagging) from parent slot to
+                    children.
     """
-    extra_ids = extra_ids or []
-    clipped_ids = clipped_ids or []
-    additional_ids = list(extra_ids) + list(clipped_ids)
+    relation_ids = list(relation_ids or [])
+    clipped_ids = list(clipped_ids or [])
+    all_input_ids = relation_ids + clipped_ids
 
-    # Build a single query that fetches the root + any child relations + extras
-    # Each additional ID gets `rel(r)` recursion too so super-relations expand.
+    if not all_input_ids:
+        return {}, {}, {}
+
+    # Build a single Overpass query covering every input ID. Each entry
+    # gets `(relation(R);rel(r);)` so super-relations expand to their
+    # children inline. Wrapping each in `()` makes them independent
+    # union members of the outer `({...})`.
     parts = [
-        f"relation({root_relation_id});rel(r);",
+        ";".join(
+            f"(relation({rid});rel(r);)"
+            for rid in all_input_ids
+        ) + ";"
     ]
-    if additional_ids:
-        parts.append(
-            ";".join(
-                f"(relation({rid});rel(r);)"
-                for rid in additional_ids
-            ) + ";"
-        )
 
     # `out body;` instead of `out tags;` so member lists come back too.
     # Super-relation detection below needs to see type=relation members.
@@ -120,10 +128,9 @@ out body;
 
     # Detect super-relations among the inputs. A super-relation has
     # type=relation members that we ALSO fetched (via rel(r)). If a
-    # parent has no fetched relation children, it's treated as a leaf
-    # — same fallback the root path uses.
+    # parent has no fetched relation children, it's treated as a leaf.
     expansions = {}
-    for parent_id in additional_ids:
+    for parent_id in all_input_ids:
         parent = all_rels.get(parent_id)
         if not parent:
             continue
@@ -134,45 +141,44 @@ out body;
         if child_ids:
             expansions[parent_id] = child_ids
 
-    # Build the resolved sets accounting for expansions: replace each
-    # super-parent with its children, leave leaves alone.
+    # Resolve each input list: replace super-parents with their
+    # children, leave leaves alone. A relation that appears in BOTH
+    # lists ends up in the source set (clipped is "in addition to,
+    # but clip me at bbox"), but in practice the lists shouldn't
+    # overlap: clipped_relations exists for routes you DON'T want in
+    # the core trails geometry.
     def _resolve(ids):
-        out = set()
+        out = []
+        seen = set()
         for rid in ids:
-            if rid in expansions:
-                out.update(expansions[rid])
-            else:
-                out.add(rid)
+            for resolved in (expansions.get(rid) or [rid]):
+                if resolved not in seen:
+                    seen.add(resolved)
+                    out.append(resolved)
         return out
 
-    extra_set = _resolve(extra_ids)
-    clipped_set = _resolve(clipped_ids)
+    relation_set = set(_resolve(relation_ids))
+    clipped_set = set(_resolve(clipped_ids)) - relation_set
     expanded_parents = set(expansions.keys())
 
     members = {}
-    extras = {}
     clipped = {}
-    root_info = None
     for rel_id, info in all_rels.items():
-        if rel_id == root_relation_id:
-            root_info = info  # remember it; may use as sole member below
-            continue
         if rel_id in expanded_parents:
             # Super-relation parent — drop. Its children carry the
-            # bucket assignment in extras/clipped already.
+            # bucket assignment via the expansions map.
             continue
         if rel_id in clipped_set:
             clipped[rel_id] = info
-        elif rel_id in extra_set:
-            extras[rel_id] = info
-        else:
+        elif rel_id in relation_set:
             members[rel_id] = info
+        # Anything else can't happen in normal operation: every
+        # fetched leaf came in via either an explicit input ID or a
+        # super-relation expansion, and the case above handles both.
+        # If it ever does happen we silently drop the orphan rather
+        # than emitting a route the curator didn't ask for.
 
-    # Single-relation mode: no children found, so the root IS the route.
-    if not members and root_info is not None:
-        members[root_relation_id] = root_info
-
-    return members, extras, clipped, expansions
+    return members, clipped, expansions
 
 
 def fetch_all_ways_bulk(relation_ids, cache_dir=None):
@@ -587,26 +593,24 @@ def compute_bbox_from_features(features, buffer=0.005):
 def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     """Main entry point: fetch trails and write GeoJSON."""
     config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
-    root_relation_id = config.get("root_relation_id")
-    if root_relation_id is None:
+    source_ids = list(config.get("relations") or [])
+    if not source_ids:
         sys.exit(
-            "ERROR: config must specify `root_relation_id` "
-            "(the OSM relation that anchors this map)."
+            "ERROR: config must specify `relations:` "
+            "(a non-empty list of OSM relation IDs that anchor this map)."
         )
-    # Every config list that declares an OSM relation belongs to this map
-    # (beyond whatever the root relation's hierarchy already contains)
-    # contributes to the fetch set. winter_relations / summer_relations /
-    # emergency_access_relations each carry bucket semantics on top, but
-    # from fetch_trails.py's perspective they all mean "pull this relation."
-    # Any overlap with the root hierarchy is harmless — the downstream
-    # dict update() calls dedupe by id.
+    # winter / summer / emergency lists carry bucket semantics on top,
+    # but from fetch_trails.py's perspective they all mean "pull this
+    # relation." Fold them into the unified source set so a relation
+    # listed only as (e.g.) winter_relations still gets fetched. Any
+    # overlap is harmless: the downstream dedup handles it.
     winter_relation_ids = set(config.get("winter_relations") or [])
     summer_relation_ids = set(config.get("summer_relations") or [])
     emergency_relation_ids = set(
         config.get("emergency_access_relations") or []
     )
-    extra_relation_ids = list({
-        *(config.get("extra_relations") or []),
+    relation_ids = list({
+        *source_ids,
         *winter_relation_ids,
         *summer_relation_ids,
         *emergency_relation_ids,
@@ -617,7 +621,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     if osm_file:
         print(f"Loading trails for {config['name']} from {osm_file}...")
     else:
-        print(f"Fetching trails for {config['name']} (relation {root_relation_id})...")
+        print(f"Fetching trails for {config['name']} "
+              f"(relations {sorted(source_ids)})...")
 
     # Tracks any super-relation IDs that get expanded during fetch.
     # Both code paths populate this; it's persisted to trails.geojson
@@ -631,7 +636,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
                   f"{len(child_ids)} child route(s)")
 
     if osm_file:
-        from osm_parser import parse_osm_file, extract_relations, extract_extra_relations, extract_ways
+        from osm_parser import parse_osm_file, extract_source_relations, extract_ways
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
@@ -640,25 +645,18 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         parsed = parse_osm_file(osm_file)
         print(f"  Parsed {len(parsed[0])} nodes, {len(parsed[1])} ways, {len(parsed[2])} relations")
 
-        relations = extract_relations(parsed, root_relation_id)
-        print(f"  Found {len(relations)} relations from root:")
+        relations, source_expansions = extract_source_relations(
+            parsed, relation_ids)
+        super_relation_expansions.update(source_expansions)
+        _log_expansions("expanded", source_expansions)
+        print(f"  Found {len(relations)} relation(s):")
         for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
             print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
 
-        if extra_relation_ids:
-            print(f"  Loading {len(extra_relation_ids)} extra relations...")
-            extra, extra_expansions = extract_extra_relations(
-                parsed, extra_relation_ids)
-            super_relation_expansions.update(extra_expansions)
-            _log_expansions("extra", extra_expansions)
-            for rel_id, info in sorted(extra.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
-            relations.update(extra)
-
         clipped_relations = {}
         if clipped_relation_ids:
-            print(f"  Loading {len(clipped_relation_ids)} clipped relations...")
-            clipped_relations, clipped_expansions = extract_extra_relations(
+            print(f"  Loading {len(clipped_relation_ids)} clipped relation(s)...")
+            clipped_relations, clipped_expansions = extract_source_relations(
                 parsed, clipped_relation_ids)
             super_relation_expansions.update(clipped_expansions)
             _log_expansions("clipped", clipped_expansions)
@@ -688,31 +686,27 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     else:
         # Stage A: Fetch all relation metadata in a single query
         print("Stage A: Fetching relation metadata...")
-        members, extra, clipped_relations, super_relation_expansions = fetch_all_relations(
-            root_relation_id, extra_relation_ids, clipped_relation_ids, cache_dir
+        members, clipped_relations, super_relation_expansions = fetch_all_relations(
+            relation_ids, clipped_relation_ids, cache_dir
         )
         _log_expansions("expanded", super_relation_expansions)
 
-        print(f"  Found {len(members)} relations from root:")
+        if not members and not clipped_relations:
+            print(f"\n  ERROR: Relations {sorted(source_ids)} returned no usable data.")
+            print(f"  Check that the relation IDs are correct and exist:")
+            for rid in sorted(source_ids):
+                print(f"    https://www.openstreetmap.org/relation/{rid}")
+            print()
+            sys.exit(1)
+
+        print(f"  Found {len(members)} relation(s):")
         for rel_id, info in sorted(members.items(), key=lambda x: x[1]["name"]):
             print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
 
-        if not members and not extra and not clipped_relations:
-            print(f"\n  ERROR: Relation {root_relation_id} returned no usable data.")
-            print(f"  Check that the relation ID is correct and exists:")
-            print(f"    https://www.openstreetmap.org/relation/{root_relation_id}\n")
-            sys.exit(1)
-
         relations = dict(members)
 
-        if extra:
-            print(f"  Found {len(extra)} extra relations:")
-            for rel_id, info in sorted(extra.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
-            relations.update(extra)
-
         if clipped_relations:
-            print(f"  Found {len(clipped_relations)} clipped relations:")
+            print(f"  Found {len(clipped_relations)} clipped relation(s):")
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
                 print(f"    {info['name']} ({rel_id}) colour={info['colour']} [clipped]")
             relations.update(clipped_relations)

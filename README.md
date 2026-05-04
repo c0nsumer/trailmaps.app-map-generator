@@ -74,8 +74,9 @@ for the full pipeline, CLI flags, and caching behaviour.
    slug exactly). Copy
    [`configs/example/reference-minimal.yaml`](configs/example/reference-minimal.yaml)
    into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`,
-   `title`, `root_relation_id`. Uncomment and adjust any other keys
-   you want to customise.
+   `title`, and `relations:` (a non-empty list of OSM relation IDs;
+   each entry may be a leaf route relation or a super-relation).
+   Uncomment and adjust any other keys you want to customise.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the
    same `configs/<slug>/` folder and reference them by bare
    filename (e.g. `logo: logo.webp`, `icon: icon.png`). Either

@@ -1931,8 +1931,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         print(f"  Local OSM file: {_display_path(config['osm_file'])}")
     else:
         print("  Overpass API")
-        print(f"    root_relation_id: {config['root_relation_id']}")
-        for key in ("extra_relations", "clipped_relations",
+        print(f"    relations: {config.get('relations') or []}")
+        for key in ("clipped_relations",
                     "winter_relations", "summer_relations",
                     "emergency_access_relations"):
             ids = config.get(key) or []

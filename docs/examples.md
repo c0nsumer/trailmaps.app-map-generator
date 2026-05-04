@@ -89,13 +89,13 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/potoloo>
 - **Config**: [`configs/potoloo/potoloo.yaml`](../configs/potoloo/potoloo.yaml)
-- **Anchor relation**: [6364861](https://www.openstreetmap.org/relation/6364861) plus 2 extras
+- **Source relations**: [6364861](https://www.openstreetmap.org/relation/6364861) (DTE), [12381246](https://www.openstreetmap.org/relation/12381246) (Potawatomi), [14293352](https://www.openstreetmap.org/relation/14293352) (Poto-DTE Connector)
 
 What makes this map worth studying:
 
-- Combines the DTE Energy super-relation with two extra relations to
-  cover a multi-system loop. A good case study in `extra_relations`
-  super-relation expansion.
+- Combines the DTE Energy super-relation with two additional
+  relations to cover a multi-system loop. A good case study in
+  multi-entry `relations:` lists with super-relation expansion.
 - TODO (curator to add the rest).
 
 Notable config decisions:
@@ -134,7 +134,7 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/addison>
 - **Config**: [`configs/addison/addison.yaml`](../configs/addison/addison.yaml)
-- **Anchor relation**: [12666899](https://www.openstreetmap.org/relation/12666899) plus 1 extra
+- **Source relations**: [12666899](https://www.openstreetmap.org/relation/12666899) (Addison Oaks), [12562195](https://www.openstreetmap.org/relation/12562195)
 
 What makes this map worth studying:
 
@@ -169,7 +169,7 @@ What makes this map worth studying:
 - The framework's primary fixture for the `osm_file:` code path. The
   trail data lives in a JOSM-edited `osm.osm` file next to the YAML
   rather than being fetched from Overpass.
-- Negative `root_relation_id` is a JOSM convention for unsaved
+- The negative relation ID (`-102`) is a JOSM convention for unsaved
   relations: useful when iterating on a trail system that hasn't
   been pushed to OSM yet.
 - TODO (curator to add the rest).

@@ -104,7 +104,7 @@ default:
 name: My Trails
 slug: mytrails
 title: "My Trails Map"
-root_relation_id: 12425503
+relations: [12425503]
 ```
 
 To start a new map, copy `configs/example/reference-minimal.yaml` into
@@ -126,10 +126,9 @@ the same folder, and reference them by bare filename in the config.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `root_relation_id` | Yes | : | OSM relation ID anchoring this map. Either a super-relation (its child relations become routes) or a single route relation (used directly as the only route, for small parks with no super-relation wrapper). |
+| `relations` | Yes | : | Non-empty list of OSM relation IDs to render as routes. **Each entry may be a leaf route relation OR a super-relation** (auto-expanded into its child routes one level deep at fetch time; the parent itself is dropped since it has no ways). Order doesn't matter. Multi-system maps just list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
-| `extra_relations` | No | `[]` | Additional OSM relation IDs to include that aren't children of the root super-relation. **Each ID may be a leaf route relation OR a super-relation**: super-relations are auto-expanded into their child routes so you don't have to enumerate the children by hand (useful for combining two adjacent trail systems on one map). |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `extra_relations`. |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. |
 
 ### Route buckets
 
@@ -417,10 +416,10 @@ custom_routes:
 ### Rules
 
 - **`id`** is a string. It must be unique within the map and must not
-  collide with any OSM relation ID in the config (`extra_relations`,
-  `winter_relations`, etc.). Best practice: use a hyphenated slug like
-  `race-2025` or `demo-loop` so it's visually distinct from the
-  numeric OSM ids.
+  collide with any OSM relation ID in the config (`relations`,
+  `clipped_relations`, `winter_relations`, etc.). Best practice: use
+  a hyphenated slug like `race-2025` or `demo-loop` so it's visually
+  distinct from the numeric OSM ids.
 - **`color`** overrides any `relation_colors` / `default_trail_color`
   lookup for this route. It also becomes the swatch colour in the
   finder and the glow colour when the route is highlighted.
@@ -619,7 +618,8 @@ multi-system maps where a whole second trail system shouldn't
 reverse:
 
 ```yaml
-extra_relations:
+relations:
+  - 12345678                          # primary super-relation
   - 99999999                          # super-relation for "the system across town"
 
 direction_schedules:
@@ -633,7 +633,7 @@ Rules:
 
 - Keys are OSM relation IDs. Each may be a leaf route relation OR a
   super-relation; super-relations are auto-expanded to their child
-  routes the same way as `extra_relations`.
+  routes the same way as `relations`.
 - The relation is purely a grouping handle for "the ways under this
   relation share this schedule". Relations themselves don't have
   direction.

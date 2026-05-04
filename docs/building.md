@@ -264,17 +264,18 @@ file sitting next to the YAML:
 ```yaml
 # configs/mytrails/mytrails.yaml
 osm_file: osm.osm              # resolves to configs/mytrails/osm.osm
-root_relation_id: 12345678     # still required
+relations: [12345678]          # still required
 ```
 
-The `.osm` file must contain the root relation, any child relations
-it references, their member ways, and all referenced nodes with
-coordinates (this is the default when saving from JOSM).
+The `.osm` file must contain every entry in `relations`, all of their
+child relations (when any entry is a super-relation), every member
+way, and all referenced nodes with coordinates (this is the default
+when saving from JOSM).
 
-All other config options (`extra_relations`, `clipped_relations`,
-`winter_relations`, `summer_relations`,
-`emergency_access_relations`, `dashed_relations`, etc.) work the
-same way: they reference IDs found in the file instead of Overpass.
+All other config options (`clipped_relations`, `winter_relations`,
+`summer_relations`, `emergency_access_relations`, `dashed_relations`,
+etc.) work the same way: they reference IDs found in the file instead
+of Overpass.
 
 ### Downloading from Overpass
 
