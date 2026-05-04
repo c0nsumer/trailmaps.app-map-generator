@@ -4261,6 +4261,23 @@ function _lsKeyForType(type) {
     return null;
 }
 
+// POI type → name used in `default_visible` config list. Lets us
+// resolve "what's the per-map default for this category?" from a
+// runtime POI type. Keep these two maps in lockstep with each other
+// AND with the addXxxMarkers() callers in loadPOIs (the boot path
+// that decides the initial mount state).
+function _defaultVisibleNameForType(type) {
+    switch (type) {
+        case "parking":         return "parking";
+        case "trailhead":       return "trailheads";
+        case "toilet":          return "toilets";
+        case "drinking_water":  return "drinking_water";
+        case "trail_marker":    return "trail_markers";
+        case "feature":         return "features";
+    }
+    return null;
+}
+
 // Force-show machinery: when a highlight lands on POIs of a type
 // whose Options toggle is OFF, mount that type's markers
 // temporarily so the rings have content underneath. Toggle state
@@ -4280,7 +4297,18 @@ function _forcePoiType(type) {
     // Toggle ON → markers already mounted (modulo proximity, which
     // the search-scope filter has already enforced before we got
     // here). No force-mount needed.
-    if (LS.get(lsKey, true)) return;
+    //
+    // The fallback for LS.get must match what loadPOIs decided at
+    // boot, otherwise we mis-classify "rider hasn't toggled yet"
+    // states. Specifically: when default_visible omits this type,
+    // loadPOIs called addXxxMarkers(false) — markers exist in the
+    // array but aren't on the map. If we used `true` as the
+    // fallback here, we'd think "toggle is on" and skip force-mount,
+    // leaving the search highlight ringing empty space. Using
+    // isDefaultVisible(name) keeps both code paths in agreement.
+    const dvName = _defaultVisibleNameForType(type);
+    const fallbackOn = dvName ? isDefaultVisible(dvName) : true;
+    if (LS.get(lsKey, fallbackOn)) return;
     const arr = _markerArrayForType(type);
     if (!arr) return;
     // For proximity-filtered types, mount only the proximity-IN
@@ -6434,6 +6462,64 @@ function setupInteractions() {
         });
     }
 
+    // Dedupe trail-click popups across per-route layers, AND union the
+    // routes across all features at the click point. attachTrailHandlers
+    // is called once per route; a way that's in shared_routes for N
+    // routes belongs to N trail-casing-<routeId> layers. On top of that,
+    // custom_routes (including inline event_mode.routes) get baked into
+    // trails.geojson as PARALLEL features overlaying the same geometry,
+    // each with its own route_id and its own shared_routes list \u2014 the
+    // OSM features don't know about the custom route, and vice versa.
+    //
+    // Without unification: a click on a way that's BOTH in OSM route
+    // 12345 AND in custom route "race-2026" fires N click events; each
+    // layer's e.features[0] only knows its own side. The popup ends up
+    // listing only one side ("part of: Roller Coaster") with no mention
+    // of the other ("2026 Big Bang Course"). Confusing.
+    //
+    // Fix: on the first click handler to fire for a given originalEvent,
+    // queryRenderedFeatures across ALL trail-casing layers at the click
+    // point and union every feature's route_id + shared_routes. Build
+    // ONE popup listing every route. Subsequent same-event handlers
+    // bail (dedupe via originalEvent ref).
+    let _lastTrailClickEvent = null;
+    const _trailCasingLayerIds = Object.keys(CONFIG.routes)
+        .map((rid) => `trail-casing-${rid}`);
+
+    function _collectAllRoutesAt(point) {
+        // Returns { routeIds: string[], trailName: string }.
+        // routeIds: deduplicated, in stable order (custom routes first,
+        // then OSM by appearance).
+        // trailName: any feature's trail_name (consistent across the
+        // shared way regardless of which layer's feature we read).
+        const feats = map.queryRenderedFeatures(point, {
+            layers: _trailCasingLayerIds.filter((id) => map.getLayer(id)),
+        });
+        const seen = new Set();
+        const routeIds = [];
+        let trailName = "";
+        for (const f of feats) {
+            const props = f.properties || {};
+            if (!trailName && props.trail_name) trailName = props.trail_name;
+            const rid = props.route_id;
+            if (rid != null) {
+                const k = String(rid);
+                if (!seen.has(k)) { seen.add(k); routeIds.push(k); }
+            }
+            let shared = props.shared_routes;
+            if (typeof shared === "string") {
+                try { shared = JSON.parse(shared); } catch (_) { shared = []; }
+            }
+            if (Array.isArray(shared)) {
+                for (const s of shared) {
+                    const k = String(s);
+                    if (!seen.has(k)) { seen.add(k); routeIds.push(k); }
+                }
+            }
+        }
+        return { routeIds, trailName };
+    }
+
     function attachTrailHandlers(layerId) {
         map.on("mouseenter", layerId, () => {
             map.getCanvas().style.cursor = "pointer";
@@ -6443,17 +6529,16 @@ function setupInteractions() {
         });
         map.on("click", layerId, (e) => {
             if (parkingPopupOpen) return;
-            const props = e.features[0].properties;
-            const hasTrailName = !!props.trail_name;
+            // Dedupe across per-route layer click handlers \u2014 see the
+            // comment on _lastTrailClickEvent above.
+            if (e.originalEvent && _lastTrailClickEvent === e.originalEvent) return;
+            _lastTrailClickEvent = e.originalEvent;
 
-            // shared_routes may be a JSON string or array depending on source
-            let shared = props.shared_routes;
-            if (typeof shared === "string") {
-                try { shared = JSON.parse(shared); } catch (_) { shared = []; }
-            }
-            if (!Array.isArray(shared)) shared = [];
-
-            const matchedRoutes = shared
+            // Union routes across ALL trail-casing layers at the click
+            // point so OSM + custom (event) routes both appear when
+            // they overlay the same geometry.
+            const { routeIds, trailName } = _collectAllRoutesAt(e.point);
+            const matchedRoutes = routeIds
                 .map((id) => CONFIG.routes[id])
                 .filter(Boolean);
             const routeItems = matchedRoutes
@@ -6464,14 +6549,14 @@ function setupInteractions() {
                 .join("");
 
             let html = "";
-            if (hasTrailName) {
-                html += `<div class="popup-title">Trail: ${props.trail_name}</div>`;
+            if (trailName) {
+                html += `<div class="popup-title">Trail: ${trailName}</div>`;
             }
             if (routeItems) {
                 const label = matchedRoutes.length === 1
                     ? "Part of Route:"
                     : "Part of Routes:";
-                if (hasTrailName) {
+                if (trailName) {
                     html += `<hr class="popup-hr">`;
                 }
                 html += `<div class="popup-routes">${label}</div>`;

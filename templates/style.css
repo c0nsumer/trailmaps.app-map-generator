@@ -1712,6 +1712,13 @@ body {
 .popup-title {
     font-weight: 600;
     margin-bottom: 4px;
+    /* Long titles (e.g. multi-word trail names) wrap onto multiple
+     * lines inside the popup's max-width rather than horizontally
+     * overflowing the popup container (which is `overflow: hidden`,
+     * so the overflow would be silently clipped AND would throw
+     * off MapLibre's popup-tail auto-anchor calculation). */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .popup-hr {
@@ -1723,6 +1730,12 @@ body {
 .popup-routes {
     font-size: 12px;
     margin-top: 2px;
+    /* Same reason as .popup-title above: a long route name like
+     * "2026 Shelden's Big Bang Course" needs to wrap inside the
+     * popup, not punch through .maplibregl-popup-content's
+     * `overflow: hidden`. */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .popup-directions {
