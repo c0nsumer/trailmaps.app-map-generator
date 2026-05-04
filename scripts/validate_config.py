@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict validator/linter for mtb-map-framework YAML configs.
+"""Strict validator/linter for trailmaps.app Map Generator YAML configs.
 
 Run automatically at the top of `build.py`, or standalone:
 

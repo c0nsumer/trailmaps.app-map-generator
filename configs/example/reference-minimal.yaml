@@ -1,9 +1,11 @@
-# Minimal map config — every supported key in canonical order, commented
-# out at the framework default. Uncomment only the lines you need to
-# customise. The README "Configuration → Config Reference" tables are
-# the canonical description for each knob (what it does, accepted
-# values, why the default is what it is); this file is the copy-paste
-# skeleton for a new map.
+# reference-minimal.yaml: every supported key in canonical order,
+# commented out at the framework default. Uncomment only the lines you
+# need to customise. This file is the copy-paste skeleton for a new
+# map; for a richer reference with paragraph-style explanations of each
+# key, see `reference.yaml` in this folder. Both files stay in the same
+# canonical order, so you can diff them at any time.
+#
+# Full prose documentation: docs/configuration.md.
 
 # --- Identity (REQUIRED) ---
 name: My Trails

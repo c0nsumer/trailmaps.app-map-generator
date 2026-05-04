@@ -97,7 +97,7 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 # If no slugs specified, discover every configs/<slug>/<slug>.yaml except
-# configs/example/ (which holds the verbose + minimal templates).
+# configs/example/ (which holds the reference + reference-minimal templates).
 if [ ${#configs[@]} -eq 0 ]; then
     for d in "${CONFIGS_DIR}"/*/; do
         name="$(basename "$d")"

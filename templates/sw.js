@@ -1,4 +1,4 @@
-// Service Worker for MTB Trail Map Framework
+// Service Worker for the trailmaps.app Map Generator
 // Provides offline support via precaching all build assets.
 //
 // Config is injected at build time by build.py:

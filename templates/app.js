@@ -1,4 +1,4 @@
-/* MTB Trail Map Framework — Map Viewer */
+/* trailmaps.app Map Generator — Map Viewer */
 /* global maplibregl, pmtiles, basemaps */
 
 /*__CONFIG__*/

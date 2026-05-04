@@ -13,7 +13,7 @@ template without losing any explicitly-set values.
 Usage:
     python tools/clean_config.py configs/potoloo/potoloo.yaml
     python tools/clean_config.py configs/potoloo/potoloo.yaml \\
-        --template configs/example/example-minimal.yaml
+        --template configs/example/reference-minimal.yaml
 
 The output file is `<input-stem>-cleaned.yaml` in the same directory.
 The original file is never modified — review the cleaned output and
@@ -263,12 +263,12 @@ def main():
     # from the project root see the same default either way.
     _PROJECT_ROOT = os.path.dirname(_HERE)
     default_template = os.path.join(
-        _PROJECT_ROOT, "configs", "example", "example-minimal.yaml")
+        _PROJECT_ROOT, "configs", "example", "reference-minimal.yaml")
     parser.add_argument(
         "--template",
         default=default_template,
         help=("Path to the canonical template YAML "
-              "(default: configs/example/example-minimal.yaml relative "
+              "(default: configs/example/reference-minimal.yaml relative "
               "to the project root)."),
     )
     parser.add_argument(

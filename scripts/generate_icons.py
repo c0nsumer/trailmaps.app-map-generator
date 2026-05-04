@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automatic icon generation for MTB Trail Map Framework.
+"""Automatic icon generation for the trailmaps.app Map Generator.
 
 Generates all favicon/icon variants from a single source image using
 Pillow. Optionally generates safari-pinned-tab.svg via potrace.

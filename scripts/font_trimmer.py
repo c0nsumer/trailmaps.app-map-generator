@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Automatic font trimming for MTB Trail Map Framework.
+"""Automatic font trimming for the trailmaps.app Map Generator.
 
 Scans basemap PMTiles and GeoJSON data to determine which Unicode
 character ranges are actually used, then copies only the needed

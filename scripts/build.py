@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build orchestrator for MTB Trail Map Framework.
+"""Build orchestrator for the trailmaps.app Map Generator.
 
 Runs all pipeline steps, assembles templates with injected config,
 and copies assets to produce a deployable static site.

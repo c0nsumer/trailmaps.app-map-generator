@@ -50,8 +50,8 @@ The deploy destination is configured via the `DEPLOY_DEST` variable at the top o
 ## clean_config.py
 
 Re-align a production map YAML against the canonical template
-(`configs/example/example-minimal.yaml` by default). Production configs
-accumulate cruft over time as they're hand-maintained — keys reordered,
+(`configs/example/reference-minimal.yaml` by default). Production configs
+accumulate cruft over time as they're hand-maintained: keys reordered,
 comments edited, sections renamed, drift from the template's structure.
 This tool produces a sibling `<input>-cleaned.yaml` that adopts the
 template's structure (section dividers, key ordering, default-value
@@ -64,12 +64,12 @@ swap it in manually when satisfied.
 ### Usage
 
 ```bash
-# Default template (configs/example/example-minimal.yaml)
+# Default template (configs/example/reference-minimal.yaml)
 python tools/clean_config.py configs/potoloo/potoloo.yaml
 
-# Custom template
+# Custom template (e.g. the verbose annotated reference)
 python tools/clean_config.py configs/foo/foo.yaml \
-    --template configs/example/some-other-template.yaml
+    --template configs/example/reference.yaml
 
 # Custom output path
 python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
