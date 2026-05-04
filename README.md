@@ -110,6 +110,7 @@ canonical key order so you can diff them at any time.
 | [`docs/building.md`](docs/building.md) | Build pipeline: prerequisites, CLI flags, the `build_and_deploy.sh` and `clean_config.py` helpers, the data cache, local `.osm` file support, vendor bundling, font trimming, and the project layout. |
 | [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behaviour by platform, PMTiles Range requests, Open Graph share previews. |
 | [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation deep dive: data source, computation pipeline, why we show both gain and loss, caveats, and why the numbers won't match Strava. |
+| [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
 | [`docs/examples.md`](docs/examples.md) | Real-world configs from production trail systems. (Many sections are placeholders pending curator notes.) |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common build and runtime issues, and known cosmetic upstream warnings. |
 

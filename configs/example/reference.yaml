@@ -605,6 +605,77 @@ relations:
 
 
 # ============================================================
+# Event mode (optional)
+# ============================================================
+# Feature one or more routes prominently while every other trail on
+# the map renders as muted background context. Use for race courses,
+# group rides, demo loops, and any other event-specific map.
+#
+# Two complementary keys:
+#   routes:    Inline route definitions. Each entry has the same
+#              shape as a top-level `custom_routes` entry (id, name,
+#              color, geometry, and the optional dashed /
+#              description / trail_name_field / bucket-flag fields).
+#              Inline routes are featured by definition. The geometry
+#              path is resolved relative to this YAML's directory.
+#   featured:  References to existing routes. Each entry is either a
+#              string matching a top-level custom_routes id OR an int
+#              matching an OSM relation id present in `relations:`,
+#              `clipped_relations:`, or any of the *_relations bucket
+#              lists. A super-relation int fans out to every child
+#              route as featured.
+# At least one of `routes` or `featured` must be non-empty.
+#
+# `background_style` (optional) defines the styling for every
+# non-featured route on the map. Default: dotted gray (color: gray,
+# pattern: [0, 2], cap: round).
+#
+# Curator-supplied `relation_colors` and `dashed_relations` entries
+# WIN over background_style for the routes they cover. Use this to
+# carve exceptions out of the muted background.
+#
+# `direction_arrows` (optional bool) flips arrows on along inline
+# event routes (event_mode.routes). When true, the curator's race
+# course renders with directional arrows AND the rider toggle is
+# hidden so they can't be disabled (event-direction is essential
+# information for an event map). Featured OSM relations keep their
+# normal OSM-tag-driven arrow behaviour.
+#
+# `pois` (optional list) declares event-only POIs: start / finish,
+# aid stations, support areas, etc. Each entry needs a `name` and
+# `coordinates` ([lon, lat]); `description` is optional and shows
+# in the popup below the name. These markers are ALWAYS visible
+# (no rider toggle).
+#
+# `poi_color` (optional CSS colour) sets the chip background for
+# every event POI. Defaults to a saturated red (#D32F2F).
+#
+# IDs across `event_mode.routes`, top-level `custom_routes`, and
+# OSM relations must remain unique (validator enforces).
+#
+# See docs/event-mode.md for the full guide and worked examples.
+# event_mode:
+#   routes:
+#     - id: race-2026
+#       name: "2026 Big Bang 50K"
+#       color: "#FF0000"
+#       geometry: race-2026.geojson
+#   # featured: [12345678]
+#   background_style:
+#     color: gray
+#     pattern: [0, 2]    # dots; or [2, 2] for short dashes, [4, 2] long
+#     cap: round
+#   direction_arrows: true
+#   pois:
+#     - name: "Start / Finish"
+#       coordinates: [-83.123, 42.456]
+#     - name: "Aid Station 1"
+#       coordinates: [-83.124, 42.457]
+#       description: "Water + bananas. Mechanic on site."
+#   poi_color: "#D32F2F"
+
+
+# ============================================================
 # Output
 # ============================================================
 # Build output directory override. Default: build/<slug>. Useful for

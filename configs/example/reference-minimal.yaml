@@ -138,5 +138,32 @@ relations:
 #     Plain-text intro. Paragraphs are separated by blank lines.
 #   show_controls_hint: true   # default true; set false if `body` already explains the controls
 
+# --- Event mode (optional) ---
+# Feature one or more routes prominently while every other trail on
+# the map renders as muted context. Use for race courses, group
+# rides, or any event-specific map. Inline `routes:` are featured by
+# definition; `featured:` references existing OSM relations or
+# top-level custom_routes by ID. See docs/event-mode.md for the full
+# guide.
+# event_mode:
+#   routes:
+#     - id: race-2026
+#       name: "2026 Big Bang 50K"
+#       color: "#FF0000"
+#       geometry: race-2026.geojson
+#   # featured: [12345678]
+#   background_style:
+#     color: gray
+#     pattern: [0, 2]    # dots
+#     cap: round
+#   direction_arrows: true   # arrows along inline routes; rider can't disable
+#   pois:                    # always-on race-day fixtures
+#     - name: "Start / Finish"
+#       coordinates: [-83.123, 42.456]
+#     - name: "Aid Station 1"
+#       coordinates: [-83.124, 42.457]
+#       description: "Water + bananas. Mechanic on site."
+#   poi_color: "#D32F2F"     # optional; chip colour for event POIs
+
 # --- Output ---
 # output_dir: build/my-trails

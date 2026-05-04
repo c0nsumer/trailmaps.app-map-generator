@@ -66,7 +66,8 @@ out center;
     return overpass_query(q, cache_dir, label="POIs")
 
 
-def build_pois_geojson(osm_data, config_parking, config_trailheads):
+def build_pois_geojson(osm_data, config_parking, config_trailheads,
+                       config_event_pois=None):
     """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
 
     Guideposts and emergency access points are merged into a single
@@ -165,6 +166,22 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads):
             },
         })
 
+    # Event POIs from event_mode.pois (always-on at runtime; no toggle).
+    # Used for race-day fixtures: start / finish, aid stations, support
+    # vehicles, etc. Distinct from OSM POIs in that they never get
+    # proximity-filtered (they're race fixtures, not bbox-incidental).
+    for ep in (config_event_pois or []):
+        elon, elat = ep["coordinates"]
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [elon, elat]},
+            "properties": {
+                "poi_type": "event",
+                "name": ep.get("name", "Event"),
+                "description": ep.get("description", ""),
+            },
+        })
+
     return {"type": "FeatureCollection", "features": features}
 
 
@@ -174,6 +191,9 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     bbox = config["bbox"]
     config_parking = config.get("parking", [])
     config_trailheads = config.get("trailheads", [])
+    # event_mode.pois are always-on, not gated by show_*; if event mode
+    # is absent the list is just empty and contributes nothing.
+    config_event_pois = (config.get("event_mode") or {}).get("pois") or []
 
     osm_file = config.get("osm_file")
 
@@ -223,6 +243,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     print(f"  Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
     print(f"  Config defines {len(config_parking)} parking areas")
     print(f"  Config defines {len(config_trailheads)} trailheads")
+    if config_event_pois:
+        print(f"  event_mode defines {len(config_event_pois)} event POI(s)")
 
     # Warn when show_* is enabled but no data exists for that POI type
     if config.get("show_markers", True) and marker_count == 0:
@@ -238,7 +260,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
         print(f"  NOTE: show_trailheads is enabled but no trailheads defined in config")
 
-    geojson = build_pois_geojson(osm_data, config_parking, config_trailheads)
+    geojson = build_pois_geojson(osm_data, config_parking, config_trailheads,
+                                  config_event_pois=config_event_pois)
     print(f"  Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)

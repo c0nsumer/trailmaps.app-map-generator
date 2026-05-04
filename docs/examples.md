@@ -158,6 +158,19 @@ Notable config decisions:
 
 - TODO
 
+## Event maps
+
+The framework supports a dedicated [event-mode](event-mode.md)
+rendering for races, group rides, and other event-specific maps.
+The featured route(s) display prominently in chosen colours; every
+other trail on the map renders as muted background context. POIs
+render normally for facility-finding.
+
+See [`event-mode.md`](event-mode.md) for the schema, worked
+examples, and the full guide.
+
+(TODO: curator to add specific event-map examples here.)
+
 ## Tenhave Woods (Royal Oak, MI: test data)
 
 - **Live map**: not deployed publicly (development / test bed).

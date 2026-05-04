@@ -129,6 +129,7 @@ the same folder, and reference them by bare filename in the config.
 | `relations` | Yes | : | Non-empty list of OSM relation IDs to render as routes. **Each entry may be a leaf route relation OR a super-relation** (auto-expanded into its child routes one level deep at fetch time; the parent itself is dropped since it has no ways). Order doesn't matter. Multi-system maps just list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
 | `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. |
+| `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. See [Event mode](event-mode.md) for the schema and worked examples. |
 
 ### Route buckets
 

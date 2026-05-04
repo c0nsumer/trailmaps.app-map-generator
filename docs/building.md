@@ -65,7 +65,7 @@ finish in under 30 seconds.
 ```bash
 python scripts/build.py configs/ramba/ramba.yaml                 # Full build (uses caches)
 python scripts/build.py configs/ramba/ramba.yaml --force          # Re-fetch everything (clears Overpass cache)
-python scripts/build.py configs/ramba/ramba.yaml --trails         # Re-fetch trail + POI data (uses Overpass cache)
+python scripts/build.py configs/ramba/ramba.yaml --trails         # Re-fetch trail data from OSM (uses Overpass cache)
 python scripts/build.py configs/ramba/ramba.yaml --skip-terrain   # Skip terrain tile generation
 python scripts/build.py configs/ramba/ramba.yaml --skip-basemap   # Skip basemap extraction
 ```
@@ -73,12 +73,19 @@ python scripts/build.py configs/ramba/ramba.yaml --skip-basemap   # Skip basemap
 - `--force` clears the Overpass API response cache (`cache/`) and
   re-fetches all data from OSM, re-extracts basemap and terrain
   tiles.
-- `--trails` re-runs the trail and POI data pipeline but reuses
-  cached Overpass API responses if available. Useful for
-  re-processing data after changing YAML options like
-  `dashed_relations`, `relation_colors`, `winter_relations`,
-  `summer_relations`, or `custom_routes` without hitting the
-  Overpass API again.
+- `--trails` re-runs the trail data pipeline (`fetch_trails.py`) but
+  reuses cached Overpass API responses if available. Useful when you
+  want to refresh trail geometry or pick up an OSM edit. NOT
+  required for YAML-only changes: per-route style overrides
+  (`dashed_relations`, `relation_colors`, `winter_relations`,
+  `summer_relations`, `custom_routes`, `event_mode.routes`,
+  `event_mode.featured`, `event_mode.background_style`) flow
+  through every build's enrichment pass automatically.
+- POIs are rebuilt on every build (no flag needed). Edits to
+  `parking:`, `trailheads:`, `event_mode.pois`, and the related
+  colour overrides flow through `fetch_pois.py` on each invocation.
+  The OSM portion still hits the Overpass cache internally so the
+  always-on rebuild stays sub-second.
 - `--skip-terrain` and `--skip-basemap` skip the corresponding tile
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.
@@ -230,9 +237,10 @@ OpenStreetMap):
 - **`--force`** clears the entire `cache/` directory and re-fetches
   all Overpass data from scratch. Also re-extracts basemap and
   terrain tiles.
-- **`--trails`** re-runs the trail and POI data pipeline. Reuses
-  existing cached Overpass responses if present; only fetches data
-  that isn't already cached.
+- **`--trails`** re-runs the trail data pipeline (`fetch_trails.py`).
+  Reuses existing cached Overpass responses if present; only fetches
+  data that isn't already cached. POIs are rebuilt on every build
+  regardless of this flag.
 
 To force a full refresh of just trail data, delete the relevant cache
 files manually and run with `--trails`:

@@ -31,6 +31,8 @@
     // Features (inner dot + outer ring)
     if (CONFIG.featureColor)         root.style.setProperty("--feature-color",         CONFIG.featureColor);
     if (CONFIG.featureRingColor)     root.style.setProperty("--feature-ring-color",    CONFIG.featureRingColor);
+    // Event POIs (always-on markers from event_mode.pois)
+    if (CONFIG.eventPoiColor)        root.style.setProperty("--event-poi-color",       CONFIG.eventPoiColor);
     // Per-map UI accent (active toggle pills, focus rings, link colour,
     // FAB pressed state, etc.). When omitted, the CSS var falls back
     // to the framework default (#2980b9). When CONFIG.accentColor is
@@ -517,6 +519,7 @@ const POI = Object.freeze({
     FEATURE:         "feature",
     TOILET:          "toilet",
     DRINKING_WATER:  "drinking_water",
+    EVENT:           "event",   // event_mode.pois — always rendered, no toggle
 });
 
 const EARTH_RADIUS_M = 6378137;
@@ -1149,7 +1152,17 @@ let basemapMode = "default"; // "default" or "custom:<id>"
 // Labels: 3-state mode (routes / trails / none). CONFIG.defaultLabels
 // is the per-map default (defaults to "none" framework-wide). Once
 // the rider picks a mode, LS persists their choice.
-let labelMode = LS.get("mtb.labels", CONFIG.defaultLabels || "none");
+//
+// Event mode override: when CONFIG.eventModeActive is true, the label
+// mode is locked to "routes" (so the featured route's name shows)
+// and the rider's persisted preference is ignored. The Labels
+// segmented control is hidden in setupOptionsOverlay so they have
+// no way to flip it. Only featured-route labels actually render —
+// see updateLabels() and the per-route label addLayer() filter for
+// the visibility narrowing.
+let labelMode = CONFIG.eventModeActive
+    ? "routes"
+    : LS.get("mtb.labels", CONFIG.defaultLabels || "none");
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
@@ -1180,6 +1193,9 @@ let trailheadMarkers = [];
 let featureMarkers = [];
 let toiletMarkers = [];
 let drinkingWaterMarkers = [];
+// event_mode.pois — always-on, no rider toggle. Held in its own
+// array so the proximity / toggle filter passes don't touch it.
+let eventPoiMarkers = [];
 let userLocation = null; // [lng, lat] from geolocate control
 // MapLibre GeolocateControl handle; assigned in init(). Hoisted to module
 // scope so the off-screen indicator's click handler (defined at module
@@ -3068,8 +3084,24 @@ async function loadTrails() {
 
     // Create layers for each route. Casings first (bottom), then fills.
     const routes = CONFIG.routes;
+    // Sort: featured routes (event_mode) last so their layers add on
+    // top of background routes; within each group, alphabetical by
+    // name. MapLibre draws layers in addition order, so "added later"
+    // means "drawn on top." Featured routes also get a wider line via
+    // FEATURED_WIDTH_MULTIPLIER below.
     const sortedRoutes = Object.entries(routes)
-        .sort(([, a], [, b]) => a.name.localeCompare(b.name));
+        .sort(([, a], [, b]) => {
+            const aFeat = a.featured ? 1 : 0;
+            const bFeat = b.featured ? 1 : 0;
+            if (aFeat !== bFeat) return aFeat - bFeat;
+            return a.name.localeCompare(b.name);
+        });
+
+    // Featured routes (event mode) render at 1.5x the standard line
+    // width — makes the spotlighted route(s) read as foreground
+    // against the muted background trails. Applies to casing, fill,
+    // and the two-colour underlay layer.
+    const FEATURED_WIDTH_MULTIPLIER = 1.5;
 
     const byDifficulty = CONFIG.colorBy === "difficulty";
 
@@ -3077,6 +3109,7 @@ async function loadTrails() {
     for (const [routeId, routeInfo] of sortedRoutes) {
         const dashed = isDashed(routeInfo);
         const cap = getDashCap(routeInfo);
+        const wmul = routeInfo.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
 
         const casingCol = byDifficulty
             ? difficultyCasingExpr()
@@ -3090,8 +3123,8 @@ async function loadTrails() {
             paint: {
                 "line-color": casingCol,
                 "line-width": dashed
-                    ? ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 7]
-                    : ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 6, 18, 10],
+                    ? ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul]
+                    : ["interpolate", ["linear"], ["zoom"], 10, 3 * wmul, 14, 6 * wmul, 18, 10 * wmul],
                 "line-offset": makeOffsetExpr(),
                 "line-opacity": dashed ? 0 : 0.5,
                 "line-dasharray": getDashPattern(routeInfo),
@@ -3109,6 +3142,7 @@ async function loadTrails() {
         const dashed = isDashed(routeInfo);
         const cap = getDashCap(routeInfo);
         const dashColors = getDashColors(routeInfo);
+        const wmul = routeInfo.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
 
         const fillColor = byDifficulty
             ? difficultyColorExpr()
@@ -3131,7 +3165,7 @@ async function loadTrails() {
                 filter: ["==", ["get", "route_id"], routeId],
                 paint: {
                     "line-color": dashColors[1],
-                    "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 7],
+                    "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
                     "line-offset": makeOffsetExpr(),
                 },
                 layout: {
@@ -3148,7 +3182,7 @@ async function loadTrails() {
             filter: ratedFilter,
             paint: {
                 "line-color": fillColor,
-                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 7],
+                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
                 "line-offset": makeOffsetExpr(),
                 "line-dasharray": getDashPattern(routeInfo),
             },
@@ -3394,8 +3428,15 @@ async function loadTrails() {
     // trail-name labels render from the trail-decorations source via
     // decor-trail-name so each trail name appears exactly once per
     // physical way regardless of how many routes share it.
+    //
+    // Event mode: only the featured route(s) get an addLayer, so
+    // background routes can never render a label even if the rider
+    // somehow flips labelMode. Saves layer churn and removes a class
+    // of bug where a hidden segmented-control click could surface
+    // background labels.
     for (let li = 0; li < sortedRoutes.length; li++) {
-        const [routeId] = sortedRoutes[li];
+        const [routeId, routeInfo] = sortedRoutes[li];
+        if (CONFIG.eventModeActive && !routeInfo.featured) continue;
 
         // Stagger labels along the line so shared-segment route names
         // don't stack up. With symbol-placement "line", text-offset x
@@ -3500,8 +3541,14 @@ function updateLabels() {
     // only in "routes" mode. Under dim: route highlight narrows to
     // that route via solo_route_id; trail highlight hides all route
     // names (same semantics as per-route layers above).
+    //
+    // Event mode: hidden entirely. The per-route trail-label-<id>
+    // layers (only created for featured routes; see addLayer loop
+    // earlier) are the sole source of route-name labels in event
+    // mode, so the rider sees the event route's name and nothing
+    // else.
     if (map.getLayer("decor-route-name")) {
-        let visible = labelMode === "routes";
+        let visible = labelMode === "routes" && !CONFIG.eventModeActive;
         let filter = buildLabelFilter(KIND.ROUTE_NAME);
         if (visible && dim) {
             if (highlight.kind === "route") {
@@ -4101,6 +4148,7 @@ function findPoiMarker(p) {
         "feature":        featureMarkers,
         "toilet":         toiletMarkers,
         "drinking_water": drinkingWaterMarkers,
+        "event":          eventPoiMarkers,
     };
     const list = arrays[p.type];
     if (!list) return null;
@@ -4196,6 +4244,7 @@ function _markerArrayForType(type) {
         case "drinking_water":  return drinkingWaterMarkers;
         case "trail_marker":    return trailMarkerMarkers;
         case "feature":         return featureMarkers;
+        case "event":           return eventPoiMarkers;
     }
     return null;
 }
@@ -4645,7 +4694,9 @@ function buildPoiIndex() {
 }
 
 // Display label for each POI type when the OSM feature has no name.
-// Also used for the small "type" meta line under the POI row.
+// Also used as the category-aggregate row name in the search overlay
+// (when 2+ POIs of one type collapse into a single grouped row).
+// Plural reads better there since the aggregate represents a set.
 const POI_TYPE_FALLBACK_NAME = Object.freeze({
     "trail_marker":   "Trail Marker",
     "parking":        "Parking",
@@ -4653,6 +4704,7 @@ const POI_TYPE_FALLBACK_NAME = Object.freeze({
     "feature":        "Feature",
     "toilet":         "Toilets",
     "drinking_water": "Drinking Water",
+    "event":          "Event Markers",
 });
 
 const POI_TYPE_META_LABEL = Object.freeze({
@@ -4662,6 +4714,7 @@ const POI_TYPE_META_LABEL = Object.freeze({
     "feature":        "feature",
     "toilet":         "toilets",
     "drinking_water": "drinking water",
+    "event":          "event marker",
 });
 
 // ============================================================
@@ -4765,6 +4818,14 @@ async function loadPOIs() {
         addDrinkingWaterMarkers(dwDefault);
         const dwBtn = document.getElementById("toggle-drinking-water");
         if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
+    }
+
+    // Event POIs (event_mode.pois) — always rendered, no rider toggle,
+    // no proximity gate. Race-day fixtures (start / finish, aid
+    // stations, support areas) are essential to the event map's
+    // purpose; hiding them under any condition would defeat that.
+    if (CONFIG.hasEventPois) {
+        addEventPoiMarkers(true);
     }
 
     // Features + toilets + water are all gated by data-presence AND
@@ -4956,6 +5017,50 @@ function addDrinkingWaterMarkers(addToMap) {
         },
         addToMap,
         targetArray: drinkingWaterMarkers,
+    });
+}
+
+// Event POIs (event_mode.pois) — always-rendered race-day fixtures:
+// start / finish, aid stations, support vehicles, etc. The popup
+// shows the curator-supplied name + optional description so a tap
+// surfaces the context the rider needs ("Aid Station 1: water,
+// bananas, mechanic on site"). Distinct flag glyph + saturated red
+// (configurable via event_mode.poi_color → --event-poi-color)
+// signals "race fixture, not OSM POI" at a glance.
+function addEventPoiMarkers(addToMap) {
+    createPoiMarkers({
+        poiType: POI.EVENT,
+        className: "poi-marker event-poi-marker",
+        contentFn: (el, props) => {
+            // mdi:flag (Apache 2.0, Pictogrammers). White on the
+            // event-poi colored chip; SVG sizing comes from
+            // .poi-marker svg in CSS like every other POI.
+            // The name label hangs below the chip via position:
+            // absolute (see .event-poi-marker-label in style.css)
+            // so it doesn't affect the chip's bounding box (the
+            // marker still anchors at the coordinates correctly).
+            const safeName = (props.name || "").replace(/[<>&]/g, (c) =>
+                ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+            el.innerHTML =
+                '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true">'
+                + '<path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z"/>'
+                + '</svg>'
+                + `<span class="event-poi-marker-label">${safeName}</span>`;
+        },
+        popupHtmlFn: (p) => {
+            // Curator-supplied YAML strings are trusted (same as
+            // parking / trailhead popups). Description appears below
+            // the name when present; suppressed cleanly otherwise.
+            let h = `<div class="popup-title">${p.name || "Event Marker"}</div>`;
+            if (p.description) {
+                h += `<div class="popup-description">${p.description}</div>`;
+            }
+            return h;
+        },
+        popupMaxWidth: "240px",
+        popupClass: "popup-event-poi",
+        addToMap,
+        targetArray: eventPoiMarkers,
     });
 }
 
@@ -5569,9 +5674,20 @@ function setupFloatingChrome() {
     // Labels are a segmented control (Routes / Trails / None) rather
     // than a <select>. Semantics: exactly one radio pressed at any
     // time; aria-checked drives the active paint.
+    //
+    // Event mode: hide the row entirely. labelMode is locked to
+    // "routes" at boot (see the `let labelMode = ...` declaration
+    // earlier) and the per-route label visibility is restricted to
+    // featured routes only by updateLabels(), so the rider sees
+    // exactly the event-route label and nothing else. Surfacing a
+    // toggle they can't really change would just confuse them.
     const labelField = document.getElementById("label-field");
     const labelGroup = document.getElementById("label-segmented");
-    if (labelGroup) {
+    if (CONFIG.eventModeActive) {
+        if (labelField) labelField.classList.add("hidden");
+        // Skip the rest of the labels wiring: the segmented control
+        // is invisible, no need to rig up handlers or sync state.
+    } else if (labelGroup) {
         // Drop buttons that map to disabled sections.
         if (!showRoutes) {
             const btn = labelGroup.querySelector('[data-value="routes"]');
@@ -6147,13 +6263,6 @@ function makeRouteRow(r) {
     row.appendChild(swatch);
     row.appendChild(name);
 
-    if (r.isCustom) {
-        const tag = document.createElement("span");
-        tag.className = "finder-row-tag";
-        tag.textContent = "custom";
-        row.appendChild(tag);
-    }
-
     const stats = routeStatsText(r);
     if (stats) {
         const statsEl = document.createElement("span");
@@ -6299,6 +6408,14 @@ function poiSwatchContent(el, type) {
             el.classList.add("drinking-water-swatch");
             // mdi:water (Apache 2.0, Pictogrammers)
             el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            break;
+        case "event":
+            // Same flag glyph as the on-map event-POI marker, so the
+            // rider's mental model is consistent: "the red flag I
+            // tap in the search results is the red flag I see on the
+            // map." mdi:flag (Apache 2.0, Pictogrammers).
+            el.classList.add("event-swatch");
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z"/></svg>';
             break;
     }
 }

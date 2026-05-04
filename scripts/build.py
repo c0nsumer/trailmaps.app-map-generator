@@ -602,6 +602,16 @@ def load_config(config_path):
         if isinstance(entry, dict) and "geometry" in entry:
             entry["geometry"] = _resolve(entry["geometry"])
 
+    # Inline event_mode.routes share the same path-resolution semantics
+    # as top-level custom_routes (relative to the config YAML). Resolve
+    # here so the build-time fold into config["custom_routes"]
+    # downstream sees absolute paths.
+    em = config.get("event_mode")
+    if isinstance(em, dict):
+        for entry in (em.get("routes") or []):
+            if isinstance(entry, dict) and "geometry" in entry:
+                entry["geometry"] = _resolve(entry["geometry"])
+
     # Stash the config's directory in case downstream code wants it
     # (error messages, future relative-path fields). Name-spaced with an
     # underscore so it doesn't collide with user-supplied keys.
@@ -741,6 +751,282 @@ def _pmtiles_needs_regen(output_path, bbox, maxzoom):
     if actual != expected:
         return True, f"signature changed (was {actual!r}, want {expected!r})"
     return False, None
+
+
+# ----------------------------------------------------------------------
+# Event mode: feature one or more routes prominently while every other
+# trail on the map renders as muted background context.
+#
+# Implementation strategy: pure build-time pre-processing translates the
+# `event_mode` directive into the existing per-route override
+# mechanisms (relation_colors, dashed_relations, custom_routes mutation).
+# No runtime code needs to know about event_mode. Two helpers, called at
+# different points in the build sequence:
+#
+#   _apply_event_mode_to_custom_routes(config)
+#       Pre-enrichment. Folds event_mode.routes into config["custom_
+#       routes"] (so they participate in the geometry bake-in inside
+#       _enrich_trails_geojson) and overrides non-featured custom
+#       routes' colour and dashed fields with the background style.
+#
+#   _apply_event_mode_to_relations(config, trails_geojson)
+#       Pre-injection. After enrichment has populated the trails.geojson
+#       routes metadata, this pass synthesises relation_colors and
+#       dashed_relations entries for every non-featured OSM route.
+#       Curator's explicit per-route entries always win.
+#
+# Background style default (when omitted): grey dashed.
+# ----------------------------------------------------------------------
+
+_EVENT_MODE_DEFAULT_BG = {
+    "color": "gray",
+    "pattern": [0, 2],
+    "cap": "round",
+}
+
+
+def _event_mode_background_style(config):
+    """Resolve the background_style for event mode (override + default)."""
+    em = config.get("event_mode") or {}
+    bg = dict(_EVENT_MODE_DEFAULT_BG)
+    bg.update(em.get("background_style") or {})
+    # Defensive: ensure pattern is a list.
+    if not isinstance(bg.get("pattern"), list) or not bg["pattern"]:
+        bg["pattern"] = list(_EVENT_MODE_DEFAULT_BG["pattern"])
+    return bg
+
+
+def _event_mode_inline_route_ids(config):
+    """Set of stringified IDs declared inline under event_mode.routes."""
+    em = config.get("event_mode") or {}
+    routes = em.get("routes") or []
+    out = set()
+    for entry in routes:
+        if isinstance(entry, dict):
+            cid = entry.get("id")
+            if isinstance(cid, str) and cid:
+                out.add(cid)
+    return out
+
+
+def _event_mode_featured_set(config, super_expansions):
+    """Resolve the complete set of featured route IDs (stringified).
+
+    Combines:
+      - Every event_mode.routes[i].id (inline; featured by definition).
+      - Every entry in event_mode.featured (string ids pass through;
+        int ids resolve to themselves OR fan out via super_expansions).
+    """
+    em = config.get("event_mode") or {}
+    out = _event_mode_inline_route_ids(config)
+    for ref in em.get("featured") or []:
+        if isinstance(ref, bool):
+            continue
+        if isinstance(ref, str):
+            out.add(ref)
+        elif isinstance(ref, int):
+            sref = str(ref)
+            if sref in super_expansions:
+                out.update(str(c) for c in super_expansions[sref])
+            else:
+                out.add(sref)
+    return out
+
+
+def _apply_event_mode_to_custom_routes(config):
+    """Pre-enrichment event-mode pass.
+
+    Folds event_mode.routes into config["custom_routes"] so they
+    participate in the standard geometry bake-in inside
+    _enrich_trails_geojson. Overrides non-featured custom routes'
+    `color` and `dashed` fields so the muted background style flows
+    through that bake-in into trails.geojson metadata.
+
+    Also handles `event_mode.direction_arrows`: when true, every
+    inline event route gets `oneway: "yes"` (so the bake-in
+    propagates it to features as the existing arrow renderer
+    expects), and `direction_arrows_required` is forced True so the
+    rider toggle disappears + arrows always render.
+
+    Mutates `config` in place (and returns it). No-op when event_mode
+    is absent.
+    """
+    em = config.get("event_mode")
+    if not em:
+        return config
+
+    inline_routes = list(em.get("routes") or [])
+    inline_ids = _event_mode_inline_route_ids(config)
+
+    # event_mode.direction_arrows: stamp `oneway: "yes"` on each inline
+    # route entry (so the custom-route bake-in carries it onto every
+    # emitted feature) and force `direction_arrows_required: true` so
+    # the runtime renders arrows always (no rider toggle to disable).
+    if em.get("direction_arrows"):
+        for entry in inline_routes:
+            if isinstance(entry, dict) and not entry.get("oneway"):
+                entry["oneway"] = "yes"
+        config["direction_arrows_required"] = True
+
+    # Fold inline event_mode.routes into top-level custom_routes.
+    # Validator already checked id-uniqueness across both lists, so
+    # we don't need to dedupe here.
+    if inline_routes:
+        existing = list(config.get("custom_routes") or [])
+        config["custom_routes"] = existing + inline_routes
+
+    # Featured set, less the OSM-int side (which we resolve later when
+    # super_expansions is available). For the custom-route mutation
+    # pass we only care about which custom-route string ids are
+    # featured, which is: every inline route id PLUS any string entry
+    # in event_mode.featured.
+    featured_strings = set(inline_ids)
+    for ref in em.get("featured") or []:
+        if isinstance(ref, str):
+            featured_strings.add(ref)
+
+    bg = _event_mode_background_style(config)
+    bg_color = bg["color"]
+    bg_pattern = bg["pattern"]
+    bg_cap = bg.get("cap", "round")
+
+    for entry in config.get("custom_routes") or []:
+        if not isinstance(entry, dict):
+            continue
+        cid = entry.get("id")
+        if not isinstance(cid, str):
+            continue
+        if cid in featured_strings:
+            # Featured: leave declared color + dashed alone.
+            continue
+        # Non-featured custom route: overwrite to background style.
+        # `dashed` accepts a list-form pattern (see _enrich_trails_geojson),
+        # so we push the background pattern + cap directly onto the entry
+        # and the bake-in picks them up.
+        entry["color"] = bg_color
+        entry["dashed"] = list(bg_pattern)
+        entry["dashCap"] = bg_cap
+
+    return config
+
+
+def _apply_event_mode_to_feature_oneway(config, trails_geojson):
+    """Restrict direction arrows to featured routes only.
+
+    Without this pass, `event_mode.direction_arrows: true` would make
+    every OSM-tagged oneway way render arrows alongside the featured
+    route's arrows (because the runtime arrow emitter checks
+    `way.oneway === "yes"` on every way regardless of route). That
+    clutters an event map with OSM oneway clutter.
+
+    Solution: strip the `oneway` property from any feature whose
+    routes are ALL non-featured. A way shared between a featured
+    route and a non-featured route keeps its `oneway` (the featured
+    route still wants the arrows on its shared geometry).
+
+    Mutates trails_geojson features in place. Returns True if any
+    feature was changed (caller writes back to disk). No-op (returns
+    False) when event_mode is absent or `direction_arrows: false`.
+    """
+    em = config.get("event_mode") or {}
+    if not em.get("direction_arrows"):
+        return False
+
+    super_expansions = trails_geojson.get("metadata", {}).get(
+        "super_relation_expansions", {}) or {}
+    featured = _event_mode_featured_set(config, super_expansions)
+
+    stripped = 0
+    for feat in (trails_geojson.get("features") or []):
+        props = feat.get("properties") or {}
+        if not props.get("oneway"):
+            continue
+        # Collect every route ID this feature contributes to: its
+        # primary route_id plus any shared_routes (a way borrowed
+        # by multiple routes shows up in all of them).
+        rids = set()
+        rid = props.get("route_id")
+        if rid is not None:
+            rids.add(str(rid))
+        for sr in (props.get("shared_routes") or []):
+            rids.add(str(sr))
+        # If any of the feature's routes is featured, keep oneway.
+        if rids & featured:
+            continue
+        # No featured route uses this way: drop arrows on it.
+        props["oneway"] = ""
+        stripped += 1
+
+    if stripped:
+        print(f"  Event mode: stripped `oneway` from {stripped} non-featured "
+              f"feature(s) so arrows render on the featured route(s) only.")
+    return stripped > 0
+
+
+def _apply_event_mode_to_relations(config, trails_geojson):
+    """Pre-injection event-mode pass.
+
+    Synthesises relation_colors and dashed_relations entries for every
+    non-featured route ID in trails_geojson.metadata.routes. Curator's
+    explicit entries WIN: a route already covered by config[
+    "relation_colors"] or config["dashed_relations"] is left alone.
+
+    Mutates `config` in place (and returns it). No-op when event_mode
+    is absent.
+    """
+    em = config.get("event_mode")
+    if not em:
+        return config
+
+    routes = trails_geojson.get("metadata", {}).get("routes", {}) or {}
+    super_expansions = trails_geojson.get("metadata", {}).get(
+        "super_relation_expansions", {}) or {}
+
+    featured = _event_mode_featured_set(config, super_expansions)
+
+    bg = _event_mode_background_style(config)
+    bg_color = bg["color"]
+    bg_pattern = list(bg["pattern"])
+    bg_cap = bg.get("cap", "round")
+
+    explicit_relation_colors = config.get("relation_colors") or {}
+    explicit_dashed = config.get("dashed_relations") or {}
+
+    new_relation_colors = dict(explicit_relation_colors)
+    new_dashed = dict(explicit_dashed)
+
+    for rid_str, info in routes.items():
+        if rid_str in featured:
+            # Mark featured so the runtime can sort it on top of
+            # background routes and render it slightly wider. The
+            # flag flows through to CONFIG.routes via the metadata
+            # passthrough in inject_config_into_template.
+            info["featured"] = True
+            continue
+        # Custom routes (string ids) were already handled in the
+        # pre-enrichment pass via direct mutation of custom_routes
+        # entries; their per-route metadata was set during bake-in.
+        if info.get("isCustom"):
+            continue
+        # OSM route: use int key for relation_colors / dashed_relations
+        # (matches the existing config conventions; lookups in
+        # inject_config_into_template use int keys).
+        try:
+            rid_int = int(rid_str)
+        except ValueError:
+            continue
+        if rid_int not in explicit_relation_colors:
+            new_relation_colors[rid_int] = bg_color
+        if rid_int not in explicit_dashed:
+            new_dashed[rid_int] = {
+                "pattern": bg_pattern,
+                "cap": bg_cap,
+                "colors": [bg_color],
+            }
+
+    config["relation_colors"] = new_relation_colors
+    config["dashed_relations"] = new_dashed
+    return config
 
 
 def _enrich_trails_geojson(config, trails_geojson, project_root):
@@ -883,7 +1169,22 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         else:
             c_summer, c_winter, c_emergency = True, False, False
 
-        c_dashed = bool(entry.get("dashed", False))
+        # `dashed` accepts three shapes for flexibility:
+        #   False / absent: solid line (default).
+        #   True:           default dashed pattern [4, 4].
+        #   list of nums:   explicit dash pattern (e.g. [2, 2]).
+        # The list form lets the event-mode pre-pass push a specific
+        # background pattern into a non-featured custom route without
+        # going through the relation-id-keyed dashed_relations override
+        # (custom routes have string ids; that path is OSM-only).
+        c_dashed_raw = entry.get("dashed", False)
+        if isinstance(c_dashed_raw, list):
+            c_dashed = True
+            c_dashed_pattern = list(c_dashed_raw)
+        else:
+            c_dashed = bool(c_dashed_raw)
+            c_dashed_pattern = [4, 4]  # framework default for `dashed: true`
+        c_dash_cap = entry.get("dashCap")
         trail_name_field = entry.get("trail_name_field")
 
         # Load and validate geometry.
@@ -953,7 +1254,14 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
                         "trail_name": trail_name,
                         "shared_routes": [cid],
                         "imba_difficulty": "",
-                        "oneway": "",
+                        # Custom routes don't have OSM `oneway=` tags on
+                        # individual segments (the GeoJSON has no per-
+                        # segment OSM metadata). Curators opt in via
+                        # the entry-level `oneway:` field — typically
+                        # set automatically when event_mode.direction_arrows
+                        # is true (see _apply_event_mode_to_custom_routes).
+                        # Empty string means no arrows.
+                        "oneway": entry.get("oneway", ""),
                         "segment_index": appended,
                         "way_ids": [],
                         "isCustom": True,
@@ -975,11 +1283,15 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
             "isCustom": True,
         }
         if c_dashed:
-            # Default dash pattern for custom dashed routes; users who
-            # need a specific pattern can adjust by adding a matching
-            # dashed_relations entry keyed by the custom id (the runtime
-            # filter treats the route id opaquely).
-            info["dashed"] = [4, 4]
+            # Pattern: explicit list-form on the entry takes precedence;
+            # otherwise [4, 4] (framework default for `dashed: true`).
+            # Users who need a specific pattern can either use the
+            # list form directly OR add a matching dashed_relations
+            # entry keyed by the custom id (the runtime filter treats
+            # the route id opaquely).
+            info["dashed"] = c_dashed_pattern
+            if c_dash_cap:
+                info["dashCap"] = c_dash_cap
         routes[cid] = info
         changed = True
 
@@ -1192,6 +1504,13 @@ def inject_config_into_template(template_content, config, trails_geojson):
     routes = {}
     if trails_geojson and "metadata" in trails_geojson:
         routes = trails_geojson["metadata"].get("routes", {})
+
+    # Event-mode pre-pass on the relations side. Synthesises
+    # relation_colors and dashed_relations entries for every
+    # non-featured OSM route so the override loop below applies the
+    # background style. No-op when event_mode is absent. Curator's
+    # explicit per-relation entries WIN.
+    _apply_event_mode_to_relations(config, trails_geojson)
 
     # Apply route overrides (winter, colour, dash) in a single pass.
     # YAML keys keep their original "relation" names since they take OSM
@@ -1462,6 +1781,17 @@ def inject_config_into_template(template_content, config, trails_geojson):
         }
         for entry in (config.get("custom_routes") or [])
     ]
+
+    # Event-mode runtime hints. The runtime uses these to:
+    #   - eventModeActive: gate the always-on event-mode UX changes
+    #     (force Labels mode to "routes" + restrict labels to featured
+    #     routes only + hide the Labels segmented control).
+    #   - eventPoiColor: chip background for the always-on event POIs.
+    #   - hasEventPois: presence flag so addEventPoiMarkers runs at boot.
+    em = config.get("event_mode") or {}
+    config_obj["eventModeActive"] = bool(em)
+    config_obj["eventPoiColor"] = em.get("poi_color", "")
+    config_obj["hasEventPois"] = bool(em.get("pois"))
     # default_trail_color: string or object with color/pattern/cap
     dtc = config.get("default_trail_color", "#808080")
     if isinstance(dtc, dict):
@@ -2020,7 +2350,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
     parser.add_argument("--force", action="store_true", help="Force re-fetch all data (including Overpass cache)")
-    parser.add_argument("--trails", action="store_true", help="Re-fetch only trail data (uses Overpass cache)")
+    parser.add_argument("--trails", action="store_true", help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.")
     parser.add_argument("--skip-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--skip-basemap", action="store_true", help="Skip basemap extraction")
     parser.add_argument("--dry-run", action="store_true",
@@ -2136,6 +2466,27 @@ def main():
     config["_accent_color"] = resolve_accent_color(
         config, project_root, cache_dir)
 
+    # Event-mode pre-pass (no-op when event_mode is absent). Folds
+    # event_mode.routes into config["custom_routes"] so they
+    # participate in the standard custom-route bake-in below, and
+    # mutates non-featured custom routes' colour / dashed fields to
+    # the background style. Also forces direction_arrows_required
+    # when event_mode.direction_arrows is true, which is why this
+    # has to run BEFORE the safety-warning check below (so the
+    # check sees the resolved value). The companion relations-side
+    # pass runs in inject_config_into_template later.
+    if config.get("event_mode"):
+        em = config["event_mode"] or {}
+        em_routes_count = len(em.get("routes") or [])
+        em_featured_count = len(em.get("featured") or [])
+        bg_summary = _event_mode_background_style(config)
+        print(
+            f"Event mode: featuring {em_routes_count} inline route(s) "
+            f"+ {em_featured_count} reference(s); background "
+            f"{bg_summary['color']} dashed {bg_summary['pattern']}."
+        )
+        _apply_event_mode_to_custom_routes(config)
+
     # Safety warning: a map with one-way trails should normally
     # surface the direction-arrow layer by default, otherwise a
     # first-visit rider on a flow trail won't see which way they're
@@ -2143,7 +2494,9 @@ def main():
     # warn if direction_arrows isn't included in default_visible.
     # Skip the warning when direction_arrows_required is true — that
     # flag forces arrows on at every visit, so default_visible is
-    # irrelevant.
+    # irrelevant. (Event mode sets direction_arrows_required above
+    # when event_mode.direction_arrows: true, so the warning is
+    # naturally suppressed for event maps.)
     raw_dv = config.get("default_visible")
     arrows_default_on = (
         raw_dv == "all"
@@ -2171,6 +2524,16 @@ def main():
     # a cached trails.geojson that's already been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, project_root)
 
+    # Event-mode arrow restriction: when event_mode.direction_arrows is
+    # true, the runtime would render arrows on every OSM-tagged oneway
+    # way (clutter on an event map). Strip the `oneway` property from
+    # any feature whose routes are all non-featured so the existing
+    # arrow emitter naturally only renders on the event route(s).
+    # Runs AFTER enrichment so featured custom routes' features (which
+    # carry the curator's intended `oneway: "yes"`) are present.
+    arrows_restricted = _apply_event_mode_to_feature_oneway(
+        config, trails_geojson)
+
     # Compute per-route distance/elevation stats if either gate is on.
     # Runs after enrichment so custom_routes are included in the totals.
     # compute_route_stats also handles cleanup when a previously-enabled
@@ -2178,7 +2541,7 @@ def main():
     from compute_route_stats import compute_and_attach as compute_route_stats
     stats_changed = compute_route_stats(trails_geojson, config, cache_dir)
 
-    if enriched or stats_changed:
+    if enriched or stats_changed or arrows_restricted:
         with open(trails_path, "w") as f:
             json.dump(trails_geojson, f, separators=(",", ":"))
         custom_count = len(config.get("custom_routes") or [])
@@ -2190,6 +2553,8 @@ def main():
                            if custom_count else ""))
         if stats_changed:
             bits.append("route stats")
+        if arrows_restricted:
+            bits.append("event-mode arrow restriction")
         print(f"  Enriched {os.path.basename(trails_path)} "
               f"with {' and '.join(bits)}")
 
@@ -2223,7 +2588,20 @@ def main():
         print(f"  Pan envelope (explicit): {config['pan_bbox']}")
     print()
 
-    # Step 2: Fetch POIs (skip when every POI category is disabled)
+    # Step 2: Fetch POIs (skip when every POI category is disabled).
+    # Otherwise ALWAYS re-run fetch_pois — even on a no-flag rebuild —
+    # so config-defined POIs (parking, trailheads, event_mode.pois)
+    # take effect on the next build automatically. The OSM portion
+    # still hits the Overpass cache internally, so the cost of the
+    # always-on rebuild is sub-second on cached maps.
+    #
+    # The previous behaviour gated this on `--force` / `--trails` /
+    # missing pois.geojson, which created an asymmetric trap: editing
+    # parking lots or event_mode.pois in YAML wouldn't show up until
+    # the curator remembered to pass `--trails`. Trails are
+    # re-enriched every build (the unconditional
+    # `_enrich_trails_geojson` pass at the top of inject does that
+    # for custom routes); POIs now follow the same convention.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if (not config.get("show_markers", True)
             and not config.get("show_features", True)
@@ -2233,10 +2611,8 @@ def main():
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
-    elif args.force or args.trails or not os.path.exists(pois_path):
-        fetch_pois(config, pois_path, cache_dir)
     else:
-        print(f"POIs: Using existing {pois_path}")
+        fetch_pois(config, pois_path, cache_dir)
     print()
 
     # Step 3: Fetch basemap

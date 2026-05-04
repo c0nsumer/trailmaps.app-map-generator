@@ -922,6 +922,16 @@ body {
     border: var(--poi-marker-border) solid var(--drinking-water-border-color, #fff);
 }
 
+/* Event-mode POI swatch — matches the on-map .event-poi-marker
+ * background (saturated red, configurable via event_mode.poi_color
+ * → --event-poi-color). White flag glyph inside. Same border
+ * treatment as the other POI swatches. */
+.event-swatch {
+    background: var(--event-poi-color, #d32f2f);
+    color: #fff;
+    border: var(--poi-marker-border) solid #fff;
+}
+
 /* (Removed: a duplicate locate-state-* block that targeted
  * `.locate-swatch` and `.layer-swatch` descendants of #toggle-locate.
  * Those selectors don't match anything in the current FAB markup —
@@ -1471,6 +1481,72 @@ body {
     border-color: var(--drinking-water-border-color, #fff);
     pointer-events: none;
     cursor: default;
+}
+
+/* Event POIs (event_mode.pois) — race-day fixtures: start / finish,
+ * aid stations, support areas. Always visible (no toggle), distinct
+ * saturated red so they don't get mistaken for any OSM POI category.
+ * Configurable via event_mode.poi_color → --event-poi-color. Popup
+ * IS wired here (the curator usually has context to share — aid
+ * station hours, support contact, etc.) so we keep the standard
+ * pointer-events / cursor (inherited from .poi-marker base).
+ *
+ * Note: do NOT add `position: relative` here. MapLibre's
+ * .maplibregl-marker rule sets `position: absolute` to anchor the
+ * marker at the lat/lng. Both rules have equal specificity (0,1,0);
+ * our stylesheet loads AFTER MapLibre's, so any position declaration
+ * here would override and break the marker's pixel positioning
+ * (each marker would render at its in-container flow position +
+ * MapLibre's transform, producing a per-marker pixel offset that
+ * looks like a fixed error on screen and gets visually amplified
+ * at low zoom). The label hangs below the chip via position:
+ * absolute on the label itself; absolute elements look up to the
+ * nearest positioned ancestor for their containing block, and
+ * MapLibre's `position: absolute` qualifies — no `position: relative`
+ * needed on this rule. */
+.event-poi-marker {
+    background: var(--event-poi-color, #d32f2f);
+    border-color: #fff;
+}
+
+/* Name label below the event-POI chip. Absolutely positioned so the
+ * chip stays the marker's bounding box (MapLibre's anchor math is
+ * unchanged). White-ish pill behind the text gives contrast over any
+ * basemap; the box-shadow lifts it a half-step off the map for
+ * legibility. `pointer-events: none` lets clicks pass through to the
+ * chip below (the chip is the popup trigger, not the label). */
+.event-poi-marker-label {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--sheet-text, #222);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+/* Dark-scheme variant — semi-opaque dark pill with light text so the
+ * label reads against a dark basemap. */
+[data-color-scheme="dark"] .event-poi-marker-label {
+    background: rgba(28, 28, 30, 0.92);
+    color: var(--sheet-text, #f0f0f0);
+}
+
+/* Description line under the popup-title for event POIs. Smaller
+ * than the title, slightly muted, line-wraps cleanly inside the
+ * 240px max-width set on the popup. */
+.popup-event-poi .popup-description {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--sheet-text-muted, #555);
 }
 
 /* Trail markers — variable-width to accommodate ref strings of

@@ -135,6 +135,13 @@ KNOWN_KEYS = {
     "pwa":                           bool,
     "pwa_install_prompt":            bool,
 
+    # Event mode: feature one or more routes prominently while every
+    # other trail on the map renders as muted background context.
+    # Build-time pre-pass translates this into per-route overrides
+    # (relation_colors, dashed_relations, custom_routes mutation);
+    # nothing flows directly to the runtime CONFIG.
+    "event_mode":                    dict,
+
     # Output
     "output_dir":                    str,
 }
@@ -192,6 +199,9 @@ HANDLED_SPECIALLY = {
     "accent_color",         # → CONFIG.accentColor (hex; "auto" resolved from logo at build time)
     "logo",                 # → CONFIG.logoUrl (after asset pipeline)
     "icon",                 # → fallback for logoUrl
+    "event_mode",           # → consumed by _apply_event_mode pre-pass; emits
+                            #   per-route overrides into relation_colors /
+                            #   dashed_relations / custom_routes mutations.
 }
 
 VALID_LABELS = {"routes", "trails", "none"}
@@ -612,6 +622,144 @@ def _validate_paths(report, config, config_dir):
                 report.err(f"custom_routes[{i}].geometry",
                            f"file not found: {p} (resolved to {full})")
 
+    # Inline event_mode.routes share the geometry-path semantics with
+    # top-level custom_routes (relative to the config YAML's directory).
+    em = config.get("event_mode")
+    if isinstance(em, dict):
+        em_routes = em.get("routes")
+        if isinstance(em_routes, list):
+            for i, entry in enumerate(em_routes):
+                if not isinstance(entry, dict):
+                    continue
+                p = entry.get("geometry")
+                if not isinstance(p, str) or not p:
+                    continue
+                full = _full(p)
+                if not os.path.isfile(full):
+                    report.err(f"event_mode.routes[{i}].geometry",
+                               f"file not found: {p} (resolved to {full})")
+
+
+def _collect_osm_relation_ids(config):
+    """Return a set of stringified OSM relation IDs referenced anywhere
+    in the config's relation-id lists. Used by validators that need to
+    detect string-id-vs-int-id collisions.
+    """
+    osm_ids = set()
+    for key in ("relations", "clipped_relations", "winter_relations",
+                "summer_relations", "emergency_access_relations"):
+        lst = config.get(key)
+        if isinstance(lst, list):
+            for rid in lst:
+                if isinstance(rid, int) and not isinstance(rid, bool):
+                    osm_ids.add(str(rid))
+    return osm_ids
+
+
+def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
+    """Validate a single custom-route-shaped dict. Used by both
+    `_validate_custom_routes` (for top-level `custom_routes:` entries)
+    and `_validate_event_mode` (for inline `event_mode.routes:`
+    entries — they share the schema).
+
+    Updates `seen_ids` in place so the caller can carry duplicate-id
+    detection across multiple lists.
+    """
+    if not isinstance(entry, dict):
+        report.err(where, f"expected dict, got {type(entry).__name__}")
+        return
+
+    # Required: id
+    cid = entry.get("id")
+    if not isinstance(cid, str) or not cid:
+        report.err(f"{where}.id", "required: non-empty string")
+    else:
+        if cid in seen_ids:
+            report.err(f"{where}.id",
+                       f"duplicate id {cid!r} "
+                       f"(already used by an earlier custom-route entry)")
+        else:
+            seen_ids.add(cid)
+        # Collision with OSM relation ids — compare stringified.
+        if cid in osm_ids:
+            report.err(f"{where}.id",
+                       f"id {cid!r} collides with an OSM relation id "
+                       f"used elsewhere in this config")
+        # Reject ids that parse as ints (would collide with any OSM
+        # relation with that numeric id).
+        if cid.lstrip("-").isdigit():
+            report.err(f"{where}.id",
+                       f"id {cid!r} is purely numeric; custom-route ids "
+                       f"must be non-numeric to avoid colliding with OSM "
+                       f"relation ids")
+
+    # Required: name
+    name = entry.get("name")
+    if not isinstance(name, str) or not name:
+        report.err(f"{where}.name", "required: non-empty string")
+
+    # Required: color
+    color = entry.get("color")
+    if color is None:
+        report.err(f"{where}.color", "required: hex or CSS named color")
+    elif not _is_color(color):
+        report.err(f"{where}.color",
+                   f"not a valid color: {color!r}")
+
+    # Required: geometry (path existence checked in _validate_paths)
+    geom = entry.get("geometry")
+    if not isinstance(geom, str) or not geom:
+        report.err(f"{where}.geometry",
+                   "required: path to a GeoJSON file "
+                   "(LineString or MultiLineString)")
+
+    # Bucket flags. Default: if all three omitted, summer=true.
+    flags_present = any(k in entry for k in ("summer", "winter", "emergency"))
+    for flag_key in ("summer", "winter", "emergency"):
+        if flag_key in entry and not isinstance(entry[flag_key], bool):
+            report.err(f"{where}.{flag_key}",
+                       f"must be bool, got {type(entry[flag_key]).__name__}")
+
+    if flags_present:
+        resolved = [entry.get(k, False) is True for k in
+                    ("summer", "winter", "emergency")]
+        if not any(resolved):
+            report.err(f"{where}",
+                       "at least one of summer/winter/emergency must be "
+                       "true (an all-false custom route would never render)")
+
+    # Optional bool
+    if "dashed" in entry and not isinstance(entry["dashed"], bool):
+        report.err(f"{where}.dashed",
+                   f"must be bool, got {type(entry['dashed']).__name__}")
+
+    # Optional strings
+    for sk in ("description", "trail_name_field"):
+        if sk in entry and not isinstance(entry[sk], str):
+            report.err(f"{where}.{sk}",
+                       f"must be string, got {type(entry[sk]).__name__}")
+
+    # Optional `oneway`: drives the existing direction-arrow renderer.
+    # Accepts the same vocabulary as the OSM `oneway=` tag.
+    if "oneway" in entry:
+        ow = entry["oneway"]
+        if ow not in ("yes", "-1", "reversible", ""):
+            report.err(f"{where}.oneway",
+                       f"must be one of 'yes', '-1', 'reversible', "
+                       f"or '' (empty for no arrows), got {ow!r}")
+
+    # Reject unknown keys in the custom route entry (catch typos).
+    allowed = {"id", "name", "color", "geometry", "summer", "winter",
+               "emergency", "dashed", "description", "trail_name_field",
+               "oneway"}
+    for k in entry.keys():
+        if k not in allowed:
+            suggestions = difflib.get_close_matches(k, allowed, n=2)
+            hint = (f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
+                    if suggestions else "")
+            report.err(f"{where}.{k}",
+                       f"unknown key in custom route entry{hint}")
+
 
 def _validate_custom_routes(report, config):
     """Validate custom_routes entries.
@@ -637,104 +785,12 @@ def _validate_custom_routes(report, config):
         # already reported as a type error by _validate_types
         return
 
-    # Collect OSM relation ids (stringified) from relation-id lists for
-    # collision checks.
-    osm_ids = set()
-    for key in ("relations", "clipped_relations", "winter_relations",
-                "summer_relations", "emergency_access_relations"):
-        lst = config.get(key)
-        if isinstance(lst, list):
-            for rid in lst:
-                if isinstance(rid, int) and not isinstance(rid, bool):
-                    osm_ids.add(str(rid))
+    osm_ids = _collect_osm_relation_ids(config)
 
     seen_ids = set()
     for i, entry in enumerate(cr):
-        where = f"custom_routes[{i}]"
-        if not isinstance(entry, dict):
-            report.err(where, f"expected dict, got {type(entry).__name__}")
-            continue
-
-        # Required: id
-        cid = entry.get("id")
-        if not isinstance(cid, str) or not cid:
-            report.err(f"{where}.id", "required: non-empty string")
-        else:
-            if cid in seen_ids:
-                report.err(f"{where}.id",
-                           f"duplicate id {cid!r} "
-                           f"(already used by an earlier custom_routes entry)")
-            else:
-                seen_ids.add(cid)
-            # Collision with OSM relation ids — compare stringified.
-            if cid in osm_ids:
-                report.err(f"{where}.id",
-                           f"id {cid!r} collides with an OSM relation id "
-                           f"used elsewhere in this config")
-            # Reject ids that parse as ints (would collide with any OSM
-            # relation with that numeric id).
-            if cid.lstrip("-").isdigit():
-                report.err(f"{where}.id",
-                           f"id {cid!r} is purely numeric; custom-route ids "
-                           f"must be non-numeric to avoid colliding with OSM "
-                           f"relation ids")
-
-        # Required: name
-        name = entry.get("name")
-        if not isinstance(name, str) or not name:
-            report.err(f"{where}.name", "required: non-empty string")
-
-        # Required: color
-        color = entry.get("color")
-        if color is None:
-            report.err(f"{where}.color", "required: hex or CSS named color")
-        elif not _is_color(color):
-            report.err(f"{where}.color",
-                       f"not a valid color: {color!r}")
-
-        # Required: geometry (path existence checked in _validate_paths)
-        geom = entry.get("geometry")
-        if not isinstance(geom, str) or not geom:
-            report.err(f"{where}.geometry",
-                       "required: path to a GeoJSON file "
-                       "(LineString or MultiLineString)")
-
-        # Bucket flags. Default: if all three omitted, summer=true.
-        flags_present = any(k in entry for k in ("summer", "winter", "emergency"))
-        for flag_key in ("summer", "winter", "emergency"):
-            if flag_key in entry and not isinstance(entry[flag_key], bool):
-                report.err(f"{where}.{flag_key}",
-                           f"must be bool, got {type(entry[flag_key]).__name__}")
-
-        if flags_present:
-            resolved = [entry.get(k, False) is True for k in
-                        ("summer", "winter", "emergency")]
-            if not any(resolved):
-                report.err(f"{where}",
-                           "at least one of summer/winter/emergency must be "
-                           "true (an all-false custom route would never render)")
-
-        # Optional bool
-        if "dashed" in entry and not isinstance(entry["dashed"], bool):
-            report.err(f"{where}.dashed",
-                       f"must be bool, got {type(entry['dashed']).__name__}")
-
-        # Optional strings
-        for sk in ("description", "trail_name_field"):
-            if sk in entry and not isinstance(entry[sk], str):
-                report.err(f"{where}.{sk}",
-                           f"must be string, got {type(entry[sk]).__name__}")
-
-        # Reject unknown keys in the custom route entry (catch typos).
-        allowed = {"id", "name", "color", "geometry", "summer", "winter",
-                   "emergency", "dashed", "description", "trail_name_field"}
-        for k in entry.keys():
-            if k not in allowed:
-                suggestions = difflib.get_close_matches(k, allowed, n=2)
-                hint = (f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
-                        if suggestions else "")
-                report.err(f"{where}.{k}",
-                           f"unknown key in custom_routes entry{hint}")
+        _validate_custom_route_entry(
+            report, f"custom_routes[{i}]", entry, seen_ids, osm_ids)
 
 
 DEFAULT_VISIBLE_LAYERS = {
@@ -893,6 +949,239 @@ def _validate_about(report, config):
                        "must be {name, [url]}")
 
 
+_BACKGROUND_STYLE_ALLOWED = {"color", "pattern", "cap"}
+_BACKGROUND_STYLE_VALID_CAPS = {"butt", "round", "square"}
+
+
+def _validate_event_mode(report, config):
+    """Validate the optional `event_mode` block.
+
+    Schema:
+      event_mode:
+        routes:                 # optional list of inline featured routes
+          - id: ...              (same shape as a custom_routes entry)
+            name: ...
+            color: ...
+            geometry: ...
+            ...
+        featured: [...]          # optional list of references; each
+                                 # entry is a string (matches a top-
+                                 # level custom_routes id) or an int
+                                 # (matches an OSM relation id present
+                                 # somewhere in this config).
+        background_style:        # optional; default is grey dashed.
+          color: "#888888"
+          pattern: [2, 2]
+          cap: round
+
+    At least one of `routes` or `featured` must be non-empty.
+    """
+    em = config.get("event_mode")
+    if em is None:
+        return
+    if not isinstance(em, dict):
+        report.err("event_mode",
+                   f"expected dict, got {type(em).__name__}")
+        return
+
+    # Reject unknown sub-keys.
+    allowed = {"routes", "featured", "background_style",
+               "direction_arrows", "pois", "poi_color"}
+    for k in em:
+        if k not in allowed:
+            suggestions = difflib.get_close_matches(k, allowed, n=2)
+            hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                    if suggestions else "")
+            report.err(f"event_mode.{k}", f"unknown key in event_mode{hint}")
+
+    routes = em.get("routes")
+    featured = em.get("featured")
+
+    if routes is not None and not isinstance(routes, list):
+        report.err("event_mode.routes",
+                   f"expected list, got {type(routes).__name__}")
+        routes = None
+    if featured is not None and not isinstance(featured, list):
+        report.err("event_mode.featured",
+                   f"expected list, got {type(featured).__name__}")
+        featured = None
+
+    routes_nonempty = isinstance(routes, list) and len(routes) > 0
+    featured_nonempty = isinstance(featured, list) and len(featured) > 0
+    if not (routes_nonempty or featured_nonempty):
+        report.err("event_mode",
+                   "at least one of `routes` or `featured` must be "
+                   "non-empty (event mode needs something to feature)")
+
+    # Validate inline routes via the shared custom-route entry checker.
+    # Carry the seen_ids set across BOTH event_mode.routes and the
+    # top-level custom_routes so the duplicate-id check spans both.
+    osm_ids = _collect_osm_relation_ids(config)
+    seen_ids = set()
+    # Pre-load top-level custom_routes IDs so an inline event_mode
+    # route can't shadow one declared at top level.
+    cr = config.get("custom_routes")
+    if isinstance(cr, list):
+        for entry in cr:
+            if isinstance(entry, dict):
+                cid = entry.get("id")
+                if isinstance(cid, str) and cid:
+                    seen_ids.add(cid)
+
+    if isinstance(routes, list):
+        for i, entry in enumerate(routes):
+            _validate_custom_route_entry(
+                report, f"event_mode.routes[{i}]", entry, seen_ids, osm_ids)
+
+    # Validate `featured` entries: each must be a string (matching a
+    # top-level custom_routes id) OR an int (matching an OSM relation
+    # id present somewhere in this config).
+    if isinstance(featured, list):
+        # Build the set of valid string IDs (top-level custom_routes
+        # only — inline event_mode.routes are featured by definition,
+        # so referencing one in `featured` would be redundant).
+        valid_string_ids = set()
+        if isinstance(cr, list):
+            for entry in cr:
+                if isinstance(entry, dict):
+                    cid = entry.get("id")
+                    if isinstance(cid, str) and cid:
+                        valid_string_ids.add(cid)
+        # Build the set of valid int IDs from every relation list.
+        valid_int_ids = set()
+        for key in ("relations", "clipped_relations", "winter_relations",
+                    "summer_relations", "emergency_access_relations"):
+            lst = config.get(key)
+            if isinstance(lst, list):
+                for rid in lst:
+                    if isinstance(rid, int) and not isinstance(rid, bool):
+                        valid_int_ids.add(rid)
+
+        for i, ref in enumerate(featured):
+            where = f"event_mode.featured[{i}]"
+            if isinstance(ref, bool):
+                report.err(where,
+                           f"expected string (custom-route id) or int "
+                           f"(OSM relation id), got bool")
+                continue
+            if isinstance(ref, int):
+                if ref not in valid_int_ids:
+                    report.err(where,
+                               f"OSM relation id {ref} is not present in "
+                               f"`relations`, `clipped_relations`, or any "
+                               f"of the *_relations bucket lists")
+                continue
+            if isinstance(ref, str):
+                if ref not in valid_string_ids:
+                    report.err(where,
+                               f"string id {ref!r} does not match any "
+                               f"top-level custom_routes entry. (Inline "
+                               f"event_mode.routes are featured by "
+                               f"definition; do not reference them here.)")
+                continue
+            report.err(where,
+                       f"expected string (custom-route id) or int "
+                       f"(OSM relation id), got {type(ref).__name__}")
+
+    # Validate background_style.
+    bg = em.get("background_style")
+    if bg is not None:
+        if not isinstance(bg, dict):
+            report.err("event_mode.background_style",
+                       f"expected dict, got {type(bg).__name__}")
+        else:
+            for k in bg:
+                if k not in _BACKGROUND_STYLE_ALLOWED:
+                    suggestions = difflib.get_close_matches(
+                        k, _BACKGROUND_STYLE_ALLOWED, n=2)
+                    hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                            if suggestions else "")
+                    report.err(f"event_mode.background_style.{k}",
+                               f"unknown key{hint}")
+            if "color" in bg and not _is_color(bg["color"]):
+                report.err("event_mode.background_style.color",
+                           f"not a valid color: {bg['color']!r}")
+            if "pattern" in bg:
+                p = bg["pattern"]
+                if not isinstance(p, list) or not p or not all(
+                        isinstance(n, (int, float)) and not isinstance(n, bool)
+                        for n in p):
+                    report.err("event_mode.background_style.pattern",
+                               f"must be a non-empty list of numbers, "
+                               f"got {p!r}")
+            if "cap" in bg and bg["cap"] not in _BACKGROUND_STYLE_VALID_CAPS:
+                report.err("event_mode.background_style.cap",
+                           f"must be one of "
+                           f"{sorted(_BACKGROUND_STYLE_VALID_CAPS)}, "
+                           f"got {bg['cap']!r}")
+
+    # direction_arrows: optional bool. When true, inline event_mode.routes
+    # render arrows along their geometry AND the rider toggle is hidden
+    # (always-on for event-mode arrows).
+    da = em.get("direction_arrows")
+    if da is not None and not isinstance(da, bool):
+        report.err("event_mode.direction_arrows",
+                   f"expected bool, got {type(da).__name__}")
+
+    # pois: optional list of {name, coordinates, description?} entries.
+    # Always-on at runtime (no rider toggle). Used for event-specific
+    # locations: start / finish, aid stations, support areas, etc.
+    pois = em.get("pois")
+    if pois is not None:
+        if not isinstance(pois, list):
+            report.err("event_mode.pois",
+                       f"expected list, got {type(pois).__name__}")
+        else:
+            for i, entry in enumerate(pois):
+                where = f"event_mode.pois[{i}]"
+                if not isinstance(entry, dict):
+                    report.err(where,
+                               f"expected dict, got {type(entry).__name__}")
+                    continue
+                # name required
+                name = entry.get("name")
+                if not isinstance(name, str) or not name:
+                    report.err(f"{where}.name",
+                               "required: non-empty string")
+                # coordinates required: [lon, lat]
+                coords = entry.get("coordinates")
+                if not (isinstance(coords, list) and len(coords) == 2
+                        and all(isinstance(x, (int, float))
+                                and not isinstance(x, bool) for x in coords)):
+                    report.err(f"{where}.coordinates",
+                               f"required: [lon, lat] numbers, got {coords!r}")
+                else:
+                    lon, lat = coords
+                    if not -180 <= lon <= 180:
+                        report.err(f"{where}.coordinates",
+                                   f"longitude must be in [-180,180]: {lon}")
+                    if not -90 <= lat <= 90:
+                        report.err(f"{where}.coordinates",
+                                   f"latitude must be in [-90,90]: {lat}")
+                # description optional string
+                if "description" in entry and not isinstance(
+                        entry["description"], str):
+                    report.err(f"{where}.description",
+                               f"must be string, got "
+                               f"{type(entry['description']).__name__}")
+                # Reject unknown keys in entry.
+                allowed_pkeys = {"name", "coordinates", "description"}
+                for k in entry.keys():
+                    if k not in allowed_pkeys:
+                        suggestions = difflib.get_close_matches(
+                            k, allowed_pkeys, n=2)
+                        hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                                if suggestions else "")
+                        report.err(f"{where}.{k}",
+                                   f"unknown key in event POI{hint}")
+
+    # poi_color: optional CSS color (hex or named). Default: deep red.
+    pc = em.get("poi_color")
+    if pc is not None and not _is_color(pc):
+        report.err("event_mode.poi_color",
+                   f"not a valid color: {pc!r}")
+
+
 def _validate_relations(report, config):
     """`relations` must be a non-empty list of OSM relation IDs.
 
@@ -987,6 +1276,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_point_lists(report, config)
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
+    _validate_event_mode(report, config)
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)
