@@ -2037,6 +2037,12 @@ async function init() {
         buildTrailIndex();
         buildPoiIndex();
         setupFloatingChrome();
+        // First-visit-per-map FAB-label discoverability cue. Mounts
+        // labels under each FAB, dismisses on tap or 5 s timeout.
+        // Self-suppresses on subsequent visits via LS flag. Must
+        // run after setupFloatingChrome so the FABs' main click
+        // handlers are wired (our dismiss listener piggybacks).
+        setupFabLabels();
         setupInteractions();
         promoteBasemapLabels();
         suppressPathLabels();
@@ -5143,6 +5149,125 @@ function addFeatureMarkers(addToMap) {
         targetArray: featureMarkers,
     });
 }
+
+// ============================================================
+// FAB labels — first-visit-per-map discoverability cue
+// ============================================================
+//
+// Mounts a small pill label to the left of each FAB ("Locate",
+// "Reset view", "Options", "Search") on first visit, dismisses on
+// any FAB tap OR a 15 s auto-timeout, then sets an LS flag so
+// returning riders never see the labels again.
+//
+// Coordination with the welcome modal: if welcome is currently up,
+// wait for it to dismiss before revealing the labels. Otherwise the
+// 15 s timer ticks down behind the modal backdrop and the labels
+// auto-dismiss before the rider can read them.
+//
+// Map pan / zoom does NOT dismiss — only FAB taps (or the timeout)
+// signal "I know what these do". Map interaction is too easy to
+// trigger accidentally on touch (a finger graze during page-load
+// reading would dismiss prematurely).
+function setupFabLabels() {
+    const FLAG_KEY = "mtb.fabsLabeled";
+    if (LS.get(FLAG_KEY)) return;
+
+    // Mirror the FAB-stack composition (top: Locate, Reset, Options
+    // / bottom: Search). Order matters only insofar as labels mount
+    // in DOM order; visual stacking comes from the FABs themselves.
+    const FABS = [
+        { id: "toggle-locate",     label: "Locate" },
+        { id: "toggle-reset-view", label: "Reset view" },
+        { id: "toggle-options",    label: "Options" },
+        { id: "toggle-search",     label: "Search" },
+    ];
+
+    const mounted = [];
+    for (const f of FABS) {
+        const btn = document.getElementById(f.id);
+        if (!btn) continue;
+        const label = document.createElement("span");
+        label.className = "fab-label";
+        label.textContent = f.label;
+        // The FAB itself carries the canonical aria-label (e.g.
+        // aria-label="Locate me"). The visible span is decoration —
+        // aria-hidden so screen readers don't double-read.
+        label.setAttribute("aria-hidden", "true");
+        btn.appendChild(label);
+        mounted.push({ btn, label });
+    }
+    if (mounted.length === 0) return;
+
+    let dismissed = false;
+    let timeoutId = null;
+
+    function dismiss() {
+        if (dismissed) return;
+        dismissed = true;
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        document.body.classList.remove("fabs-labeled");
+        LS.set(FLAG_KEY, true);
+        // Remove the label spans after the slide-out animation
+        // completes so they're not in the DOM forever (small but
+        // hygienic — keeps query selectors lean and avoids dangling
+        // .fab-label elements showing up if CSS is restyled later).
+        // Match the CSS transition duration; reduced-motion users
+        // get an instant detach.
+        const reduce = window.matchMedia(
+            "(prefers-reduced-motion: reduce)").matches;
+        const ms = reduce ? 0 : 240;
+        setTimeout(() => {
+            for (const { label } of mounted) label.remove();
+        }, ms);
+    }
+
+    // Per-FAB click dismisses the labels. { once: true } so the
+    // listener self-detaches after firing — keeps the FAB's main
+    // handler unaffected on subsequent clicks and avoids leaking a
+    // listener that always early-returns.
+    for (const { btn } of mounted) {
+        btn.addEventListener("click", dismiss, { once: true });
+    }
+
+    function reveal() {
+        // Two RAFs: the first lets the browser apply the initial
+        // CSS state (opacity 0, translated 8 px right) after the
+        // span is in the DOM; the second flips to the visible state
+        // so the transition actually fires. Without the
+        // double-rAF, the browser collapses both states into a
+        // single paint and the slide-in is skipped.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                document.body.classList.add("fabs-labeled");
+                timeoutId = setTimeout(dismiss, 15000);
+            });
+        });
+    }
+
+    const welcomeModal = document.getElementById("welcome-modal");
+    const welcomeUp = welcomeModal
+        && !welcomeModal.classList.contains("hidden");
+    if (welcomeUp) {
+        const observer = new MutationObserver(() => {
+            if (welcomeModal.classList.contains("hidden")) {
+                observer.disconnect();
+                // Brief gap so the welcome's slide-out doesn't
+                // visually fight the labels' slide-in.
+                setTimeout(reveal, 200);
+            }
+        });
+        observer.observe(welcomeModal, {
+            attributes: true,
+            attributeFilter: ["class"],
+        });
+    } else {
+        reveal();
+    }
+}
+
 
 // ============================================================
 // Floating chrome — brand element top-left, FAB stacks on the right

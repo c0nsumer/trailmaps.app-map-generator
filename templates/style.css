@@ -2112,6 +2112,53 @@ body:has(.options-overlay.is-open) .fab-stack {
     transform: scale(0.96);
 }
 
+/* FAB labels — first-visit-per-map discoverability cue (see
+ * setupFabLabels in app.js). Each FAB temporarily renders a pill
+ * label to its left explaining what the icon does. After the rider
+ * dismisses (any FAB tap or 15 s auto-timeout), an LS flag
+ * (mtb.fabsLabeled) suppresses the labels on subsequent visits to
+ * this map.
+ *
+ * Anchored to the right edge of the FAB so it floats out into the
+ * map area on the left. Pointer-events: none so taps still register
+ * on the FAB underneath the label, not on the label itself. The
+ * .fab is position: relative (set above) so the label's absolute
+ * positioning resolves against it. */
+.fab-label {
+    position: absolute;
+    right: calc(100% + 8px);
+    top: 50%;
+    /* Tucked toward the FAB by default — slide-in animation moves
+     * it to translateX(0) (final resting position) on reveal, slide-
+     * out returns it here on dismissal. The 8px offset is small
+     * enough to be visually subtle but enough to read as "moving". */
+    transform: translateY(-50%) translateX(8px);
+    background: var(--sheet-bg);
+    color: var(--sheet-text);
+    border: 1.5px solid var(--sheet-border);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.22s ease-out, transform 0.22s ease-out;
+}
+
+body.fabs-labeled .fab-label {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fab-label {
+        transition: none;
+    }
+}
+
 .fab:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
