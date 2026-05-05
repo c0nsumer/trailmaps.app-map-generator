@@ -652,6 +652,18 @@ body {
     background: var(--sheet-hover);
 }
 
+/* Non-interactive variant — used for the install row on iOS, where
+ * the icon + label appear for visual consistency with Android but
+ * the actual install flow happens in the browser chrome (Share →
+ * Add to Home Screen). Suppresses the pointer cursor + hover wash
+ * so the row doesn't read as a tap target whose tap does nothing. */
+.opt-action-row.is-static {
+    cursor: default;
+}
+.opt-action-row.is-static:hover {
+    background: transparent;
+}
+
 .opt-action-icon {
     width: 28px;
     height: 28px;
@@ -687,13 +699,6 @@ body {
     font-size: 12px;
     color: var(--sheet-text-muted);
     line-height: 1.3;
-}
-
-.opt-install-hint {
-    padding: 4px 8px 8px 8px;
-    font-size: 13px;
-    color: var(--sheet-text);
-    line-height: 1.4;
 }
 
 /* Install button — replaces the generic ⇩ glyph with the actual app

@@ -6870,15 +6870,11 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     const standalone = window.matchMedia("(display-mode: standalone)").matches;
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    function revealInstallSection(showButton, showHint) {
+    function revealInstallSection(showButton) {
         const section = document.getElementById("sheet-install-section");
         const btn = document.getElementById("install-btn");
-        const hint = document.getElementById("ios-install-hint");
-        if (btn)  btn.classList.toggle("hidden", !showButton);
-        if (hint) hint.classList.toggle("hidden", !showHint);
-        if (section) {
-            section.classList.toggle("hidden", !(showButton || showHint));
-        }
+        if (btn) btn.classList.toggle("hidden", !showButton);
+        if (section) section.classList.toggle("hidden", !showButton);
     }
 
     function setInstallButtonEnabled(enabled) {
@@ -6897,7 +6893,7 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
             // UIs as long as we eventually call prompt() (which
             // silences the "page must call prompt()" warning).
             deferredInstallPrompt = e;
-            revealInstallSection(true, false);
+            revealInstallSection(true);
             setInstallButtonEnabled(true);
         });
     }
@@ -6908,7 +6904,7 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     // succeeded.
     window.addEventListener("appinstalled", () => {
         deferredInstallPrompt = null;
-        revealInstallSection(false, false);
+        revealInstallSection(false);
     });
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -6922,7 +6918,7 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
                 deferredInstallPrompt.prompt();
                 const result = await deferredInstallPrompt.userChoice;
                 if (result.outcome === "accepted") {
-                    revealInstallSection(false, false);
+                    revealInstallSection(false);
                 }
                 // Either way, the BeforeInstallPromptEvent is
                 // single-use. Discard it; if Chrome re-fires the event
@@ -6932,10 +6928,26 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
             });
         }
 
-        // iOS Safari: show static Add-to-Home-Screen instructions
-        // since iOS lacks beforeinstallprompt.
+        // iOS Safari: show the install row with the platform-specific
+        // help text swapped in ("Tap Share, then Add to Home Screen"
+        // instead of the Android-side "Install locally for offline
+        // use."). iOS has no programmatic install API — the actual
+        // flow lives in the browser chrome (Share → Add to Home
+        // Screen) — so the row is tagged .is-static to suppress the
+        // tap-target affordance. The icon stays for visual consistency
+        // with Android (riders see the same "this is the install
+        // option" cue regardless of platform).
         if (isIOS && !standalone) {
-            revealInstallSection(false, true);
+            const installBtn = document.getElementById("install-btn");
+            if (installBtn) {
+                installBtn.classList.add("is-static");
+                const help = installBtn.querySelector(".opt-action-help");
+                if (help) {
+                    help.innerHTML = "Tap <strong>Share</strong>, "
+                                   + "then <strong>Add to Home Screen</strong>.";
+                }
+            }
+            revealInstallSection(true);
         }
     });
 }
