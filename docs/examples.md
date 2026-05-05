@@ -4,7 +4,7 @@ Real-world configurations drawn from production trail systems
 deployed at [trailmaps.app](https://trailmaps.app). Each section
 covers one map, what makes it interesting from a config standpoint,
 and the YAML knobs the curator turned. The annotated reference at
-[`configs/example/reference.yaml`](../configs/example/reference.yaml)
+[`configs/reference/reference.yaml`](../configs/reference/reference.yaml)
 explains every key in isolation; this document shows how the keys
 combine in practice.
 

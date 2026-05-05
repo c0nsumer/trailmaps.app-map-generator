@@ -538,5 +538,5 @@ These are independent of event mode; they apply to any map.
   for branding asset specs.
 - [`examples.md`](examples.md) for real-world configs (curator-
   filled examples).
-- [`configs/example/reference.yaml`](../configs/example/reference.yaml)
+- [`configs/reference/reference.yaml`](../configs/reference/reference.yaml)
   for the canonical annotated YAML reference.

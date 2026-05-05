@@ -4,7 +4,7 @@ Helper scripts for building and deploying trail maps.
 
 ## build_and_deploy.sh
 
-Builds and/or deploys one or more trail map configs. By default, processes all YAML configs in `configs/` (excluding the `configs/example/` folder of templates).
+Builds and/or deploys one or more trail map configs. By default, processes all YAML configs in `configs/` (excluding the `configs/reference/` folder of templates).
 
 The deploy destination is configured via the `DEPLOY_DEST` variable at the top of the script.
 
@@ -44,13 +44,13 @@ The deploy destination is configured via the `DEPLOY_DEST` variable at the top o
 ### Notes
 
 - The YAML filename is used to locate the config, but the `slug` field inside the config determines the build output directory and deploy path. These do not need to match.
-- When no configs are specified, every per-map config under `configs/<slug>/<slug>.yaml` is processed; the `configs/example/` template folder is skipped.
+- When no configs are specified, every per-map config under `configs/<slug>/<slug>.yaml` is processed; the `configs/reference/` template folder is skipped.
 - A summary is printed at the end showing which maps succeeded and which failed.
 
 ## clean_config.py
 
 Re-align a production map YAML against the canonical template
-(`configs/example/reference-minimal.yaml` by default). Production configs
+(`configs/reference/reference-minimal.yaml` by default). Production configs
 accumulate cruft over time as they're hand-maintained: keys reordered,
 comments edited, sections renamed, drift from the template's structure.
 This tool produces a sibling `<input>-cleaned.yaml` that adopts the
@@ -64,12 +64,12 @@ swap it in manually when satisfied.
 ### Usage
 
 ```bash
-# Default template (configs/example/reference-minimal.yaml)
+# Default template (configs/reference/reference-minimal.yaml)
 python tools/clean_config.py configs/potoloo/potoloo.yaml
 
 # Custom template (e.g. the verbose annotated reference)
 python tools/clean_config.py configs/foo/foo.yaml \
-    --template configs/example/reference.yaml
+    --template configs/reference/reference.yaml
 
 # Custom output path
 python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml

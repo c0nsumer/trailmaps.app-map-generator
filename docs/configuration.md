@@ -6,7 +6,7 @@ features that need more than a one-line description (custom routes,
 direction schedules, route buckets, dash patterns, base layers, the
 About and Welcome modals, logo and icon assets, and privacy posture).
 
-Two starter templates live under `configs/example/`:
+Two starter templates live under `configs/reference/`:
 
 - `reference-minimal.yaml`: the terse skeleton. Every supported key in
   canonical order, commented out at the framework default. Copy it to
@@ -84,7 +84,7 @@ kept outside the repo).
 The two starter templates share one folder:
 
 ```
-configs/example/
+configs/reference/
   reference-minimal.yaml      canonical-order skeleton, most keys commented out
   reference.yaml              verbose annotated reference; same key order
 ```
@@ -107,7 +107,7 @@ title: "My Trails Map"
 relations: [12425503]
 ```
 
-To start a new map, copy `configs/example/reference-minimal.yaml` into
+To start a new map, copy `configs/reference/reference-minimal.yaml` into
 `configs/<your-slug>/<your-slug>.yaml`, set the four required keys,
 drop your `logo.webp` / `icon.png` / any custom-route GeoJSONs into
 the same folder, and reference them by bare filename in the config.
@@ -324,7 +324,7 @@ specifics.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint + attribution footer), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). Dismissal persists per-map in `localStorage`. |
+| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). Dismissal persists per-map in `localStorage`. |
 
 ### Output
 

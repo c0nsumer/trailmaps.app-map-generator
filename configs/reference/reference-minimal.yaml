@@ -1,0 +1,118 @@
+# --- Identity ---
+name: My Trails
+slug: my-trails
+title: "My Trails Map"
+
+# --- Data sources ---
+relations:
+  - 12345678
+# osm_file: osm.osm
+# clipped_relations: []
+# event_mode:
+
+# --- Route buckets ---
+# winter_relations: []
+# summer_relations: []
+# emergency_access_relations: []
+
+# --- Custom routes ---
+# custom_routes: []
+
+# --- Map view geometry ---
+# bbox: [-87.66, 46.47, -87.59, 46.53]
+# pan_bbox: [-87.70, 46.44, -87.55, 46.56]
+# pan_padding: 0.5
+# center: [-87.635, 46.495]
+# zoom: 14
+# min_zoom: 10
+# max_zoom: 18
+# basemap_maxzoom: 15
+# terrain_maxzoom: 13
+
+# --- Build-time data gates ---
+# show_markers: true
+# show_features: true
+# show_parking: true
+# show_trailheads: true
+# show_toilets: true
+# show_drinking_water: true
+# show_terrain: true
+# show_difficulty: false
+# show_routes: true
+# show_trails: true
+# direction_arrows_required: false
+# suppress_path_labels: false
+# suppress_basemap_pois: false
+# show_route_distance: false
+# show_route_elevation: false
+# poi_proximity_m: 50
+
+# --- Per-route style overrides ---
+# relation_colors: {}
+# dashed_relations: {}
+# color_by: relation
+# default_trail_color: "#808080"
+
+# --- Direction schedules ---
+# default_direction_schedule: {}
+# direction_schedules: {}
+
+# --- Display ---
+# default_visible: []
+# default_labels: none
+# default_color_scheme: light
+# invert_logo_dark: true
+# map_dim_on_highlight: true
+# url_hash: false
+# distance_units: mi
+# share_button: true
+
+# --- Marker and accent colours ---
+# marker_color: "#795548"
+# marker_text_color: "white"
+# marker_border_color: "white"
+# parking_color: "#2980b9"
+# parking_text_color: "white"
+# parking_border_color: "white"
+# trailhead_color: "#27ae60"
+# trailhead_text_color: "white"
+# trailhead_border_color: "white"
+# feature_color: "#8e44ad"
+# feature_ring_color: "#ffffff"
+# accent_color: "#2980b9"
+
+# --- Base layers ---
+# base_layers: []
+
+# --- Branding ---
+# logo: logo.webp
+# icon: icon.png
+
+# --- User-supplied points ---
+# trailheads: []
+# parking: []
+
+# --- PWA ---
+# pwa: true
+# pwa_install_prompt: true
+
+# --- About modal ---
+# about:
+#   description: |
+#     Description text.
+#   curator:
+#     name: ""
+#     url: ""
+#   links:
+#     - label: ""
+#       url: ""
+
+# --- Welcome modal ---
+# welcome:
+#   title: ""
+#   body: |
+#     Plain-text intro. Paragraphs are separated by blank lines.
+#   show_controls_hint: true
+
+# --- Output ---
+# output_dir: build/my-trails

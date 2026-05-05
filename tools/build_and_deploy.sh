@@ -3,7 +3,7 @@
 # Build and deploy trail maps.
 #
 # Each map lives in its own folder: configs/<slug>/<slug>.yaml + assets.
-# By default, this processes every such folder except configs/example/.
+# By default, this processes every such folder except configs/reference/.
 # Pass one or more slugs to limit the run to a subset.
 #
 # See --help for full usage.
@@ -25,7 +25,7 @@ Usage: $(basename "$0") [options] [slug ...] [-- build-flag ...]
 
 Builds and deploys trail map(s). Each map lives in configs/<slug>/.
 Without a slug list, processes every configs/<slug>/ folder except
-configs/example/.
+configs/reference/.
 
 Options:
   --all              Process every config (default if no names given)
@@ -97,7 +97,7 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 # If no slugs specified, discover every configs/<slug>/<slug>.yaml except
-# configs/example/ (which holds the reference + reference-minimal templates).
+# configs/reference/ (which holds the reference + reference-minimal templates).
 if [ ${#configs[@]} -eq 0 ]; then
     for d in "${CONFIGS_DIR}"/*/; do
         name="$(basename "$d")"

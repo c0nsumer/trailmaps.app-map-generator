@@ -72,7 +72,7 @@ for the full pipeline, CLI flags, and caching behaviour.
    super-relation (or pick an existing one).
 2. Create `configs/<slug>/` (the folder name must match your chosen
    slug exactly). Copy
-   [`configs/example/reference-minimal.yaml`](configs/example/reference-minimal.yaml)
+   [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
    into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`,
    `title`, and `relations:` (a non-empty list of OSM relation IDs;
    each entry may be a leaf route relation or a super-relation).
@@ -96,9 +96,9 @@ for the full pipeline, CLI flags, and caching behaviour.
    Caddy configuration and PWA hosting notes.
 
 The annotated reference at
-[`configs/example/reference.yaml`](configs/example/reference.yaml)
+[`configs/reference/reference.yaml`](configs/reference/reference.yaml)
 explains every supported key in detail; the terse skeleton at
-[`configs/example/reference-minimal.yaml`](configs/example/reference-minimal.yaml)
+[`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
 is what you copy to start a new map. Both files stay in identical
 canonical key order so you can diff them at any time.
 

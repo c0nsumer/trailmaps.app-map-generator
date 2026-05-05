@@ -133,7 +133,7 @@ and (optionally) deploys via `rsync`. Run `./tools/build_and_deploy.sh
 --help` for full usage. Common patterns:
 
 ```bash
-# Build and deploy every map under configs/ (excluding configs/example/)
+# Build and deploy every map under configs/ (excluding configs/reference/)
 ./tools/build_and_deploy.sh
 
 # Build and deploy a subset
@@ -194,12 +194,12 @@ documentation comments) while preserving every value the production
 file explicitly set.
 
 ```bash
-# Default template (configs/example/reference-minimal.yaml)
+# Default template (configs/reference/reference-minimal.yaml)
 python tools/clean_config.py configs/potoloo/potoloo.yaml
 
 # Custom template (e.g. the verbose annotated reference)
 python tools/clean_config.py configs/foo/foo.yaml \
-    --template configs/example/reference.yaml
+    --template configs/reference/reference.yaml
 ```
 
 The original file is never modified. Review the cleaned output and
