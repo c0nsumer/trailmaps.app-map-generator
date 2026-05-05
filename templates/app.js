@@ -6904,11 +6904,17 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
         if (_hasShownUpdateToast) return;
         _hasShownUpdateToast = true;
         showToast("Updated map available.", {
-            // 15s gives the user time to read and decide; long
-            // enough that a quick glance away doesn't miss it,
-            // short enough that the toast doesn't obstruct the
-            // map for long if ignored.
-            timeoutMs: 15000,
+            // Persistent: stays until the rider taps Reload or the ×.
+            // Auto-dismiss would be wrong here — a 15s window means
+            // any rider whose attention is elsewhere when the toast
+            // fires never knew there was an update. Updates carry no
+            // criticality signal, so we default to "make sure they
+            // see it" and let them defer via × if mid-task. The
+            // _hasShownUpdateToast guard above prevents re-showing
+            // in the same session after dismissal; next page load
+            // re-detects the waiting SW and surfaces the toast
+            // again, matching the Gmail / Google Docs pattern.
+            persistent: true,
             actions: [{
                 label: "Reload",
                 primary: true,
