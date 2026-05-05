@@ -574,7 +574,7 @@ relations:
 #   description: |
 #     Free-form multi-line description shown near the top of the
 #     modal. YAML `|` block-literal preserves line breaks.
-#   author:
+#   curator:
 #     name: "Your Name"
 #     url: "https://yoursite.example.com"
 #   links:

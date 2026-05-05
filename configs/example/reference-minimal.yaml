@@ -119,7 +119,7 @@ relations:
 # about:
 #   description: |
 #     Description text.
-#   author:
+#   curator:
 #     name: ""
 #     url: ""
 #   links:

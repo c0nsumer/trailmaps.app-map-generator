@@ -953,10 +953,19 @@ def _validate_about(report, config):
                 if not isinstance(link, dict) or "label" not in link or "url" not in link:
                     report.err(f"about.links[{i}]",
                                "each entry must be {label, url}")
+    # `author` was renamed to `curator` to better describe the role
+    # — the framework generates the map; the human curates the data
+    # and config. Hard cut to match the more_information / extra_links
+    # consolidation; one curator and a small known config set make
+    # alias logic more cost than benefit.
     if "author" in about:
-        a = about["author"]
+        report.err("about.author",
+                   "`author` was renamed to `curator`; rename the key "
+                   "(same {name, [url]} shape).")
+    if "curator" in about:
+        a = about["curator"]
         if not isinstance(a, dict) or "name" not in a:
-            report.err("about.author",
+            report.err("about.curator",
                        "must be {name, [url]}")
 
 
