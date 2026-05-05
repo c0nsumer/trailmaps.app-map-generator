@@ -564,24 +564,26 @@ relations:
 # About modal
 # ============================================================
 # Optional content shown in the "About this map" modal opened from
-# the Options overlay. The modal always renders Versions and Credits
-# sections at the bottom regardless of this block; the keys below add
-# rider-facing prose, links, author info, etc. Any subsection whose
-# source data is absent is omitted entirely.
+# the Options overlay. The modal always renders a "Built with"
+# section at the bottom (data + build dates, framework credits)
+# regardless of this block; the keys below add rider-facing prose,
+# author byline, and curator links. Any subsection whose source
+# data is absent is omitted entirely.
 
 # about:
 #   description: |
 #     Free-form multi-line description shown near the top of the
 #     modal. YAML `|` block-literal preserves line breaks.
-#   more_information:
+#   author:
+#     name: "Your Name"
+#     url: "https://yoursite.example.com"
+#   links:
+#     # Single combined list (replaces the previous more_information +
+#     # extra_links pair). Order in YAML is order in the rendered list.
 #     - label: "Trail Association"
 #       url: "https://example.org"
 #     - label: "Trail Conditions"
 #       url: "https://example.org/conditions"
-#   author:
-#     name: "Your Name"
-#     url: "https://yoursite.example.com"
-#   extra_links:
 #     - label: "Source on GitHub"
 #       url: "https://github.com/you/your-fork"
 

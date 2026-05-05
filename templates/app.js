@@ -2397,44 +2397,34 @@ function buildAboutModalContent() {
         body.appendChild(p);
     }
 
-    // More Information
-    if (Array.isArray(about.more_information) && about.more_information.length) {
-        const h = document.createElement("h3");
-        h.textContent = "More Information";
-        body.appendChild(h);
-        const ul = document.createElement("ul");
-        about.more_information.forEach((link) => {
-            if (!link || !link.url) return;
-            const li = document.createElement("li");
-            li.appendChild(aboutExtLink(link.url, link.label || link.url));
-            ul.appendChild(li);
-        });
-        body.appendChild(ul);
-    }
-
-    // Author
+    // Author byline \u2014 small italic line right after the description,
+    // no heading. "By [Name]" with the name optionally linked. Reads
+    // as natural attribution rather than a structural section
+    // (previously a separate h3 \u2014 overkill for one line of content).
     if (about.author && (about.author.name || about.author.url)) {
-        const h = document.createElement("h3");
-        h.textContent = "Author";
-        body.appendChild(h);
         const p = document.createElement("p");
+        p.className = "about-modal-byline";
+        p.appendChild(document.createTextNode("By "));
         if (about.author.url && about.author.name) {
             p.appendChild(aboutExtLink(about.author.url, about.author.name));
         } else if (about.author.url) {
             p.appendChild(aboutExtLink(about.author.url, about.author.url));
         } else {
-            p.textContent = about.author.name;
+            p.appendChild(document.createTextNode(about.author.name));
         }
         body.appendChild(p);
     }
 
-    // Extra Links
-    if (Array.isArray(about.extra_links) && about.extra_links.length) {
+    // More info \u2014 single section combining what was previously two
+    // (more_information + extra_links). Curator-supplied bulleted
+    // list of related links: official trail-system pages, club
+    // pages, related orgs, etc. Order matches the YAML.
+    if (Array.isArray(about.links) && about.links.length) {
         const h = document.createElement("h3");
-        h.textContent = "Additional Links";
+        h.textContent = "More info";
         body.appendChild(h);
         const ul = document.createElement("ul");
-        about.extra_links.forEach((link) => {
+        about.links.forEach((link) => {
             if (!link || !link.url) return;
             const li = document.createElement("li");
             li.appendChild(aboutExtLink(link.url, link.label || link.url));
@@ -2443,10 +2433,15 @@ function buildAboutModalContent() {
         body.appendChild(ul);
     }
 
-    // Versions (always)
-    const versionsHeader = document.createElement("h3");
-    versionsHeader.textContent = "Versions";
-    tail.appendChild(versionsHeader);
+    // Built with \u2014 combined section for framework-generated meta
+    // (versions + credits, previously two separate h3 sections).
+    // Always rendered. Versions first (recency cue), credits below
+    // (data sources + libraries). Terrain credit is conditional on
+    // show_terrain \u2014 no point crediting a source whose tiles aren't
+    // loaded for this map.
+    const builtWithHeader = document.createElement("h3");
+    builtWithHeader.textContent = "Built with";
+    tail.appendChild(builtWithHeader);
     if (CONFIG.dataDate) {
         const p = document.createElement("p");
         p.className = "about-modal-version";
@@ -2459,15 +2454,6 @@ function buildAboutModalContent() {
         p.textContent = `App built: ${CONFIG.buildDate}`;
         tail.appendChild(p);
     }
-
-    // Credits (always). One entry per data source / library, named
-    // and licensed so the rider (or anyone curious about the build)
-    // can trace exactly where each piece came from. Terrain credit
-    // is conditional on show_terrain \u2014 no point crediting a source
-    // whose tiles aren't loaded for this map.
-    const creditsHeader = document.createElement("h3");
-    creditsHeader.textContent = "Credits";
-    tail.appendChild(creditsHeader);
 
     const credit = (prefix, url, label, suffix) => {
         const p = document.createElement("p");

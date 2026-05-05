@@ -1334,6 +1334,18 @@ body {
     margin: 0 0 4px 0;
 }
 
+/* Author byline — small italic line right after the description,
+ * standing in for the previous full Author h3 + paragraph section.
+ * Muted weight + italic so it reads as natural attribution rather
+ * than primary content; tight top margin to sit closer to the
+ * description it credits than to whatever section follows. */
+.about-modal-byline {
+    color: var(--sheet-text-muted);
+    font-style: italic;
+    font-size: 13px;
+    margin: -4px 0 12px 0;
+}
+
 /* ----- MapLibre control overrides ---------------------------------- */
 .maplibregl-ctrl-group {
     background: var(--sheet-bg) !important;

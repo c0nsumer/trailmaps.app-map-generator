@@ -318,7 +318,7 @@ specifics.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `about` | No | none | Object with optional `description`, `more_information`, `author`, `extra_links` keys. See [About this map block](#about-this-map-block). |
+| `about` | No | none | Object with optional `description`, `author`, `links` keys. See [About this map block](#about-this-map-block). |
 
 ### Welcome modal
 
@@ -839,22 +839,21 @@ with information about the map. The modal header shows the map
 **title** on the left and, when `logo:` (or `icon:` as fallback) is
 configured, the brand **logo** on the right. The `about` YAML block
 is optional; when omitted, the modal still renders the always-on
-Versions and Credits sections.
+"Built with" section (data + build dates, framework credits).
 
 ```yaml
 about:
   description: |
     Free-form multi-line description. Line breaks in a YAML `|` block are
     preserved in the modal.
-  more_information:
+  author:
+    name: "Your Name"
+    url: "https://yoursite.example.com"
+  links:
     - label: "Trail Association"
       url: "https://example.org"
     - label: "Trail Conditions"
       url: "https://example.org/conditions"
-  author:
-    name: "Your Name"
-    url: "https://yoursite.example.com"
-  extra_links:
     - label: "Source on GitHub"
       url: "https://github.com/you/your-fork"
 ```
@@ -862,21 +861,26 @@ about:
 | Key | Required | Description |
 |---|---|---|
 | `description` | No | Paragraph of prose shown near the top of the modal. `\|`-style multi-line blocks preserve newlines. |
-| `more_information` | No | List of `{label, url}` entries rendered under a "More Information" header, typically the trail association, conditions page, social media. |
-| `author` | No | Single `{name, url}` object rendered under an "Author" header. `url` optional; if omitted, the name is plain text. |
-| `extra_links` | No | List of `{label, url}` entries rendered under an "Additional Links" header: source repo, related maps, docs, etc. |
+| `author` | No | Single `{name, url}` object rendered as a small italic byline ("By [Name]") right under the description. `url` optional; if omitted, the name renders as plain text. |
+| `links` | No | List of `{label, url}` entries rendered as a bulleted list under a "More info" header — official trail-system pages, club pages, related orgs, source repo, etc. Order in the YAML is the rendered order. |
 
-The modal also always shows:
+The modal also always shows a **"Built with"** section at the bottom:
 
-- **Versions**: `Trail data: <date HH:MM>` (from the trails file
-  mtime / `_data_date`) and `App built: <date HH:MM>` (set at build
+- `Trail data: <date HH:MM>` (from the trails file mtime /
+  `_data_date`) and `App built: <date HH:MM>` (set at build
   time). Both timestamps use the build machine's local time.
-- **Credits**: every data source and library used at build time and
-  runtime. See the framework-level credit list in
+- One credit line per data source and library used at build time and
+  runtime (OSM, Protomaps, Mapterhorn when terrain is enabled, USGS
+  3DEP, Material Design Icons, MapLibre GL JS, SIL Open Font
+  License). See the framework-level credit list in
   [`README.md`](../README.md#credits).
 
-Any section whose source data is absent is omitted entirely; the
-headers only appear when their content does.
+Any curator section whose source data is absent is omitted entirely.
+
+> **Schema note:** `more_information` and `extra_links` (the
+> previous separate-section schema) were consolidated into the
+> single `links:` array in 2026-05. The validator errors with a
+> rename instruction if a config still uses the legacy keys.
 
 ## Base layers (full guide)
 
@@ -1051,5 +1055,5 @@ cart's session state) and does not require a consent banner. The
 stored values are not personal data under GDPR: no cross-site
 linkage, no profile building, no server transmission. If you
 self-host this framework for a public trail system, you can link
-this section from your About modal's `more_information` or
-`extra_links` if you want to reassure visitors.
+this section from your About modal's `links:` if you want to
+reassure visitors.

@@ -119,13 +119,10 @@ relations:
 # about:
 #   description: |
 #     Description text.
-#   more_information:
-#     - label: ""
-#       url: ""
 #   author:
 #     name: ""
 #     url: ""
-#   extra_links:
+#   links:
 #     - label: ""
 #       url: ""
 

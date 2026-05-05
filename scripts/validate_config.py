@@ -930,18 +930,29 @@ def _validate_about(report, config):
     if "description" in about and not isinstance(about["description"], str):
         report.err("about.description",
                    f"must be a string, got {type(about['description']).__name__}")
-    for key in ("more_information", "extra_links"):
-        if key not in about:
-            continue
-        v = about[key]
+    # Legacy-key migration error. The previous schema split the
+    # "more info" links into two arrays (more_information,
+    # extra_links) rendered as separate sections; the new schema
+    # consolidates them into one `links:` array rendered as a single
+    # "More info" section. Hard-cut rather than aliased — the framework
+    # has one curator and a small, known config set, so cleaner end
+    # state beats deprecation-period cruft.
+    for legacy in ("more_information", "extra_links"):
+        if legacy in about:
+            report.err(f"about.{legacy}",
+                       f"`{legacy}` was removed; rename it to `links:` "
+                       f"(append `extra_links` items into the same list "
+                       f"if both keys were used).")
+    if "links" in about:
+        v = about["links"]
         if not isinstance(v, list):
-            report.err(f"about.{key}",
+            report.err("about.links",
                        f"must be a list, got {type(v).__name__}")
-            continue
-        for i, link in enumerate(v):
-            if not isinstance(link, dict) or "label" not in link or "url" not in link:
-                report.err(f"about.{key}[{i}]",
-                           "each entry must be {label, url}")
+        else:
+            for i, link in enumerate(v):
+                if not isinstance(link, dict) or "label" not in link or "url" not in link:
+                    report.err(f"about.links[{i}]",
+                               "each entry must be {label, url}")
     if "author" in about:
         a = about["author"]
         if not isinstance(a, dict) or "name" not in a:
