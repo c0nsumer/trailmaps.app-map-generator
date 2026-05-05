@@ -5377,10 +5377,24 @@ function setupFloatingChrome() {
             setOverlayOpen(optionsOverlay, optionsBtn, false);
         }
         setOverlayOpen(searchOverlay, searchBtn, true);
-        // Defer focus until after the slide-up starts so iOS doesn't
-        // fight the keyboard with the transition.
-        const finderInput = document.getElementById("finder-input");
-        if (finderInput) setTimeout(() => finderInput.focus(), 50);
+        // Auto-focus the input ONLY on devices whose primary input is
+        // a real pointer (desktop / laptop with mouse or trackpad).
+        // On touch-primary devices (phones, tablets, PWAs running
+        // in standalone mode) auto-focus pops the OS keyboard
+        // immediately, which covers half the screen and hides the
+        // result list — riders can't see what's searchable until
+        // they dismiss the keyboard. Skipping focus here lets the
+        // rider see the empty-state suggestions and scroll the list
+        // first; tapping the input themselves brings up the keyboard
+        // when they're ready to type. Desktop riders still get the
+        // start-typing-immediately convenience because no keyboard
+        // appears on focus there.
+        const isTouchPrimary = window.matchMedia(
+            "(pointer: coarse)").matches;
+        if (!isTouchPrimary) {
+            const finderInput = document.getElementById("finder-input");
+            if (finderInput) setTimeout(() => finderInput.focus(), 50);
+        }
     }
     function closeSearchOverlay() {
         setOverlayOpen(searchOverlay, searchBtn, false);
