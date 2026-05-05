@@ -1255,6 +1255,16 @@ function validateConfigShape() {
 // trails-load handler to apply the highlight (and discarded after).
 let _pendingShareHighlight = null;
 
+// Snapshot of the map's first-load view target. Set during map
+// construction so the Reset View FAB (top-right stack) can restore
+// exactly what the rider would see on a fresh page load: the
+// framework default (fitBounds CONFIG.bbox + padding 50) when the
+// URL is clean, OR the deep-linked #share=zoom/lat/lon view when the
+// rider arrived via a share link. Captured deterministically (not
+// from map.getCenter() at idle time) so an early pan/zoom before
+// idle doesn't poison the reset target.
+let _initialViewTarget = null;
+
 // Apply a highlight that was parsed from an incoming share link.
 // Called once, after trails + indexes are loaded. The view portion
 // (zoom / center) of the share link is already in effect via map
@@ -1575,12 +1585,22 @@ async function init() {
     if (shareState) {
         mapOptions.center = shareState.center;
         mapOptions.zoom = shareState.zoom;
+        _initialViewTarget = {
+            kind: "center",
+            center: shareState.center,
+            zoom: shareState.zoom,
+        };
     } else {
         mapOptions.bounds = [
             [CONFIG.bbox[0], CONFIG.bbox[1]],
             [CONFIG.bbox[2], CONFIG.bbox[3]],
         ];
         mapOptions.fitBoundsOptions = { padding: 50 };
+        _initialViewTarget = {
+            kind: "bounds",
+            bbox: CONFIG.bbox.slice(),  // defensive copy
+            padding: 50,
+        };
     }
 
     if (Object.keys(headersByDomain).length > 0) {
@@ -5145,6 +5165,45 @@ function setupFloatingChrome() {
     if (CONFIG.invertLogoDark !== false) {
         const brandImg = document.getElementById("brand-img");
         if (brandImg) brandImg.classList.add("invert-dark");
+    }
+
+    // ----- Reset View FAB (top-right stack, between Locate + Options)
+    //
+    // Restores the map to the view the rider sees on a fresh page
+    // load: the framework default fitBounds (CONFIG.bbox + 50 px
+    // padding) when the URL is clean, OR the deep-linked
+    // #share=zoom/lat/lon view when they arrived via a share link.
+    // Highlight state is intentionally NOT touched — the rider
+    // clears highlights via the chip's X. flyTo for an animated
+    // restore (300 ms feels like "reset" without losing context;
+    // longer would feel sluggish for what's effectively an undo).
+    const resetBtn = document.getElementById("toggle-reset-view");
+    if (resetBtn && map) {
+        resetBtn.addEventListener("click", () => {
+            if (!_initialViewTarget) return;
+            if (_initialViewTarget.kind === "center") {
+                map.flyTo({
+                    center: _initialViewTarget.center,
+                    zoom: _initialViewTarget.zoom,
+                    bearing: 0,
+                    pitch: 0,
+                    duration: 300,
+                });
+            } else {
+                map.fitBounds(
+                    [
+                        [_initialViewTarget.bbox[0], _initialViewTarget.bbox[1]],
+                        [_initialViewTarget.bbox[2], _initialViewTarget.bbox[3]],
+                    ],
+                    {
+                        padding: _initialViewTarget.padding,
+                        bearing: 0,
+                        pitch: 0,
+                        duration: 300,
+                    },
+                );
+            }
+        });
     }
 
     // ----- Search overlay (half-sheet) + Options overlay (full-screen)

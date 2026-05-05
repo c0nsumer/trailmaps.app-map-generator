@@ -108,7 +108,7 @@
          how rarely overlays are used together. The MapLibre
          attribution sits at bottom-LEFT (separate corner, no
          conflict). -->
-    <div id="fab-stack-top" class="fab-stack fab-stack-top" role="group" aria-label="Map controls — locate and options">
+    <div id="fab-stack-top" class="fab-stack fab-stack-top" role="group" aria-label="Map controls — locate, reset view, and options">
         <button id="toggle-locate" class="fab" type="button" aria-pressed="false" aria-label="Locate me">
             <!-- mdi:crosshairs-gps (Apache 2.0, Pictogrammers) — inner dot
                  split into a separate <circle class="locate-dot"> so CSS can
@@ -118,6 +118,18 @@
             <svg class="locate-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
                 <circle class="locate-dot" cx="12" cy="12" r="4"/>
                 <path d="M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z"/>
+            </svg>
+        </button>
+        <button id="toggle-reset-view" class="fab fab-reset-view" type="button" aria-label="Reset view">
+            <!-- mdi:image-filter-center-focus (Apache 2.0, Pictogrammers).
+                 Four corner brackets + a centre dot — the universal
+                 viewfinder / "frame this content" pattern. Chosen over
+                 mdi:reload (refresh metaphor reads as network reload, not
+                 view reset) and mdi:home (navigates home, but our reset
+                 isn't going home — it's reframing the same content). The
+                 corner brackets reinforce "fit to bounds" semantically. -->
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+                <path d="M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2 0 0,0 3,5V9H5M19,3H15V5H19V9H21V5A2,2 0 0,0 19,3M19,19H15V21H19A2,2 0 0,0 21,19V15H19M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z"/>
             </svg>
         </button>
         <button id="toggle-options" class="fab" type="button" aria-label="Options" aria-pressed="false" aria-controls="options-overlay">
