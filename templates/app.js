@@ -2138,8 +2138,6 @@ function initWelcomeModal() {
         if (showControlsHint) {
             bodyEl.appendChild(buildWelcomeControlsHint());
         }
-
-        bodyEl.appendChild(buildWelcomeAttribution());
     }
 
     function dismissWelcome() {
@@ -2170,12 +2168,20 @@ function initWelcomeModal() {
 // icon I see in the welcome is the icon I'll see on the map").
 // Inlined here rather than queried from the DOM so the welcome
 // renders correctly even if the FABs haven't mounted yet.
+// mdi:crosshairs-gps (Apache 2.0, Pictogrammers) — matches the
+// Locate FAB glyph (templates/index.html).
+const _WELCOME_ICON_LOCATE     = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z";
+// mdi:image-filter-center-focus (Apache 2.0, Pictogrammers) —
+// matches the Reset View FAB glyph (templates/index.html). Four
+// corner brackets + centre dot read as "frame this content".
+const _WELCOME_ICON_RESET_VIEW = "M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2 0 0,0 3,5V9H5M19,3H15V5H19V9H21V5A2,2 0 0,0 19,3M19,19H15V21H19A2,2 0 0,0 21,19V15H19M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z";
 // mdi:cog (Apache 2.0, Pictogrammers) — matches the Options FAB
 // glyph (templates/index.html). Reverted from a brief mdi:tune
 // experiment that read as "audio equalizer" rather than "settings".
-const _WELCOME_ICON_OPTIONS  = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
-const _WELCOME_ICON_SEARCH   = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
-const _WELCOME_ICON_LOCATE   = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z";
+const _WELCOME_ICON_OPTIONS    = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
+// mdi:magnify (Apache 2.0, Pictogrammers) — matches the Search FAB
+// glyph (templates/index.html).
+const _WELCOME_ICON_SEARCH     = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
 
 function _welcomeIconSvg(pathD) {
     // Returns the SVG markup for one welcome-icon glyph. 18×18
@@ -2184,11 +2190,11 @@ function _welcomeIconSvg(pathD) {
     return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${pathD}"/></svg>`;
 }
 
-// Build the controls-hint section: three rows, each with the FAB's
+// Build the controls-hint section: four rows, each with the FAB's
 // icon + the control's name + a one-line description. Helps a
-// first-visit rider learn what each of the three corner-anchored
-// FAB buttons does (Locate + Options top-right, Search bottom-right)
-// without leaving the welcome modal.
+// first-visit rider learn what each of the four corner-anchored
+// FAB buttons does (Locate + Reset View + Options top-right, Search
+// bottom-right) without leaving the welcome modal.
 // Join a list of phrases with comma + Oxford "and" — "x", "x and y",
 // "x, y, and z". Used by the dynamic welcome descriptions to read
 // naturally regardless of how many items survive the per-map filter.
@@ -2237,17 +2243,22 @@ function _welcomeSearchDescription() {
 }
 
 // Build the Options row description from what affordances are
-// actually wired into this map. "Layers" is always present; share /
-// install / About each appear only when their corresponding feature
-// is enabled. "Season" is omitted from the default copy because
+// actually wired into this map. The lead clause ("turn map markers
+// and overlays on or off") covers the most rider-relevant action —
+// the layer toggles — in concrete language; share / install /
+// About each appear only when their corresponding feature is
+// enabled. "Season" is omitted from the default copy because
 // detecting "this map has both summer + winter routes" requires
 // extra build-time plumbing — added separately if needed.
 function _welcomeOptionsDescription() {
-    const items = ["layers"];
-    if (CONFIG.shareButton) items.push("share view");
+    const items = ["turn map markers and overlays on or off"];
+    if (CONFIG.shareButton) items.push("share the view");
     if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
-    items.push("view info about this map");
-    return `Configure ${_joinHumanList(items)}.`;
+    items.push("see info about this map");
+    // Capitalise the first letter of the joined imperative list so
+    // it reads as a sentence; final period anchors it.
+    const joined = _joinHumanList(items);
+    return joined.charAt(0).toUpperCase() + joined.slice(1) + ".";
 }
 
 function buildWelcomeControlsHint() {
@@ -2262,16 +2273,19 @@ function buildWelcomeControlsHint() {
     const list = document.createElement("ul");
     list.className = "welcome-modal-controls-list";
 
-    // Order matches the FAB stack on the map (top to bottom:
-    // Options, Search, Locate) so the rider sees the same sequence
-    // here that they'll see on the screen.
+    // Order matches the on-screen FAB layout reading top-to-bottom:
+    // top stack (Locate → Reset View → Options) followed by the
+    // bottom stack (Search). Same sequence the rider sees on the
+    // map keeps the mental mapping cheap.
     const rows = [
-        { icon: _WELCOME_ICON_OPTIONS, name: "Options",
-            desc: _welcomeOptionsDescription() },
-        { icon: _WELCOME_ICON_SEARCH,  name: "Search",
-            desc: _welcomeSearchDescription() },
-        { icon: _WELCOME_ICON_LOCATE,  name: "Locate",
+        { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
             desc: "Track your position on the map." },
+        { icon: _WELCOME_ICON_RESET_VIEW, name: "Reset view",
+            desc: "Reset the map to its starting view." },
+        { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
+            desc: _welcomeOptionsDescription() },
+        { icon: _WELCOME_ICON_SEARCH,     name: "Search",
+            desc: _welcomeSearchDescription() },
     ];
 
     for (const r of rows) {
@@ -2296,33 +2310,6 @@ function buildWelcomeControlsHint() {
 
     wrap.appendChild(list);
     return wrap;
-}
-
-// Sober attribution footer for the welcome modal — matches the
-// printed-map convention and mirrors the on-map (i) attribution
-// content. Source names are real anchor tags pointing at the
-// canonical pages (same URLs as the About credits) so a curious
-// rider can follow the link without hunting for it. Terrain credit
-// drops when the map doesn't load terrain. Full-credits experience
-// lives in About; this is just acknowledgment + a way out.
-function buildWelcomeAttribution() {
-    const p = document.createElement("p");
-    p.className = "welcome-modal-attribution";
-
-    p.appendChild(document.createTextNode("Map data © "));
-    p.appendChild(aboutExtLink(
-        "https://www.openstreetmap.org/copyright",
-        "OpenStreetMap contributors"));
-    p.appendChild(document.createTextNode(". Basemap © "));
-    p.appendChild(aboutExtLink("https://protomaps.com", "Protomaps"));
-    p.appendChild(document.createTextNode("."));
-    if (CONFIG.showTerrain) {
-        p.appendChild(document.createTextNode(" Terrain © "));
-        p.appendChild(aboutExtLink("https://mapterhorn.com", "Mapterhorn"));
-        p.appendChild(document.createTextNode("."));
-    }
-
-    return p;
 }
 
 // ============================================================
