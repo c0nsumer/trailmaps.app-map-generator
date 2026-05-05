@@ -2144,7 +2144,10 @@ function initWelcomeModal() {
 // icon I see in the welcome is the icon I'll see on the map").
 // Inlined here rather than queried from the DOM so the welcome
 // renders correctly even if the FABs haven't mounted yet.
-const _WELCOME_ICON_OPTIONS  = "M19.14,12.94C19.18,12.64 19.2,12.33 19.2,12C19.2,11.68 19.18,11.36 19.13,11.06L21.16,9.48C21.34,9.34 21.39,9.07 21.28,8.87L19.36,5.55C19.24,5.33 18.99,5.26 18.77,5.33L16.38,6.29C15.88,5.91 15.35,5.59 14.76,5.35L14.4,2.81C14.36,2.57 14.16,2.4 13.92,2.4H10.08C9.84,2.4 9.65,2.57 9.61,2.81L9.25,5.35C8.66,5.59 8.12,5.92 7.63,6.29L5.24,5.33C5.02,5.25 4.77,5.33 4.65,5.55L2.74,8.87C2.62,9.08 2.66,9.34 2.86,9.48L4.89,11.06C4.84,11.36 4.8,11.69 4.8,12C4.8,12.31 4.82,12.64 4.87,12.94L2.84,14.52C2.66,14.66 2.61,14.93 2.72,15.13L4.64,18.45C4.76,18.67 5.01,18.74 5.23,18.67L7.62,17.71C8.12,18.09 8.65,18.41 9.24,18.65L9.6,21.19C9.65,21.43 9.84,21.6 10.08,21.6H13.92C14.16,21.6 14.36,21.43 14.39,21.19L14.75,18.65C15.34,18.41 15.88,18.09 16.37,17.71L18.76,18.67C18.98,18.75 19.23,18.67 19.35,18.45L21.27,15.13C21.39,14.91 21.34,14.66 21.15,14.52L19.14,12.94M12,15.6C10.02,15.6 8.4,13.98 8.4,12C8.4,10.02 10.02,8.4 12,8.4C13.98,8.4 15.6,10.02 15.6,12C15.6,13.98 13.98,15.6 12,15.6Z";
+// mdi:tune (Apache 2.0, Pictogrammers) — matches the Options FAB
+// glyph (templates/index.html). Swapped from mdi:cog so the welcome
+// modal's "How to use this map" key reflects the on-screen control.
+const _WELCOME_ICON_OPTIONS  = "M3,17V19H9V17H3M3,5V7H13V5H3M13,21V19H21V17H13V15H11V21H13M7,9V11H3V13H7V15H9V9H7M21,13V11H11V13H21M15,9H17V7H21V5H17V3H15V9Z";
 const _WELCOME_ICON_SEARCH   = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
 const _WELCOME_ICON_LOCATE   = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z";
 
@@ -2157,8 +2160,9 @@ function _welcomeIconSvg(pathD) {
 
 // Build the controls-hint section: three rows, each with the FAB's
 // icon + the control's name + a one-line description. Helps a
-// first-visit rider learn what each of the three bottom-right
-// buttons does without leaving the welcome modal.
+// first-visit rider learn what each of the three corner-anchored
+// FAB buttons does (Locate + Options top-right, Search bottom-right)
+// without leaving the welcome modal.
 // Join a list of phrases with comma + Oxford "and" — "x", "x and y",
 // "x, y, and z". Used by the dynamic welcome descriptions to read
 // naturally regardless of how many items survive the per-map filter.
@@ -5121,8 +5125,9 @@ function addFeatureMarkers(addToMap) {
 }
 
 // ============================================================
-// Floating chrome — brand element top-left, FAB stack bottom-right,
-// plus two overlays (Search half-sheet + Options full-screen).
+// Floating chrome — brand element top-left, FAB stacks on the right
+// edge (Locate + Options top-right, Search bottom-right), plus two
+// overlays (Search half-sheet + Options full-screen).
 // ============================================================
 function setupFloatingChrome() {
     // ----- Brand element (top-left) ---------------------------------
