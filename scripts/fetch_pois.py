@@ -66,6 +66,75 @@ out center;
     return overpass_query(q, cache_dir, label="POIs")
 
 
+def _dedup_osm_pois(features):
+    """Collapse OSM-derived POIs of the same type within ~10m of each
+    other into a single feature.
+
+    Catches the common OSM modelling pattern where the same physical
+    amenity is tagged twice — once as a way (building=yes +
+    amenity=toilets, the building footprint, whose Overpass-computed
+    center coord we use) AND once as a node (a separate
+    amenity=toilets node at or near the entrance). These represent
+    the same real-world facility but the Overpass query returns both,
+    and without dedup the search overlay reports the doubled count
+    while only one marker visually appears on the map (the second
+    stacks on top of the first). Same logic catches the rarer
+    pure-mapper-error case of two coincident nodes.
+
+    Two POIs are duplicates iff they share the same poi_type AND
+    their coordinates are within 10m haversine distance. Different
+    types at the same location are NOT collapsed (a parking +
+    trailhead at the same coords is a legitimate pattern). When
+    collapsing, the surviving feature inherits the first non-empty
+    value seen for each property (so a tagged-once name doesn't get
+    lost to its untagged twin).
+
+    The 10m threshold catches the building-center-vs-node-coord
+    offset (typically 0–5m) without merging genuinely-distinct
+    same-type facilities (e.g., two outhouses at a trailhead are
+    usually 15m+ apart). Cost is O(n²) per type but n is small
+    (typically 5–50 POIs of each type per map), so well under 1ms.
+
+    Logs a one-line summary of how many duplicates collapsed so the
+    curator sees the OSM data structure surfacing up.
+    """
+    import math
+    DEDUP_M = 10.0
+    R = 6371000
+
+    def haversine_m(lng1, lat1, lng2, lat2):
+        p1 = math.radians(lat1); p2 = math.radians(lat2)
+        dp = math.radians(lat2 - lat1); dl = math.radians(lng2 - lng1)
+        a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * R * math.asin(math.sqrt(a))
+
+    out = []
+    collapsed = 0
+    for f in features:
+        ptype = f["properties"].get("poi_type")
+        lng, lat = f["geometry"]["coordinates"]
+        merged_into = None
+        for existing in out:
+            if existing["properties"].get("poi_type") != ptype:
+                continue
+            elng, elat = existing["geometry"]["coordinates"]
+            if haversine_m(lng, lat, elng, elat) <= DEDUP_M:
+                merged_into = existing
+                break
+        if merged_into is not None:
+            for k, v in f["properties"].items():
+                if v and not merged_into["properties"].get(k):
+                    merged_into["properties"][k] = v
+            collapsed += 1
+        else:
+            out.append(f)
+    if collapsed:
+        print(f"  Collapsed {collapsed} duplicate OSM POI(s) within "
+              f"{DEDUP_M:.0f}m (typical pattern: amenity tagged on both "
+              f"a building way and an entrance node).")
+    return out
+
+
 def build_pois_geojson(osm_data, config_parking, config_trailheads,
                        config_event_pois=None):
     """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
@@ -139,6 +208,18 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
                     "seasonal": tags.get("seasonal", ""),
                 },
             })
+
+    # Collapse OSM-side duplicates of the same type within ~10m of
+    # each other. OSM commonly tags the same amenity twice (once as
+    # a building way + once as a node at/near the entrance — both
+    # come back from the Overpass query as separate elements). Without
+    # this pass, the search overlay reports the doubled raw count
+    # ("Toilets × 12") while the map renders only the visible distinct
+    # markers (8) because the second stacks on top of the first.
+    # See _dedup_osm_pois for the threshold rationale.
+    # Curator-supplied POIs (parking, trailheads, event) are added
+    # below this pass — they're hand-entered and don't need it.
+    features = _dedup_osm_pois(features)
 
     # Parking from YAML config
     for parking in config_parking:
