@@ -181,6 +181,15 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--sheet-text);
     background: var(--page-bg);
+    /* Disable the browser's edge-swipe-to-go-back / pull-to-refresh
+     * gestures. A rider panning the map near the screen edge would
+     * otherwise occasionally trigger history navigation (Android +
+     * iOS Safari) or a page reload (Chrome's pull-to-refresh) by
+     * accident. `none` (vs `contain`) also suppresses the overscroll
+     * glow/bounce — there's no scrollable content to overscroll
+     * into on a fullscreen map anyway, so the visual feedback is
+     * just noise. */
+    overscroll-behavior: none;
     /* Suppress the Chrome/Safari mobile default tap-highlight (a
      * brief translucent gray rectangle painted over the tapped
      * element). Our UI controls communicate tap feedback through
