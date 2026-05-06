@@ -7090,18 +7090,31 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
         if (_hasShownUpdateToast) return;
         _hasShownUpdateToast = true;
         showToast("Updated map available.", {
-            // Persistent: stays until the rider taps Reload or the ×.
+            // Persistent: stays until the rider taps Reload or Later.
             // Auto-dismiss would be wrong here — a 15s window means
             // any rider whose attention is elsewhere when the toast
             // fires never knew there was an update. Updates carry no
             // criticality signal, so we default to "make sure they
-            // see it" and let them defer via × if mid-task. The
+            // see it" and let them defer via Later if mid-task. The
             // _hasShownUpdateToast guard above prevents re-showing
             // in the same session after dismissal; next page load
             // re-detects the waiting SW and surfaces the toast
             // again, matching the Gmail / Google Docs pattern.
+            //
+            // Two labelled actions (Reload + Later) instead of
+            // Reload + ×. Both choices are explicit text — reads
+            // as a binary decision rather than "do this thing or
+            // hit the close icon". showToast suppresses its auto-×
+            // when 2+ explicit actions are present.
             persistent: true,
             actions: [{
+                label: "Later",
+                onClick: () => {
+                    // No-op — showToast dismisses after any action's
+                    // onClick. The toast will re-surface next page
+                    // load if the SW is still waiting.
+                },
+            }, {
                 label: "Reload",
                 primary: true,
                 onClick: () => {
@@ -7585,15 +7598,25 @@ function updateLocationIndicator() {
 //       ],
 //   })
 //
-//   showToast("message", {         — persistent: stays until the ✕ or an
-//       persistent: true,            action button is tapped. Reserved for
-//       actions: [...],              critical notices that must be
-//       onDismiss: fn,               acknowledged. Currently unused; kept
-//   })                               available for future callers.
+//   showToast("message", {         — persistent: stays until an action
+//       persistent: true,            button (or the auto-✕ fallback) is
+//       actions: [...],              tapped. Used for the SW-update
+//       onDismiss: fn,               toast (Reload + Later) and any
+//   })                               other notice that must be
+//                                    acknowledged.
 //
 // The toast element is rebuilt on each call (not just text-replaced) so
-// switching between forms works without stale buttons left behind. A
-// small ✕ dismiss is added only in persistent mode.
+// switching between forms works without stale buttons left behind.
+//
+// Auto-✕ rules:
+//   - Transient toasts (no `persistent`) never get a ✕ — they
+//     auto-dismiss on the timeout.
+//   - Persistent toasts with 0 or 1 explicit actions get an auto-✕ so
+//     the rider always has a dismiss path.
+//   - Persistent toasts with 2+ explicit actions skip the auto-✕ —
+//     the caller's secondary action (e.g. "Later") already provides a
+//     labelled dismiss; adding ✕ on top would be a redundant third
+//     dismiss with an inconsistent visual treatment.
 function showToast(message, opts) {
     opts = opts || {};
     const persistent = !!opts.persistent;
@@ -7637,7 +7660,15 @@ function showToast(message, opts) {
         el.appendChild(btn);
     }
 
-    if (persistent) {
+    // Auto-dismiss "×" — only added when persistent AND there's
+    // either zero or one explicit action. With 2+ actions the
+    // caller has already provided a labelled secondary (e.g.
+    // "Later"), so an additional × would be a third dismiss
+    // affordance with a different visual treatment, which reads as
+    // inconsistent. Single-action persistent toasts still get the ×
+    // so the rider isn't trapped with a button they don't want to
+    // tap.
+    if (persistent && actions.length < 2) {
         const closeBtn = document.createElement("button");
         closeBtn.type = "button";
         closeBtn.className = "map-toast-close";
