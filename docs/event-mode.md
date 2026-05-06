@@ -218,7 +218,7 @@ Effect:
 - Every inline `event_mode.routes[i]` has its features stamped with
   `oneway: "yes"` so the existing direction-arrow renderer draws
   arrows along the route in its digitised direction.
-- `direction_arrows_required` is forced to `true` on the runtime,
+- `direction_arrows` is added to `forced_visible` on the runtime,
   which hides the rider's arrow-toggle row and forces the arrow
   layer always-visible. Riders can't disable event-route arrows.
 - **Arrows render on the event route ONLY.** Any OSM-tagged oneway

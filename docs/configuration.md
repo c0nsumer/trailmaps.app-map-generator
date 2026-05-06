@@ -224,8 +224,7 @@ data or sprite is absent.
 | `show_difficulty` | No | `false` | When true, generates the IMBA difficulty sprite and enables the in-UI toggle; when false, no sprite is generated and no difficulty symbols appear. The toggle defaults **on** when enabled and persists state via localStorage. |
 | `show_routes` | No | `true` | When false, hides the Routes section of the Finder and removes "Routes" from the Labels dropdown. Useful for maps that have no curated route relations. |
 | `show_trails` | No | `true` | When false, hides the Trails section of the Finder and removes "Trails" from the Labels dropdown. Useful for systems where routes and trails overlap so heavily that listing trails adds noise (e.g. DTE). If both `show_routes` and `show_trails` are false, the whole Finder section disappears and the Labels row is hidden. |
-| `show_direction_arrows` | No | `true` | When `false`, no direction arrows are placed on any oneway trail and the Options toggle row is hidden — even if `direction_arrows_required` is `true` (this gate wins). Use for aesthetic maps that should never display directional indicators regardless of the underlying OSM tagging. The OSM oneway data is preserved on features for finder/data integrity; only the visual decoration is suppressed. |
-| `direction_arrows_required` | No | `false` | When `true`, force direction arrows to always be visible: the Options toggle row is hidden so the rider has no way to disable them. Use for safety-critical maps where wrong-way travel on directional flow trails would be dangerous. The arrow layer's initial visibility skips the `default_visible` and localStorage check entirely; the rider's persisted choice (if any) is ignored while this flag is set. If the map has no one-way trails the toggle is hidden anyway, so the flag is a no-op there. `show_direction_arrows: false` wins over this — when arrows are suppressed entirely, "required" has nothing to require. |
+| `show_direction_arrows` | No | `true` | When `false`, no direction arrows are placed on any oneway trail and the Options toggle row is hidden — even if `direction_arrows` is in `forced_visible` (this gate wins). Use for aesthetic maps that should never display directional indicators regardless of the underlying OSM tagging. The OSM oneway data is preserved on features for finder/data integrity; only the visual decoration is suppressed. |
 | `suppress_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (does not affect custom base layers). |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels (tourism, attractions, viewpoints) from the Protomaps basemap (does not affect custom base layers). |
 | `show_route_distance` | No | `false` | When true, computes per-route distance at build time (sum of haversine segment lengths) and surfaces it in the Finder rows + highlight chip. Cheap; no data dependency. Display units are governed by `distance_units` (Display section). |
@@ -252,7 +251,8 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms: omitted / empty list (everything off; riders opt in via Options); `"all"` (every supported layer on); list of layer names (only those layers on). Valid layer names: `parking`, `trailheads`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage` and overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows` (or use `"all"`); the build prints a warning if one-way trails exist but `direction_arrows` is omitted. |
+| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms: omitted / empty list (everything off; riders opt in via Options); `"all"` (every supported layer on); list of layer names (only those layers on). Valid layer names: `parking`, `trailheads`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage` and overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows` (or use `"all"`) or list it in `forced_visible`; the build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
+| `forced_visible` | No | `[]` | Layers force-rendered ON regardless of LS state / `default_visible`. Same accepted forms and same accepted layer names as `default_visible`. For each listed layer the toggle row in Options is hidden — the rider has no off affordance and any persisted localStorage state is ignored. Use for safety-critical layers (`direction_arrows` on flow trails) or maps where a layer must always be present. Subordinate to `show_*` gates: if a layer is suppressed via `show_X: false` (or has no data), `forced_visible` has nothing to force on. Replaces the legacy `direction_arrows_required: true` flag (validator hard-errors the old key with a rename hint). |
 | `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"` so a fresh visit produces a clean map with the rider opting into labels via the Labels segmented control. The in-UI select reflects `show_routes` / `show_trails`; options for hidden categories are removed. |
 | `default_color_scheme` | No | `"light"` | Initial colour scheme for first-visit riders: `"light"`, `"dark"`, or `"auto"` (matches the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance segmented control; their preference persists per-map in `localStorage`. The runtime sets `<html data-color-scheme>` from an inline `<head>` script that runs synchronously BEFORE the stylesheet, so first paint already uses the correct scheme: no light-then-dark FOUC. The Protomaps basemap uses the matching `light` or `dark` flavour; trail labels, direction arrows, and POI marker shadows have per-scheme variants. Trail line colours themselves are scheme-independent. |
 | `invert_logo_dark` | No | `true` | Whether the brand logo (`#brand-img`) auto-inverts in dark mode via CSS `filter: invert(1) hue-rotate(180deg)`. Default `true` works well for monochrome and limited-palette logos. Set `false` per-map when the logo is colourful or photographic and inverting it produces ugly output. |
@@ -604,15 +604,20 @@ Three keys interact, ordered from outermost to innermost:
    features for finder/data integrity; only the visual decoration is
    suppressed. Use for aesthetic maps that should never display
    directional indicators regardless of OSM tagging.
-2. `direction_arrows_required: true` — force arrows always-on,
+2. `forced_visible: [direction_arrows]` — force arrows always-on,
    hide the toggle row. Subordinate to `show_direction_arrows` (if
-   arrows are suppressed, "required" has nothing to require). Use
-   for safety-critical maps.
+   arrows are suppressed, force-on has nothing to force). Use for
+   safety-critical maps where wrong-way travel on directional flow
+   trails would be dangerous. (`forced_visible` is a generic
+   per-layer force-on list — it's not direction-arrows-specific. The
+   legacy `direction_arrows_required: true` key is removed; the
+   validator hard-errors it with a rename hint.)
 3. `default_visible:` — controls the toggle's initial state when
-   neither of the above is set. Include `direction_arrows` in the
-   list (or use `default_visible: all`) for arrows ON at first
-   visit; omit it for arrows OFF at first visit. The rider can flip
-   the toggle either way; LS overrides the default.
+   neither of the above lists `direction_arrows`. Include
+   `direction_arrows` in the list (or use `default_visible: all`)
+   for arrows ON at first visit; omit it for arrows OFF at first
+   visit. The rider can flip the toggle either way; LS overrides
+   the default.
 
 The default behaviour (no key set) is: arrows allowed, toggle in
 Options, initial state from `default_visible`.

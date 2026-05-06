@@ -178,24 +178,13 @@ relations:
 # show_trails: true
 
 # When false, no direction arrows are placed on any oneway trail and the
-# Options toggle row is hidden — even if direction_arrows_required is true
-# (this gate wins). Use for aesthetic maps that should never display
-# directional indicators regardless of the underlying OSM tagging. The
-# OSM oneway data is preserved on features for finder/data integrity; only
-# the visual decoration is suppressed. Default true mirrors every other
-# show_* gate.
+# Options toggle row is hidden — even if direction_arrows is in
+# forced_visible (this gate wins). Use for aesthetic maps that should
+# never display directional indicators regardless of the underlying OSM
+# tagging. The OSM oneway data is preserved on features for finder/data
+# integrity; only the visual decoration is suppressed. Default true
+# mirrors every other show_* gate.
 # show_direction_arrows: true
-
-# When true, force direction arrows to always be visible: the Options
-# toggle row is hidden so the rider has no way to disable them. Use for
-# safety-critical maps where wrong-way travel on directional flow trails
-# would be dangerous. The arrow layer's initial visibility skips the
-# default_visible and localStorage check entirely; the rider's persisted
-# choice (if any) is ignored while this flag is set. If the map has no
-# one-way trails the toggle is hidden anyway, so the flag is a no-op
-# there. show_direction_arrows: false wins over this — when arrows are
-# suppressed entirely, "required" has nothing to require.
-# direction_arrows_required: false
 
 # Hide path / track / footway labels from the Protomaps basemap (does not
 # affect custom base layers).
@@ -278,6 +267,16 @@ relations:
 # (or use "all"); the build prints a warning if one-way trails exist but
 # direction_arrows is omitted.
 # default_visible: []
+
+# Layers force-rendered ON regardless of LS state / default_visible. Same
+# accepted forms as default_visible (omitted / empty / "all" / list of
+# names). For each listed layer the toggle row in Options is hidden — the
+# rider has no off affordance and any persisted localStorage state is
+# ignored. Use for safety-critical layers (direction_arrows on flow
+# trails, emergency on event maps) or maps where a layer must always be
+# present. Subordinate to show_* gates: if a layer is suppressed via
+# show_X: false (or has no data), forced_visible has nothing to force on.
+# forced_visible: []
 
 # Initial label mode for first-visit riders: "routes" (route names),
 # "trails" (trail names), or "none". Defaults to "none" so a fresh visit

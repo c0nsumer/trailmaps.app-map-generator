@@ -237,6 +237,17 @@ function isDefaultVisible(name) {
     return (CONFIG.defaultVisible || []).includes(name);
 }
 
+// Curator-forced visibility: when a layer name appears in
+// CONFIG.forcedVisible, the toggle row is hidden in setupFloatingChrome
+// and the layer is rendered visible at boot regardless of LS state /
+// default_visible. Use for safety-critical layers (direction arrows on
+// flow trails, etc.) or maps where a layer must always be present.
+// CONFIG.forcedVisible is the resolved list (after "all" expansion at
+// build time). Same shape and accepted-name set as defaultVisible.
+function isForcedVisible(name) {
+    return (CONFIG.forcedVisible || []).includes(name);
+}
+
 const LS_PREFIX = (CONFIG && CONFIG.slug ? CONFIG.slug + "." : "");
 const LS = {
     get(key, fallback) {
@@ -1205,17 +1216,18 @@ function directionArrowsToggleOn() {
     // Curator-suppressed: when CONFIG.showDirectionArrows is false,
     // the layer is force-hidden, the toggle row is hidden in
     // setupFloatingChrome, and computeDecorations skips arrow
-    // placement. Wins over directionArrowsRequired (the "show" gate
-    // is the outer envelope; "required" only applies when arrows
-    // are shown at all). Use for aesthetic maps that should never
-    // display directional indicators regardless of OSM tagging.
+    // placement. Wins over forced_visible (the "show" gate is the
+    // outer envelope; force-on only applies when arrows are shown at
+    // all). Use for aesthetic maps that should never display
+    // directional indicators regardless of OSM tagging.
     if (CONFIG.showDirectionArrows === false) return false;
-    // Curator-forced visibility: when CONFIG.directionArrowsRequired
-    // is set, the layer is always visible regardless of LS / default.
-    // The toggle row is hidden in setupFloatingChrome so the rider
-    // never sees an off control. Use for safety-critical maps where
-    // wrong-way travel on directional flow trails would be dangerous.
-    if (CONFIG.directionArrowsRequired) return true;
+    // Curator-forced visibility: when "direction_arrows" is in
+    // CONFIG.forcedVisible, the layer is always visible regardless
+    // of LS / default. The toggle row is hidden in
+    // setupFloatingChrome so the rider never sees an off control.
+    // Use for safety-critical maps where wrong-way travel on
+    // directional flow trails would be dangerous.
+    if (isForcedVisible("direction_arrows")) return true;
     return LS.get("mtb.directionArrows", isDefaultVisible("direction_arrows")) === true;
 }
 
@@ -5793,7 +5805,7 @@ function setupFloatingChrome() {
                 isDefaultVisible("emergency"), (on) => {
             emergencyOn = on;
             applyVisibilityChange();
-        });
+        }, "emergency");
     } else {
         if (emBtn) emBtn.classList.add("hidden");
         // Force off — no route data to toggle.
@@ -5823,9 +5835,23 @@ function setupFloatingChrome() {
     // div for the existing CSS off-state-slash treatment to keep
     // working; aria-checked drives the visible "fill the active
     // segment" appearance.
-    function wirePeekToggle(id, lsKey, defaultOn, onChange) {
+    function wirePeekToggle(id, lsKey, defaultOn, onChange, layerName) {
         const row = document.getElementById(id);
         if (!row || row.classList.contains("hidden")) return;
+        // forced_visible: if this layer is in CONFIG.forcedVisible,
+        // hide the row entirely, force-fire onChange(true) once so
+        // the layer renders visible, and skip the click wiring. The
+        // rider has no off affordance and any persisted LS state is
+        // ignored (write-through suppressed too — we don't touch LS
+        // so a future config change that drops the force still
+        // restores the rider's last preference). layerName is
+        // optional so existing call sites that haven't opted in yet
+        // keep working unchanged.
+        if (layerName && isForcedVisible(layerName)) {
+            row.classList.add("hidden");
+            onChange(true);
+            return;
+        }
         const onBtn = row.querySelector('[data-value="on"]');
         const offBtn = row.querySelector('[data-value="off"]');
         if (!onBtn || !offBtn) return;
@@ -5890,7 +5916,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         _onPoiToggleChange("trail_marker");
-    });
+    }, "trail_markers");
 
     // Features — proximity-filtered.
     wirePeekToggle("toggle-features", "mtb.poi.features",
@@ -5903,7 +5929,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         _onPoiToggleChange("feature");
-    });
+    }, "features");
 
     // Parking / trailheads — always shown when on (no proximity
     // filter). Toggling either flips the obstacle set, so recompute
@@ -5917,7 +5943,7 @@ function setupFloatingChrome() {
         invalidateObstaclesCache();
         updateDecorationsSource();
         _onPoiToggleChange("parking");
-    });
+    }, "parking");
     wirePeekToggle("toggle-trailheads", "mtb.poi.trailheads",
             isDefaultVisible("trailheads"), (on) => {
         for (const m of trailheadMarkers) {
@@ -5927,7 +5953,7 @@ function setupFloatingChrome() {
         invalidateObstaclesCache();
         updateDecorationsSource();
         _onPoiToggleChange("trailhead");
-    });
+    }, "trailheads");
 
     // Toilets + drinking water — proximity-filtered (500 m threshold,
     // see POI_AMENITY_PROXIMITY_METERS). Same on/off pattern as
@@ -5943,7 +5969,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         _onPoiToggleChange("toilet");
-    });
+    }, "toilets");
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
             isDefaultVisible("drinking_water"), (on) => {
         if (on) {
@@ -5954,7 +5980,7 @@ function setupFloatingChrome() {
             updateDecorationsSource();
         }
         _onPoiToggleChange("drinking_water");
-    });
+    }, "drinking_water");
 
     // Difficulty — drives the decor-diamond layer. Uses the shared
     // wirePeekToggle so the visual + behaviour matches the other
@@ -5976,7 +6002,7 @@ function setupFloatingChrome() {
                 map.setLayoutProperty("decor-diamond", "visibility",
                     on ? "visible" : "none");
             }
-        });
+        }, "difficulty");
     } else if (difficultyBtn) {
         difficultyBtn.classList.add("hidden");
     }
@@ -5984,12 +6010,12 @@ function setupFloatingChrome() {
     // Direction arrows — drives the decor-arrow MapLibre layer
     // (chevrons placed along one-way / reversible trails). Reveal
     // the toggle row only when the trails data actually contains at
-    // least one oneway-tagged feature AND the curator hasn't forced
-    // arrows on via the `direction_arrows_required` YAML key. With
-    // required=true, the layer's initial visibility (set in
-    // addArrowLayer) is already forced visible by
-    // directionArrowsToggleOn() reading CONFIG — we just keep the
-    // toggle row hidden so the rider has no off affordance.
+    // least one oneway-tagged feature AND "direction_arrows" is not
+    // in `forced_visible`. When forced, the layer's initial
+    // visibility (set in addArrowLayer) is already on via
+    // directionArrowsToggleOn() reading CONFIG.forcedVisible — we
+    // just keep the toggle row hidden so the rider has no off
+    // affordance.
     //
     // The "has any oneway trails" decision is a build-time scan
     // (CONFIG.hasOnewayTrails, populated by inject_config_into_template).
@@ -6002,7 +6028,7 @@ function setupFloatingChrome() {
     // Difficulty otherwise.
     const arrowsBtn = document.getElementById("toggle-direction-arrows");
     const arrowsShown = CONFIG.showDirectionArrows !== false;
-    if (arrowsBtn && CONFIG.hasOnewayTrails && arrowsShown && !CONFIG.directionArrowsRequired) {
+    if (arrowsBtn && CONFIG.hasOnewayTrails && arrowsShown && !isForcedVisible("direction_arrows")) {
         arrowsBtn.classList.remove("hidden");
         wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
                 isDefaultVisible("direction_arrows"), (on) => {
@@ -6010,7 +6036,7 @@ function setupFloatingChrome() {
                 map.setLayoutProperty("decor-arrow", "visibility",
                     on ? "visible" : "none");
             }
-        });
+        }, "direction_arrows");
     } else if (arrowsBtn) {
         arrowsBtn.classList.add("hidden");
     }

@@ -41,7 +41,6 @@ relations:
 # show_routes: true
 # show_trails: true
 # show_direction_arrows: true
-# direction_arrows_required: false
 # suppress_path_labels: false
 # suppress_basemap_pois: false
 # show_route_distance: false
@@ -59,6 +58,7 @@ relations:
 
 # --- Display ---
 # default_visible: []
+# forced_visible: []
 # default_labels: none
 # default_color_scheme: light
 # invert_logo_dark: true

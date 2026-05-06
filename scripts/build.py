@@ -846,8 +846,8 @@ def _apply_event_mode_to_custom_routes(config):
     Also handles `event_mode.direction_arrows`: when true, every
     inline event route gets `oneway: "yes"` (so the bake-in
     propagates it to features as the existing arrow renderer
-    expects), and `direction_arrows_required` is forced True so the
-    rider toggle disappears + arrows always render.
+    expects), and `direction_arrows` is added to `forced_visible`
+    so the rider toggle disappears + arrows always render.
 
     Mutates `config` in place (and returns it). No-op when event_mode
     is absent.
@@ -861,13 +861,17 @@ def _apply_event_mode_to_custom_routes(config):
 
     # event_mode.direction_arrows: stamp `oneway: "yes"` on each inline
     # route entry (so the custom-route bake-in carries it onto every
-    # emitted feature) and force `direction_arrows_required: true` so
-    # the runtime renders arrows always (no rider toggle to disable).
+    # emitted feature) and add `direction_arrows` to `forced_visible`
+    # so the runtime renders arrows always (no rider toggle to
+    # disable).
     if em.get("direction_arrows"):
         for entry in inline_routes:
             if isinstance(entry, dict) and not entry.get("oneway"):
                 entry["oneway"] = "yes"
-        config["direction_arrows_required"] = True
+        existing_forced = list(config.get("forced_visible") or [])
+        if existing_forced != "all" and "direction_arrows" not in existing_forced:
+            existing_forced.append("direction_arrows")
+            config["forced_visible"] = existing_forced
 
     # Fold inline event_mode.routes into top-level custom_routes.
     # Validator already checked id-uniqueness across both lists, so
@@ -1398,25 +1402,12 @@ CONFIG_SPEC = [
 
     # Build-time data gate for the direction-arrow layer. When False,
     # no arrows are placed on any oneway trail and the Options toggle
-    # row is hidden — even if `direction_arrows_required` is True (the
-    # show gate wins). Use for aesthetic maps that should never display
-    # directional indicators regardless of the underlying OSM tagging.
-    # Default True mirrors every other show_* gate's "show by default,
-    # opt out per-map" pattern.
+    # row is hidden — even if `direction_arrows` is in `forced_visible`
+    # (the show gate wins). Use for aesthetic maps that should never
+    # display directional indicators regardless of the underlying OSM
+    # tagging. Default True mirrors every other show_* gate's
+    # "show by default, opt out per-map" pattern.
     ("show_direction_arrows",    "showDirectionArrows",  True),
-
-    # Force direction-arrow visibility on for every visit, removing
-    # the rider-toggleable on/off in Options. Use for maps where one-
-    # way trails are a safety/critical-info concern (flow trails
-    # where wrong-way travel is dangerous, IMBA-graded directional
-    # singletrack systems, etc). When True AND the data has at least
-    # one one-way trail AND show_direction_arrows is True, the layer
-    # is forced visible and the toggle row is hidden entirely. When
-    # True AND no one-way trails exist, the toggle is hidden as usual
-    # (nothing to force on). When False (default), normal toggle
-    # behaviour: default_visible drives the initial state, the rider
-    # can flip it via Options, LS persists.
-    ("direction_arrows_required", "directionArrowsRequired", False),
 
     # Display
     # Labels mode default. Was "routes" historically; now defaults to
@@ -1856,6 +1847,19 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultVisible"] = list(raw_default_visible)
     else:
         config_obj["defaultVisible"] = []
+    # forced_visible: list of layer names whose toggle row is hidden
+    # AND whose layer is force-rendered ON regardless of LS state /
+    # default_visible. Same shape + accepted-name set as
+    # default_visible. Runtime checks isForcedVisible(name) before
+    # any toggle wiring; matched layers skip the toggle and are
+    # rendered visible at boot.
+    raw_forced_visible = config.get("forced_visible")
+    if raw_forced_visible == "all":
+        config_obj["forcedVisible"] = sorted(DEFAULT_VISIBLE_LAYERS)
+    elif isinstance(raw_forced_visible, list):
+        config_obj["forcedVisible"] = list(raw_forced_visible)
+    else:
+        config_obj["forcedVisible"] = []
     # Accent colour: resolved at build time (see _accent_color
     # stash). None means "use framework default" (the runtime CSS
     # var falls back to #2980b9). A hex string is set on :root by
@@ -2498,11 +2502,11 @@ def main():
     # event_mode.routes into config["custom_routes"] so they
     # participate in the standard custom-route bake-in below, and
     # mutates non-featured custom routes' colour / dashed fields to
-    # the background style. Also forces direction_arrows_required
-    # when event_mode.direction_arrows is true, which is why this
-    # has to run BEFORE the safety-warning check below (so the
-    # check sees the resolved value). The companion relations-side
-    # pass runs in inject_config_into_template later.
+    # the background style. Also adds `direction_arrows` to
+    # `forced_visible` when event_mode.direction_arrows is true,
+    # which is why this has to run BEFORE the safety-warning check
+    # below (so the check sees the resolved value). The companion
+    # relations-side pass runs in inject_config_into_template later.
     if config.get("event_mode"):
         em = config["event_mode"] or {}
         em_routes_count = len(em.get("routes") or [])
@@ -2520,17 +2524,19 @@ def main():
     # first-visit rider on a flow trail won't see which way they're
     # supposed to ride. Detect oneway segments in trails_geojson and
     # warn if direction_arrows isn't included in default_visible.
-    # Skip the warning when direction_arrows_required is true — that
-    # flag forces arrows on at every visit, so default_visible is
-    # irrelevant. (Event mode sets direction_arrows_required above
-    # when event_mode.direction_arrows: true, so the warning is
-    # naturally suppressed for event maps.)
+    # Skip the warning when forced_visible includes direction_arrows
+    # (the layer is forced on at every visit, so default_visible is
+    # irrelevant). Event mode adds direction_arrows to forced_visible
+    # above when event_mode.direction_arrows: true, so the warning is
+    # naturally suppressed for event maps.
     raw_dv = config.get("default_visible")
+    raw_fv = config.get("forced_visible")
     arrows_suppressed = config.get("show_direction_arrows", True) is False
     arrows_default_on = (
         raw_dv == "all"
         or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
-        or bool(config.get("direction_arrows_required"))
+        or raw_fv == "all"
+        or (isinstance(raw_fv, list) and "direction_arrows" in raw_fv)
     )
     if not arrows_default_on and not arrows_suppressed:
         oneway_count = 0

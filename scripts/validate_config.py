@@ -111,7 +111,6 @@ KNOWN_KEYS = {
     "show_routes":                   bool,
     "show_trails":                   bool,
     "show_direction_arrows":         bool,
-    "direction_arrows_required":     bool,
     "suppress_path_labels":          bool,
     "suppress_basemap_pois":         bool,
     "map_dim_on_highlight":          bool,
@@ -133,6 +132,7 @@ KNOWN_KEYS = {
     "about":                         dict,
     "welcome":                       (dict, bool),
     "default_visible":               (list, str),
+    "forced_visible":                (list, str),
     "accent_color":                  str,
     "default_color_scheme":          str,
     "invert_logo_dark":              bool,
@@ -199,6 +199,7 @@ HANDLED_SPECIALLY = {
     "about",                # → CONFIG.about (object passed through)
     "welcome",              # → CONFIG.welcome (object or false; passed through)
     "default_visible",      # → CONFIG.defaultVisible (list; "all" expanded at build time)
+    "forced_visible",       # → CONFIG.forcedVisible (list; "all" expanded at build time)
     "accent_color",         # → CONFIG.accentColor (hex; "auto" resolved from logo at build time)
     "logo",                 # → CONFIG.logoUrl (after asset pipeline)
     "icon",                 # → fallback for logoUrl
@@ -289,7 +290,15 @@ def _is_color(value):
 # Per-key validators
 # ----------------------------------------------------------------------
 
-_LEGACY_KEYS = {"root_relation_id", "extra_relations"}
+_LEGACY_KEYS = {
+    "root_relation_id", "extra_relations",
+    # Renamed in the direction_schedule rework (May 2026). Caught
+    # with pointed migration messages in _validate_weekdays.
+    "default_direction_schedule", "direction_schedules",
+    # Replaced by forced_visible: [direction_arrows] (May 2026).
+    # Caught with a rename hint in _validate_forced_visible.
+    "direction_arrows_required",
+}
 
 
 def _validate_unknown_keys(report, config):
@@ -970,6 +979,66 @@ def _validate_default_visible(report, config):
         seen.add(item)
 
 
+def _validate_forced_visible(report, config):
+    """Validate the optional `forced_visible` key.
+
+    Same shape as `default_visible`: list of layer names, or the
+    literal string "all". Layer names are validated against the same
+    DEFAULT_VISIBLE_LAYERS set with fuzzy typo suggestions.
+
+    Semantics differ from default_visible: a layer named in
+    forced_visible is rendered with its toggle hidden — the rider has
+    no off affordance, and any persisted localStorage state is
+    ignored. Use for safety-critical layers (direction arrows on flow
+    trails, e.g.) or maps where a layer must always be present.
+
+    Also handles the legacy `direction_arrows_required: true` key:
+    hard-errors with a rename instruction pointing at the new
+    `forced_visible: [direction_arrows]` form. Matches the
+    direction_schedule legacy-key migration pattern.
+    """
+    if "direction_arrows_required" in config:
+        report.err(
+            "direction_arrows_required",
+            "`direction_arrows_required` was renamed; use "
+            "`forced_visible: [direction_arrows]` instead. "
+            "forced_visible is a generic per-layer force-on list "
+            "(same shape as default_visible) that supersedes the "
+            "old single-purpose flag. See "
+            "docs/configuration.md#show--hide-on-a-per-map-basis.")
+
+    val = config.get("forced_visible")
+    if val is None:
+        return
+    if isinstance(val, str):
+        if val != "all":
+            report.err("forced_visible",
+                       f"string form must be 'all', got {val!r}")
+        return
+    if not isinstance(val, list):
+        report.err("forced_visible",
+                   f"expected list or 'all', got {type(val).__name__}")
+        return
+    seen = set()
+    for i, item in enumerate(val):
+        if not isinstance(item, str):
+            report.err(f"forced_visible[{i}]",
+                       f"expected string, got {type(item).__name__}")
+            continue
+        if item not in DEFAULT_VISIBLE_LAYERS:
+            suggestions = difflib.get_close_matches(
+                item, DEFAULT_VISIBLE_LAYERS, n=2)
+            hint = (f" (did you mean: {', '.join(suggestions)}?)"
+                    if suggestions else "")
+            report.err(f"forced_visible[{i}]",
+                       f"unknown layer name {item!r}{hint}")
+            continue
+        if item in seen:
+            report.warn(f"forced_visible[{i}]",
+                        f"{item!r} listed more than once")
+        seen.add(item)
+
+
 def _validate_welcome(report, config):
     """Validate the optional `welcome` key.
 
@@ -1391,6 +1460,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)
+    _validate_forced_visible(report, config)
     _validate_accent_color(report, config)
     _validate_slug(report, config)
     return report.errors, report.warnings
