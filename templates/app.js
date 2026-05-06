@@ -522,6 +522,31 @@ const POI = Object.freeze({
     EVENT:           "event",   // event_mode.pois — always rendered, no toggle
 });
 
+// Escape HTML special characters so untrusted strings (OSM `name=` tags,
+// curator-supplied YAML strings that may have been pasted from external
+// sources) can be safely interpolated into innerHTML / setHTML sinks.
+// Covers <, >, &, ", ' — the standard XSS-prevention set; the resulting
+// string is safe both as element content and inside attribute values.
+//
+// We use string interpolation + setHTML for popup construction (rather
+// than DOM-builder helpers) because MapLibre's Popup API takes an HTML
+// string. Wrapping every interpolated value in escapeHtml() preserves
+// that ergonomics without the XSS exposure. Defence in depth: applies
+// to BOTH OSM-sourced and curator-sourced strings — the latter is
+// "trusted" in the framework's threat model but a curator copy-pasting
+// from a wiki page could carry markup unintentionally.
+const _ESCAPE_HTML_MAP = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+};
+function escapeHtml(s) {
+    if (s == null) return "";
+    return String(s).replace(/[&<>"']/g, (c) => _ESCAPE_HTML_MAP[c]);
+}
+
 const EARTH_RADIUS_M = 6378137;
 
 function haversineMeters(lng1, lat1, lng2, lat2) {
@@ -1500,10 +1525,24 @@ async function init() {
         console.error(e);
         const container = document.getElementById("map");
         if (container) {
-            container.innerHTML =
-                `<div style="padding:24px;font-family:system-ui;color:#b00">` +
-                `<strong>Map failed to start.</strong><br>` +
-                `<code style="white-space:pre-wrap">${e.message}</code></div>`;
+            // Build the failure card via DOM nodes rather than
+            // template-literal innerHTML so the error message — which
+            // can come from anywhere upstream and may eventually
+            // include curator-controlled or OSM-derived strings —
+            // can't smuggle markup into the page. textContent
+            // neutralises any HTML in e.message.
+            container.replaceChildren();
+            const wrap = document.createElement("div");
+            wrap.style.cssText = "padding:24px;font-family:system-ui;color:#b00";
+            const strong = document.createElement("strong");
+            strong.textContent = "Map failed to start.";
+            wrap.appendChild(strong);
+            wrap.appendChild(document.createElement("br"));
+            const code = document.createElement("code");
+            code.style.whiteSpace = "pre-wrap";
+            code.textContent = e.message;
+            wrap.appendChild(code);
+            container.appendChild(wrap);
         }
         return;
     }
@@ -2350,11 +2389,43 @@ function closeAboutModal() {
     document.getElementById("about-modal").classList.add("hidden");
 }
 
+// Build an external link for the About modal. Validates the URL
+// scheme: only http://, https://, and mailto: pass through; anything
+// else (javascript:, data:, vbscript:, file:, about:, etc.) is
+// neutralised by setting href="#" and logging a warning. Defends
+// against a curator (or curator-supplied YAML pasted from external
+// sources) introducing a script-execution vector via about.curator.url
+// or about.links[].url. The label still renders so the rider sees the
+// item; only the dangerous href is blocked.
+const _SAFE_URL_SCHEMES = ["http:", "https:", "mailto:"];
+function _isSafeExternalUrl(url) {
+    if (typeof url !== "string" || !url) return false;
+    try {
+        // Use URL parsing to handle whitespace, mixed case, and
+        // schemeless URLs (treated as relative — also unsafe in the
+        // External-link context). location.origin is the base for
+        // resolving schemeless inputs.
+        const u = new URL(url, window.location.origin);
+        return _SAFE_URL_SCHEMES.includes(u.protocol);
+    } catch (_) {
+        return false;
+    }
+}
 function aboutExtLink(url, label) {
     const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
+    if (_isSafeExternalUrl(url)) {
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+    } else {
+        a.href = "#";
+        // Surface the rejection so a curator notices their typo or
+        // misuse. Console-only — the visible link still renders so
+        // the rider isn't confronted with a broken UI.
+        console.warn(
+            `aboutExtLink: rejected unsafe URL scheme — `
+            + `expected http(s):// or mailto:, got ${JSON.stringify(url)}`);
+    }
     a.textContent = label;
     return a;
 }
@@ -5001,7 +5072,7 @@ function addParkingMarkers(addToMap) {
         className: "poi-marker parking-marker",
         labelFn: () => "P",
         popupHtmlFn: (p, coords) => {
-            let h = `<div class="popup-title">${p.name || "Parking"}</div>`;
+            let h = `<div class="popup-title">${escapeHtml(p.name || "Parking")}</div>`;
             h += directionsLink(coords, p.directions_url);
             return h;
         },
@@ -5018,7 +5089,7 @@ function addTrailheadMarkers(addToMap) {
         className: "poi-marker trailhead-marker",
         labelFn: () => "TH",
         popupHtmlFn: (p, coords) => {
-            let h = `<div class="popup-title">${p.name || "Trailhead"}</div>`;
+            let h = `<div class="popup-title">${escapeHtml(p.name || "Trailhead")}</div>`;
             h += directionsLink(coords, p.directions_url);
             return h;
         },
@@ -5093,21 +5164,21 @@ function addEventPoiMarkers(addToMap) {
             // absolute (see .event-poi-marker-label in style.css)
             // so it doesn't affect the chip's bounding box (the
             // marker still anchors at the coordinates correctly).
-            const safeName = (props.name || "").replace(/[<>&]/g, (c) =>
-                ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
             el.innerHTML =
                 '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true">'
                 + '<path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z"/>'
                 + '</svg>'
-                + `<span class="event-poi-marker-label">${safeName}</span>`;
+                + `<span class="event-poi-marker-label">${escapeHtml(props.name)}</span>`;
         },
         popupHtmlFn: (p) => {
-            // Curator-supplied YAML strings are trusted (same as
-            // parking / trailhead popups). Description appears below
-            // the name when present; suppressed cleanly otherwise.
-            let h = `<div class="popup-title">${p.name || "Event Marker"}</div>`;
+            // Description appears below the name when present;
+            // suppressed cleanly otherwise. Both fields escaped
+            // even though they're curator-supplied (defence in
+            // depth — copy-paste from external sources can carry
+            // markup unintentionally).
+            let h = `<div class="popup-title">${escapeHtml(p.name || "Event Marker")}</div>`;
             if (p.description) {
-                h += `<div class="popup-description">${p.description}</div>`;
+                h += `<div class="popup-description">${escapeHtml(p.description)}</div>`;
             }
             return h;
         },
@@ -6742,14 +6813,21 @@ function setupInteractions() {
                 .filter(Boolean);
             const routeItems = matchedRoutes
                 .map((rel) => {
+                    // effectiveRouteColor returns a hex / rgb() string
+                    // from a validated palette path; still escape for
+                    // attribute-context safety in case a future change
+                    // ever lets a non-validated string through.
                     const color = effectiveRouteColor(rel);
-                    return `<div class="popup-routes"><span style="color:${color};">\u25CF</span> ${rel.name}</div>`;
+                    return `<div class="popup-routes"><span style="color:${escapeHtml(color)};">\u25CF</span> ${escapeHtml(rel.name)}</div>`;
                 })
                 .join("");
 
             let html = "";
             if (trailName) {
-                html += `<div class="popup-title">Trail: ${trailName}</div>`;
+                // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
+                // Escape to neutralise any vandalism (script tags,
+                // event handlers) in OSM data.
+                html += `<div class="popup-title">Trail: ${escapeHtml(trailName)}</div>`;
             }
             if (routeItems) {
                 const label = matchedRoutes.length === 1
