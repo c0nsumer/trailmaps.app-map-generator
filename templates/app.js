@@ -2384,13 +2384,22 @@ function _welcomeSearchDescription() {
 // Build the Options row description from what affordances are
 // actually wired into this map. The lead clause ("turn map markers
 // and overlays on or off") covers the most rider-relevant action —
-// the layer toggles — in concrete language; share / install /
+// the layer toggles — in concrete language; appearance follows as
+// the other always-present display control; share / install /
 // About each appear only when their corresponding feature is
 // enabled. "Season" is omitted from the default copy because
 // detecting "this map has both summer + winter routes" requires
 // extra build-time plumbing — added separately if needed.
 function _welcomeOptionsDescription() {
-    const items = ["turn map markers and overlays on or off"];
+    const items = [
+        "turn map markers and overlays on or off",
+        // Appearance segmented control (Light / Dark / Auto) is
+        // always present in the Options overlay, so this entry is
+        // unconditional. Mention only "light and dark" rather than
+        // enumerate Auto — the welcome is a quick orientation, not
+        // a feature spec.
+        "switch between light and dark mode",
+    ];
     if (CONFIG.shareButton) items.push("share the view");
     if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
     items.push("see info about this map");
