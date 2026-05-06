@@ -69,33 +69,12 @@ Failure modes (all non-fatal):
 
 import hashlib
 import json
-import math
 import os
 import time
 
 import requests
 
-
-# ----------------------------------------------------------------------
-# Distance
-# ----------------------------------------------------------------------
-
-EARTH_R_M = 6371000.0  # mean Earth radius (matches templates/app.js
-                       # haversineMeters). Off by ~0.1% from WGS84
-                       # equatorial radius — irrelevant for trail-scale
-                       # distances; consistency with the runtime
-                       # off-screen indicator math matters more.
-
-
-def _haversine_m(lon1, lat1, lon2, lat2):
-    """Great-circle distance between two lng/lat points, in meters."""
-    rlat1 = math.radians(lat1)
-    rlat2 = math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (math.sin(dlat / 2) ** 2
-         + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2)
-    return EARTH_R_M * 2 * math.asin(math.sqrt(a))
+from geodesy import haversine_m as _haversine_m
 
 
 def _coords_for_route(features, route_id):
@@ -355,7 +334,8 @@ def _subsample_route(coord_lines, target_interval_m, max_samples):
 
 
 def _hash_coords(coords_with_breaks):
-    """Stable hash of a coords list — used as the elevation cache key.
+    """Stable hash of a coords list + sampling parameters — used as
+    the elevation cache key.
 
     Accepts the segment-aware shape from _subsample_route: a list of
     [lon, lat] pairs interspersed with None markers for segment breaks.
@@ -363,8 +343,17 @@ def _hash_coords(coords_with_breaks):
     so that re-segmentation of a route changes the cache key — what
     we cache is gain-given-this-exact-sampling, and segment breaks
     affect the computed gain.
+
+    The hash ALSO includes the three sampling-pipeline constants
+    (SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE, ELEVATION_SMOOTH_WINDOW)
+    so a curator tuning any of them invalidates the cache cleanly. If
+    those constants weren't part of the key, a tuning change would
+    silently keep returning old gain/loss numbers from cached files
+    until the next --force rebuild.
     """
     h = hashlib.sha1()
+    h.update(f"si={SAMPLE_INTERVAL_M},mx={MAX_SAMPLES_PER_ROUTE},"
+             f"sw={ELEVATION_SMOOTH_WINDOW}||".encode("utf-8"))
     for item in coords_with_breaks:
         if item is None:
             h.update(b"|BREAK|")

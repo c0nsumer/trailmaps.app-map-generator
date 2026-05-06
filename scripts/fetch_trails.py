@@ -7,28 +7,19 @@ the same set of relations, and outputs a GeoJSON file.
 """
 
 import json
+import math
 import os
 import sys
 from collections import defaultdict
 
-import yaml
-
 from overpass import query as overpass_query
 
 
-def load_config(config_path):
-    """Load YAML config, resolving any ``osm_file`` path relative to the
-    config file's directory (so ``osm_file: osm.osm`` picks up the file
-    sitting next to the YAML). Kept narrower than build.py's load_config
-    because fetch_trails only touches ``osm_file``; full path resolution
-    happens once in build.py for the full pipeline."""
-    with open(config_path) as f:
-        config = yaml.safe_load(f) or {}
-    osm_file = config.get("osm_file")
-    if osm_file and isinstance(osm_file, str) and not os.path.isabs(osm_file):
-        config_dir = os.path.dirname(os.path.abspath(config_path))
-        config["osm_file"] = os.path.join(config_dir, osm_file)
-    return config
+# Shared narrow-resolution loader (handles ``osm_file:`` only — the
+# full path-resolution path lives in build.py for the standard
+# pipeline). Imported under the historical name so call sites stay
+# unchanged.
+from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
 
 
 def _expand_through_supers(relation_ids, expansions):
@@ -501,7 +492,6 @@ def _compass_bearing(p1, p2):
     of the true great-circle bearing, plenty for orienting an arrowhead.
     Returns a value in [0, 360).
     """
-    import math
     lon1, lat1 = p1
     lon2, lat2 = p2
     mean_lat = math.radians((lat1 + lat2) / 2.0)
@@ -521,7 +511,7 @@ def build_geojson(relations, all_ways, way_relations):
     for rel_id, rel_info in sorted(relations.items(), key=lambda x: x[1]["name"]):
         ways = all_ways.get(rel_id, {})
         if not ways:
-            print(f"  Warning: No ways found for relation {rel_id} ({rel_info['name']})")
+            print(f"  warn: No ways found for relation {rel_id} ({rel_info['name']})")
             continue
 
         # Build per-way relation membership lookup for this relation's ways
@@ -682,7 +672,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             way_count = len(all_ways.get(rel_id, {}))
             print(f"  {info['name']}: {way_count} ways")
             if way_count == 0:
-                print(f"    Warning: No ways found for {info['name']} ({rel_id})")
+                print(f"    warn: No ways found for {info['name']} ({rel_id})")
     else:
         # Stage A: Fetch all relation metadata in a single query
         print("Stage A: Fetching relation metadata...")
@@ -729,7 +719,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             way_count = len(all_ways.get(rel_id, {}))
             print(f"  {info['name']}: {way_count} ways")
             if way_count == 0:
-                print(f"    Warning: No ways found for {info['name']} ({rel_id})")
+                print(f"    warn: No ways found for {info['name']} ({rel_id})")
 
     # Build way-to-relations mapping
     way_relations = build_way_to_relations_map(relations, all_ways)

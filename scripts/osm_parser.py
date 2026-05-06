@@ -114,7 +114,7 @@ def extract_source_relations(parsed, relation_ids):
     for rel_id in relation_ids:
         rel = relations.get(rel_id)
         if not rel:
-            print(f"  WARNING: Relation {rel_id} not found in .osm file")
+            print(f"  warn: Relation {rel_id} not found in .osm file")
             continue
         # A super-relation has at least one type=relation member that
         # also exists in the parsed set. (Members pointing at relations

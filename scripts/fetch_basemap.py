@@ -44,7 +44,7 @@ def find_latest_protomaps_build():
                 return url
         except requests.RequestException:
             continue
-    print(f"  WARNING: No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
+    print(f"  warn: No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
     print(f"  Check https://maps.protomaps.com/builds/ for available builds.")
     return None
 

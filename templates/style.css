@@ -1783,7 +1783,6 @@ body {
     transform: translate(-50%, -50%);
     cursor: pointer;
     pointer-events: auto;
-    -webkit-user-select: none;
     user-select: none;
 }
 
@@ -2332,7 +2331,6 @@ body.fabs-labeled .fab-label {
     color: var(--sheet-text);
     font: inherit;
     font-size: 15px;
-    -webkit-appearance: none;
     appearance: none;
 }
 

@@ -170,7 +170,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                 # and let the caller decide what to do.
                 empty_attempts += 1
                 if empty_attempts > EMPTY_RETRY_LIMIT:
-                    print(f"  WARNING: {server} returned 0 elements "
+                    print(f"  warn: {server} returned 0 elements "
                           f"{empty_attempts} times in a row.")
                     print(f"           This usually means the query is "
                           f"correct but no data exists — check your "

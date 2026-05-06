@@ -121,7 +121,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
     Returns True if generated, False if potrace is unavailable.
     """
     if not shutil.which("potrace"):
-        print("  NOTE: potrace not found, skipping safari-pinned-tab.svg")
+        print("  note: potrace not found, skipping safari-pinned-tab.svg")
         print("        Install: brew install potrace (macOS) or apt install potrace (Linux)")
         return False
 
@@ -142,7 +142,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
         )
         return True
     except subprocess.CalledProcessError as e:
-        print(f"  WARNING: potrace failed: {e.stderr.decode().strip()}")
+        print(f"  warn: potrace failed: {e.stderr.decode().strip()}")
         return False
     finally:
         os.unlink(tmp_path)
@@ -222,12 +222,12 @@ def generate_icons(source_path, output_dir, config):
     Returns True if icons were generated, False if Pillow is unavailable.
     """
     if Image is None:
-        print("  WARNING: Pillow not installed — skipping icon generation")
+        print("  warn: Pillow not installed — skipping icon generation")
         print("           Install: pip install Pillow")
         return False
 
     if not os.path.isfile(source_path):
-        print(f"  WARNING: Icon source not found: {source_path}")
+        print(f"  warn: Icon source not found: {source_path}")
         return False
 
     try:
@@ -238,7 +238,7 @@ def generate_icons(source_path, output_dir, config):
         # decode errors. Catch broadly: any failure here means we
         # can't generate icons from this source. Caller (build.py)
         # will fail the PWA-manifest check and warn the curator.
-        print(f"  WARNING: Cannot read icon source {source_path}")
+        print(f"  warn: Cannot read icon source {source_path}")
         print(f"           {type(e).__name__}: {e}")
         print(f"           Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
         return False
@@ -257,7 +257,7 @@ def generate_icons(source_path, output_dir, config):
         img = _pad_to_square(img)
 
     if img.width < 256:
-        print(f"  WARNING: Icon source is {img.width}x{img.height}, recommend at least 256x256")
+        print(f"  warn: Icon source is {img.width}x{img.height}, recommend at least 256x256")
 
     # Ensure RGBA for consistent processing
     if img.mode not in ("RGBA", "RGB"):

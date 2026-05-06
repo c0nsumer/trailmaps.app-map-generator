@@ -12,22 +12,15 @@ import json
 import os
 import sys
 
-import yaml
-
+from geodesy import haversine_m
 from overpass import query as overpass_query
 
 
-def load_config(config_path):
-    """Load YAML config, resolving any ``osm_file`` path relative to the
-    config file's directory. Mirrors fetch_trails.load_config so running
-    this script standalone matches the full build pipeline."""
-    with open(config_path) as f:
-        config = yaml.safe_load(f) or {}
-    osm_file = config.get("osm_file")
-    if osm_file and isinstance(osm_file, str) and not os.path.isabs(osm_file):
-        config_dir = os.path.dirname(os.path.abspath(config_path))
-        config["osm_file"] = os.path.join(config_dir, osm_file)
-    return config
+# Shared narrow-resolution loader (handles ``osm_file:`` only — the
+# full path-resolution path lives in build.py for the standard
+# pipeline). Imported under the historical name so call sites stay
+# unchanged.
+from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
 
 
 def fetch_pois_from_osm(bbox, cache_dir=None):
@@ -98,16 +91,7 @@ def _dedup_osm_pois(features):
     Logs a one-line summary of how many duplicates collapsed so the
     curator sees the OSM data structure surfacing up.
     """
-    import math
     DEDUP_M = 10.0
-    R = 6371000
-
-    def haversine_m(lng1, lat1, lng2, lat2):
-        p1 = math.radians(lat1); p2 = math.radians(lat2)
-        dp = math.radians(lat2 - lat1); dl = math.radians(lng2 - lng1)
-        a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-        return 2 * R * math.asin(math.sqrt(a))
-
     out = []
     collapsed = 0
     for f in features:
@@ -329,17 +313,17 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
 
     # Warn when show_* is enabled but no data exists for that POI type
     if config.get("show_markers", True) and marker_count == 0:
-        print(f"  NOTE: show_markers is enabled but no guideposts or emergency access points found in data")
+        print(f"  note: show_markers is enabled but no guideposts or emergency access points found in data")
     if config.get("show_features", True) and feature_count == 0:
-        print(f"  NOTE: show_features is enabled but no tourism=attraction nodes found in data")
+        print(f"  note: show_features is enabled but no tourism=attraction nodes found in data")
     if config.get("show_toilets", True) and toilet_count == 0:
-        print(f"  NOTE: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
+        print(f"  note: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
     if config.get("show_drinking_water", True) and water_count == 0:
-        print(f"  NOTE: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data")
+        print(f"  note: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data")
     if config.get("show_parking", True) and len(config_parking) == 0:
-        print(f"  NOTE: show_parking is enabled but no parking areas defined in config")
+        print(f"  note: show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
-        print(f"  NOTE: show_trailheads is enabled but no trailheads defined in config")
+        print(f"  note: show_trailheads is enabled but no trailheads defined in config")
 
     geojson = build_pois_geojson(osm_data, config_parking, config_trailheads,
                                   config_event_pois=config_event_pois)

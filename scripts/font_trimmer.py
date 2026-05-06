@@ -88,7 +88,7 @@ def collect_text_from_pmtiles(path):
             finally:
                 mm.close()
     except (FileNotFoundError, OSError) as e:
-        print(f"  WARNING: Could not read basemap for font scan: {e}")
+        print(f"  warn: Could not read basemap for font scan: {e}")
     return chars
 
 
@@ -130,7 +130,7 @@ def determine_needed_faces(chars, available_faces):
                     break
         else:
             # Unknown face not in basemap or script list — skip with warning
-            print(f"  WARNING: Unknown font face '{face}' — skipping "
+            print(f"  warn: Unknown font face '{face}' — skipping "
                   f"(add to SCRIPT_FONT_BLOCKS in font_trimmer.py if needed)")
 
     return needed
@@ -143,7 +143,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     ranges are actually used, then copies only matching PBF files.
     """
     if not os.path.exists(fonts_src) or not os.listdir(fonts_src):
-        print(f"  WARNING: Fonts not found at {fonts_src}")
+        print(f"  warn: Fonts not found at {fonts_src}")
         print(f"  Download from: https://github.com/protomaps/basemaps-assets/releases")
         return
 
@@ -159,7 +159,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     basemap_chars = collect_text_from_pmtiles(basemap_path)
     if basemap_chars is None:
         # PMTiles libraries not available — fall back to full copy
-        print("  WARNING: pmtiles/mapbox-vector-tile not installed — copying all fonts")
+        print("  warn: pmtiles/mapbox-vector-tile not installed — copying all fonts")
         shutil.copytree(fonts_src, fonts_dst)
         return
     all_chars.update(basemap_chars)
@@ -172,7 +172,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     if not all_chars:
         # No text found (unlikely) — basemap was probably skipped
         if not os.path.exists(basemap_path):
-            print("  WARNING: No basemap found — copying all fonts")
+            print("  warn: No basemap found — copying all fonts")
             shutil.copytree(fonts_src, fonts_dst)
             return
 

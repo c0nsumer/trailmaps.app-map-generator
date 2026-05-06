@@ -88,7 +88,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(source_path, encoding="utf-8") as f:
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        print(f"  WARNING: Could not read SVG ({e}) — copying verbatim")
+        print(f"  warn: Could not read SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
         return
 
@@ -162,7 +162,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(new_text)
     except OSError as e:
-        print(f"  WARNING: Could not write SVG ({e}) — copying verbatim")
+        print(f"  warn: Could not write SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
         return
 
@@ -196,7 +196,7 @@ def process_logo(source_path, output_path):
     try:
         from PIL import Image
     except ImportError:
-        print(f"  WARNING: Pillow not installed — copying logo verbatim to {output_path}")
+        print(f"  warn: Pillow not installed — copying logo verbatim to {output_path}")
         shutil.copy2(source_path, output_path)
         return
 
@@ -237,7 +237,7 @@ def process_logo(source_path, output_path):
         out_w, out_h = img.size
         print(f"  Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
     except Exception as e:
-        print(f"  WARNING: Failed to process logo ({e}) — copying source verbatim")
+        print(f"  warn: Failed to process logo ({e}) — copying source verbatim")
         try:
             shutil.copy2(source_path, output_path)
         except Exception as e2:
@@ -314,12 +314,12 @@ def derive_accent(image_path):
     try:
         from PIL import Image
     except ImportError:
-        print("  WARNING: Pillow not installed — cannot derive accent_color")
+        print("  warn: Pillow not installed — cannot derive accent_color")
         return None
     try:
         img = Image.open(image_path).convert("RGBA")
     except Exception as exc:
-        print(f"  WARNING: could not open {image_path} for accent derivation: {exc}")
+        print(f"  warn: could not open {image_path} for accent derivation: {exc}")
         return None
     img.thumbnail((100, 100))
     # Iterate raw RGBA bytes — Image.getdata() is deprecated in
@@ -396,7 +396,7 @@ def resolve_accent_color(config, project_root, cache_dir):
             continue
         candidates.append(abs_path)
     if not candidates:
-        print("  WARNING: accent_color: 'auto' requires a raster logo or icon "
+        print("  warn: accent_color: 'auto' requires a raster logo or icon "
               "(PNG/WebP/JPG); none found. Falling back to framework default.")
         return None
 
@@ -421,7 +421,7 @@ def resolve_accent_color(config, project_root, cache_dir):
 
     rgb = derive_accent(source)
     if rgb is None:
-        print(f"  WARNING: accent_color: 'auto' could not pick a colour from "
+        print(f"  warn: accent_color: 'auto' could not pick a colour from "
               f"{os.path.basename(source)} (logo may be greyscale or fully "
               "neutral). Falling back to framework default.")
         return None
@@ -459,7 +459,7 @@ def _warn_low_contrast_accent(hex_color):
     THRESHOLD = 4.5  # WCAG AA for normal text
     if light_ratio < THRESHOLD or dark_ratio < THRESHOLD:
         print(
-            f"  WARNING: accent_color {hex_color} contrast vs light bg = "
+            f"  warn: accent_color {hex_color} contrast vs light bg = "
             f"{light_ratio:.2f}, vs dark bg = {dark_ratio:.2f} (target "
             f">= {THRESHOLD:.1f}). Active pills / focus rings / links may "
             "be hard to read on one or both schemes."
@@ -506,7 +506,7 @@ def generate_service_worker(config, output_dir):
     sw_template = os.path.join(project_root, "templates", "sw.js")
 
     if not os.path.exists(sw_template):
-        print(f"  WARNING: Service worker template not found: {sw_template}")
+        print(f"  warn: Service worker template not found: {sw_template}")
         return
 
     with open(sw_template) as f:
@@ -736,7 +736,7 @@ def _save_signature(output_path, signature):
         with open(_signature_path(output_path), "w") as f:
             f.write(signature + "\n")
     except OSError as e:
-        print(f"  WARNING: could not write {_signature_path(output_path)}: {e}")
+        print(f"  warn: could not write {_signature_path(output_path)}: {e}")
 
 
 def _pmtiles_needs_regen(output_path, bbox, maxzoom):
@@ -1909,7 +1909,7 @@ def copy_templates(config, output_dir, trails_geojson):
     for filename in ["index.html", "app.js", "style.css"]:
         src = os.path.join(templates_dir, filename)
         if not os.path.exists(src):
-            print(f"  WARNING: Template not found: {src}")
+            print(f"  warn: Template not found: {src}")
             continue
 
         with open(src) as f:
@@ -2089,7 +2089,7 @@ def copy_assets(config, output_dir):
         if os.path.isfile(candidate):
             logo_src = candidate
         else:
-            print(f"  WARNING: Logo not found: {candidate}")
+            print(f"  warn: Logo not found: {candidate}")
     elif icon_path:
         candidate = os.path.join(project_root, icon_path)
         if os.path.isfile(candidate):
@@ -2138,7 +2138,7 @@ def copy_assets(config, output_dir):
             # Always generate manifest dynamically (replaces static copy)
             generate_manifest(config, output_dir)
         else:
-            print(f"  WARNING: Icons directory not found: {icons_src}")
+            print(f"  warn: Icons directory not found: {icons_src}")
     else:
         print(f"  No icon configured — skipping icon generation")
 
@@ -2168,7 +2168,7 @@ def copy_assets(config, output_dir):
             print(f"  Copied sprites ({sprite_version})")
             sprites_injected_dirs.append(ver_dst)
         else:
-            print(f"  WARNING: Sprites {sprite_version} not found at {ver_src}")
+            print(f"  warn: Sprites {sprite_version} not found at {ver_src}")
             print(f"  Download from: https://github.com/protomaps/basemaps-assets")
     elif os.path.exists(sprites_src) and os.listdir(sprites_src):
         if os.path.exists(sprites_dst):
@@ -2181,7 +2181,7 @@ def copy_assets(config, output_dir):
             if os.path.isdir(sub):
                 sprites_injected_dirs.append(sub)
     else:
-        print(f"  WARNING: Sprites not found at {sprites_src}")
+        print(f"  warn: Sprites not found at {sprites_src}")
         print(f"  Download from: https://github.com/protomaps/basemaps-assets")
 
     # Inject the SDF clip-continuation arrowhead into each copied atlas so
@@ -2193,7 +2193,7 @@ def copy_assets(config, output_dir):
         for sprite_dir in sprites_injected_dirs:
             inject_clip_arrow(sprite_dir, sdf_1x, sdf_2x)
     else:
-        print(f"  WARNING: clip-arrow SDF assets missing — continuation "
+        print(f"  warn: clip-arrow SDF assets missing — continuation "
               f"arrowheads will not render. Run "
               f"`python assets/extras/generate_clip_arrow.py` to regenerate.")
 
@@ -2446,7 +2446,7 @@ def main():
                     continue
                 poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"  WARNING: could not count pois.geojson: {exc}")
+            print(f"  warn: could not count pois.geojson: {exc}")
     # Curator-supplied YAML lists (gated by their show_* flags so
     # we don't credit hidden ones).
     if config.get("show_parking", True):
@@ -2512,7 +2512,7 @@ def main():
                 oneway_count += 1
         if oneway_count > 0:
             print(
-                f"  WARNING: Map has {oneway_count} one-way trail segment(s) "
+                f"  warn: Map has {oneway_count} one-way trail segment(s) "
                 "but direction_arrows is not in default_visible. Riders "
                 "won't see directional indicators on first visit — "
                 "consider adding 'direction_arrows' to default_visible "

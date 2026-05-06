@@ -199,7 +199,7 @@ def fetch_terrain(config_or_path, output_path):
         print(f"  Wrote {output_path} ({size_mb:.1f} MB)")
         return True
 
-    print("  WARNING: Could not generate terrain tiles.")
+    print("  warn: Could not generate terrain tiles.")
     print("  The map will work without terrain — hillshade will be disabled.")
     return False
 
