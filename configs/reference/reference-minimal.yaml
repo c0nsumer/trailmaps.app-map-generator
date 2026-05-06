@@ -37,7 +37,7 @@ relations:
 # show_toilets: true
 # show_drinking_water: true
 # show_terrain: true
-# show_difficulty: false
+# show_difficulty: true
 # show_routes: true
 # show_trails: true
 # show_direction_arrows: true

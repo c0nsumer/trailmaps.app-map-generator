@@ -159,11 +159,14 @@ relations:
 # omitted.
 # show_terrain: true
 
-# When true, generates the IMBA difficulty sprite and enables the in-UI
-# toggle; when false, no sprite is generated and no difficulty symbols
-# appear. The toggle defaults on when enabled and persists state via
-# localStorage.
-# show_difficulty: false
+# When false, no IMBA difficulty sprite is generated and no difficulty
+# symbols appear; the in-UI toggle is hidden. Default true to align with
+# the other show_* gates. The toggle's initial on/off state is governed
+# by default_visible (include "difficulty" in the list, or use
+# default_visible: all, for diamonds ON at first visit; otherwise the
+# rider opts in via Options). Once the rider toggles it, their LS
+# preference wins on subsequent visits.
+# show_difficulty: true
 
 # When false, hides the Routes section of the Finder and removes "Routes"
 # from the Labels dropdown. Useful for maps that have no curated route

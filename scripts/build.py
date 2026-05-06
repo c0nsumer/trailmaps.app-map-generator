@@ -1381,7 +1381,7 @@ CONFIG_SPEC = [
     ("show_toilets",            "showToilets",          True),
     ("show_drinking_water",     "showDrinkingWater",    True),
     ("show_terrain",            "showTerrain",          True),
-    ("show_difficulty",         "showDifficulty",       False),
+    ("show_difficulty",         "showDifficulty",       True),
 
     # Distance (meters) from the nearest visible trail within which a
     # trail-marker or feature POI is allowed to render. Tight values
