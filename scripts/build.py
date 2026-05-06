@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -2615,46 +2616,93 @@ def main():
         fetch_pois(config, pois_path, cache_dir)
     print()
 
-    # Step 3: Fetch basemap
+    # Steps 3+4: Fetch basemap + terrain in parallel.
+    #
+    # Both are independent (no shared state, no order dependency) and
+    # both are I/O-bound (network + subprocess for pmtiles extract or
+    # mapterhorn fetch). Running them in a 2-worker thread pool
+    # roughly halves the wall time on builds where both fetch (~30-60s
+    # each → ~30-60s total instead of 60-120s).
+    #
+    # Plan-then-execute split: decision logic (skip / use cached /
+    # regenerate) runs synchronously up front so the pre-fetch console
+    # messages stay tidy. Only the actual fetch + signature-save runs
+    # concurrently; subprocess output from the two fetches will
+    # interleave on stdout, which is acceptable for build logs.
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_bbox = config.get("pan_bbox") or config["bbox"]
     basemap_maxzoom = config.get("basemap_maxzoom", 15)
     basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom)
+
+    terrain_path = os.path.join(output_dir, "terrain.pmtiles")
+    terrain_bbox = config.get("pan_bbox") or config["bbox"]
+    terrain_maxzoom = config.get("terrain_maxzoom", 12)
+    terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom)
+
+    fetch_tasks = []  # list of (label, callable) for parallel work
+    post_messages = []  # printed AFTER all parallel tasks complete
+
+    # ---- Basemap planning ----
     if args.skip_basemap:
-        print("Basemap: Skipped (--skip-basemap)")
+        post_messages.append("Basemap: Skipped (--skip-basemap)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(
             basemap_path, basemap_bbox, basemap_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
                 print(f"Basemap: regenerating ({reason})")
-            fetch_basemap(config, basemap_path)
-            _save_signature(basemap_path, basemap_sig)
+
+            def _do_basemap():
+                fetch_basemap(config, basemap_path)
+                _save_signature(basemap_path, basemap_sig)
+
+            fetch_tasks.append(("basemap", _do_basemap))
         else:
             size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-            print(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
-    print()
+            post_messages.append(
+                f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
 
-    # Step 4: Fetch terrain
-    terrain_path = os.path.join(output_dir, "terrain.pmtiles")
-    terrain_bbox = config.get("pan_bbox") or config["bbox"]
-    terrain_maxzoom = config.get("terrain_maxzoom", 12)
-    terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom)
+    # ---- Terrain planning ----
     if not config.get("show_terrain", True):
-        print("Terrain: Disabled in config (show_terrain: false)")
+        post_messages.append(
+            "Terrain: Disabled in config (show_terrain: false)")
     elif args.skip_terrain:
-        print("Terrain: Skipped (--skip-terrain)")
+        post_messages.append("Terrain: Skipped (--skip-terrain)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(
             terrain_path, terrain_bbox, terrain_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
                 print(f"Terrain: regenerating ({reason})")
-            if fetch_terrain(config, terrain_path):
-                _save_signature(terrain_path, terrain_sig)
+
+            def _do_terrain():
+                if fetch_terrain(config, terrain_path):
+                    _save_signature(terrain_path, terrain_sig)
+
+            fetch_tasks.append(("terrain", _do_terrain))
         else:
             size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
-            print(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+            post_messages.append(
+                f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+
+    # ---- Parallel execution ----
+    if len(fetch_tasks) >= 2:
+        # Two real fetches → run concurrently (the win case).
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            futures = {ex.submit(fn): label for label, fn in fetch_tasks}
+            # Re-raise any exception in the main thread so the build
+            # aborts with a useful traceback rather than silently
+            # half-completing.
+            for f in concurrent.futures.as_completed(futures):
+                f.result()
+    else:
+        # Zero or one fetch → run inline (no thread overhead, simpler
+        # exception path).
+        for _label, fn in fetch_tasks:
+            fn()
+
+    for line in post_messages:
+        print(line)
     print()
 
     # Step 5: Copy templates and assets
