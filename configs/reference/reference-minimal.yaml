@@ -40,6 +40,7 @@ relations:
 # show_difficulty: false
 # show_routes: true
 # show_trails: true
+# show_direction_arrows: true
 # direction_arrows_required: false
 # suppress_path_labels: false
 # suppress_basemap_pois: false
@@ -54,8 +55,7 @@ relations:
 # default_trail_color: "#808080"
 
 # --- Direction schedules ---
-# default_direction_schedule: {}
-# direction_schedules: {}
+# direction_schedule: {}
 
 # --- Display ---
 # default_visible: []

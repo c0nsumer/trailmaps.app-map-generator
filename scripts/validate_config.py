@@ -75,8 +75,11 @@ KNOWN_KEYS = {
     # Per-relation overrides (dicts keyed by integer relation IDs)
     "relation_colors":               dict,
     "dashed_relations":              dict,
-    "default_direction_schedule":    dict,
-    "direction_schedules":           dict,
+    # Day-of-week / date-parity direction-arrow reversal schedule.
+    # Single hierarchical key: top-level reverse_days is system-wide;
+    # nested per_route block holds per-relation overrides. See
+    # _validate_direction_schedule for the full schema.
+    "direction_schedule":            dict,
 
     # Display options
     "default_labels":                str,
@@ -107,6 +110,7 @@ KNOWN_KEYS = {
     "show_difficulty":               bool,
     "show_routes":                   bool,
     "show_trails":                   bool,
+    "show_direction_arrows":         bool,
     "direction_arrows_required":     bool,
     "suppress_path_labels":          bool,
     "suppress_basemap_pois":         bool,
@@ -167,13 +171,12 @@ BUILD_ONLY_KEYS = {
     "show_route_distance",
     "show_route_elevation",
     # Style overrides folded into per-route metadata at build time
-    # (relation_colors / dashed_relations / *_direction_schedule are
+    # (relation_colors / dashed_relations / direction_schedule are
     # consumed in inject_config_into_template's pre-pass and emerge
     # in CONFIG.routes / CONFIG.directionSchedules).
     "relation_colors",
     "dashed_relations",
-    "default_direction_schedule",
-    "direction_schedules",
+    "direction_schedule",
     # Build-time bbox / tile-extract knobs
     "pan_padding",        # consumed by expand_bbox_for_pan; runtime sees pan_bbox
     "basemap_maxzoom",    # consumed by fetch_basemap.py
@@ -468,9 +471,8 @@ def _validate_colors(report, config):
 
 
 def _validate_relation_id_dicts(report, config):
-    """Keys of *_relations dicts must be int (or int-coercible str)."""
-    for key in ("relation_colors", "dashed_relations",
-                "direction_schedules"):
+    """Keys of per-relation dicts must be int (or int-coercible str)."""
+    for key in ("relation_colors", "dashed_relations"):
         d = config.get(key)
         if not isinstance(d, dict):
             continue
@@ -480,6 +482,19 @@ def _validate_relation_id_dicts(report, config):
             if isinstance(rid, str) and rid.lstrip("-").isdigit():
                 continue
             report.err(f"{key}", f"key {rid!r} is not an OSM relation ID (int)")
+    # direction_schedule.per_route is the third per-relation dict;
+    # nested rather than top-level, so check separately.
+    ds = config.get("direction_schedule")
+    if isinstance(ds, dict):
+        per_route = ds.get("per_route")
+        if isinstance(per_route, dict):
+            for rid in per_route.keys():
+                if isinstance(rid, int) and not isinstance(rid, bool):
+                    continue
+                if isinstance(rid, str) and rid.lstrip("-").isdigit():
+                    continue
+                report.err("direction_schedule.per_route",
+                           f"key {rid!r} is not an OSM relation ID (int)")
 
     for key in ("relations", "clipped_relations", "winter_relations",
                 "summer_relations", "emergency_access_relations"):
@@ -510,21 +525,54 @@ def _validate_weekdays(report, config):
                 report.err(where,
                            f"unknown day token {d!r}; valid: {sorted(VALID_DAYS)}")
 
-    dds = config.get("default_direction_schedule")
-    if isinstance(dds, dict) and "reverse_days" in dds:
-        _check_days("default_direction_schedule.reverse_days",
-                    dds["reverse_days"])
+    # Legacy-key migration error. The previous schema split the
+    # schedule into two siblings (default_direction_schedule +
+    # direction_schedules). The new schema is one hierarchical key
+    # (direction_schedule.reverse_days + direction_schedule.per_route)
+    # so the system-wide / per-route relationship is structural rather
+    # than name-encoded. Hard cut to match the framework's other
+    # legacy-key migrations (more_information / extra_links → links;
+    # author → curator).
+    for legacy in ("default_direction_schedule", "direction_schedules"):
+        if legacy in config:
+            report.err(
+                legacy,
+                f"`{legacy}` was renamed; new schema is a single "
+                f"`direction_schedule:` key with optional top-level "
+                f"`reverse_days:` (system-wide) and a nested `per_route:` "
+                f"dict for per-relation overrides. See "
+                f"docs/configuration.md#direction-schedules.")
 
-    ds = config.get("direction_schedules")
-    if isinstance(ds, dict):
-        for rid, spec in ds.items():
-            if not isinstance(spec, dict):
-                report.err(f"direction_schedules[{rid}]",
-                           f"expected dict, got {type(spec).__name__}")
-                continue
-            if "reverse_days" in spec:
-                _check_days(f"direction_schedules[{rid}].reverse_days",
-                            spec["reverse_days"])
+    ds = config.get("direction_schedule")
+    if not isinstance(ds, dict):
+        return
+    # Top-level reverse_days = system-wide schedule.
+    if "reverse_days" in ds:
+        _check_days("direction_schedule.reverse_days", ds["reverse_days"])
+    # per_route = per-relation override dict.
+    per_route = ds.get("per_route")
+    if per_route is not None:
+        if not isinstance(per_route, dict):
+            report.err("direction_schedule.per_route",
+                       f"must be a dict keyed by OSM relation IDs, "
+                       f"got {type(per_route).__name__}")
+        else:
+            for rid, spec in per_route.items():
+                if not isinstance(spec, dict):
+                    report.err(f"direction_schedule.per_route[{rid}]",
+                               f"expected dict, got {type(spec).__name__}")
+                    continue
+                if "reverse_days" in spec:
+                    _check_days(
+                        f"direction_schedule.per_route[{rid}].reverse_days",
+                        spec["reverse_days"])
+    # Reject unknown sibling keys so typos surface (e.g. someone
+    # writing `routes:` instead of `per_route:`).
+    allowed = {"reverse_days", "per_route"}
+    for k in ds.keys():
+        if k not in allowed:
+            report.err(f"direction_schedule.{k}",
+                       f"unknown key; allowed: {sorted(allowed)}")
 
 
 def _validate_dashed_relations(report, config):

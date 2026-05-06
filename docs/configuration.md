@@ -224,7 +224,8 @@ data or sprite is absent.
 | `show_difficulty` | No | `false` | When true, generates the IMBA difficulty sprite and enables the in-UI toggle; when false, no sprite is generated and no difficulty symbols appear. The toggle defaults **on** when enabled and persists state via localStorage. |
 | `show_routes` | No | `true` | When false, hides the Routes section of the Finder and removes "Routes" from the Labels dropdown. Useful for maps that have no curated route relations. |
 | `show_trails` | No | `true` | When false, hides the Trails section of the Finder and removes "Trails" from the Labels dropdown. Useful for systems where routes and trails overlap so heavily that listing trails adds noise (e.g. DTE). If both `show_routes` and `show_trails` are false, the whole Finder section disappears and the Labels row is hidden. |
-| `direction_arrows_required` | No | `false` | When `true`, force direction arrows to always be visible: the Options toggle row is hidden so the rider has no way to disable them. Use for safety-critical maps where wrong-way travel on directional flow trails would be dangerous. The arrow layer's initial visibility skips the `default_visible` and localStorage check entirely; the rider's persisted choice (if any) is ignored while this flag is set. If the map has no one-way trails the toggle is hidden anyway, so the flag is a no-op there. |
+| `show_direction_arrows` | No | `true` | When `false`, no direction arrows are placed on any oneway trail and the Options toggle row is hidden — even if `direction_arrows_required` is `true` (this gate wins). Use for aesthetic maps that should never display directional indicators regardless of the underlying OSM tagging. The OSM oneway data is preserved on features for finder/data integrity; only the visual decoration is suppressed. |
+| `direction_arrows_required` | No | `false` | When `true`, force direction arrows to always be visible: the Options toggle row is hidden so the rider has no way to disable them. Use for safety-critical maps where wrong-way travel on directional flow trails would be dangerous. The arrow layer's initial visibility skips the `default_visible` and localStorage check entirely; the rider's persisted choice (if any) is ignored while this flag is set. If the map has no one-way trails the toggle is hidden anyway, so the flag is a no-op there. `show_direction_arrows: false` wins over this — when arrows are suppressed entirely, "required" has nothing to require. |
 | `suppress_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (does not affect custom base layers). |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels (tourism, attractions, viewpoints) from the Protomaps basemap (does not affect custom base layers). |
 | `show_route_distance` | No | `false` | When true, computes per-route distance at build time (sum of haversine segment lengths) and surfaces it in the Finder rows + highlight chip. Cheap; no data dependency. Display units are governed by `distance_units` (Display section). |
@@ -245,8 +246,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_direction_schedule` | No | `{}` | System-wide direction schedule applied to every route: `{reverse_days: [...]}`. |
-| `direction_schedules` | No | `{}` | Per-relation overrides keyed by relation ID, value `{reverse_days: [...]}`. An entry with an empty `reverse_days` opts that one route out of the default. **Required** (via either key) for any way tagged `oneway=reversible` to render. |
+| `direction_schedule` | No | `{}` | When and how arrows flip 180° (day-of-week / date-parity). One hierarchical key: top-level `reverse_days:` is the system-wide schedule applied to every route; nested `per_route:` is a dict of per-relation overrides keyed by OSM relation ID. **Required** (system-wide or per-route) for any way tagged `oneway=reversible` to render. See [Direction schedules](#direction-schedules) for the full schema and examples. |
 
 ### Display
 
@@ -564,23 +564,58 @@ in difficulty along their length:
 
 ## Direction arrows
 
-The map renders direction-of-travel arrows along ways tagged
-`oneway=yes`, `oneway=-1`, or `oneway=reversible` in OpenStreetMap.
-Two-way ways get no arrows. Arrows scale with zoom, follow the line's
+The map renders direction-of-travel arrows along ways tagged with
+either `oneway:bicycle=*` or `oneway=*` in OpenStreetMap. Two-way
+ways get no arrows. Arrows scale with zoom, follow the line's
 bearing (rotate with the map, not the screen), and are always on.
-They're sized to read as a subtle directional cue rather than compete
-with the trail casing.
+They're sized to read as a subtle directional cue rather than
+compete with the trail casing.
 
 Arrow rendering is **per-way**, not per-route, the same model as IMBA
-difficulty. The `oneway` tag is read from individual ways; relations
-themselves don't have a direction, so they don't carry the tag.
+difficulty. The tag is read from individual ways; relations themselves
+don't have a direction, so they don't carry the tag.
 
-| Way tag | What renders |
+**Tag resolution: `oneway:bicycle` wins over `oneway`.** This matters
+on trails that ride one-way for bikes but allow foot traffic in
+either direction — the bicycle-specific tag describes the rule that
+matters here, and the bare `oneway=*` (often inherited from a
+non-bike use of the same way) is only the fallback. Either tag
+participates with the same set of accepted values:
+
+| Tag value | What renders |
 |---|---|
-| `oneway=yes` | Arrows along the way's digitised direction |
-| `oneway=-1` | Arrows along the reverse direction (normalised at build time) |
-| `oneway=reversible` | Arrows that **must** flip on a schedule (see below) |
-| `oneway=no` or unset | No arrows |
+| `yes` | Arrows along the way's digitised direction |
+| `-1` | Arrows along the reverse direction (normalised at build time) |
+| `reversible` | Arrows that **must** flip on a schedule (see below) |
+| `no` or absent | No arrows |
+
+So a way tagged `oneway:bicycle=yes` renders forward arrows even if
+its generic `oneway` is unset; `oneway:bicycle=no` suppresses arrows
+even if `oneway=yes` exists; and `oneway:bicycle=reversible` requires
+a schedule the same way bare `oneway=reversible` does.
+
+### Show / hide on a per-map basis
+
+Three keys interact, ordered from outermost to innermost:
+
+1. `show_direction_arrows: false` — suppress arrows entirely. No
+   placement happens, the toggle row is hidden, and the rider has no
+   way to surface arrows. The OSM oneway tags are preserved on
+   features for finder/data integrity; only the visual decoration is
+   suppressed. Use for aesthetic maps that should never display
+   directional indicators regardless of OSM tagging.
+2. `direction_arrows_required: true` — force arrows always-on,
+   hide the toggle row. Subordinate to `show_direction_arrows` (if
+   arrows are suppressed, "required" has nothing to require). Use
+   for safety-critical maps.
+3. `default_visible:` — controls the toggle's initial state when
+   neither of the above is set. Include `direction_arrows` in the
+   list (or use `default_visible: all`) for arrows ON at first
+   visit; omit it for arrows OFF at first visit. The rider can flip
+   the toggle either way; LS overrides the default.
+
+The default behaviour (no key set) is: arrows allowed, toggle in
+Options, initial state from `default_visible`.
 
 ### Direction schedules (day-of-week / date-parity reversal)
 
@@ -588,53 +623,68 @@ Some trail systems are signed as one-way with the direction
 alternating by day of week (e.g. clockwise Mon/Wed/Fri,
 counter-clockwise Tue/Thu/Sat) or by calendar-date parity (one
 direction on even days, the other on odd). OSM has no canonical
-schema for the schedule itself. The framework supplies it via two
-layered keys:
+schema for the schedule itself. The framework supplies it via the
+single `direction_schedule:` key, which has two optional parts: a
+top-level `reverse_days:` for the system-wide default, and a
+nested `per_route:` block for per-relation overrides.
 
-**`default_direction_schedule`**: system-wide default. Use this when
-the whole trail system shares one schedule (the common case at most
-parks):
+**System-wide schedule** — the common case for parks where every
+route alternates on the same days:
 
 ```yaml
-default_direction_schedule:
+direction_schedule:
   reverse_days: [tuesday, thursday, saturday]
 ```
 
-Every route in the map adopts this schedule unless overridden.
+Every route in the map adopts that schedule.
 
-**`direction_schedules`**: per-relation overrides. Use this only when
-one route differs from the system-wide default, or to opt a route
-out:
+**Per-route overrides** — only set entries for routes that differ
+from the system-wide schedule. An empty `reverse_days: []` opts a
+specific route out:
 
 ```yaml
-direction_schedules:
-  12425503:
-    reverse_days: [sunday]            # this route uses a different schedule
-  98765432:
-    reverse_days: []                  # this route opts out of the default
+direction_schedule:
+  reverse_days: [tuesday, thursday, saturday]   # default for every route
+  per_route:
+    12425503:
+      reverse_days: [sunday]                    # this route uses a different schedule
+    98765432:
+      reverse_days: []                          # this route opts out
 ```
 
-A super-relation key fans out to every child route, useful for
-multi-system maps where a whole second trail system shouldn't
-reverse:
+**Per-route only** — set just the `per_route:` block when there's no
+system-wide default and only specific routes have schedules:
+
+```yaml
+direction_schedule:
+  per_route:
+    12425503:
+      reverse_days: [tuesday, thursday, saturday]
+```
+
+**Super-relation overrides** — a `per_route:` key whose ID is a
+super-relation fans out to every child route, useful for multi-
+system maps where a whole second trail system shouldn't reverse:
 
 ```yaml
 relations:
   - 12345678                          # primary super-relation
   - 99999999                          # super-relation for "the system across town"
 
-direction_schedules:
-  99999999:                           # whole second system opts out
-    reverse_days: []
-  87654321:                           # one specific child of 99999999 still reverses
-    reverse_days: [tuesday]           # explicit child entry always wins over the super
+direction_schedule:
+  reverse_days: [tuesday, thursday, saturday]   # default
+  per_route:
+    99999999:
+      reverse_days: []                # whole second system opts out
+    87654321:
+      reverse_days: [tuesday]         # one specific child of 99999999 still reverses
 ```
 
 Rules:
 
-- Keys are OSM relation IDs. Each may be a leaf route relation OR a
-  super-relation; super-relations are auto-expanded to their child
-  routes the same way as `relations`.
+- Keys under `per_route:` are OSM relation IDs. Each may be a leaf
+  route relation OR a super-relation; super-relations are
+  auto-expanded to their child routes the same way as `relations`.
 - The relation is purely a grouping handle for "the ways under this
   relation share this schedule". Relations themselves don't have
   direction.
@@ -647,34 +697,44 @@ Rules:
   same-parity days in a row; that's expected. Weekday and parity
   tokens can coexist in one list: any match triggers reversal
   ("today is Monday OR today is even").
-- A per-relation entry in `direction_schedules` always wins over
-  `default_direction_schedule`. An entry with `reverse_days: []` is
-  the way to opt one route out of the default. **An explicit
-  per-child entry always wins over a super-relation entry** that
-  would otherwise fan out to that child.
-- On a reverse day, every way that is (a) OSM-tagged `oneway=yes` /
-  `oneway=-1` / `oneway=reversible` AND (b) a member of a relation
-  whose effective schedule lists today has its arrow rotated 180
-  degrees.
-- Setting a schedule (default or per-relation) does **not** make
-  untagged ways one-way; OSM tagging still controls which ways get
-  arrows. The schedule is purely a rotation hook.
+- A `per_route` entry always wins over the top-level system-wide
+  `reverse_days:`. An entry with `reverse_days: []` is the way to
+  opt one route out of the default. **An explicit per-child entry
+  always wins over a super-relation entry** that would otherwise fan
+  out to that child.
+- On a reverse day, every way whose resolved oneway value (see
+  [Tag resolution](#direction-arrows) — `oneway:bicycle` first,
+  `oneway` as fallback) is `yes`, `-1`, or `reversible` AND that
+  belongs to a relation whose effective schedule lists today has
+  its arrow rotated 180 degrees.
+- Setting a schedule does **not** make untagged ways one-way; OSM
+  tagging still controls which ways get arrows. The schedule is
+  purely a rotation hook.
 
-### `oneway=reversible` is required to pair with a schedule
+> **Schema note:** `default_direction_schedule` (system-wide) and
+> `direction_schedules` (per-route, plural) were consolidated into
+> the single hierarchical `direction_schedule:` key in 2026-05.
+> The validator errors with a rename instruction if a config still
+> uses either legacy key.
 
-`oneway=reversible` means "the direction is alternating per ground
-signage". A way with this tag and no schedule cannot be rendered
-correctly (the build would silently pick OSM digitisation order,
-which would be wrong half the time). The build therefore **fails**
-if any way is tagged `oneway=reversible` and no schedule (via
-`default_direction_schedule` or a `direction_schedules` entry on a
-parent relation) covers it. The error lists each offending way with
-a clickable OSM URL and its parent relation IDs so you can pick
-where to attach the schedule.
+### `reversible` is required to pair with a schedule
 
-By contrast, `oneway=yes` ways have an inherent direction in OSM, so
-a schedule for them is optional. Without one they render statically
-forward; with one they flip on the configured days.
+A `reversible` resolved oneway value (from either `oneway:bicycle=
+reversible` or bare `oneway=reversible`) means "the direction is
+alternating per ground signage". A way with this tag and no
+schedule cannot be rendered correctly (the build would silently pick
+OSM digitisation order, which would be wrong half the time). The
+build therefore **fails** if any way resolves to `reversible` and no
+schedule (via the top-level `direction_schedule.reverse_days` or a
+`direction_schedule.per_route` entry on a parent relation) covers
+it. The error lists each offending way with a clickable OSM URL and
+its parent relation IDs so you can pick where to attach the
+schedule.
+
+By contrast, `yes` and `-1` resolved values have an inherent
+direction in OSM, so a schedule for them is optional. Without one
+they render statically forward; with one they flip on the configured
+days.
 
 The day-of-week and calendar date are read from the visitor's local
 clock at page load and rechecked every 5 minutes (so a tab left open

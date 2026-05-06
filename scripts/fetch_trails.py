@@ -527,7 +527,7 @@ def build_geojson(relations, all_ways, way_relations):
             # the runtime only ever has to handle a single canonical case for
             # static one-ways. `reversible` is passed through unchanged: its
             # default arrow direction is the OSM digitisation order, and the
-            # day-of-week schedule (direction_schedules) flips it.
+            # day-of-week schedule (direction_schedule) flips it.
             oneway = segment.get("oneway", "")
             coords = segment["coords"]
             if oneway == "-1":
@@ -735,18 +735,19 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     # OSM-digitisation order, which is wrong half the time.
     #
     # Resolution mirrors build.py:
-    #   - default_direction_schedule (with non-empty reverse_days) covers
-    #     every relation by default.
-    #   - direction_schedules[<rel>] is a per-relation override. An entry with
-    #     non-empty reverse_days schedules that relation; an explicit empty
-    #     reverse_days opts that relation out of the default.
-    #   - A super-relation key fans out to every child route, except where
-    #     a child has its own explicit entry (which always wins). Mirrors
-    #     the two-pass logic in build.py — leaves first, then supers fill
-    #     in unset children.
-    sched_raw = config.get("direction_schedules") or {}
-    def_sched = config.get("default_direction_schedule") or {}
-    default_active = bool((def_sched or {}).get("reverse_days"))
+    #   - direction_schedule.reverse_days (non-empty) covers every
+    #     relation by default.
+    #   - direction_schedule.per_route[<rel>] is a per-relation override.
+    #     An entry with non-empty reverse_days schedules that relation;
+    #     an explicit empty reverse_days opts that relation out of the
+    #     system-wide default.
+    #   - A super-relation key fans out to every child route, except
+    #     where a child has its own explicit entry (which always wins).
+    #     Mirrors the two-pass logic in build.py — leaves first, then
+    #     supers fill in unset children.
+    sched_block = config.get("direction_schedule") or {}
+    sched_raw = sched_block.get("per_route") or {}
+    default_active = bool(sched_block.get("reverse_days"))
 
     # Build per-child resolved entries through the expansion table. The
     # resolved set drives both validation here and CONFIG.directionSchedules
@@ -806,16 +807,17 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             "       schedule covering them. Reversible trails change direction",
             "       by schedule and cannot render correctly without one.",
             "",
-            "       Either set a system-wide default that covers every route:",
+            "       Either set a system-wide schedule that covers every route:",
             "",
-            "         default_direction_schedule:",
+            "         direction_schedule:",
             "           reverse_days: [tuesday, thursday, saturday]",
             "",
             "       …or schedule the specific parent relation:",
             "",
-            "         direction_schedules:",
-            "           <relation_id>:",
-            "             reverse_days: [tuesday, thursday, saturday]",
+            "         direction_schedule:",
+            "           per_route:",
+            "             <relation_id>:",
+            "               reverse_days: [tuesday, thursday, saturday]",
             "",
             "       Offending ways (way_id → parent relation IDs):",
         ]

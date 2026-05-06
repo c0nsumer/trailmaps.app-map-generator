@@ -1396,16 +1396,26 @@ CONFIG_SPEC = [
     ("show_routes",             "showRoutes",           True),
     ("show_trails",             "showTrails",           True),
 
+    # Build-time data gate for the direction-arrow layer. When False,
+    # no arrows are placed on any oneway trail and the Options toggle
+    # row is hidden — even if `direction_arrows_required` is True (the
+    # show gate wins). Use for aesthetic maps that should never display
+    # directional indicators regardless of the underlying OSM tagging.
+    # Default True mirrors every other show_* gate's "show by default,
+    # opt out per-map" pattern.
+    ("show_direction_arrows",    "showDirectionArrows",  True),
+
     # Force direction-arrow visibility on for every visit, removing
     # the rider-toggleable on/off in Options. Use for maps where one-
     # way trails are a safety/critical-info concern (flow trails
     # where wrong-way travel is dangerous, IMBA-graded directional
     # singletrack systems, etc). When True AND the data has at least
-    # one one-way trail, the layer is forced visible and the toggle
-    # row is hidden entirely. When True AND no one-way trails exist,
-    # the toggle is hidden as usual (nothing to force on). When False
-    # (default), normal toggle behaviour: default_visible drives the
-    # initial state, the rider can flip it via Options, LS persists.
+    # one one-way trail AND show_direction_arrows is True, the layer
+    # is forced visible and the toggle row is hidden entirely. When
+    # True AND no one-way trails exist, the toggle is hidden as usual
+    # (nothing to force on). When False (default), normal toggle
+    # behaviour: default_visible drives the initial state, the rider
+    # can flip it via Options, LS persists.
     ("direction_arrows_required", "directionArrowsRequired", False),
 
     # Display
@@ -1520,20 +1530,20 @@ def inject_config_into_template(template_content, config, trails_geojson):
     relation_colors = config.get("relation_colors") or {}
     dashed_relations = config.get("dashed_relations") or {}
 
-    # Direction schedules control when ways tagged oneway=yes/-1/reversible
-    # have their arrows rotated 180° (day-of-week alternation). Two layers:
+    # Direction schedule controls when ways tagged oneway=yes/-1/reversible
+    # have their arrows rotated 180° (day-of-week alternation). Single
+    # hierarchical key with two parts:
     #
-    #   default_direction_schedule  - applies to every route in the map.
-    #                                 Use this for the common case where the
-    #                                 whole trail system shares one schedule
-    #                                 (same posted signage, same alternation).
-    #   direction_schedules         - per-relation overrides. Use only when
-    #                                 a specific route differs from the
-    #                                 system-wide default.
+    #   direction_schedule:
+    #     reverse_days: [...]    # system-wide default for every route
+    #     per_route:             # per-relation overrides (optional)
+    #       <rel_id>:
+    #         reverse_days: [...]
     #
-    # An explicit per-relation entry always wins, even if its reverse_days is
-    # empty — that's the way to opt one route out of the default. Relations
-    # NOT mentioned in direction_schedules fall back to the default.
+    # An explicit per-route entry always wins, even if its reverse_days is
+    # empty — that's the way to opt one route out of the system-wide
+    # default. Relations NOT mentioned under per_route fall back to the
+    # default.
     #
     # Relations are just the grouping handle here — relations themselves don't
     # have direction; their member ways do.
@@ -1565,43 +1575,45 @@ def inject_config_into_template(template_content, config, trails_geojson):
             days_norm.append(match)
         return sorted(set(days_norm))
 
-    # Default schedule (singular). Stored as None when unset OR when explicitly
+    # Pull the schedule block. Both halves are optional; an absent
+    # block means no rotation anywhere on the map.
+    sched_block = config.get("direction_schedule") or {}
+
+    # System-wide default. Stored as None when unset OR when explicitly
     # set with empty reverse_days (degenerate; treated the same as unset).
-    def_sched_raw = config.get("default_direction_schedule") or {}
     def_sched_days = _normalise_days(
-        (def_sched_raw or {}).get("reverse_days"),
-        "default_direction_schedule.reverse_days",
+        sched_block.get("reverse_days"),
+        "direction_schedule.reverse_days",
     )
     def_sched_norm = {"reverse_days": def_sched_days} if def_sched_days else None
 
-    # Per-relation overrides (plural). Two-pass processing so super-
-    # relation entries (auto-expanded via metadata.super_relation_
-    # expansions) propagate to children, but explicit per-child
-    # entries always win:
+    # Per-relation overrides. Two-pass processing so super-relation
+    # entries (auto-expanded via metadata.super_relation_expansions)
+    # propagate to children, but explicit per-child entries always win:
     #   Pass 1 — process every entry whose key is a LEAF (or absent
     #            from the expansion table). These take precedence.
     #   Pass 2 — process super-relation entries, fanning out to
     #            children only if the child wasn't already set in
     #            Pass 1.
-    # This lets a curator write `direction_schedules: { 99999999: {
-    # reverse_days: [] } }` for a whole second trail system that
-    # doesn't reverse, while still individually overriding one of
-    # its child routes if needed.
+    # This lets a curator write `per_route: { 99999999: { reverse_days:
+    # [] } }` for a whole second trail system that doesn't reverse,
+    # while still individually overriding one of its child routes if
+    # needed.
     super_expansions = trails_geojson.get("metadata", {}).get(
         "super_relation_expansions", {}) or {}
-    sched_raw = config.get("direction_schedules") or {}
+    per_route_raw = sched_block.get("per_route") or {}
     sched_processed = {}
 
     # Pass 1: explicit leaves and any keys not in the expansion table.
     deferred_supers = []
-    for rel_id, spec in sched_raw.items():
+    for rel_id, spec in per_route_raw.items():
         rel_id_str = str(rel_id)
         if rel_id_str in super_expansions:
             deferred_supers.append((rel_id, spec))
             continue
         days = _normalise_days(
             (spec or {}).get("reverse_days"),
-            f"direction_schedules[{rel_id}].reverse_days",
+            f"direction_schedule.per_route[{rel_id}].reverse_days",
         )
         # Even an empty list is recorded — that's how a user opts a single
         # route out of the system-wide default.
@@ -1612,7 +1624,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     for rel_id, spec in deferred_supers:
         days = _normalise_days(
             (spec or {}).get("reverse_days"),
-            f"direction_schedules[{rel_id}].reverse_days",
+            f"direction_schedule.per_route[{rel_id}].reverse_days",
         )
         for child_id in super_expansions[str(rel_id)]:
             child_int = int(child_id)
@@ -1681,16 +1693,17 @@ def inject_config_into_template(template_content, config, trails_geojson):
                 "       direction by schedule and cannot render correctly",
                 "       without one.",
                 "",
-                "       Either set a system-wide default that covers every route:",
+                "       Either set a system-wide schedule that covers every route:",
                 "",
-                "         default_direction_schedule:",
+                "         direction_schedule:",
                 "           reverse_days: [tuesday, thursday, saturday]",
                 "",
                 "       …or schedule the specific parent relation:",
                 "",
-                "         direction_schedules:",
-                "           <relation_id>:",
-                "             reverse_days: [tuesday, thursday, saturday]",
+                "         direction_schedule:",
+                "           per_route:",
+                "             <relation_id>:",
+                "               reverse_days: [tuesday, thursday, saturday]",
                 "",
                 "       Offending ways (way_id → parent relation IDs):",
             ]
@@ -1807,6 +1820,20 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["buildDate"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     config_obj["dataDate"] = config.get("_data_date", "")
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
+    # Build-time scan for any oneway-tagged trail features. Drives
+    # the runtime decision to surface the direction-arrow toggle in
+    # Options. Done at build time (rather than counting placed
+    # decorations at runtime) because the first computeDecorations()
+    # pass is deferred to map.once('idle', …) for first-paint perf,
+    # so a runtime count would race the deferral and read 0 at gate
+    # time. See setupFloatingChrome() in app.js where this is read.
+    has_oneway = False
+    for f in (trails_geojson.get("features") or []) if trails_geojson else []:
+        ow = (f.get("properties") or {}).get("oneway")
+        if ow in ("yes", True, "-1", "reversible"):
+            has_oneway = True
+            break
+    config_obj["hasOnewayTrails"] = has_oneway
     config_obj["about"] = config.get("about") or None
     # Welcome modal config: pass through unchanged. Three forms
     # accepted: omitted (None → framework default), false (modal
@@ -2499,12 +2526,13 @@ def main():
     # when event_mode.direction_arrows: true, so the warning is
     # naturally suppressed for event maps.)
     raw_dv = config.get("default_visible")
+    arrows_suppressed = config.get("show_direction_arrows", True) is False
     arrows_default_on = (
         raw_dv == "all"
         or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
         or bool(config.get("direction_arrows_required"))
     )
-    if not arrows_default_on:
+    if not arrows_default_on and not arrows_suppressed:
         oneway_count = 0
         for f in (trails_geojson.get("features") or []):
             ow = (f.get("properties") or {}).get("oneway")

@@ -942,10 +942,12 @@ function computeDecorations() {
 
     // ---- Pass 2: tier-0 mandatory decor — 2 diamonds + 2 arrows per
     //      applicable way so even short trails get clear markings. ----
+    const arrowsAllowed = CONFIG.showDirectionArrows !== false;
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const hasArrow = arrowsAllowed
+            && (way.oneway === "yes" || way.oneway === "reversible");
         const reverse = reverseSet.has(way.routeId)
             || way.sharedRoutes.some((id) => reverseSet.has(id));
 
@@ -987,7 +989,8 @@ function computeDecorations() {
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const hasArrow = arrowsAllowed
+            && (way.oneway === "yes" || way.oneway === "reversible");
         const reverse = reverseSet.has(way.routeId)
             || way.sharedRoutes.some((id) => reverseSet.has(id));
 
@@ -1020,7 +1023,8 @@ function computeDecorations() {
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = way.oneway === "yes" || way.oneway === "reversible";
+        const hasArrow = arrowsAllowed
+            && (way.oneway === "yes" || way.oneway === "reversible");
         const reverse = reverseSet.has(way.routeId)
             || way.sharedRoutes.some((id) => reverseSet.has(id));
 
@@ -1198,6 +1202,14 @@ function addDecorationLayers() {
 }
 
 function directionArrowsToggleOn() {
+    // Curator-suppressed: when CONFIG.showDirectionArrows is false,
+    // the layer is force-hidden, the toggle row is hidden in
+    // setupFloatingChrome, and computeDecorations skips arrow
+    // placement. Wins over directionArrowsRequired (the "show" gate
+    // is the outer envelope; "required" only applies when arrows
+    // are shown at all). Use for aesthetic maps that should never
+    // display directional indicators regardless of OSM tagging.
+    if (CONFIG.showDirectionArrows === false) return false;
     // Curator-forced visibility: when CONFIG.directionArrowsRequired
     // is set, the layer is always visible regardless of LS / default.
     // The toggle row is hidden in setupFloatingChrome so the rider
@@ -5971,22 +5983,26 @@ function setupFloatingChrome() {
 
     // Direction arrows — drives the decor-arrow MapLibre layer
     // (chevrons placed along one-way / reversible trails). Reveal
-    // the toggle row only when the layer actually has features AND
-    // the curator hasn't forced arrows on via the
-    // `direction_arrows_required` YAML key. With required=true, the
-    // layer's initial visibility (set in addArrowLayer) is already
-    // forced visible by directionArrowsToggleOn() reading CONFIG —
-    // we just keep the toggle row hidden so the rider has no off
-    // affordance. Same wirePeekToggle pattern as Difficulty otherwise.
+    // the toggle row only when the trails data actually contains at
+    // least one oneway-tagged feature AND the curator hasn't forced
+    // arrows on via the `direction_arrows_required` YAML key. With
+    // required=true, the layer's initial visibility (set in
+    // addArrowLayer) is already forced visible by
+    // directionArrowsToggleOn() reading CONFIG — we just keep the
+    // toggle row hidden so the rider has no off affordance.
+    //
+    // The "has any oneway trails" decision is a build-time scan
+    // (CONFIG.hasOnewayTrails, populated by inject_config_into_template).
+    // Doing it at runtime would mean reading the trail-decorations
+    // source's feature count, but that source is intentionally
+    // populated AFTER setupFloatingChrome() runs — the first
+    // computeDecorations() pass is deferred to map.once('idle', …)
+    // for first-paint perf — so a runtime count races the deferral
+    // and reads 0 at gate time. Same wirePeekToggle pattern as
+    // Difficulty otherwise.
     const arrowsBtn = document.getElementById("toggle-direction-arrows");
-    const arrowFeatureCount = (function () {
-        const src = map.getSource("trail-decorations");
-        if (!src || !src._data) return 0;
-        return (src._data.features || [])
-            .filter((f) => (f.properties || {}).kind === KIND.ARROW)
-            .length;
-    })();
-    if (arrowsBtn && arrowFeatureCount > 0 && !CONFIG.directionArrowsRequired) {
+    const arrowsShown = CONFIG.showDirectionArrows !== false;
+    if (arrowsBtn && CONFIG.hasOnewayTrails && arrowsShown && !CONFIG.directionArrowsRequired) {
         arrowsBtn.classList.remove("hidden");
         wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
                 isDefaultVisible("direction_arrows"), (on) => {

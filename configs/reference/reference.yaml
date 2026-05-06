@@ -177,6 +177,15 @@ relations:
 # disappears and the Labels row is hidden.
 # show_trails: true
 
+# When false, no direction arrows are placed on any oneway trail and the
+# Options toggle row is hidden — even if direction_arrows_required is true
+# (this gate wins). Use for aesthetic maps that should never display
+# directional indicators regardless of the underlying OSM tagging. The
+# OSM oneway data is preserved on features for finder/data integrity; only
+# the visual decoration is suppressed. Default true mirrors every other
+# show_* gate.
+# show_direction_arrows: true
+
 # When true, force direction arrows to always be visible: the Options
 # toggle row is hidden so the rider has no way to disable them. Use for
 # safety-critical maps where wrong-way travel on directional flow trails
@@ -184,7 +193,8 @@ relations:
 # default_visible and localStorage check entirely; the rider's persisted
 # choice (if any) is ignored while this flag is set. If the map has no
 # one-way trails the toggle is hidden anyway, so the flag is a no-op
-# there.
+# there. show_direction_arrows: false wins over this — when arrows are
+# suppressed entirely, "required" has nothing to require.
 # direction_arrows_required: false
 
 # Hide path / track / footway labels from the Protomaps basemap (does not
@@ -245,15 +255,13 @@ relations:
 #
 # See Direction arrows for the full model.
 
-# System-wide direction schedule applied to every route: {reverse_days:
-# [...]}.
-# default_direction_schedule: {}
-
-# Per-relation overrides keyed by relation ID, value {reverse_days:
-# [...]}. An entry with an empty reverse_days opts that one route out of
-# the default. Required (via either key) for any way tagged
-# oneway=reversible to render.
-# direction_schedules: {}
+# When and how arrows flip 180° (day-of-week / date-parity). One
+# hierarchical key: top-level reverse_days: is the system-wide schedule
+# applied to every route; nested per_route: is a dict of per-relation
+# overrides keyed by OSM relation ID. Required (system-wide or per-route)
+# for any way tagged oneway=reversible to render. See Direction schedules
+# for the full schema and examples.
+# direction_schedule: {}
 
 # ============================================================
 # Display
