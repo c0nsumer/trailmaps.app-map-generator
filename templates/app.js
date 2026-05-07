@@ -6868,37 +6868,50 @@ function setupInteractions() {
         });
     }
 
-    // Dedupe trail-click popups across per-route layers, AND union the
-    // routes across all features at the click point. attachTrailHandlers
-    // is called once per route; a way that's in shared_routes for N
-    // routes belongs to N trail-casing-<routeId> layers. On top of that,
-    // custom_routes (including inline event_mode.routes) get baked into
-    // trails.geojson as PARALLEL features overlaying the same geometry,
-    // each with its own route_id and its own shared_routes list \u2014 the
-    // OSM features don't know about the custom route, and vice versa.
+    // Trail click handling lives in ONE map-wide handler (not
+    // per-layer) so we can:
     //
-    // Without unification: a click on a way that's BOTH in OSM route
-    // 12345 AND in custom route "race-2026" fires N click events; each
-    // layer's e.features[0] only knows its own side. The popup ends up
-    // listing only one side ("part of: Roller Coaster") with no mention
-    // of the other ("2026 Big Bang Course"). Confusing.
+    //   1. Buffer the hit-test against fat-finger taps. Per-layer
+    //      `map.on("click", layerId, ...)` runs MapLibre's pixel-precise
+    //      queryRenderedFeatures at the exact tap point. Trail lines
+    //      are 4-6 px wide; iOS' touch recognition is stricter than
+    //      Android's about sub-pixel tap accuracy. Without a buffer,
+    //      taps must land within the line's rendered pixel width to
+    //      register, which feels broken on iOS. The map-wide handler
+    //      below uses a TRAIL_TAP_BUFFER_PX-radius bounding box
+    //      around e.point \u2014 12 CSS px \u2248 Material's 48 dp tap target
+    //      on a 2\u00D7 display \u2014 so taps near a line still register.
     //
-    // Fix: on the first click handler to fire for a given originalEvent,
-    // queryRenderedFeatures across ALL trail-casing layers at the click
-    // point and union every feature's route_id + shared_routes. Build
-    // ONE popup listing every route. Subsequent same-event handlers
-    // bail (dedupe via originalEvent ref).
-    let _lastTrailClickEvent = null;
+    //   2. Union routes across all trail-casing layers in one pass.
+    //      A way that's shared across N OSM routes lives in N layers;
+    //      custom_routes (including inline event_mode.routes) bake in
+    //      as parallel features overlaying the same geometry, each
+    //      with its own route_id + shared_routes list. A single
+    //      buffered queryRenderedFeatures across every trail-casing
+    //      layer gives us every overlapping feature in one shot, and
+    //      _collectAllRoutesAt unions them. The previous per-layer
+    //      pattern needed `_lastTrailClickEvent` dedupe state to
+    //      collapse N-fired-events into one popup; that's gone now.
+    //
+    // The per-layer mouseenter/mouseleave handlers remain in
+    // attachTrailHoverHandlers because cursor feedback IS layer-scoped
+    // (we only want `cursor: pointer` over the actual rendered line,
+    // not the 12 px halo) and is desktop-only \u2014 iOS doesn't fire mouse
+    // events.
+    const TRAIL_TAP_BUFFER_PX = 12;
     const _trailCasingLayerIds = Object.keys(CONFIG.routes)
         .map((rid) => `trail-casing-${rid}`);
 
-    function _collectAllRoutesAt(point) {
+    function _collectAllRoutesAt(geometry) {
         // Returns { routeIds: string[], trailName: string }.
         // routeIds: deduplicated, in stable order (custom routes first,
         // then OSM by appearance).
         // trailName: any feature's trail_name (consistent across the
         // shared way regardless of which layer's feature we read).
-        const feats = map.queryRenderedFeatures(point, {
+        // `geometry` is whatever queryRenderedFeatures accepts: a
+        // single Point for hover-style precise lookups, or a
+        // [[x1,y1],[x2,y2]] bounding box for buffered tap lookups.
+        const feats = map.queryRenderedFeatures(geometry, {
             layers: _trailCasingLayerIds.filter((id) => map.getLayer(id)),
         });
         const seen = new Set();
@@ -6926,71 +6939,79 @@ function setupInteractions() {
         return { routeIds, trailName };
     }
 
-    function attachTrailHandlers(layerId) {
+    function attachTrailHoverHandlers(layerId) {
+        // Cursor feedback only \u2014 desktop hover. iOS / Android touch
+        // doesn't fire these events; click handling is map-wide
+        // (below) with a buffered hit-test.
         map.on("mouseenter", layerId, () => {
             map.getCanvas().style.cursor = "pointer";
         });
         map.on("mouseleave", layerId, () => {
             map.getCanvas().style.cursor = "";
         });
-        map.on("click", layerId, (e) => {
-            if (parkingPopupOpen) return;
-            // Dedupe across per-route layer click handlers \u2014 see the
-            // comment on _lastTrailClickEvent above.
-            if (e.originalEvent && _lastTrailClickEvent === e.originalEvent) return;
-            _lastTrailClickEvent = e.originalEvent;
-
-            // Union routes across ALL trail-casing layers at the click
-            // point so OSM + custom (event) routes both appear when
-            // they overlay the same geometry.
-            const { routeIds, trailName } = _collectAllRoutesAt(e.point);
-            const matchedRoutes = routeIds
-                .map((id) => CONFIG.routes[id])
-                .filter(Boolean);
-            const routeItems = matchedRoutes
-                .map((rel) => {
-                    // effectiveRouteColor returns a hex / rgb() string
-                    // from a validated palette path; still escape for
-                    // attribute-context safety in case a future change
-                    // ever lets a non-validated string through.
-                    const color = effectiveRouteColor(rel);
-                    return `<div class="popup-routes"><span style="color:${escapeHtml(color)};">\u25CF</span> ${escapeHtml(rel.name)}</div>`;
-                })
-                .join("");
-
-            let html = "";
-            if (trailName) {
-                // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
-                // Escape to neutralise any vandalism (script tags,
-                // event handlers) in OSM data.
-                html += `<div class="popup-title">Trail: ${escapeHtml(trailName)}</div>`;
-            }
-            if (routeItems) {
-                const label = matchedRoutes.length === 1
-                    ? "Part of Route:"
-                    : "Part of Routes:";
-                if (trailName) {
-                    html += `<hr class="popup-hr">`;
-                }
-                html += `<div class="popup-routes">${label}</div>`;
-                html += routeItems;
-            }
-
-            new maplibregl.Popup({
-                maxWidth: "220px",
-                closeButton: false,
-                focusAfterOpen: false,
-            })
-                .setLngLat(e.lngLat)
-                .setHTML(html)
-                .addTo(map);
-        });
     }
 
-    // Per-route casing layers (wider hit target for easier tapping)
+    // Per-route hover handlers (desktop cursor feedback only).
     for (const routeId of Object.keys(CONFIG.routes)) {
-        attachTrailHandlers(`trail-casing-${routeId}`);
+        attachTrailHoverHandlers(`trail-casing-${routeId}`);
     }
+
+    // Single map-wide click handler. Runs once per click regardless
+    // of how many trail-casing layers the buffered hit-test crosses.
+    // Uses a 12-CSS-px-radius bounding box (\u2248 Material 48 dp on 2\u00D7
+    // displays) around the tap point for iOS-friendly fat-finger
+    // tap targets \u2014 see the design rationale comment above.
+    map.on("click", (e) => {
+        if (parkingPopupOpen) return;
+        const r = TRAIL_TAP_BUFFER_PX;
+        const box = [
+            [e.point.x - r, e.point.y - r],
+            [e.point.x + r, e.point.y + r],
+        ];
+        const { routeIds, trailName } = _collectAllRoutesAt(box);
+        if (!routeIds.length) return;
+
+        const matchedRoutes = routeIds
+            .map((id) => CONFIG.routes[id])
+            .filter(Boolean);
+        const routeItems = matchedRoutes
+            .map((rel) => {
+                // effectiveRouteColor returns a hex / rgb() string
+                // from a validated palette path; still escape for
+                // attribute-context safety in case a future change
+                // ever lets a non-validated string through.
+                const color = effectiveRouteColor(rel);
+                return `<div class="popup-routes"><span style="color:${escapeHtml(color)};">\u25CF</span> ${escapeHtml(rel.name)}</div>`;
+            })
+            .join("");
+
+        let html = "";
+        if (trailName) {
+            // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
+            // Escape to neutralise any vandalism (script tags,
+            // event handlers) in OSM data.
+            html += `<div class="popup-title">Trail: ${escapeHtml(trailName)}</div>`;
+        }
+        if (routeItems) {
+            const label = matchedRoutes.length === 1
+                ? "Part of Route:"
+                : "Part of Routes:";
+            if (trailName) {
+                html += `<hr class="popup-hr">`;
+            }
+            html += `<div class="popup-routes">${label}</div>`;
+            html += routeItems;
+        }
+
+        new maplibregl.Popup({
+            maxWidth: "220px",
+            closeButton: false,
+            focusAfterOpen: false,
+        })
+            .setLngLat(e.lngLat)
+            .setHTML(html)
+            .addTo(map);
+    });
 }
 
 // ============================================================
