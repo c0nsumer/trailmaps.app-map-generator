@@ -25,6 +25,12 @@ PyYAML==6.0.3
 Pillow==12.2.0
 pmtiles==3.7.0
 mapbox-vector-tile==2.2.0
+# Pure-python minifiers — used by build.py --minify pass on app.js +
+# style.css before deploy. Conservative (preserve string literals,
+# don't rewrite identifiers) so they're safe against the embedded
+# CONFIG JSON literal in app.js. ~50KB JS + ~13KB CSS savings per map.
+rjsmin==1.2.5
+rcssmin==1.2.2
 
 # Transitive (pinned for reproducibility — do not remove)
 certifi==2026.2.25

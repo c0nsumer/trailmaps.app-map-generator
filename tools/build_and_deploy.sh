@@ -239,12 +239,18 @@ for name in "${configs[@]}"; do
     # Build
     if $BUILD; then
         echo "━━━ Building ${name} ━━━"
+        # Always pass --minify when building via this script: every code
+        # path here is en route to a deploy (either DEPLOY=true on this
+        # invocation, or --build-only producing artifacts the curator
+        # will deploy later). Local-iteration builds skip this script
+        # entirely and call scripts/build.py directly without --minify
+        # so the unminified output stays readable for debugging.
         if $DRY_RUN; then
-            echo "[dry-run] $PYTHON scripts/build.py $config_file $FORCE ${build_extra_args[*]:-}"
+            echo "[dry-run] $PYTHON scripts/build.py $config_file $FORCE --minify ${build_extra_args[*]:-}"
         else
             # The "${arr[@]+...}" expansion is the standard workaround for
             # nounset (set -u) tripping on empty arrays in older Bash.
-            if ! "${PYTHON}" scripts/build.py "$config_file" $FORCE \
+            if ! "${PYTHON}" scripts/build.py "$config_file" $FORCE --minify \
                     "${build_extra_args[@]+"${build_extra_args[@]}"}"; then
                 echo "ERROR: Build failed for ${name}" >&2
                 failed+=("$name")

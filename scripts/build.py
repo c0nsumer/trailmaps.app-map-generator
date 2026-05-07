@@ -48,12 +48,20 @@ VENDOR_LIBS = {
 }
 
 
-# Logo render bounding box on desktop. The map overlay and the About modal
-# both shrink-to-fit inside this box via CSS max-width/max-height; we resample
-# the source to ~2× this on its longer side so retina displays render cleanly
-# without us shipping the original (often much larger) source.
+# Logo render bounding box. The brand-img CSS at templates/style.css:1982
+# bounds it to max-width: 200px, max-height: 48px on the map overlay.
+# About modal uses the same image, similar bounds. We resample the source
+# to ~2× this on its longer side so retina displays render cleanly without
+# us shipping the original (often much larger) source.
+#
+# LOGO_DESKTOP_H was previously 80 — that left square icons (e.g. DTE's
+# icon-as-logo fallback) processed to 160×160 = ~12KB, but the actual
+# rendered size is 48×48. Lowered to 48 to match the CSS max-height,
+# which shrinks square-icon outputs to ~96×96 = ~1-2KB, a ~10× saving
+# (Lighthouse image-delivery-insight ~11KB savings on DTE). Wide
+# wordmarks unchanged — they remain width-bound at 200px.
 LOGO_DESKTOP_W = 200
-LOGO_DESKTOP_H = 80
+LOGO_DESKTOP_H = 48
 
 
 def logo_output_filename(source_path):
@@ -81,6 +89,11 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
 
     If the SVG already has non-percentage width/height, or has no viewBox
     to derive from, the file is copied verbatim.
+
+    Returns (width, height) as integers when the SVG has known pixel
+    dimensions (either definite width/height attributes or a viewBox we
+    could parse), otherwise (None, None). Callers use this to set the
+    brand-img element's HTML width/height attributes for CLS prevention.
     """
     import re
 
@@ -90,13 +103,13 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
     except (OSError, UnicodeDecodeError) as e:
         print(f"  warn: Could not read SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
-        return
+        return (None, None)
 
     svg_open = re.search(r"<svg\b[^>]*>", text)
     if not svg_open:
         shutil.copy2(source_path, output_path)
         print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return
+        return (None, None)
 
     tag = svg_open.group(0)
     width_m = re.search(r'\bwidth\s*=\s*"([^"]*)"', tag)
@@ -113,6 +126,21 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         # definite intrinsic sizes.
         return bool(re.match(r"^-?\d+(\.\d+)?", v))
 
+    def _parse_pixel(v):
+        """Extract a numeric pixel value from "100", "100px", "100.5pt", etc.
+        Returns int or None. Used to recover dimensions from existing
+        width/height attributes for the brand-img HTML attribute.
+        """
+        if not v:
+            return None
+        m = re.match(r"^-?\d+(\.\d+)?", v.strip())
+        if not m:
+            return None
+        try:
+            return int(round(float(m.group(0))))
+        except ValueError:
+            return None
+
     has_definite = (
         width_m and _is_definite_pixel(width_m.group(1))
         and height_m and _is_definite_pixel(height_m.group(1))
@@ -121,20 +149,23 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
     if has_definite or not viewbox_m:
         shutil.copy2(source_path, output_path)
         print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return
+        if has_definite:
+            return (_parse_pixel(width_m.group(1)),
+                    _parse_pixel(height_m.group(1)))
+        return (None, None)
 
     parts = viewbox_m.group(1).split()
     if len(parts) != 4:
         shutil.copy2(source_path, output_path)
         print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return
+        return (None, None)
     try:
         vb_w = float(parts[2])
         vb_h = float(parts[3])
     except ValueError:
         shutil.copy2(source_path, output_path)
         print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return
+        return (None, None)
 
     # Format pixel values without a trailing ".0" when integer-valued.
     def _fmt(v):
@@ -164,12 +195,13 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
     except OSError as e:
         print(f"  warn: Could not write SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
-        return
+        return (None, None)
 
     print(
         f"  Wrote logo.svg ({new_w}×{new_h} from viewBox, "
         f"{os.path.getsize(output_path)} bytes, vector)"
     )
+    return (int(round(vb_w)), int(round(vb_h)))
 
 
 def process_logo(source_path, output_path):
@@ -187,18 +219,24 @@ def process_logo(source_path, output_path):
     intrinsic size for our `width: auto; height: auto; max-*` CSS to anchor.
     Without this, e.g. `<svg width="100%" height="100%" viewBox="0 0 600 600">`
     renders at 0x0 inside an <img>.
+
+    Returns (width, height) integers — the dimensions actually written to
+    output_path — for the caller to substitute into the brand-img HTML
+    width/height attributes (CLS prevention). Returns (None, None) when
+    dimensions can't be determined (e.g., Pillow missing, SVG without
+    pixel size + viewBox, IO failure); callers should fall back to
+    omitting the attributes.
     """
     ext = os.path.splitext(source_path)[1].lower()
     if ext == ".svg":
-        _copy_svg_with_intrinsic_size(source_path, output_path)
-        return
+        return _copy_svg_with_intrinsic_size(source_path, output_path)
 
     try:
         from PIL import Image
     except ImportError:
         print(f"  warn: Pillow not installed — copying logo verbatim to {output_path}")
         shutil.copy2(source_path, output_path)
-        return
+        return (None, None)
 
     try:
         img = Image.open(source_path)
@@ -208,7 +246,8 @@ def process_logo(source_path, output_path):
 
         aspect = src_w / src_h
         # Bounding-box decision: wider than the target box -> width-bound,
-        # else height-bound. (target box aspect = 200/80 = 2.5)
+        # else height-bound. (target box aspect = LOGO_DESKTOP_W /
+        # LOGO_DESKTOP_H — see constants at top of file)
         if aspect >= LOGO_DESKTOP_W / LOGO_DESKTOP_H:
             render_w = LOGO_DESKTOP_W
             render_h = LOGO_DESKTOP_W / aspect
@@ -236,12 +275,72 @@ def process_logo(source_path, output_path):
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size
         print(f"  Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
+        return (out_w, out_h)
     except Exception as e:
         print(f"  warn: Failed to process logo ({e}) — copying source verbatim")
         try:
             shutil.copy2(source_path, output_path)
         except Exception as e2:
             print(f"  ERROR: Could not write logo: {e2}")
+        return (None, None)
+
+
+def _minify_assets(output_dir):
+    """Minify app.js + style.css in-place. Returns a list of status lines.
+
+    Used by main() when --minify is set. Conservative pure-python
+    minifiers (rjsmin / rcssmin): they preserve string literals
+    verbatim (so the embedded CONFIG JSON in app.js stays intact),
+    don't rewrite identifiers (no breaking changes for code that
+    hooks into named DOM ids / event handlers), and only strip
+    whitespace + comments + safe redundancies. ~30-50% file-size
+    reduction on each.
+
+    Vendor libs (vendor/*.js) are NOT minified — upstream ships them
+    in production form already, and re-minifying risks breaking the
+    upstream's intended behaviour.
+
+    Errors are logged but don't abort the build — the unminified file
+    stays in place, so the deploy still ships a working (just larger)
+    artifact.
+    """
+    results = []
+    targets = [
+        ("app.js", "rjsmin"),
+        ("style.css", "rcssmin"),
+    ]
+    for fname, lib in targets:
+        path = os.path.join(output_dir, fname)
+        if not os.path.exists(path):
+            results.append(f"  {fname}: not present, skipping")
+            continue
+        try:
+            before = os.path.getsize(path)
+            with open(path, encoding="utf-8") as f:
+                src = f.read()
+            if lib == "rjsmin":
+                import rjsmin
+                minified = rjsmin.jsmin(src)
+            else:
+                import rcssmin
+                minified = rcssmin.cssmin(src)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(minified)
+            after = os.path.getsize(path)
+            pct = (1 - after / before) * 100 if before else 0
+            results.append(
+                f"  {fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)"
+            )
+        except ImportError:
+            results.append(
+                f"  warn: {lib} not installed — {fname} left unminified. "
+                f"Run: .venv/bin/pip install {lib}"
+            )
+        except (OSError, UnicodeDecodeError) as e:
+            results.append(
+                f"  warn: failed to minify {fname} ({e}) — left unminified"
+            )
+    return results
 
 
 def _relative_luminance(rgb):
@@ -2004,6 +2103,31 @@ def copy_templates(config, output_dir, trails_geojson):
             content = content.replace("__BRAND_TITLE__",
                                       _html_escape(brand_title, quote=True))
 
+            # Brand-img CLS-prevention dimensions. process_logo() stashes
+            # the actual written pixel dimensions on config["_brand_img_dims"]
+            # (or (None, None) when it couldn't determine them — Pillow
+            # missing, SVG without viewBox, etc.). Substitute width/height
+            # into the <img> tag when known; otherwise emit the empty
+            # string so the tag stays valid HTML and we accept a small
+            # CLS hit rather than emit wrong dimensions. The CSS
+            # (style.css #brand-img: max-width 200px, max-height 48px,
+            # width/height auto) still controls actual render size; the
+            # HTML attrs only set the aspect ratio used by the browser
+            # to reserve layout box before image bytes arrive.
+            #
+            # fetchpriority="high" is unconditional in the template — it
+            # makes the brand-img the LCP image regardless of whether we
+            # could determine dims. Browsers without fetchpriority support
+            # ignore the attribute (no regression).
+            brand_dims = config.get("_brand_img_dims") or (None, None)
+            bw, bh = brand_dims
+            if bw and bh:
+                content = content.replace(
+                    "__BRAND_IMG_DIMS__",
+                    f' width="{bw}" height="{bh}"')
+            else:
+                content = content.replace("__BRAND_IMG_DIMS__", "")
+
             # Inline colour-scheme bootstrap script. Runs synchronously
             # in <head> BEFORE the stylesheet, so first paint already
             # has the right data-color-scheme attribute on <html> and
@@ -2129,7 +2253,14 @@ def copy_assets(config, output_dir):
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)
-        process_logo(logo_src, out_path)
+        # Capture the written logo's pixel dimensions so copy_templates
+        # can substitute them into the brand-img element's HTML
+        # width/height attributes (CLS prevention — browsers reserve
+        # layout box from these before image bytes arrive). Returns
+        # (None, None) for unrecognised SVGs / Pillow-missing / etc.;
+        # copy_templates falls back to omitting the attributes in that
+        # case, accepting the small CLS risk over emitting wrong dims.
+        config["_brand_img_dims"] = process_logo(logo_src, out_path)
 
     # Icons — generate from source image or copy from legacy icons_dir.
     # Source resolution (icon: → logo: → none) is shared with the HTML
@@ -2388,6 +2519,11 @@ def main():
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate config and print what would be fetched / generated, then exit. "
                              "No Overpass calls, no tile downloads, no file writes.")
+    parser.add_argument("--minify", action="store_true",
+                        help="Minify app.js and style.css in the build output. "
+                             "Off by default for fast local-iteration builds + readable "
+                             "debugging output. tools/build_and_deploy.sh passes this "
+                             "automatically when building for deploy.")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -2739,11 +2875,29 @@ def main():
         print(line)
     print()
 
-    # Step 5: Copy templates and assets
+    # Step 5: Copy templates and assets. Order matters: copy_assets
+    # runs first because it stashes processed-logo dimensions on
+    # config["_brand_img_dims"] which copy_templates reads when
+    # substituting the brand-img <img> width/height/fetchpriority
+    # attributes. Swapping the order leaves brand_dims as None and
+    # the brand-img tag emits without dimension hints (CLS regression).
     print("Assembling output...")
-    copy_templates(config, output_dir, trails_geojson)
     copy_assets(config, output_dir)
+    copy_templates(config, output_dir, trails_geojson)
     print()
+
+    # Step 5.5: Minify app.js + style.css when --minify is set. Runs
+    # AFTER copy_templates (which writes the files we minify) and
+    # BEFORE generate_service_worker (which hashes file contents into
+    # CACHE_VERSION — so the SW's hash refers to the final minified
+    # bytes the rider downloads). Vendor libs (download_vendor_libs
+    # below) are NOT touched — we serve whatever upstream ships.
+    if args.minify:
+        print("Minifying assets...")
+        minify_results = _minify_assets(output_dir)
+        for line in minify_results:
+            print(line)
+        print()
 
     # Step 6: Bundle vendor libraries (CDN deps served locally for offline)
     print("Bundling vendor libraries...")

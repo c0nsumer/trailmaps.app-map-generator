@@ -2,7 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+    <!-- viewport: omit `maximum-scale` and `user-scalable=no` so users
+         with low vision can pinch-zoom the page chrome (FAB stack,
+         Options overlay, About modal, etc.). WCAG 2.1 AA / EN 301-549
+         9.1.4.4 / RGAA 10.4.2 require zoom-to-200% support, which
+         locking the viewport at 1.0 violates. MapLibre captures pinch
+         gestures on the map element itself, so map-zoom behaviour is
+         unaffected. viewport-fit=cover keeps notched-iPhone safe-area
+         insets correct; interactive-widget=resizes-content reflows the
+         layout when the on-screen keyboard appears (Search overlay
+         input). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>Trail Map</title>
 
     <!-- Open Graph + Twitter Card metadata for rich share-link previews.
@@ -13,6 +23,7 @@
          iMessage, Twitter) resolve them against the page URL they
          fetched, and default og:url to the fetched URL when omitted —
          so no canonical-URL config is needed. -->
+    <meta name="description" content="__OG_DESCRIPTION__">
     <meta property="og:type" content="website">
     <meta property="og:title" content="__OG_TITLE__">
     <meta property="og:description" content="__OG_DESCRIPTION__">
@@ -43,11 +54,20 @@
          prefers-color-scheme. -->
     __COLOR_SCHEME_BOOTSTRAP__
 
-    <!-- Vendor libraries (bundled locally for offline support) -->
+    <!-- Vendor libraries (bundled locally for offline support).
+         All four runtime scripts (these three plus app.js at end of
+         body) carry `defer` so they don't block HTML parsing or
+         first paint. Defer preserves execution order across all
+         deferred scripts in document order, so app.js still sees
+         maplibregl / pmtiles / basemaps on the global by the time it
+         runs. The SW precaches and intercepts these requests
+         identically regardless of attribute (cache-list is built by
+         filesystem walk in build.py, not by parsing this template),
+         so PWA offline behaviour is unchanged. -->
     <link rel="stylesheet" href="vendor/maplibre-gl.css">
-    <script src="vendor/maplibre-gl.js"></script>
-    <script src="vendor/pmtiles.js"></script>
-    <script src="vendor/basemaps.js"></script>
+    <script src="vendor/maplibre-gl.js" defer></script>
+    <script src="vendor/pmtiles.js" defer></script>
+    <script src="vendor/basemaps.js" defer></script>
 
     <!-- App styles -->
     <link rel="stylesheet" href="style.css">
@@ -59,12 +79,21 @@
          - Replaces __BRAND_TITLE__ with the map's title text
          - Strips the <img> when neither `logo:` nor `icon:` is configured
          - Renames `logo.webp` → `logo.svg` when the source is vector
+         - Substitutes __BRAND_IMG_DIMS__ with ` width="N" height="N"`
+           from the processed logo's actual pixel dimensions (CLS
+           prevention — browsers reserve layout box from the aspect
+           ratio before image bytes arrive). Empty string when dims
+           can't be determined (Pillow missing, SVG without viewBox,
+           etc.) — accept the small CLS risk over emitting wrong dims.
+         - fetchpriority="high" is unconditional in the template — it
+           tells the browser to prioritise the LCP image over deferred
+           scripts. Browsers without the hint ignore it (no regression).
          When the img is shown, the title span is visually hidden via
          CSS but stays in the DOM for screen readers + as a fallback if
          the image fails to load. -->
     <div id="brand">
         <!-- Brand img start -->
-        <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img">
+        <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img"__BRAND_IMG_DIMS__ fetchpriority="high">
         <!-- Brand img end -->
         <span id="brand-title">__BRAND_TITLE__</span>
     </div>
@@ -533,7 +562,7 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js" defer></script>
     <!-- SW start -->
     <script>
     if ('serviceWorker' in navigator) {
