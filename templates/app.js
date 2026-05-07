@@ -6896,9 +6896,41 @@ function setupInteractions() {
     // The per-layer mouseenter/mouseleave handlers remain in
     // attachTrailHoverHandlers because cursor feedback IS layer-scoped
     // (we only want `cursor: pointer` over the actual rendered line,
-    // not the 12 px halo) and is desktop-only \u2014 iOS doesn't fire mouse
-    // events.
-    const TRAIL_TAP_BUFFER_PX = 12;
+    // not the buffered halo) and is desktop-only \u2014 iOS doesn't fire
+    // mouse events.
+    //
+    // Buffer sizes are platform-tiered. Field-tested findings:
+    //   - iOS: 12 px feels right. Below ~10 px, taps near the line
+    //     don't register reliably (Safari's tap recognizer is strict
+    //     about sub-pixel accuracy; finger drift cancels the tap).
+    //   - Android: 6 px feels right. Android's WebView already
+    //     applies ~6-8 px touch slop at the gesture-recognizer level,
+    //     so we only need a small extra cushion. iOS-sized buffer
+    //     here makes popups open "near" lines, feels broad.
+    //   - Desktop mouse: 4 px. Mouse pointers are precise; the small
+    //     buffer just forgives the occasional off-by-a-pixel click
+    //     without making popups feel imprecise.
+    //
+    // Detection: hover/pointer media queries split mouse from touch;
+    // UA + maxTouchPoints distinguishes iOS from Android within touch
+    // (Safari on iPad spoofs MacIntel platform string post-iPadOS 13,
+    // hence the maxTouchPoints fallback). Computed once at boot.
+    const TRAIL_TAP_BUFFER_PX = (function () {
+        try {
+            const isTouch = window.matchMedia(
+                "(hover: none) and (pointer: coarse)").matches;
+            if (!isTouch) return 4;  // desktop mouse / trackpad
+            const ua = navigator.userAgent || "";
+            const isIOS = /iP(ad|hone|od)/.test(ua)
+                || (navigator.platform === "MacIntel"
+                    && (navigator.maxTouchPoints || 0) > 1);
+            return isIOS ? 12 : 6;
+        } catch (_) {
+            // matchMedia missing or threw \u2014 fall back to a middle
+            // ground that won't feel broken on any platform.
+            return 6;
+        }
+    })();
     const _trailCasingLayerIds = Object.keys(CONFIG.routes)
         .map((rid) => `trail-casing-${rid}`);
 
@@ -6958,9 +6990,9 @@ function setupInteractions() {
 
     // Single map-wide click handler. Runs once per click regardless
     // of how many trail-casing layers the buffered hit-test crosses.
-    // Uses a 12-CSS-px-radius bounding box (\u2248 Material 48 dp on 2\u00D7
-    // displays) around the tap point for iOS-friendly fat-finger
-    // tap targets \u2014 see the design rationale comment above.
+    // Uses a TRAIL_TAP_BUFFER_PX-radius bounding box around the tap
+    // point \u2014 platform-tiered (iOS 12 / Android 6 / desktop 4) per
+    // the design rationale comment above.
     map.on("click", (e) => {
         if (parkingPopupOpen) return;
         const r = TRAIL_TAP_BUFFER_PX;
