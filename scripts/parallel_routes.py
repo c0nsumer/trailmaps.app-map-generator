@@ -43,7 +43,6 @@ Caveats:
   to traverse multiple OSM ways. Trails with very short first
   segments at junctions get correspondingly shorter transition zones,
   but the structural simplicity is worth it.
-- See plan: ~/.claude/plans/smooth-stitching-houghton.md
 """
 
 import math
