@@ -99,6 +99,45 @@ def generate_png_icons(source_img, output_dir):
     return count
 
 
+def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8,
+                           bg_color=(255, 255, 255, 255)):
+    """Generate a maskable PWA icon (Android home-screen tile).
+
+    Android applies an OEM-specific mask shape (circle on Pixel,
+    squircle on Samsung, teardrop, rounded square, etc.) to maskable
+    icons, and may clip up to ~10% of each edge. The W3C maskable-icon
+    spec requires meaningful content to fit inside the inner
+    80%-diameter safe zone; everything outside is bleed used to fill
+    the tile edge-to-edge under any mask.
+
+    Without a maskable icon, Chrome on Android wraps the (non-maskable)
+    icon in its own white circle as a safe fallback — which is why a
+    plain `purpose: "any"` icon renders as a small badge floating in a
+    larger white circle instead of filling the home-screen tile.
+
+    The source is scaled to `safe_ratio` of the canvas, centered, and
+    the surrounding margin is filled with `bg_color` so the tile paints
+    edge-to-edge under any mask. White matches the existing manifest
+    `background_color` and the apple-touch-icon's white composite, so
+    iOS / Android / older fallbacks all stay visually consistent.
+    """
+    inner = int(size * safe_ratio)
+    canvas = Image.new("RGBA", (size, size), bg_color)
+
+    src = source_img.copy()
+    if src.mode != "RGBA":
+        src = src.convert("RGBA")
+    src.thumbnail((inner, inner), Image.LANCZOS)
+
+    x = (size - src.width) // 2
+    y = (size - src.height) // 2
+    canvas.paste(src, (x, y), src)
+
+    out_path = os.path.join(output_dir, "icons",
+                            f"android-chrome-maskable-{size}x{size}.png")
+    canvas.save(out_path, format="PNG", optimize=True)
+
+
 def generate_favicon_ico(source_img, output_dir):
     """Generate a multi-resolution favicon.ico in the output root."""
     # Pillow ICO plugin needs specific sizes
@@ -207,6 +246,12 @@ def generate_manifest(config, output_dir):
                 "type": "image/png",
                 "purpose": "any",
             },
+            {
+                "src": "android-chrome-maskable-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
         ],
     }
     icons_dir = os.path.join(output_dir, "icons")
@@ -264,6 +309,8 @@ def generate_icons(source_path, output_dir, config):
         img = img.convert("RGBA")
 
     count = generate_png_icons(img, output_dir)
+    generate_maskable_icon(img, output_dir)
+    count += 1
     generate_favicon_ico(img, output_dir)
     has_svg = generate_safari_pinned_tab(img, output_dir)
     generate_manifest(config, output_dir)
