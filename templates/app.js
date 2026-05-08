@@ -392,6 +392,15 @@ function registerDifficultyIcons() {
 }
 
 function difficultyToggleOn() {
+    // Event mode forces difficulty off: the rider's attention belongs
+    // on the featured course, and IMBA diamonds are placed on the
+    // underlying OSM ways (which span every background route too).
+    // There's no clean way to limit them to "the course" because the
+    // course is a custom polyline whose synthesized geometry doesn't
+    // backflow into OSM ways' shared_routes. The toggle row is hidden
+    // in setupOptionsOverlay; this guard also handles initial layer
+    // visibility at addAllTrailLayers time.
+    if (CONFIG.eventModeActive) return false;
     return LS.get("mtb.difficulty", isDefaultVisible("difficulty")) === true;
 }
 
@@ -6045,7 +6054,12 @@ function setupFloatingChrome() {
     // wirePeekToggle so the visual + behaviour matches the other
     // toggles (segmented On/Off pill).
     const difficultyBtn = document.getElementById("toggle-difficulty");
-    if (CONFIG.showDifficulty && difficultyBtn) {
+    if (CONFIG.eventModeActive && difficultyBtn) {
+        // Event mode hides the difficulty toggle entirely — see the
+        // comment on difficultyToggleOn(). Same posture as the Labels
+        // segmented control under event mode.
+        difficultyBtn.classList.add("hidden");
+    } else if (CONFIG.showDifficulty && difficultyBtn) {
         // Set the initial layer visibility from persisted state
         // before wiring; wirePeekToggle reads the LS state again
         // and applies it via the onChange callback only on user
