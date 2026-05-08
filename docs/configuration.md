@@ -622,6 +622,12 @@ Three keys interact, ordered from outermost to innermost:
 The default behaviour (no key set) is: arrows allowed, toggle in
 Options, initial state from `default_visible`.
 
+The toggle row also hides when the map has zero oneway-tagged
+trail features — there's nothing to toggle if no arrows would
+render anyway. This is a runtime gate based on the trails data,
+not a curator-controlled key; it kicks in regardless of
+`default_visible` or `forced_visible`.
+
 ### Direction schedules (day-of-week / date-parity reversal)
 
 Some trail systems are signed as one-way with the direction
