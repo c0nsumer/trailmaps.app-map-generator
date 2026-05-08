@@ -2193,7 +2193,7 @@ async function init() {
         setupFabLabels();
         setupInteractions();
         promoteBasemapLabels();
-        suppressPathLabels();
+        suppressBasemapPathLabels();
         suppressBasemapPois();
         // Apply share-link highlight, if any. Done here (after both
         // trails and route/trail indexes are built) so we can resolve
@@ -7119,8 +7119,8 @@ function promoteBasemapLabels() {
     }
 }
 
-function suppressPathLabels() {
-    if (!CONFIG.suppressPathLabels) return;
+function suppressBasemapPathLabels() {
+    if (!CONFIG.suppressBasemapPathLabels) return;
     if (map.getLayer("roads_labels_minor")) {
         map.setFilter("roads_labels_minor", ["in", "kind", "minor_road"]);
     }
@@ -7190,7 +7190,7 @@ function rebuildBasemapLayers() {
 
     // Re-promote basemap labels above trail layers after style rebuild
     promoteBasemapLabels();
-    suppressPathLabels();
+    suppressBasemapPathLabels();
     suppressBasemapPois();
 
     // Re-register difficulty/arrow icons if lost during style rebuild.

@@ -112,7 +112,7 @@ KNOWN_KEYS = {
     "show_routes":                   bool,
     "show_trails":                   bool,
     "show_direction_arrows":         bool,
-    "suppress_path_labels":          bool,
+    "suppress_basemap_path_labels":  bool,
     "suppress_basemap_pois":         bool,
     "map_dim_on_highlight":          bool,
     "url_hash":                      bool,
@@ -299,6 +299,10 @@ _LEGACY_KEYS = {
     # Replaced by forced_visible: [direction_arrows] (May 2026).
     # Caught with a rename hint in _validate_forced_visible.
     "direction_arrows_required",
+    # Renamed to suppress_basemap_path_labels (May 2026) for symmetry
+    # with suppress_basemap_pois. Caught with a rename hint in
+    # _validate_renamed_keys.
+    "suppress_path_labels",
 }
 
 
@@ -1002,6 +1006,21 @@ def _validate_default_visible(report, config):
         seen.add(item)
 
 
+def _validate_renamed_keys(report, config):
+    """Hard-error on legacy keys whose only fate is a one-for-one
+    rename. Listed in HANDLED_SPECIALLY so the unknown-key fuzzy
+    matcher doesn't try to suggest spelling fixes for them — the
+    error message here points at the new name directly.
+    """
+    if "suppress_path_labels" in config:
+        report.err(
+            "suppress_path_labels",
+            "`suppress_path_labels` was renamed to "
+            "`suppress_basemap_path_labels` for symmetry with "
+            "`suppress_basemap_pois`. Both flags only mutate the "
+            "Protomaps basemap; the new name makes that explicit.")
+
+
 def _validate_forced_visible(report, config):
     """Validate the optional `forced_visible` key.
 
@@ -1483,6 +1502,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)
+    _validate_renamed_keys(report, config)
     _validate_forced_visible(report, config)
     _validate_accent_color(report, config)
     _validate_slug(report, config)

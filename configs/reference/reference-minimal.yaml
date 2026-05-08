@@ -41,7 +41,7 @@ relations:
 # show_routes: true
 # show_trails: true
 # show_direction_arrows: true
-# suppress_path_labels: false
+# suppress_basemap_path_labels: false
 # suppress_basemap_pois: false
 # show_route_distance: false
 # show_route_elevation: false

@@ -1532,7 +1532,7 @@ CONFIG_SPEC = [
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark",        "invertLogoDark",       True),
     ("color_by",                "colorBy",              "relation"),
-    ("suppress_path_labels",    "suppressPathLabels",   False),
+    ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
     ("suppress_basemap_pois",   "suppressBasemapPois",  False),
     # When true (the default), highlighting a route or trail dims
     # everything else on the map (basemap tint + non-highlighted
