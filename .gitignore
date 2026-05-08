@@ -7,7 +7,5 @@ __pycache__/
 configs/*
 !configs/reference/
 *.code-workspace
-TODO.txt
-personal_todo.txt
 .DS_Store
 .claude/
