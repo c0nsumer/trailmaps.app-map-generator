@@ -211,8 +211,19 @@ body {
      * size itself from the actual viewport rectangle each frame,
      * matching MapLibre's resize observer behaviour without depending
      * on devicePixelRatio rounding or browser-specific 100% inter-
-     * pretation in PWA mode. */
-    position: absolute;
+     * pretation in PWA mode.
+     *
+     * `position: fixed` (not absolute) so `inset: 0` resolves against
+     * the visual viewport, which under `viewport-fit=cover` extends
+     * into the bottom safe-area / gesture-bar region. With absolute
+     * positioning, Android Chrome PWA + iOS PWA were leaving a
+     * ~34px-tall white strip at the bottom (the manifest's
+     * background_color showing through the safe-area zone) because
+     * the map's containing block excluded that region. The FAB stack
+     * already uses `env(safe-area-inset-bottom)` to sit ABOVE the
+     * gesture bar; fixed positioning lets the map fill behind it
+     * edge-to-edge, restoring the intended fullscreen look. */
+    position: fixed;
     inset: 0;
 }
 
