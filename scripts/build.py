@@ -1518,7 +1518,11 @@ CONFIG_SPEC = [
     # persisted choice is ignored. Validated at build time against
     # show_routes / show_trails so the lock can't contradict the
     # surfaced sections.
-    ("forced_labels",           "forcedLabels",         None),
+    # Default "" (empty string) rather than None — None is the
+    # "required key" sentinel for inject_config_into_template's loop;
+    # the runtime check is `CONFIG.forcedLabels ? lock : free` which
+    # treats "" as the unset/free state.
+    ("forced_labels",           "forcedLabels",         ""),
     # Initial colour scheme for first-visit riders. "light" / "dark"
     # / "auto" (auto resolves prefers-color-scheme). Default "light"
     # preserves existing behaviour for maps that don't opt in. The
