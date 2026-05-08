@@ -1285,9 +1285,18 @@ let basemapMode = "default"; // "default" or "custom:<id>"
 // no way to flip it. Only featured-route labels actually render —
 // see updateLabels() and the per-route label addLayer() filter for
 // the visibility narrowing.
+//
+// forced_labels override: when CONFIG.forcedLabels is set (one of
+// "routes", "trails", "none"), labelMode is locked to that value
+// and the segmented control is hidden, same as event mode. Distinct
+// from defaultLabels (which seeds the initial value but lets the
+// rider override via Options). Validated at build time so a config
+// can't force a mode that contradicts show_routes / show_trails.
 let labelMode = CONFIG.eventModeActive
     ? "routes"
-    : LS.get("mtb.labels", CONFIG.defaultLabels || "none");
+    : (CONFIG.forcedLabels
+        ? CONFIG.forcedLabels
+        : LS.get("mtb.labels", CONFIG.defaultLabels || "none"));
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
@@ -6155,10 +6164,12 @@ function setupFloatingChrome() {
     // toggle they can't really change would just confuse them.
     const labelField = document.getElementById("label-field");
     const labelGroup = document.getElementById("label-segmented");
-    if (CONFIG.eventModeActive) {
+    if (CONFIG.eventModeActive || CONFIG.forcedLabels) {
         if (labelField) labelField.classList.add("hidden");
         // Skip the rest of the labels wiring: the segmented control
-        // is invisible, no need to rig up handlers or sync state.
+        // is invisible (event-mode locks to "routes"; forced_labels
+        // locks to whatever the curator chose), no need to rig up
+        // handlers or sync state.
     } else if (labelGroup) {
         // Drop buttons that map to disabled sections.
         if (!showRoutes) {

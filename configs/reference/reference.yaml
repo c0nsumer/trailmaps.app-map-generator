@@ -288,6 +288,15 @@ relations:
 # options for hidden categories are removed.
 # default_labels: none
 
+# Lock the labels mode to "routes", "trails", or "none". When set, the
+# Labels segmented control is hidden in Options and the rider's persisted
+# preference is ignored. Distinct from default_labels (which seeds the
+# initial value but lets the rider override). Validated at build time
+# against show_routes / show_trails — locking to a hidden category is
+# rejected. Use for maps where a specific labels mode is part of the
+# curator's chosen presentation.
+# forced_labels: trails
+
 # Initial colour scheme for first-visit riders: "light", "dark", or "auto"
 # (matches the rider's OS prefers-color-scheme). Riders override via the
 # Options Appearance segmented control; their preference persists per-map

@@ -60,6 +60,7 @@ relations:
 # default_visible: []
 # forced_visible: []
 # default_labels: none
+# forced_labels: trails
 # default_color_scheme: light
 # invert_logo_dark: true
 # map_dim_on_highlight: true

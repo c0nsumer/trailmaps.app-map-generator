@@ -83,6 +83,7 @@ KNOWN_KEYS = {
 
     # Display options
     "default_labels":                str,
+    "forced_labels":                 str,
     "color_by":                      str,
     "default_trail_color":           (str, dict),
     "marker_color":                  str,
@@ -340,6 +341,28 @@ def _validate_enums(report, config):
         report.err("default_labels",
                    f"must be one of {sorted(VALID_LABELS)}, "
                    f"got {config['default_labels']!r}")
+
+    if "forced_labels" in config:
+        v = config["forced_labels"]
+        if v not in VALID_LABELS:
+            report.err("forced_labels",
+                       f"must be one of {sorted(VALID_LABELS)}, "
+                       f"got {v!r}")
+        else:
+            # Cross-check against show_routes / show_trails — locking
+            # the rider into a labels mode whose underlying section is
+            # hidden would render no labels at all and surface no UI
+            # to recover. Catch at build time.
+            if v == "routes" and config.get("show_routes") is False:
+                report.err("forced_labels",
+                           "'routes' is invalid when show_routes: false "
+                           "— route labels can't render. Use 'trails' or "
+                           "'none', or remove show_routes: false.")
+            if v == "trails" and config.get("show_trails") is False:
+                report.err("forced_labels",
+                           "'trails' is invalid when show_trails: false "
+                           "— trail labels can't render. Use 'routes' or "
+                           "'none', or remove show_trails: false.")
 
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err("color_by",

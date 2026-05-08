@@ -1513,6 +1513,12 @@ CONFIG_SPEC = [
     # "none" so a fresh-LS visit produces a clean map with the rider
     # opting into labels via the Labels segmented control.
     ("default_labels",          "defaultLabels",        "none"),
+    # Labels mode lock. When set ("routes" / "trails" / "none"), the
+    # Labels segmented control is hidden in Options and the rider's
+    # persisted choice is ignored. Validated at build time against
+    # show_routes / show_trails so the lock can't contradict the
+    # surfaced sections.
+    ("forced_labels",           "forcedLabels",         None),
     # Initial colour scheme for first-visit riders. "light" / "dark"
     # / "auto" (auto resolves prefers-color-scheme). Default "light"
     # preserves existing behaviour for maps that don't opt in. The
