@@ -838,6 +838,55 @@ def _save_signature(output_path, signature):
         print(f"  warn: could not write {_signature_path(output_path)}: {e}")
 
 
+def _trails_fetch_fingerprint(config):
+    """Stable hash of every config key fetch_trails() consumes. When
+    this changes between builds, the cached trails.geojson is stale
+    even though it exists on disk — adding a relation to
+    clipped_relations, swapping osm_file, or editing direction_schedule
+    all flip the hash and force a refetch.
+
+    custom_routes is intentionally NOT in the fingerprint:
+    _enrich_trails_geojson runs idempotently on every build and folds
+    custom routes into the (cached or fresh) trails.geojson, so adding
+    a custom route doesn't require an Overpass refetch.
+
+    File-path-based inputs (osm_file) hash the path string only, not
+    file content; the curator's --trails flag remains the explicit
+    tool when a file's contents change without the path changing.
+    """
+    inputs = {
+        "relations": sorted(config.get("relations") or []),
+        "clipped_relations": sorted(config.get("clipped_relations") or []),
+        "winter_relations": sorted(config.get("winter_relations") or []),
+        "summer_relations": sorted(config.get("summer_relations") or []),
+        "emergency_access_relations": sorted(
+            config.get("emergency_access_relations") or []),
+        "osm_file": config.get("osm_file") or "",
+        "direction_schedule": config.get("direction_schedule") or {},
+    }
+    blob = json.dumps(inputs, sort_keys=True, default=str)
+    return "trails-fp=" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _trails_needs_refetch(trails_path, config):
+    """True iff the cached trails.geojson exists but its sidecar
+    fingerprint doesn't match the current config. Returns
+    (needs_refetch, reason). Missing sidecar is treated as a
+    silent backwards-compat backfill (assume match, write sidecar
+    on next save), not a refetch — avoids surprise refetches on every
+    map the first time after upgrading to fingerprinted caches.
+    """
+    if not os.path.exists(trails_path):
+        return True, "file missing"
+    expected = _trails_fetch_fingerprint(config)
+    actual = _load_signature(trails_path)
+    if actual is None:
+        return False, "fingerprint sidecar missing (legacy build, backfilling)"
+    if actual != expected:
+        return True, f"config inputs changed since last fetch ({actual!r} → {expected!r})"
+    return False, None
+
+
 def _pmtiles_needs_regen(output_path, bbox, maxzoom):
     """True if the cached PMTiles is missing OR its (bbox, maxzoom)
     signature doesn't match what's being requested. Returns a tuple
@@ -2576,12 +2625,37 @@ def main():
 
     # Step 1: Fetch trails
     trails_path = os.path.join(output_dir, "trails.geojson")
-    if args.force or args.trails or not os.path.exists(trails_path):
+    auto_refetch_reason = None
+    if not (args.force or args.trails or not os.path.exists(trails_path)):
+        # Cached file exists; check if config inputs have changed since
+        # it was fetched. A mismatched fingerprint promotes "use cache"
+        # into "refetch" so adding a relation (or swapping osm_file,
+        # editing direction_schedule, etc.) doesn't silently produce a
+        # stale build. Missing sidecar is the legacy-build backfill
+        # path — reuses the cache and writes a fingerprint on next
+        # save.
+        needs, reason = _trails_needs_refetch(trails_path, config)
+        if needs:
+            auto_refetch_reason = reason
+    if (args.force or args.trails or not os.path.exists(trails_path)
+            or auto_refetch_reason):
+        if auto_refetch_reason:
+            print(f"Trails: refetching — {auto_refetch_reason}")
         trails_geojson = fetch_trails(config, trails_path, cache_dir)
+        # Record the fetch fingerprint so the next build can detect
+        # a config change and refetch automatically. Written after
+        # fetch_trails succeeds so a partial/aborted fetch doesn't
+        # leave a stale fingerprint claiming "all good."
+        _save_signature(trails_path, _trails_fetch_fingerprint(config))
     else:
         print(f"Trails: Using existing {trails_path}")
         with open(trails_path) as f:
             trails_geojson = json.load(f)
+        # Backfill the fingerprint sidecar for legacy builds so the
+        # next config change triggers a clean refetch. No-op if the
+        # sidecar already matches (overwriting with the same value).
+        if _load_signature(trails_path) is None:
+            _save_signature(trails_path, _trails_fetch_fingerprint(config))
 
     # Record the data date from the trails file modification time, including
     # local-time HH:MM so the About modal can show fetch granularity finer
