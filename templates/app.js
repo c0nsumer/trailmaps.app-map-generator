@@ -2381,6 +2381,25 @@ function _welcomeSearchDescription() {
     return `Find ${_joinHumanList(targets)}.`;
 }
 
+// Build the list of categories the search box actually returns,
+// based on the same gates renderResults() uses (CONFIG.showRoutes,
+// CONFIG.showTrails, CONFIG.poiCounts). Returns an array of human
+// labels (e.g. ["trails", "places"]) so callers can compose either
+// the comma-form used by the placeholder or the human-list form
+// used by aria-labels. Empty array means the search overlay would
+// have nothing to show — defensive only; the FAB shouldn't appear
+// in that configuration.
+function _searchTargets() {
+    const targets = [];
+    if (CONFIG.showRoutes !== false) targets.push("routes");
+    if (CONFIG.showTrails !== false) targets.push("trails");
+    const counts = CONFIG.poiCounts || {};
+    const hasPois = !!(counts.parking || counts.trailhead || counts.feature
+                       || counts.drinking_water || counts.toilet);
+    if (hasPois) targets.push("places");
+    return targets;
+}
+
 // Build the Options row description from what affordances are
 // actually wired into this map. The lead clause ("turn map markers
 // and overlays on or off") covers the most rider-relevant action —
@@ -5531,6 +5550,26 @@ function setupFloatingChrome() {
     const searchBtn = document.getElementById("toggle-search");
     const optionsBtn = document.getElementById("toggle-options");
 
+    // Replace the index.html's hardcoded "routes, trails, and places"
+    // strings on the search FAB, the overlay, and the input with
+    // labels derived from what this map actually surfaces. Mirrors
+    // the gating in renderResults() so a map with show_routes: false
+    // doesn't promise route results in its placeholder/aria-labels.
+    {
+        const targets = _searchTargets();
+        if (targets.length) {
+            const finderInput = document.getElementById("finder-input");
+            const placeholder = `Search ${targets.join(", ")}…`;
+            const ariaLabel = `Search ${_joinHumanList(targets)}`;
+            if (finderInput) {
+                finderInput.placeholder = placeholder;
+                finderInput.setAttribute("aria-label", ariaLabel);
+            }
+            if (searchBtn) searchBtn.setAttribute("aria-label", ariaLabel);
+            if (searchOverlay) searchOverlay.setAttribute("aria-label", ariaLabel);
+        }
+    }
+
     function setOverlayOpen(overlay, btn, open) {
         if (!overlay) return;
         if (open) {
@@ -6730,8 +6769,10 @@ function makeTrailRow(t, visibleRouteIds) {
     row.appendChild(name);
 
     // Parent route names (only those currently visible). Truncate to 2 plus
-    // an "+N more" tail for readability.
-    const parents = t.routeIds
+    // an "+N more" tail for readability. Suppressed entirely when
+    // show_routes: false — routes aren't a surfaced concept on the
+    // map then, so naming them under each trail is misleading clutter.
+    const parents = (CONFIG.showRoutes === false) ? [] : t.routeIds
         .filter((rid) => visibleRouteIds.has(rid))
         .map((rid) => CONFIG.routes[rid] && CONFIG.routes[rid].name)
         .filter(Boolean);
