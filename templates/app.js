@@ -3318,7 +3318,7 @@ async function loadTrails() {
     // and the two-colour underlay layer.
     const FEATURED_WIDTH_MULTIPLIER = 1.5;
 
-    const byDifficulty = CONFIG.colorBy === "difficulty";
+    const byDifficulty = CONFIG.colorBy === "trail";
 
     // Pass 1: casings
     for (const [routeId, routeInfo] of sortedRoutes) {
