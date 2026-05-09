@@ -2155,10 +2155,13 @@ body:has(.options-overlay.is-open) .fab-stack {
  * this map.
  *
  * Anchored to the right edge of the FAB so it floats out into the
- * map area on the left. Pointer-events: none so taps still register
- * on the FAB underneath the label, not on the label itself. The
- * .fab is position: relative (set above) so the label's absolute
- * positioning resolves against it. */
+ * map area on the left. The chip is a child node of the FAB button,
+ * so clicks on it bubble up to the FAB's existing handlers — the
+ * rider can tap the labelled chip OR the icon and either triggers
+ * the same action. The pointing-arrow ::after pseudo-element is a
+ * visual cue that the chip is a label attached to the FAB, not a
+ * standalone control. The .fab is position: relative (set above) so
+ * the label's absolute positioning resolves against it. */
 .fab-label {
     position: absolute;
     right: calc(100% + 8px);
@@ -2172,15 +2175,77 @@ body:has(.options-overlay.is-open) .fab-stack {
     color: var(--sheet-text);
     border: 1.5px solid var(--sheet-border);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    border-radius: 16px;
+    /* Asymmetric: rounded on the left (the "head" of the chip) and
+     * squared on the right so the wedge can attach to a flat edge.
+     * A fully rounded pill produced an unavoidable geometric mismatch
+     * with the wedge (the chip's right edge is a full semicircle,
+     * the wedge's base is straight — they couldn't meet without
+     * either a notch or an indent). Squared right corners + a wedge
+     * tall enough to span the chip's full height gives one
+     * continuous outline. */
+    border-radius: 16px 0 0 16px;
     padding: 6px 12px;
     font-size: 13px;
     font-weight: 500;
     line-height: 1;
     white-space: nowrap;
-    pointer-events: none;
+    /* Forward taps to the underlying FAB. Riders consistently aim at
+     * the chip's text; without pointer-events the tap fell through to
+     * the map and did nothing. With pointer-events: auto the chip
+     * captures the tap and the click bubbles up to the .fab parent,
+     * triggering the FAB's normal handler. */
+    pointer-events: auto;
+    cursor: pointer;
     opacity: 0;
     transition: opacity 0.22s ease-out, transform 0.22s ease-out;
+}
+
+/* Right-pointing tail on the chip — speech-bubble style, two layers
+ * so the tail's outline visually continues from the chip's border:
+ *   ::before is the larger triangle in the border colour
+ *   ::after is the slightly smaller triangle in the fill colour,
+ *   offset back toward the chip by 1.5 px (the chip's border-width)
+ *   so the rim of border colour shows on the tail's diagonals.
+ * The result reads as "chip with a pointed end" rather than "chip
+ * plus floating triangle." */
+.fab-label::before,
+.fab-label::after {
+    content: "";
+    position: absolute;
+}
+.fab-label::before {
+    /* Outer triangle in the border colour. Anchored to the chip's
+     * OUTER top-right and bottom-right corners — `left: calc(100% +
+     * 1.5px)` lands at the chip's outer right edge (since the
+     * containing block for absolute children is the padding box,
+     * `left: 100%` is at the inner border, and we add the 1.5 px
+     * border width to reach the outer edge). `top: -1.5px` and
+     * `bottom: -1.5px` similarly span across the top + bottom
+     * borders. clip-path draws the triangle (border-trick widths
+     * can't reference dynamic chip height). Width 9 px = visible
+     * protrusion past the chip. */
+    left: calc(100% + 1.5px);
+    top: -1.5px;
+    bottom: -1.5px;
+    width: 9px;
+    background: var(--sheet-border);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.fab-label::after {
+    /* Inner triangle in the fill colour. Spans the chip's INNER top
+     * and bottom edges (top: 0, bottom: 0 = inside the chip's
+     * border) and starts at the chip's inner right edge (left: 100%
+     * which is at the padding right). Sits 1.5 px LEFT of the outer
+     * so the chip's fill flows seamlessly into the wedge's fill
+     * while a 1.5 px rim of border colour stays visible along the
+     * wedge's diagonals. Width 7.5 = ::before width minus the 1.5
+     * px the inner is offset by. */
+    left: 100%;
+    top: 0;
+    bottom: 0;
+    width: 7.5px;
+    background: var(--sheet-bg);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 body.fabs-labeled .fab-label {
