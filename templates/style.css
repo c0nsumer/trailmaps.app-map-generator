@@ -2003,6 +2003,24 @@ body {
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
+/* Desktop / laptop: bump the logo so the brand reads at a normal
+ * banner size on a non-cramped viewport. Mobile-first defaults
+ * above stay 48 × 200 px (compact for one-handed phone use); on
+ * ≥ 768 px the logo grows to 64 × 280 px and the #brand container
+ * widens to match. Build.py rasterises at ~2× the mobile target
+ * (96 px tall PNG); at 64 px display that's 1.5× DPR — a touch
+ * below retina-crisp but visually fine. Bump LOGO_DESKTOP_H in
+ * build.py if you want full 2× on desktop. */
+@media (min-width: 768px) {
+    #brand {
+        max-width: min(60vw, 320px);
+    }
+    #brand-img {
+        max-width: 280px;
+        max-height: 64px;
+    }
+}
+
 /* Logo auto-invert in dark mode. JS adds .invert-dark to #brand-img
  * at boot iff CONFIG.invertLogoDark !== false (default true).
  * invert(1) hue-rotate(180deg) flips lightness without flipping
