@@ -112,6 +112,7 @@ canonical key order so you can diff them at any time.
 | [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation deep dive: data source, computation pipeline, why we show both gain and loss, caveats, and why the numbers won't match Strava. |
 | [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
 | [`docs/examples.md`](docs/examples.md) | Real-world configs from production trail systems. (Many sections are placeholders pending curator notes.) |
+| [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common build and runtime issues, and known cosmetic upstream warnings. |
 
 ## Privacy
