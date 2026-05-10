@@ -1398,14 +1398,20 @@ function validateConfigShape() {
 // trails-load handler to apply the highlight (and discarded after).
 let _pendingShareHighlight = null;
 
-// Snapshot of the map's first-load view target. Set during map
-// construction so the Reset View FAB (top-right stack) can restore
-// exactly what the rider would see on a fresh page load: the
-// framework default (fitBounds CONFIG.bbox + padding 50) when the
-// URL is clean, OR the deep-linked #share=zoom/lat/lon view when the
-// rider arrived via a share link. Captured deterministically (not
-// from map.getCenter() at idle time) so an early pan/zoom before
-// idle doesn't poison the reset target.
+// Snapshot of the framework's canonical view target — the same
+// fitBounds(CONFIG.bbox + padding 50) the rider would see arriving
+// at the map with a clean URL. The Reset View FAB always replays
+// this regardless of how the rider arrived, so the control's
+// behaviour is predictable: tapping Reset means "show me the whole
+// trail system" every time. Riders who want their original
+// share-link view can use the browser's Back button.
+//
+// Was previously context-aware (share-link arrivals reset to the
+// deep-linked center/zoom instead of the bbox), but that made the
+// same control behave differently depending on how the rider
+// arrived — surprising on a permanent UI affordance, and the
+// fit-to-page icon semantics imply "the map's canonical view," not
+// "your entry view."
 let _initialViewTarget = null;
 
 // Apply a highlight that was parsed from an incoming share link.
@@ -1742,23 +1748,22 @@ async function init() {
     if (shareState) {
         mapOptions.center = shareState.center;
         mapOptions.zoom = shareState.zoom;
-        _initialViewTarget = {
-            kind: "center",
-            center: shareState.center,
-            zoom: shareState.zoom,
-        };
     } else {
         mapOptions.bounds = [
             [CONFIG.bbox[0], CONFIG.bbox[1]],
             [CONFIG.bbox[2], CONFIG.bbox[3]],
         ];
         mapOptions.fitBoundsOptions = { padding: 50 };
-        _initialViewTarget = {
-            kind: "bounds",
-            bbox: CONFIG.bbox.slice(),  // defensive copy
-            padding: 50,
-        };
     }
+    // Reset View target is always the framework canonical view
+    // (fitBounds CONFIG.bbox + padding 50), regardless of whether
+    // the rider arrived via share link. See _initialViewTarget
+    // declaration for rationale.
+    _initialViewTarget = {
+        kind: "bounds",
+        bbox: CONFIG.bbox.slice(),  // defensive copy
+        padding: 50,
+    };
 
     if (Object.keys(headersByDomain).length > 0) {
         mapOptions.transformRequest = (url) => {
@@ -5518,40 +5523,35 @@ function setupFloatingChrome() {
 
     // ----- Reset View FAB (top-right stack, between Locate + Options)
     //
-    // Restores the map to the view the rider sees on a fresh page
-    // load: the framework default fitBounds (CONFIG.bbox + 50 px
-    // padding) when the URL is clean, OR the deep-linked
-    // #share=zoom/lat/lon view when they arrived via a share link.
-    // Highlight state is intentionally NOT touched — the rider
-    // clears highlights via the chip's X. flyTo for an animated
-    // restore (300 ms feels like "reset" without losing context;
-    // longer would feel sluggish for what's effectively an undo).
+    // Always restores the framework's canonical view (fitBounds
+    // CONFIG.bbox + 50 px padding), regardless of how the rider
+    // arrived. See _initialViewTarget declaration for the rationale
+    // on why this isn't context-aware. Highlight state is
+    // intentionally NOT touched — the rider clears highlights via
+    // the chip's X. flyTo for an animated restore (300 ms feels like
+    // "reset" without losing context; longer would feel sluggish for
+    // what's effectively an undo).
     const resetBtn = document.getElementById("toggle-reset-view");
     if (resetBtn && map) {
         resetBtn.addEventListener("click", () => {
             if (!_initialViewTarget) return;
-            if (_initialViewTarget.kind === "center") {
-                map.flyTo({
-                    center: _initialViewTarget.center,
-                    zoom: _initialViewTarget.zoom,
+            // _initialViewTarget.kind is always "bounds" today (the
+            // framework canonical view). The kind discriminator is
+            // kept on the snapshot so a future change can re-introduce
+            // context-aware reset (e.g. per-feature) without
+            // restructuring the click handler.
+            map.fitBounds(
+                [
+                    [_initialViewTarget.bbox[0], _initialViewTarget.bbox[1]],
+                    [_initialViewTarget.bbox[2], _initialViewTarget.bbox[3]],
+                ],
+                {
+                    padding: _initialViewTarget.padding,
                     bearing: 0,
                     pitch: 0,
                     duration: 300,
-                });
-            } else {
-                map.fitBounds(
-                    [
-                        [_initialViewTarget.bbox[0], _initialViewTarget.bbox[1]],
-                        [_initialViewTarget.bbox[2], _initialViewTarget.bbox[3]],
-                    ],
-                    {
-                        padding: _initialViewTarget.padding,
-                        bearing: 0,
-                        pitch: 0,
-                        duration: 300,
-                    },
-                );
-            }
+                },
+            );
         });
     }
 
