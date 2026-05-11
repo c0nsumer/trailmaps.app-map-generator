@@ -941,6 +941,20 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     print(f"  Generated {len(geojson['features'])} features")
 
+    # Warn when show_difficulty is enabled but no way carries an
+    # mtb:scale:imba tag — same posture as the POI fetch's
+    # show_* warnings in fetch_pois.py. The runtime auto-hides
+    # the Difficulty toggle anyway (CONFIG.hasDifficultyTrails),
+    # but the build-time note tells the curator "the toggle you
+    # might expect to see won't appear, and here's why."
+    if config.get("show_difficulty", True):
+        imba_tagged = sum(
+            1 for f in geojson["features"]
+            if (f.get("properties") or {}).get("imba_difficulty")
+        )
+        if imba_tagged == 0:
+            print(f"  note: show_difficulty is enabled but no mtb:scale:imba tags found in data")
+
     # Also embed route (relation) metadata for the viewer + the
     # super-relation expansion mapping so build.py can apply the
     # same parent→children expansion to its summer/winter/emergency

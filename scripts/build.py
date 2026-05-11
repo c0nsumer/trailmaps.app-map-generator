@@ -1969,20 +1969,33 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["buildDate"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     config_obj["dataDate"] = config.get("_data_date", "")
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
-    # Build-time scan for any oneway-tagged trail features. Drives
-    # the runtime decision to surface the direction-arrow toggle in
-    # Options. Done at build time (rather than counting placed
+    # Build-time scan for trail-property gates that surface Options
+    # toggles. Done at build time (rather than counting placed
     # decorations at runtime) because the first computeDecorations()
     # pass is deferred to map.once('idle', …) for first-paint perf,
     # so a runtime count would race the deferral and read 0 at gate
-    # time. See setupFloatingChrome() in app.js where this is read.
+    # time. Currently scans for:
+    #   - any oneway-tagged feature → CONFIG.hasOnewayTrails →
+    #     direction-arrow toggle
+    #   - any mtb:scale:imba-tagged feature → CONFIG.hasDifficultyTrails
+    #     → difficulty toggle
+    # See setupFloatingChrome() in app.js where these are read.
     has_oneway = False
+    has_difficulty = False
     for f in (trails_geojson.get("features") or []) if trails_geojson else []:
-        ow = (f.get("properties") or {}).get("oneway")
-        if ow in ("yes", True, "-1", "reversible"):
-            has_oneway = True
+        props = f.get("properties") or {}
+        if not has_oneway:
+            ow = props.get("oneway")
+            if ow in ("yes", True, "-1", "reversible"):
+                has_oneway = True
+        if not has_difficulty:
+            imba = props.get("imba_difficulty")
+            if imba and str(imba).strip():
+                has_difficulty = True
+        if has_oneway and has_difficulty:
             break
     config_obj["hasOnewayTrails"] = has_oneway
+    config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["about"] = config.get("about") or None
     # Welcome modal config: pass through unchanged. Three forms
     # accepted: omitted (None → framework default), false (modal

@@ -221,7 +221,7 @@ data or sprite is absent.
 | `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Options Drinking Water toggle auto-hides if the build emitted none. |
 | `poi_proximity_m` | No | `50` | Distance in meters from the nearest visible trail within which a feature or trail-marker POI is allowed to render. Tight values (~10m) hide POIs that aren't directly on the trail; loose values (~75m+) include nearby attractions but risk surfacing bbox-incidental POIs. The Options Features toggle auto-hides if no feature POI passes this distance check. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted. |
-| `show_difficulty` | No | `true` | When `false`, no IMBA difficulty sprite is generated and no difficulty symbols appear; the Options toggle row is hidden. Default `true` aligns with the other `show_*` gates. The toggle's initial on/off state is governed by `default_visible` (include `difficulty` in the list, or use `default_visible: all`, for diamonds ON at first visit; otherwise the rider opts in via Options). Once the rider toggles it, their LS preference wins on subsequent visits. |
+| `show_difficulty` | No | `true` | When `false`, no IMBA difficulty sprite is generated and no difficulty symbols appear; the Options toggle row is hidden. Default `true` aligns with the other `show_*` gates. The toggle is also auto-hidden when no trail in the map carries an `mtb:scale:imba` value — parallel to the direction-arrow toggle, which auto-hides when no way is one-way. The toggle's initial on/off state is governed by `default_visible` (include `difficulty` in the list, or use `default_visible: all`, for diamonds ON at first visit; otherwise the rider opts in via Options). Once the rider toggles it, their LS preference wins on subsequent visits. |
 | `show_routes` | No | `true` | When false, hides the Routes section of the Finder and removes "Routes" from the Labels dropdown. Useful for maps that have no curated route relations. |
 | `show_trails` | No | `true` | When false, hides the Trails section of the Finder and removes "Trails" from the Labels dropdown. Useful for systems where routes and trails overlap so heavily that listing trails adds noise (e.g. DTE). If both `show_routes` and `show_trails` are false, the whole Finder section disappears and the Labels row is hidden. |
 | `show_direction_arrows` | No | `true` | When `false`, no direction arrows are placed on any oneway trail and the Options toggle row is hidden — even if `direction_arrows` is in `forced_visible` (this gate wins). Use for aesthetic maps that should never display directional indicators regardless of the underlying OSM tagging. The OSM oneway data is preserved on features for finder/data integrity; only the visual decoration is suppressed. |
@@ -541,7 +541,9 @@ white halo for visibility against any background. The Difficulty
 toggle appears under "What to show" in the Options overlay;
 first-visit visibility is controlled by `default_visible` (include
 `difficulty` to default on; otherwise off), and the rider's choice
-persists in localStorage (`mtb.difficulty`).
+persists in localStorage (`mtb.difficulty`). If no trail in the
+map carries an `mtb:scale:imba` value, the toggle is hidden
+entirely — there's nothing to display.
 
 Difficulty symbols only appear on segments where the trail casing is
 visible: hiding a trail (e.g. by switching season) also hides its

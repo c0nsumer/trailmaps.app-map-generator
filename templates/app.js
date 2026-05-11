@@ -6052,14 +6052,17 @@ function setupFloatingChrome() {
 
     // Difficulty — drives the decor-diamond layer. Uses the shared
     // wirePeekToggle so the visual + behaviour matches the other
-    // toggles (segmented On/Off pill).
+    // toggles (segmented On/Off pill). Auto-hidden when no trail
+    // carries an mtb:scale:imba value (parallel to the direction-
+    // arrow gate on CONFIG.hasOnewayTrails) — keeps the rider from
+    // seeing a dead control on maps without IMBA tags.
     const difficultyBtn = document.getElementById("toggle-difficulty");
     if (CONFIG.eventModeActive && difficultyBtn) {
         // Event mode hides the difficulty toggle entirely — see the
         // comment on difficultyToggleOn(). Same posture as the Labels
         // segmented control under event mode.
         difficultyBtn.classList.add("hidden");
-    } else if (CONFIG.showDifficulty && difficultyBtn) {
+    } else if (CONFIG.showDifficulty && CONFIG.hasDifficultyTrails && difficultyBtn) {
         // Set the initial layer visibility from persisted state
         // before wiring; wirePeekToggle reads the LS state again
         // and applies it via the onChange callback only on user

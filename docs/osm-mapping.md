@@ -157,6 +157,12 @@ Tag the actual difficulty of the segment, not what you wish were on
 the map. A segment without a rating renders as the default trail
 colour (so it's still visible — just unflagged).
 
+The rider-facing **Difficulty** toggle in Options surfaces
+automatically whenever at least one way in the map carries an
+`mtb:scale:imba` value. Maps with no IMBA tagging anywhere don't
+show the toggle at all — the build pipeline scans `trails.geojson`
+and skips the control when there's nothing to display.
+
 ### Direction (one-way trails)
 
 | Tag | Value | What this renderer does with it |
