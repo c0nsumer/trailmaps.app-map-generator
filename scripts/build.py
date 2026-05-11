@@ -611,36 +611,68 @@ def generate_service_worker(config, output_dir):
     with open(sw_template) as f:
         sw_content = f.read()
 
-    # Collect all files in output for precaching
-    precache_urls = ["./"]
-    pmtiles_files = []
+    # Walk the build tree twice: once to collect EVERY file (for the
+    # CACHE_VERSION hash — see comment below on why), then filter
+    # that down to PRECACHE_URLS by dropping all but the essential
+    # glyph PBFs. The trim keeps PRECACHE_URLS at ~30 entries for a
+    # typical map instead of ~537 (full glyph parade), which removed
+    # the parallel-glyph storm that competed with MapLibre's
+    # foreground rendering on first visit. Glyph ranges outside
+    # 0-255 flow through the SW's cache-on-fetch handler — whatever
+    # the rider's view actually needs gets pulled from the network
+    # on first use and cached for offline as a side effect of normal
+    # use. See sw.js install/fetch handlers for the runtime half of
+    # this design.
+    def _is_precachable_glyph(rel_url):
+        # rel_url uses forward slashes (normalized below). Non-glyph
+        # files always precache. For glyphs (fonts/*/N-M.pbf) only
+        # the Basic Latin baseline range is precached.
+        if not rel_url.startswith("fonts/") or not rel_url.endswith(".pbf"):
+            return True
+        return rel_url.endswith("/0-255.pbf")
 
+    all_files = []  # every file in output_dir, for the hash
     for root, dirs, files in os.walk(output_dir):
         for fname in sorted(files):
             if fname == "sw.js":
                 continue
             path = os.path.join(root, fname)
             rel = os.path.relpath(path, output_dir)
-            precache_urls.append(rel)
-            if fname.endswith(".pmtiles"):
-                pmtiles_files.append(rel)
+            # Normalize Windows separators for URL use + the glyph
+            # filter check (which expects forward slashes).
+            rel_url = rel.replace(os.sep, "/")
+            all_files.append(rel_url)
 
-    # Compute cache version from actual file CONTENTS, not just the
-    # filename list. The earlier "filenames + data_date" approach
-    # missed the most common case: editing app.js / style.css /
-    # index.html without touching trails or POIs left the cache version
-    # unchanged, so the service worker happily served the stale cached
-    # JS/CSS to every previously-installed visitor — fixes "appeared
-    # to do nothing" until they manually cleared site data.
+    precache_urls = ["./"]
+    pmtiles_files = []
+    for rel_url in all_files:
+        if not _is_precachable_glyph(rel_url):
+            continue
+        precache_urls.append(rel_url)
+        if rel_url.endswith(".pmtiles"):
+            pmtiles_files.append(rel_url)
+
+    # Compute cache version from actual file CONTENTS of EVERY file
+    # in the build (not just the precache subset). The earlier
+    # "filenames + data_date" approach missed the most common case:
+    # editing app.js / style.css / index.html without touching trails
+    # or POIs left the cache version unchanged, so the service worker
+    # happily served the stale cached JS/CSS to every previously-
+    # installed visitor — fixes "appeared to do nothing" until they
+    # manually cleared site data.
+    #
+    # CRITICAL: hash over all_files, not precache_urls. PRECACHE_URLS
+    # excludes most glyph PBFs (they cache-on-fetch instead) but those
+    # files are still part of the deploy. A change to a non-precached
+    # glyph must still bump CACHE_VERSION so the SW evicts the stale
+    # cache entry the next time a rider hits it.
     #
     # Hashing every file's bytes adds ~1-2 s for a typical 24 MB build
     # and guarantees correctness: any change anywhere in the output
     # tree (code, data, assets) produces a fresh CACHE_VERSION, which
     # the SW activate handler uses to evict the old cache and reload.
     hasher = hashlib.sha256()
-    for url in sorted(precache_urls):
-        if url == "./":
-            continue
+    for url in sorted(all_files):
         path = os.path.join(output_dir, url)
         if not os.path.isfile(path):
             continue

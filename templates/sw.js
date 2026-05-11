@@ -1,38 +1,77 @@
 // Service Worker for the trailmaps.app Map Generator
-// Provides offline support via precaching all build assets.
+// Provides offline support: a small priority list is precached in
+// the background after install, and everything else the rider
+// touches at runtime is cached on-fetch by the handler below.
 //
 // Config is injected at build time by build.py:
-//   SW_CONFIG.CACHE_VERSION  — hash-based cache version string
-//   SW_CONFIG.PRECACHE_URLS  — list of all files to cache
-//   SW_CONFIG.PMTILES_FILES  — list of .pmtiles filenames for Range request handling
+//   SW_CONFIG.CACHE_VERSION  — hash-based cache version string,
+//                              computed over EVERY file in the
+//                              build (not just precached ones)
+//   SW_CONFIG.PRECACHE_URLS  — priority list for background fill
+//                              (omits most glyph PBFs — those flow
+//                              through cache-on-fetch)
+//   SW_CONFIG.PMTILES_FILES  — list of .pmtiles filenames for
+//                              Range request handling
 
 /*__SW_CONFIG__*/
 
 const CACHE_NAME = `trail-map-${SW_CONFIG.CACHE_VERSION}`;
 
 // ============================================================
-// Install — precache all build output
+// Install — complete immediately, precache in background
 // ============================================================
+// Install used to block on cache.addAll(PRECACHE_URLS), which on
+// first visit pulled ~20 MB across hundreds of files (full PMTiles,
+// every glyph PBF, sprites, etc.) in parallel with MapLibre's own
+// foreground rendering requests. On constrained connections this
+// produced a long tail of "blocked" HTTP/3 streams contending with
+// the critical-path resources and degraded first paint badly.
+//
+// New design: install completes essentially immediately, then a
+// background precache trickles through PRECACHE_URLS one request
+// at a time. The fetch handler below also writes runtime fetches
+// to the cache, so any asset the rider actually touches becomes
+// available offline as a side effect of normal use. Combined, this
+// means first paint is unblocked, and offline coverage grows
+// progressively (visited areas immediately via cache-on-fetch;
+// unvisited areas as the background precache catches up, typically
+// within tens of seconds to a couple of minutes depending on
+// connection speed).
+//
+// Side effect on the update toast in app.js: previously the toast
+// fired only after cache.addAll completed (30 s – 2 min after a
+// deploy). With install completing immediately, the new SW reaches
+// "installed" state within ~1 s of page load, so the "Reload" toast
+// appears much sooner after a deploy. Functionally identical — the
+// reload-handler is already defensive about reg.waiting being
+// cleared (app.js ~line 7313) — just a different rhythm.
 self.addEventListener("install", (event) => {
-    // Force every precache fetch to bypass the browser HTTP cache via
-    // `cache: "reload"`. Without this, cache.addAll's internal fetches
-    // respect the browser's HTTP cache — and Caddy serves most assets
-    // with max-age=86400, so for up to 24 h after a deploy the SW
-    // would re-cache the STALE app.js / style.css / data files it
-    // already had. Result: CACHE_VERSION ticks, SW activates, but the
-    // newly-cached contents are still yesterday's bytes. Reload mode
-    // costs one full re-download per cache version bump, which is
-    // exactly when you want a fresh fetch.
-    const requests = SW_CONFIG.PRECACHE_URLS.map(
-        (url) => new Request(url, { cache: "reload" })
-    );
-    event.waitUntil(
-        caches
-            .open(CACHE_NAME)
-            .then((cache) => cache.addAll(requests))
-            .then(() => self.skipWaiting())
-    );
+    event.waitUntil(self.skipWaiting());
+    // Fire-and-forget. Intentionally NOT inside event.waitUntil so
+    // it cannot delay install completion.
+    backgroundPrecache();
 });
+
+async function backgroundPrecache() {
+    // Sequential cache.add (not cache.addAll) so we trickle through
+    // the connection one request at a time, leaving bandwidth for
+    // foreground MapLibre fetches. cache: "reload" bypasses the
+    // browser HTTP cache — Caddy serves most assets with
+    // max-age=86400, so without this flag a fresh SW could end up
+    // caching yesterday's bytes for up to 24 h post-deploy.
+    const cache = await caches.open(CACHE_NAME);
+    for (const url of SW_CONFIG.PRECACHE_URLS) {
+        try {
+            await cache.add(new Request(url, { cache: "reload" }));
+        } catch (e) {
+            // Best-effort. A single failed asset (network blip,
+            // stale URL after deploy, etc.) shouldn't abort the
+            // rest of the precache. Log so it's visible in DevTools
+            // when debugging offline coverage gaps.
+            console.warn("SW backgroundPrecache failed:", url, e);
+        }
+    }
+}
 
 // ============================================================
 // Message handler — supports B.7 "Reload" toast button
@@ -86,10 +125,62 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    // Standard cache-first strategy
+    // HEAD requests: satisfy from the GET cache. cache.match by
+    // default is method-aware, so a cached GET won't match a HEAD
+    // lookup. addTerrainLayers in app.js does a HEAD precheck on
+    // terrain.pmtiles before adding the source — offline, the GET
+    // is cached but a strict match would miss, the fetch would
+    // fall through to network, fail, and the terrain layer would
+    // never be added. Synthesize a 200 with no body (HEAD has no
+    // body anyway) from the GET cache entry so the precheck passes
+    // and the subsequent Range requests find their cached blob.
+    if (event.request.method === "HEAD") {
+        event.respondWith(
+            caches.match(event.request, { ignoreMethod: true }).then((cached) => {
+                if (cached) {
+                    return new Response(null, {
+                        status: cached.status,
+                        statusText: cached.statusText,
+                        headers: cached.headers,
+                    });
+                }
+                return fetch(event.request);
+            })
+        );
+        return;
+    }
+
+    // Cache-first with write-on-miss. If the asset is cached, serve
+    // it instantly. Otherwise fetch from network AND write the
+    // response into the cache for next time. This pairs with the
+    // deferred backgroundPrecache() in install: glyph PBFs, sprites,
+    // and other lazily-fetched assets that aren't in the precache
+    // priority list get cached on first use, so offline coverage
+    // grows as the rider explores even before the background
+    // precache catches up.
     event.respondWith(
         caches.match(event.request).then((cached) => {
-            return cached || fetch(event.request);
+            if (cached) return cached;
+            return fetch(event.request)
+                .then((response) => {
+                    // Cache successful same-origin GET responses
+                    // only. Skip opaque (cross-origin no-CORS),
+                    // partial (206 Range), and error responses —
+                    // none of those round-trip cleanly via the
+                    // Cache API for offline serving.
+                    if (
+                        response &&
+                        response.status === 200 &&
+                        response.type === "basic"
+                    ) {
+                        const clone = response.clone();
+                        caches
+                            .open(CACHE_NAME)
+                            .then((cache) => cache.put(event.request, clone))
+                            .catch(() => { /* best effort */ });
+                    }
+                    return response;
+                });
         })
     );
 });
@@ -98,10 +189,19 @@ self.addEventListener("fetch", (event) => {
 // Range request handler for PMTiles
 //
 // PMTiles uses HTTP Range requests to read tile chunks from the
-// archive. The Cache API stores the full file (fetched during
-// install via cache.addAll). On a Range request we retrieve the
-// full cached response, slice the requested byte range from the
-// blob, and return a synthetic 206 Partial Content response.
+// archive. The Cache API stores the full file (fetched by the
+// backgroundPrecache loop, since each .pmtiles is in
+// PRECACHE_URLS). On a Range request we retrieve the full cached
+// response, slice the requested byte range from the blob, and
+// return a synthetic 206 Partial Content response.
+//
+// If the full file hasn't been precached yet (rider zoomed into a
+// fresh visit before background precache caught up), the cache.match
+// below misses and we fall back to network — Caddy serves the
+// Range request directly. The PMTiles slice is correct either way;
+// the only difference is whether the bytes came from cache or
+// network. Once the background precache eventually fetches the full
+// file, subsequent Range requests slice from cache.
 //
 // Blob.slice() creates a lightweight view — not a copy.
 // ============================================================
