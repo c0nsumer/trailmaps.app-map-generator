@@ -3756,6 +3756,15 @@ async function loadTrails() {
     // ensures dark-mode visitors see the right colours immediately
     // (no flash of light-mode labels).
     applyMapPaintForScheme(currentColorScheme());
+
+    // Sync layer visibility to the current bucket-model state before
+    // we return — without this, every route's layers default to
+    // "visible" and any route hidden by the bucket model (e.g.,
+    // emergency-access while emergencyOn is false) would briefly
+    // paint during the await loadPOIs() yield in init() before
+    // setupFloatingChrome → applyVisibilityChange runs. See the
+    // comment on _applyPerRouteLayerVisibility for the full reasoning.
+    _applyPerRouteLayerVisibility();
 }
 
 // Build a filter expression for a label layer on the trail-decorations
@@ -4095,6 +4104,29 @@ function applyVisibilityChange() {
     }
 }
 
+// Sync every per-route layer's MapLibre visibility with the current
+// visibleRoutes set. Called from updateTrailDisplay() on every
+// bucket-model change AND from loadTrails() right after the layers
+// are added — without that initial sync, MapLibre's default
+// visibility ("visible") would let bucket-hidden routes (e.g., an
+// emergency-access route while emergencyOn is false) paint briefly
+// during the await loadPOIs() yield in init(), before
+// setupFloatingChrome → applyVisibilityChange runs. On a fast
+// connection that's imperceptible; on 4G it's a visible flicker.
+function _applyPerRouteLayerVisibility() {
+    for (const routeId of Object.keys(CONFIG.routes)) {
+        const vis = visibleRoutes.has(routeId) ? "visible" : "none";
+        for (const prefix of ["trail-casing-", "trail-fill-", "trail-fill2-",
+                              "trail-fill-unrated-", "trail-label-",
+                              "clip-arrow-"]) {
+            const layerId = prefix + routeId;
+            if (map.getLayer(layerId)) {
+                map.setLayoutProperty(layerId, "visibility", vis);
+            }
+        }
+    }
+}
+
 function updateTrailDisplay() {
     const updated = computeOffsetsAndFilter();
     const source = map.getSource("trails");
@@ -4110,18 +4142,7 @@ function updateTrailDisplay() {
     // matches the new state.
     updateDecorationsSource();
 
-    for (const routeId of Object.keys(CONFIG.routes)) {
-        const visible = visibleRoutes.has(routeId);
-        const vis = visible ? "visible" : "none";
-        for (const prefix of ["trail-casing-", "trail-fill-", "trail-fill2-",
-                              "trail-fill-unrated-", "trail-label-",
-                              "clip-arrow-"]) {
-            const layerId = prefix + routeId;
-            if (map.getLayer(layerId)) {
-                map.setLayoutProperty(layerId, "visibility", vis);
-            }
-        }
-    }
+    _applyPerRouteLayerVisibility();
 
     recomputeClipEndpointVisibility();
 
