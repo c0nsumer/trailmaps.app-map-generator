@@ -1,0 +1,137 @@
+# --- Identity ---
+name: "Example: Addison Oaks County Park"
+slug: example
+title: "Example Map: Addison Oaks County Park"
+
+# --- Data sources ---
+relations: [12666899]
+# osm_file: osm.osm
+clipped_relations:
+  - 20502171 # Addison Oaks to Bald Mountain Connector
+# event_mode:
+
+# --- Route buckets ---
+# winter_relations: []
+# summer_relations: []
+# emergency_access_relations: []
+
+# --- Custom routes ---
+# custom_routes: []
+
+# --- Map view geometry ---
+# bbox: [-87.66, 46.47, -87.59, 46.53]
+# pan_bbox: [-87.70, 46.44, -87.55, 46.56]
+# pan_padding: 0.5
+# center: [-87.635, 46.495]
+# zoom: 14
+# min_zoom: 10
+# max_zoom: 18
+# basemap_maxzoom: 15
+# terrain_maxzoom: 13
+
+# --- Build-time data gates ---
+# show_markers: true
+# show_features: true
+# show_parking: true
+# show_trailheads: true
+# show_toilets: true
+# show_drinking_water: true
+# show_terrain: true
+# show_difficulty: true
+# show_routes: true
+# show_trails: true
+# show_direction_arrows: true
+# suppress_basemap_path_labels: false
+# suppress_basemap_pois: false
+# show_route_distance: false
+# show_route_elevation: false
+# poi_proximity_m: 50
+
+# --- Per-route style overrides ---
+# relation_colors: {}
+dashed_relations:
+  20502171: # Addison Oaks to Bald Mountain Connector
+    pattern: [0, 2]
+    cap: round
+    colors: [gray]
+# color_by: relation
+# default_trail_color: "#808080"
+
+# --- Direction schedules ---
+# direction_schedule: {}
+
+# --- Display ---
+# default_visible: []
+# forced_visible: []
+# default_labels: none
+# forced_labels: trails
+# default_color_scheme: light
+invert_logo_dark: false
+# map_dim_on_highlight: true
+# url_hash: false
+# distance_units: mi
+# share_button: true
+
+# --- Marker and accent colours ---
+# marker_color: "#795548"
+# marker_text_color: "white"
+# marker_border_color: "white"
+# parking_color: "#2980b9"
+# parking_text_color: "white"
+# parking_border_color: "white"
+# trailhead_color: "#27ae60"
+# trailhead_text_color: "white"
+# trailhead_border_color: "white"
+# feature_color: "#8e44ad"
+# feature_ring_color: "#ffffff"
+# accent_color: "#2980b9"
+
+# --- Base layers ---
+# base_layers: []
+
+# --- Branding ---
+logo: example_logo.png
+icon: example_icon.png
+
+# --- User-supplied points ---
+trailheads:
+- name: Main
+  coordinates: [-83.1685292, 42.8054456]
+- name: Lake George
+  coordinates: [-83.1799051, 42.8064348]
+- name: Bald Mountain Connector
+  coordinates: [-83.1795546, 42.7991588]
+- name: Addison Oaks East
+  coordinates: [-83.1505168, 42.7997378]
+parking:
+- name: Main Lot
+  coordinates: [-83.1649362, 42.8033279]
+
+# --- PWA ---
+# pwa: true
+# pwa_install_prompt: true
+
+# --- About modal ---
+about:
+  description: |
+    Example Description: This is an example map configuration for trailmaps.app's map generator. It uses OpenStreetMap data and is not an official map of Addison Oaks County Park.
+  links:
+  - label: Addison Oaks County Park (Official)
+    url: https://www.oakgov.com/community/oakland-county-parks/parks-trails/addison-oaks
+  - label: Addison Oaks (CRAMBA)
+    url: https://cramba.org/trails/addison-oaks-county-park
+  - label: Clinton River Area Mountain Bike Association
+    url: https://cramba.org
+  curator:
+    name: Steve Vigneau
+    url: https://nuxx.net
+
+# --- Welcome modal ---
+welcome:
+#   title: ""
+  body: |
+    Example Welcome: This is an example map configuration for trailmaps.app's map generator. It uses OpenStreetMap data and is not an official map of Addison Oaks County Park.
+#   show_controls_hint: true
+
+# --- Output ---
+# output_dir: build/my-trails

@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 configs/*
 !configs/reference/
+!configs/example/
 *.code-workspace
 .DS_Store
 .claude/
