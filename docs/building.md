@@ -48,11 +48,11 @@ source .venv/bin/activate
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Build the RAMBA map (first run fetches all data)
-python scripts/build.py configs/ramba/ramba.yaml
+# Build the example map (first run fetches all data)
+python scripts/build.py configs/example/example.yaml
 
 # Preview locally
-python scripts/serve.py build/ramba
+python scripts/serve.py build/example
 # Open http://localhost:8090
 ```
 
@@ -63,11 +63,11 @@ finish in under 30 seconds.
 ## Build options
 
 ```bash
-python scripts/build.py configs/ramba/ramba.yaml                 # Full build (uses caches)
-python scripts/build.py configs/ramba/ramba.yaml --force          # Re-fetch everything (clears Overpass cache)
-python scripts/build.py configs/ramba/ramba.yaml --trails         # Re-fetch trail data from OSM (uses Overpass cache)
-python scripts/build.py configs/ramba/ramba.yaml --skip-terrain   # Skip terrain tile generation
-python scripts/build.py configs/ramba/ramba.yaml --skip-basemap   # Skip basemap extraction
+python scripts/build.py configs/example/example.yaml                 # Full build (uses caches)
+python scripts/build.py configs/example/example.yaml --force          # Re-fetch everything (clears Overpass cache)
+python scripts/build.py configs/example/example.yaml --trails         # Re-fetch trail data from OSM (uses Overpass cache)
+python scripts/build.py configs/example/example.yaml --skip-terrain   # Skip terrain tile generation
+python scripts/build.py configs/example/example.yaml --skip-basemap   # Skip basemap extraction
 ```
 
 - `--force` clears the Overpass API response cache (`cache/`) and
@@ -119,7 +119,7 @@ A development server with HTTP Range request support lives at
 `scripts/serve.py`:
 
 ```bash
-python scripts/serve.py build/ramba
+python scripts/serve.py build/example
 # Open http://localhost:8090
 ```
 
@@ -137,16 +137,16 @@ and (optionally) deploys via `rsync`. Run `./tools/build_and_deploy.sh
 ./tools/build_and_deploy.sh
 
 # Build and deploy a subset
-./tools/build_and_deploy.sh ramba dte
+./tools/build_and_deploy.sh example dte
 
 # Build but skip deploy
-./tools/build_and_deploy.sh --build-only ramba
+./tools/build_and_deploy.sh --build-only example
 
 # Re-fetch all data and rebuild
-./tools/build_and_deploy.sh --force ramba
+./tools/build_and_deploy.sh --force example
 
 # Pass extra flags through to build.py
-./tools/build_and_deploy.sh ramba -- --skip-basemap --skip-terrain
+./tools/build_and_deploy.sh example -- --skip-basemap --skip-terrain
 ```
 
 The deploy destination is the `DEFAULT_DEPLOY_DEST` constant at the
@@ -158,13 +158,13 @@ See [`tools/README.md`](../tools/README.md) for the full option table.
 
 ```bash
 ./tools/build_and_deploy.sh --validate-only          # all configs
-./tools/build_and_deploy.sh --validate-only ramba    # just one
+./tools/build_and_deploy.sh --validate-only example    # just one
 ```
 
 Or invoke the validator directly:
 
 ```bash
-python scripts/validate_config.py configs/ramba/ramba.yaml
+python scripts/validate_config.py configs/example/example.yaml
 ```
 
 Validation is fast and catches every YAML / value error in one pass
@@ -247,7 +247,7 @@ files manually and run with `--trails`:
 
 ```bash
 rm cache/overpass_*.json
-python scripts/build.py configs/ramba/ramba.yaml --trails --skip-basemap --skip-terrain
+python scripts/build.py configs/example/example.yaml --trails --skip-basemap --skip-terrain
 ```
 
 ### Build and data dates
@@ -352,7 +352,7 @@ configuration is needed.
 You can preview font trimming results without building:
 
 ```bash
-python scripts/font_trimmer.py build/ramba/
+python scripts/font_trimmer.py build/example/
 ```
 
 ## Project structure

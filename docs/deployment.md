@@ -1,8 +1,8 @@
 # Deployment
 
-How to host the build output on a static server, what cache headers
-to set, how the PWA install flow works in production, and what to
-expect from the service worker over the long term.
+How to host the build output on a static server, what cache headers to set, how
+the PWA install flow works in production, and what to expect from the service
+worker over the long term.
 
 ## Contents
 
@@ -15,21 +15,20 @@ expect from the service worker over the long term.
 
 ## Quick deploy: any static file server
 
-Copy the `build/<slug>/` directory to any static file server. The
-server must support HTTP Range requests for PMTiles (Caddy, nginx,
-Apache all do). No special CORS or rewrite rules are needed; a
-standard `file_server` config is sufficient.
+Copy the `build/<slug>/` directory to any static file server. The server must
+support HTTP Range requests for PMTiles (Caddy, nginx, Apache all do). No
+special CORS or rewrite rules are needed; a standard `file_server` config is
+sufficient.
 
-The convenience wrapper `tools/build_and_deploy.sh` handles
-validate-build-rsync in one shot:
+The convenience wrapper `tools/build_and_deploy.sh` handles validate-build-rsync
+in one shot:
 
 ```bash
 ./tools/build_and_deploy.sh ramba
 ```
 
-The `DEFAULT_DEPLOY_DEST` constant at the top of the script controls
-the default rsync destination; override per-run with
-`--dest <ssh-path>`.
+The `DEFAULT_DEPLOY_DEST` constant at the top of the script controls the default
+rsync destination; override per-run with `--dest <ssh-path>`.
 
 ## Caddy configuration
 
@@ -85,67 +84,61 @@ mytrailmaps.com {
 }
 ```
 
-The same logical setup translates directly to nginx or Apache: the
-required pieces are HTTPS, Range request support on `.pmtiles`,
-`Cache-Control: no-cache` on `index.html` and `sw.js`, and a sane
-TTL on everything else.
+The same logical setup translates directly to nginx or Apache: the required
+pieces are HTTPS, Range request support on `.pmtiles`, `Cache-Control: no-cache`
+on `index.html` and `sw.js`, and a sane TTL on everything else.
 
 ## Service worker update cadence
 
-Deploying a new build ticks `CACHE_VERSION` (a content-based hash of
-every output file), so any code, data, or asset change cuts a new
-service worker. How fast riders see it without reloading the page:
+Deploying a new build ticks `CACHE_VERSION` (a content-based hash of every
+output file), so any code, data, or asset change cuts a new service worker. How
+fast riders see it without reloading the page:
 
-- **On any page load or refresh** within the map's scope, the
-  browser fetches `sw.js`, byte-compares it, and installs a new SW
-  into the "waiting" state if it differs. The page detects this via
-  `updatefound` and shows an "Updated map available" toast with a
-  Reload button.
-- **Without a refresh**, the browser performs its own automatic
-  update check **~every 24 hours**. Per the SW spec, modern browsers
-  cap `sw.js` at a 24h staleness threshold regardless of
-  `Cache-Control`, then bypass HTTP cache for that fetch: a stale
-  `max-age=86400` response from the origin can't keep the old SW
-  pinned past a day. The check fires when the SW handles a fetch
-  event after the threshold has elapsed; if a new SW is found, the
-  same "Updated map available" toast appears live on the open page.
-- **The framework does not call `registration.update()` on a
-  timer.** Update cadence is entirely the browser's default
-  behaviour. Riders who keep a tab open across days will typically
-  see the toast within a day of any deploy, on the next request the
-  SW handles. Riders who close + re-open the map see the toast
-  almost immediately on the next launch.
+- **On any page load or refresh** within the map's scope, the browser fetches
+  `sw.js`, byte-compares it, and installs a new SW into the "waiting" state if
+  it differs. The page detects this via `updatefound` and shows an "Updated map
+  available" toast with a Reload button.
+- **Without a refresh**, the browser performs its own automatic update check
+  **~every 24 hours**. Per the SW spec, modern browsers cap `sw.js` at a 24h
+  staleness threshold regardless of `Cache-Control`, then bypass HTTP cache for
+  that fetch: a stale `max-age=86400` response from the origin can't keep the
+  old SW pinned past a day. The check fires when the SW handles a fetch event
+  after the threshold has elapsed; if a new SW is found, the same "Updated map
+  available" toast appears live on the open page.
+- **The framework does not call `registration.update()` on a timer.** Update
+  cadence is entirely the browser's default behaviour. Riders who keep a tab
+  open across days will typically see the toast within a day of any deploy, on
+  the next request the SW handles. Riders who close + re-open the map see the
+  toast almost immediately on the next launch.
 
 ## PWA and offline support
 
-When `pwa: true` (the default), every generated map is a fully
-installable Progressive Web App that works offline after the first
-visit. Set `pwa: false` to disable the service worker and install UI
-while still keeping locally bundled vendor libraries.
+When `pwa: true` (the default), every generated map is a fully installable
+Progressive Web App that works offline after the first visit. Set `pwa: false`
+to disable the service worker and install UI while still keeping locally bundled
+vendor libraries.
 
 **How it works:**
 
-1. **Service worker.** A service worker (`sw.js`) is generated at
-   the end of each build with a precache list of every file in the
-   output. On first visit, all assets are cached. Subsequent visits
-   and offline use are served entirely from the cache.
+1. **Service worker.** A service worker (`sw.js`) is generated at the end of
+   each build with a precache list of every file in the output. On first visit,
+   all assets are cached. Subsequent visits and offline use are served entirely
+   from the cache.
 
-2. **PMTiles offline.** The service worker handles HTTP Range
-   requests for `.pmtiles` files by slicing from the cached full
-   file. Map tiles work fully offline.
+2. **PMTiles offline.** The service worker handles HTTP Range requests for
+   `.pmtiles` files by slicing from the cached full file. Map tiles work fully
+   offline.
 
-3. **Install row.** An "Install as an app" action row appears in the
-   Options overlay on supported browsers. On iOS, tapping it reveals
-   a Share to Add-to-Home-Screen hint instead of firing an install
-   prompt.
+3. **Install row.** An "Install as an app" action row appears in the Options
+   overlay on supported browsers. On iOS, tapping it reveals a Share to
+   Add-to-Home-Screen hint instead of firing an install prompt.
 
-4. **Cache updates.** Each build produces a unique cache version. On
-   the next visit after a rebuild, the new service worker installs,
-   re-caches all files, and activates immediately. Old caches are
-   automatically cleaned up.
+4. **Cache updates.** Each build produces a unique cache version. On the next
+   visit after a rebuild, the new service worker installs, re-caches all files,
+   and activates immediately. Old caches are automatically cleaned up.
 
-The PWA is transparent: the map works identically in a regular
-browser tab. Offline capability is purely additive.
+The PWA is transparent: the map works identically in a regular browser tab.
+Offline capability is purely additive.
 
 ### Install affordance behaviour by platform
 
@@ -159,11 +152,10 @@ The `pwa_install_prompt` config key controls install promotion:
 
 ## PMTiles and HTTP Range requests
 
-PMTiles relies on HTTP Range requests to read tile chunks instead of
-downloading the entire archive. This is critical for fast first-load
-performance: a typical trail map's basemap PMTiles is 10 to 30 MB,
-but only a few hundred KB of tile chunks are needed to render any
-given view.
+PMTiles relies on HTTP Range requests to read tile chunks instead of downloading
+the entire archive. This is critical for fast first-load performance: a typical
+trail map's basemap PMTiles is 10 to 30 MB, but only a few hundred KB of tile
+chunks are needed to render any given view.
 
 Verify Range support manually before deploying a new server config:
 
@@ -171,30 +163,27 @@ Verify Range support manually before deploying a new server config:
 curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles
 ```
 
-The response should include `206 Partial Content` and `Content-Range:
-bytes 0-1000/<total>`. If you see `200 OK` with the full body, Range
-requests are not honoured and every tile read will re-fetch the whole
-archive.
+The response should include `206 Partial Content` and `Content-Range: bytes
+0-1000/<total>`. If you see `200 OK` with the full body, Range requests are not
+honoured and every tile read will re-fetch the whole archive.
 
 The runtime detects this on first cold load and prints
-`[mtb-map] HTTP Range requests not honored...` to the browser console
-(DevTools to Console) with diagnostic detail. After the service
-worker caches the full file, the warning stops firing (that's
-correct behaviour, but every new visitor still pays the slow
-first-load cost).
+`[mtb-map] HTTP Range requests not honored...` to the browser console (DevTools
+to Console) with diagnostic detail. After the service worker caches the full
+file, the warning stops firing (that's correct behaviour, but every new visitor
+still pays the slow first-load cost).
 
 ## Open Graph and share previews
 
-Every generated map emits Open Graph and Twitter Card meta tags
-referencing the icon and title, regardless of `share_button`. When
-the map URL is shared on Slack, Discord, iMessage, Android Messages,
-Facebook, X, or any other platform that consumes OG tags, the
-preview card shows:
+Every generated map emits Open Graph and Twitter Card meta tags referencing the
+icon and title, regardless of `share_button`. When the map URL is shared on
+Slack, Discord, iMessage, Android Messages, Facebook, X, or any other platform
+that consumes OG tags, the preview card shows:
 
 - The map title.
 - The map's icon (one of the generated PWA icons).
-- A short description (the `about.description` first paragraph,
-  trimmed to a sensible length, or a sober default).
+- A short description (the `about.description` first paragraph, trimmed to a
+  sensible length, or a sober default).
 
-No separate config gate is needed; the meta tags are inert until
-something fetches the URL.
+No separate config gate is needed; the meta tags are inert until something
+fetches the URL.

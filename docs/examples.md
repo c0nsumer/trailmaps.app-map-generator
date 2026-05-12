@@ -1,18 +1,14 @@
 # Examples
 
-Real-world configurations drawn from production trail systems
-deployed at [trailmaps.app](https://trailmaps.app). Each section
-covers one map, what makes it interesting from a config standpoint,
-and the YAML knobs the curator turned. The annotated reference at
+Real-world configurations drawn from production trail systems deployed at
+[trailmaps.app](https://trailmaps.app). Each section covers one map, what makes
+it interesting from a config standpoint, and the YAML knobs the curator turned.
+The annotated reference at
 [`configs/reference/reference.yaml`](../configs/reference/reference.yaml)
-explains every key in isolation; this document shows how the keys
-combine in practice.
+explains every key in isolation; this document shows how the keys combine in
+practice.
 
 > **Note.** The detail under each map is currently a placeholder.
-> Steve Vigneau (the curator) will fill these in over time as each
-> map's particulars are documented. Cross-link from here to the live
-> deployment at `https://trailmaps.app/<slug>` for a quick look at
-> any map.
 
 ## Contents
 
@@ -31,7 +27,8 @@ combine in practice.
 
 - **Live map**: <https://trailmaps.app/ramba>
 - **Config**: [`configs/ramba/ramba.yaml`](../configs/ramba/ramba.yaml)
-- **Anchor relation**: [12425503](https://www.openstreetmap.org/relation/12425503)
+- **Anchor relation**:
+  [12425503](https://www.openstreetmap.org/relation/12425503)
 
 What makes this map worth studying:
 
@@ -44,8 +41,10 @@ Notable config decisions:
 ## Glacial Hills (Bellaire, MI)
 
 - **Live map**: <https://trailmaps.app/glacialhills>
-- **Config**: [`configs/glacialhills/glacialhills.yaml`](../configs/glacialhills/glacialhills.yaml)
-- **Anchor relation**: [12562243](https://www.openstreetmap.org/relation/12562243)
+- **Config**:
+  [`configs/glacialhills/glacialhills.yaml`](../configs/glacialhills/glacialhills.yaml)
+- **Anchor relation**:
+  [12562243](https://www.openstreetmap.org/relation/12562243)
 
 What makes this map worth studying:
 
@@ -59,7 +58,8 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/poto>
 - **Config**: [`configs/poto/poto.yaml`](../configs/poto/poto.yaml)
-- **Anchor relation**: [12381246](https://www.openstreetmap.org/relation/12381246)
+- **Anchor relation**:
+  [12381246](https://www.openstreetmap.org/relation/12381246)
 
 What makes this map worth studying:
 
@@ -73,12 +73,13 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/dte>
 - **Config**: [`configs/dte/dte.yaml`](../configs/dte/dte.yaml)
-- **Anchor relation**: [6364861](https://www.openstreetmap.org/relation/6364861)
+- **Anchor relation**:
+  [6364861](https://www.openstreetmap.org/relation/6364861)
 
 What makes this map worth studying:
 
-- Uses `show_route_distance` and `show_route_elevation` to expose
-  per-route stats in the Finder.
+- Uses `show_route_distance` and `show_route_elevation` to expose per-route
+  stats in the Finder.
 - TODO (curator to add the rest).
 
 Notable config decisions:
@@ -89,13 +90,17 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/potoloo>
 - **Config**: [`configs/potoloo/potoloo.yaml`](../configs/potoloo/potoloo.yaml)
-- **Source relations**: [6364861](https://www.openstreetmap.org/relation/6364861) (DTE), [12381246](https://www.openstreetmap.org/relation/12381246) (Potawatomi), [14293352](https://www.openstreetmap.org/relation/14293352) (Poto-DTE Connector)
+- **Source relations**:
+  [6364861](https://www.openstreetmap.org/relation/6364861) (DTE),
+  [12381246](https://www.openstreetmap.org/relation/12381246) (Potawatomi),
+  [14293352](https://www.openstreetmap.org/relation/14293352) (Poto-DTE
+  Connector)
 
 What makes this map worth studying:
 
-- Combines the DTE Energy super-relation with two additional
-  relations to cover a multi-system loop. A good case study in
-  multi-entry `relations:` lists with super-relation expansion.
+- Combines the DTE Energy super-relation with two additional relations to cover
+  a multi-system loop. A good case study in multi-entry `relations:` lists with
+  super-relation expansion.
 - TODO (curator to add the rest).
 
 Notable config decisions:
@@ -106,7 +111,8 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/shelden>
 - **Config**: [`configs/shelden/shelden.yaml`](../configs/shelden/shelden.yaml)
-- **Anchor relation**: [11298864](https://www.openstreetmap.org/relation/11298864)
+- **Anchor relation**:
+  [11298864](https://www.openstreetmap.org/relation/11298864)
 
 What makes this map worth studying:
 
@@ -120,7 +126,8 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/bloomer>
 - **Config**: [`configs/bloomer/bloomer.yaml`](../configs/bloomer/bloomer.yaml)
-- **Anchor relation**: [20512969](https://www.openstreetmap.org/relation/20512969)
+- **Anchor relation**:
+  [20512969](https://www.openstreetmap.org/relation/20512969)
 
 What makes this map worth studying:
 
@@ -134,7 +141,9 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/addison>
 - **Config**: [`configs/addison/addison.yaml`](../configs/addison/addison.yaml)
-- **Source relations**: [12666899](https://www.openstreetmap.org/relation/12666899) (Addison Oaks), [12562195](https://www.openstreetmap.org/relation/12562195)
+- **Source relations**:
+  [12666899](https://www.openstreetmap.org/relation/12666899) (Addison Oaks),
+  [12562195](https://www.openstreetmap.org/relation/12562195)
 
 What makes this map worth studying:
 
@@ -148,7 +157,8 @@ Notable config decisions:
 
 - **Live map**: <https://trailmaps.app/oakdale>
 - **Config**: [`configs/oakdale/oakdale.yaml`](../configs/oakdale/oakdale.yaml)
-- **Anchor relation**: [11085831](https://www.openstreetmap.org/relation/11085831)
+- **Anchor relation**:
+  [11085831](https://www.openstreetmap.org/relation/11085831)
 
 What makes this map worth studying:
 
@@ -160,14 +170,13 @@ Notable config decisions:
 
 ## Event maps
 
-The framework supports a dedicated [event-mode](event-mode.md)
-rendering for races, group rides, and other event-specific maps.
-The featured route(s) display prominently in chosen colours; every
-other trail on the map renders as muted background context. POIs
-render normally for facility-finding.
+The framework supports a dedicated [event-mode](event-mode.md) rendering for
+races, group rides, and other event-specific maps. The featured route(s) display
+prominently in chosen colours; every other trail on the map renders as muted
+background context. POIs render normally for facility-finding.
 
-See [`event-mode.md`](event-mode.md) for the schema, worked
-examples, and the full guide.
+See [`event-mode.md`](event-mode.md) for the schema, worked examples, and the
+full guide.
 
 (TODO: curator to add specific event-map examples here.)
 
@@ -179,12 +188,11 @@ examples, and the full guide.
 
 What makes this map worth studying:
 
-- The framework's primary fixture for the `osm_file:` code path. The
-  trail data lives in a JOSM-edited `osm.osm` file next to the YAML
-  rather than being fetched from Overpass.
-- The negative relation ID (`-102`) is a JOSM convention for unsaved
-  relations: useful when iterating on a trail system that hasn't
-  been pushed to OSM yet.
+- The framework's primary fixture for the `osm_file:` code path. The trail data
+  lives in a JOSM-edited `osm.osm` file next to the YAML rather than being
+  fetched from Overpass.
+- The negative relation ID (`-102`) is a JOSM convention for unsaved relations:
+  useful when iterating on a trail system that hasn't been pushed to OSM yet.
 - TODO (curator to add the rest).
 
 Notable config decisions:
