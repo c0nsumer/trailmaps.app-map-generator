@@ -120,7 +120,8 @@ def _dedup_osm_pois(features):
 
 
 def build_pois_geojson(osm_data, config_parking, config_trailheads,
-                       config_hubs=None, config_event_pois=None):
+                       config_hubs=None, config_event_pois=None,
+                       config=None):
     """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
 
     Guideposts and emergency access points are merged into a single
@@ -131,7 +132,24 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
     config_hubs: optional list of curator-supplied trail-hub waypoints
     (named on-trail intersections riders use as wayfinding landmarks).
     Same shape as ``config_trailheads`` but rendered as a separate POI
-    type — see runtime ``addHubMarkers`` for the visual treatment."""
+    type — see runtime ``addHubMarkers`` for the visual treatment.
+
+    config: optional reference to the full per-map config dict. When
+    provided, show_* flags gate each POI type at the GeoJSON-emit step
+    — a type with show_X: false is excluded from the output entirely,
+    so it doesn't appear in counts, search index, or anywhere else
+    downstream (not just suppressed from rendering). Backwards-
+    compatible default of None means "show everything," matching the
+    historical behaviour for any caller not yet passing config."""
+    cfg = config or {}
+    show_markers        = cfg.get("show_markers",        True)
+    show_features       = cfg.get("show_features",       True)
+    show_toilets        = cfg.get("show_toilets",        True)
+    show_drinking_water = cfg.get("show_drinking_water", True)
+    show_parking        = cfg.get("show_parking",        True)
+    show_trailheads     = cfg.get("show_trailheads",     True)
+    show_hubs           = cfg.get("show_hubs",           True)
+
     features = []
 
     # Trail markers (guideposts + emergency access points) from OSM
@@ -151,6 +169,8 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
         )
 
         if is_emergency or is_guidepost:
+            if not show_markers:
+                continue
             features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
@@ -162,6 +182,8 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
                 },
             })
         elif tags.get("tourism") == "attraction":
+            if not show_features:
+                continue
             features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
@@ -172,6 +194,8 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
                 },
             })
         elif tags.get("amenity") == "toilets":
+            if not show_toilets:
+                continue
             features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
@@ -186,6 +210,8 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
                 },
             })
         elif tags.get("amenity") == "drinking_water":
+            if not show_drinking_water:
+                continue
             features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
@@ -211,46 +237,49 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
     features = _dedup_osm_pois(features)
 
     # Parking from YAML config
-    for parking in config_parking:
-        plon, plat = parking["coordinates"]
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [plon, plat]},
-            "properties": {
-                "poi_type": "parking",
-                "name": parking.get("name", "Parking"),
-                "directions_url": parking.get("directions_url", ""),
-            },
-        })
+    if show_parking:
+        for parking in config_parking:
+            plon, plat = parking["coordinates"]
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [plon, plat]},
+                "properties": {
+                    "poi_type": "parking",
+                    "name": parking.get("name", "Parking"),
+                    "directions_url": parking.get("directions_url", ""),
+                },
+            })
 
     # Trailheads from YAML config
-    for trailhead in config_trailheads:
-        tlon, tlat = trailhead["coordinates"]
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [tlon, tlat]},
-            "properties": {
-                "poi_type": "trailhead",
-                "name": trailhead.get("name", "Trailhead"),
-                "directions_url": trailhead.get("directions_url", ""),
-            },
-        })
+    if show_trailheads:
+        for trailhead in config_trailheads:
+            tlon, tlat = trailhead["coordinates"]
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [tlon, tlat]},
+                "properties": {
+                    "poi_type": "trailhead",
+                    "name": trailhead.get("name", "Trailhead"),
+                    "directions_url": trailhead.get("directions_url", ""),
+                },
+            })
 
     # Trail hubs from YAML config — named on-trail intersections riders
     # use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct
     # POI type from Trailheads because riders can't drive to them: the
     # runtime renders them with the name inline (no popup, no directions
     # link) so the marker IS the signal at a glance.
-    for hub in (config_hubs or []):
-        hlon, hlat = hub["coordinates"]
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [hlon, hlat]},
-            "properties": {
-                "poi_type": "hub",
-                "name": hub.get("name", "Hub"),
-            },
-        })
+    if show_hubs:
+        for hub in (config_hubs or []):
+            hlon, hlat = hub["coordinates"]
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [hlon, hlat]},
+                "properties": {
+                    "poi_type": "hub",
+                    "name": hub.get("name", "Hub"),
+                },
+            })
 
     # Event POIs from event_mode.pois (always-on at runtime; no toggle).
     # Used for race-day fixtures: start / finish, aid stations, support
@@ -352,7 +381,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
 
     geojson = build_pois_geojson(osm_data, config_parking, config_trailheads,
                                   config_hubs=config_hubs,
-                                  config_event_pois=config_event_pois)
+                                  config_event_pois=config_event_pois,
+                                  config=config)
     print(f"  Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
