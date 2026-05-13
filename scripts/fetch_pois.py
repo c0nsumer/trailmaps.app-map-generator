@@ -120,13 +120,18 @@ def _dedup_osm_pois(features):
 
 
 def build_pois_geojson(osm_data, config_parking, config_trailheads,
-                       config_event_pois=None):
+                       config_hubs=None, config_event_pois=None):
     """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
 
     Guideposts and emergency access points are merged into a single
     ``poi_type: "trail_marker"`` category. Nodes tagged as both are
     emitted as a single feature (first tag encountered wins the label
-    since the rendering is uniform anyway)."""
+    since the rendering is uniform anyway).
+
+    config_hubs: optional list of curator-supplied trail-hub waypoints
+    (named on-trail intersections riders use as wayfinding landmarks).
+    Same shape as ``config_trailheads`` but rendered as a separate POI
+    type — see runtime ``addHubMarkers`` for the visual treatment."""
     features = []
 
     # Trail markers (guideposts + emergency access points) from OSM
@@ -231,6 +236,22 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
             },
         })
 
+    # Trail hubs from YAML config — named on-trail intersections riders
+    # use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct
+    # POI type from Trailheads because riders can't drive to them: the
+    # runtime renders them with the name inline (no popup, no directions
+    # link) so the marker IS the signal at a glance.
+    for hub in (config_hubs or []):
+        hlon, hlat = hub["coordinates"]
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [hlon, hlat]},
+            "properties": {
+                "poi_type": "hub",
+                "name": hub.get("name", "Hub"),
+            },
+        })
+
     # Event POIs from event_mode.pois (always-on at runtime; no toggle).
     # Used for race-day fixtures: start / finish, aid stations, support
     # vehicles, etc. Distinct from OSM POIs in that they never get
@@ -256,6 +277,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     bbox = config["bbox"]
     config_parking = config.get("parking", [])
     config_trailheads = config.get("trailheads", [])
+    config_hubs = config.get("hubs", [])
     # event_mode.pois are always-on, not gated by show_*; if event mode
     # is absent the list is just empty and contributes nothing.
     config_event_pois = (config.get("event_mode") or {}).get("pois") or []
@@ -308,6 +330,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     print(f"  Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
     print(f"  Config defines {len(config_parking)} parking areas")
     print(f"  Config defines {len(config_trailheads)} trailheads")
+    print(f"  Config defines {len(config_hubs)} trail hubs")
     if config_event_pois:
         print(f"  event_mode defines {len(config_event_pois)} event POI(s)")
 
@@ -324,8 +347,11 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         print(f"  note: show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
         print(f"  note: show_trailheads is enabled but no trailheads defined in config")
+    if config.get("show_hubs", True) and len(config_hubs) == 0:
+        print(f"  note: show_hubs is enabled but no hubs defined in config")
 
     geojson = build_pois_geojson(osm_data, config_parking, config_trailheads,
+                                  config_hubs=config_hubs,
                                   config_event_pois=config_event_pois)
     print(f"  Generated {len(geojson['features'])} POI features")
 

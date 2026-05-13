@@ -34,6 +34,7 @@ relations:
 # show_features: true
 # show_parking: true
 # show_trailheads: true
+# show_hubs: true
 # show_toilets: true
 # show_drinking_water: true
 # show_terrain: true
@@ -78,6 +79,9 @@ relations:
 # trailhead_color: "#27ae60"
 # trailhead_text_color: "white"
 # trailhead_border_color: "white"
+# hub_color: "#f39c12"
+# hub_text_color: "white"
+# hub_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
 # accent_color: "#2980b9"
@@ -92,6 +96,7 @@ relations:
 # --- User-supplied points ---
 # trailheads: []
 # parking: []
+# hubs: []
 
 # --- PWA ---
 # pwa: true

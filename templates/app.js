@@ -28,6 +28,10 @@
     if (CONFIG.trailheadColor)       root.style.setProperty("--trailhead-color",       CONFIG.trailheadColor);
     if (CONFIG.trailheadTextColor)   root.style.setProperty("--trailhead-text-color",  CONFIG.trailheadTextColor);
     if (CONFIG.trailheadBorderColor) root.style.setProperty("--trailhead-border-color", CONFIG.trailheadBorderColor);
+    // Hubs (named on-trail intersections — distinct from Trailheads)
+    if (CONFIG.hubColor)             root.style.setProperty("--hub-color",             CONFIG.hubColor);
+    if (CONFIG.hubTextColor)         root.style.setProperty("--hub-text-color",        CONFIG.hubTextColor);
+    if (CONFIG.hubBorderColor)       root.style.setProperty("--hub-border-color",      CONFIG.hubBorderColor);
     // Features (inner dot + outer ring)
     if (CONFIG.featureColor)         root.style.setProperty("--feature-color",         CONFIG.featureColor);
     if (CONFIG.featureRingColor)     root.style.setProperty("--feature-ring-color",    CONFIG.featureRingColor);
@@ -536,6 +540,7 @@ const POI = Object.freeze({
     TRAIL_MARKER:    "trail_marker",
     PARKING:         "parking",
     TRAILHEAD:       "trailhead",
+    HUB:             "hub",       // named on-trail intersections (curator YAML)
     FEATURE:         "feature",
     TOILET:          "toilet",
     DRINKING_WATER:  "drinking_water",
@@ -680,7 +685,7 @@ function gatherObstacles() {
     const out = [];
     const r = DECOR_RADIUS_M.obstacle;
     for (const arr of [trailMarkerMarkers, parkingMarkers,
-                       trailheadMarkers, featureMarkers,
+                       trailheadMarkers, hubMarkers, featureMarkers,
                        toiletMarkers, drinkingWaterMarkers]) {
         for (const m of arr) {
             if (m._map !== map) continue;
@@ -1333,6 +1338,7 @@ let _finderActiveIndex = -1;
 let trailMarkerMarkers = [];
 let parkingMarkers = [];
 let trailheadMarkers = [];
+let hubMarkers = [];
 let featureMarkers = [];
 let toiletMarkers = [];
 let drinkingWaterMarkers = [];
@@ -2388,6 +2394,7 @@ function _welcomeSearchDescription() {
     const poiNames = [];
     if (counts.parking)        poiNames.push("parking");
     if (counts.trailhead)      poiNames.push("trailheads");
+    if (counts.hub)            poiNames.push("hubs");
     if (counts.feature)        poiNames.push("features");
     if (counts.drinking_water) poiNames.push("water");
     if (counts.toilet)         poiNames.push("toilets");
@@ -2417,8 +2424,9 @@ function _searchTargets() {
     if (CONFIG.showRoutes !== false) targets.push("routes");
     if (CONFIG.showTrails !== false) targets.push("trails");
     const counts = CONFIG.poiCounts || {};
-    const hasPois = !!(counts.parking || counts.trailhead || counts.feature
-                       || counts.drinking_water || counts.toilet);
+    const hasPois = !!(counts.parking || counts.trailhead || counts.hub
+                       || counts.feature || counts.drinking_water
+                       || counts.toilet);
     if (hasPois) targets.push("places");
     return targets;
 }
@@ -3142,6 +3150,7 @@ function updateMarkerDimState() {
     apply(trailMarkerMarkers);
     apply(parkingMarkers);
     apply(trailheadMarkers);
+    apply(hubMarkers);
     apply(featureMarkers);
     apply(toiletMarkers);
     apply(drinkingWaterMarkers);
@@ -4425,6 +4434,7 @@ function findPoiMarker(p) {
         "trail_marker":   trailMarkerMarkers,
         "parking":        parkingMarkers,
         "trailhead":      trailheadMarkers,
+        "hub":            hubMarkers,
         "feature":        featureMarkers,
         "toilet":         toiletMarkers,
         "drinking_water": drinkingWaterMarkers,
@@ -4520,6 +4530,7 @@ function _markerArrayForType(type) {
     switch (type) {
         case "parking":         return parkingMarkers;
         case "trailhead":       return trailheadMarkers;
+        case "hub":             return hubMarkers;
         case "toilet":          return toiletMarkers;
         case "drinking_water":  return drinkingWaterMarkers;
         case "trail_marker":    return trailMarkerMarkers;
@@ -4533,6 +4544,7 @@ function _lsKeyForType(type) {
     switch (type) {
         case "parking":         return "mtb.poi.parking";
         case "trailhead":       return "mtb.poi.trailheads";
+        case "hub":             return "mtb.poi.hubs";
         case "toilet":          return "mtb.poi.toilets";
         case "drinking_water":  return "mtb.poi.drinking_water";
         case "trail_marker":    return "mtb.poi.markers";
@@ -4550,6 +4562,7 @@ function _defaultVisibleNameForType(type) {
     switch (type) {
         case "parking":         return "parking";
         case "trailhead":       return "trailheads";
+        case "hub":             return "hubs";
         case "toilet":          return "toilets";
         case "drinking_water":  return "drinking_water";
         case "trail_marker":    return "trail_markers";
@@ -5009,6 +5022,7 @@ const POI_TYPE_FALLBACK_NAME = Object.freeze({
     "trail_marker":   "Trail Marker",
     "parking":        "Parking",
     "trailhead":      "Trailhead",
+    "hub":            "Trail Hub",
     "feature":        "Feature",
     "toilet":         "Toilets",
     "drinking_water": "Drinking Water",
@@ -5019,6 +5033,7 @@ const POI_TYPE_META_LABEL = Object.freeze({
     "trail_marker":   "trail marker",
     "parking":        "parking",
     "trailhead":      "trailhead",
+    "hub":            "trail hub",
     "feature":        "feature",
     "toilet":         "toilets",
     "drinking_water": "drinking water",
@@ -5051,6 +5066,7 @@ async function loadPOIs() {
         [POI.TRAIL_MARKER]: 0,
         [POI.PARKING]: 0,
         [POI.TRAILHEAD]: 0,
+        [POI.HUB]: 0,
         [POI.FEATURE]: 0,
         [POI.TOILET]: 0,
         [POI.DRINKING_WATER]: 0,
@@ -5062,6 +5078,7 @@ async function loadPOIs() {
     const tmCount = poiCounts[POI.TRAIL_MARKER];
     const pkCount = poiCounts[POI.PARKING];
     const thCount = poiCounts[POI.TRAILHEAD];
+    const hbCount = poiCounts[POI.HUB];
     const ftCount = poiCounts[POI.FEATURE];
     const wcCount = poiCounts[POI.TOILET];
     const dwCount = poiCounts[POI.DRINKING_WATER];
@@ -5073,6 +5090,7 @@ async function loadPOIs() {
     const mkDefault = LS.get("mtb.poi.markers", isDefaultVisible("trail_markers"));
     const pkDefault = LS.get("mtb.poi.parking", isDefaultVisible("parking"));
     const thDefault = LS.get("mtb.poi.trailheads", isDefaultVisible("trailheads"));
+    const hbDefault = LS.get("mtb.poi.hubs", isDefaultVisible("hubs"));
     const ftDefault = LS.get("mtb.poi.features", isDefaultVisible("features"));
     const wcDefault = LS.get("mtb.poi.toilets", isDefaultVisible("toilets"));
     const dwDefault = LS.get("mtb.poi.drinking_water", isDefaultVisible("drinking_water"));
@@ -5109,6 +5127,12 @@ async function loadPOIs() {
         addTrailheadMarkers(thDefault);
     } else {
         hideToggleRow("toggle-trailheads");
+    }
+
+    if (CONFIG.showHubs && hbCount > 0) {
+        addHubMarkers(hbDefault);
+    } else {
+        hideToggleRow("toggle-hubs");
     }
 
     // Toilets + drinking water — proximity-gated like Features. Set
@@ -5280,6 +5304,55 @@ function addTrailheadMarkers(addToMap) {
         popupClass: "popup-trailhead",
         addToMap,
         targetArray: trailheadMarkers,
+    });
+}
+
+// Trail hubs — named on-trail intersections. Inline-SVG hexagonal "H"
+// chip with the curator-supplied name as a permanent inline label
+// below the chip (same pattern as features). No popup: the name IS
+// the entire signal — there's nothing useful to gate behind a tap
+// (no directions link because riders can't drive to a hub; no
+// facility metadata). The hex silhouette + inline name keeps hubs
+// visually distinct from the square TH (Trailhead) and P (Parking)
+// chips at a glance.
+//
+// SVG (not CSS clip-path) for two reasons: a regular flat-top hex's
+// 2:√3 width:height ratio doesn't fit a square clip-path without
+// stretching, and SVG `stroke` gives a crisp 2 px border that
+// follows the polygon edges (CSS `border` doesn't follow clip-path
+// silhouettes). See the .hub-marker-* CSS rules in style.css.
+const HUB_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
+    // Regular flat-top hex polygon, side length 11, inscribed at
+    // 22 × 19.05 inside the 24 × 24 viewBox, centred vertically
+    // (top edge at y ≈ 2.5, bottom edge at y ≈ 21.5). The 1 px slack
+    // on each side leaves room for the 2 px stroke.
+    + '<polygon class="hub-marker-shape" points="6.5,2.5 17.5,2.5 23,12 17.5,21.5 6.5,21.5 1,12"/>'
+    // "H" centred horizontally via text-anchor=middle; y=16 places
+    // the baseline so the glyph's optical centre sits at the hex's
+    // vertical midpoint (y=12). SVG dominant-baseline=central is
+    // unreliable across browsers; explicit y is the portable form.
+    + '<text class="hub-marker-letter" x="12" y="16" text-anchor="middle">H</text>'
+    + '</svg>';
+
+function addHubMarkers(addToMap) {
+    createPoiMarkers({
+        poiType: POI.HUB,
+        className: "hub-marker",
+        markerStyle: null,
+        contentFn: (el, props) => {
+            const chip = document.createElement("span");
+            chip.className = "hub-marker-icon";
+            chip.innerHTML = HUB_SVG;
+            el.appendChild(chip);
+            if (props.name) {
+                const label = document.createElement("div");
+                label.className = "hub-marker-label";
+                label.textContent = props.name;
+                el.appendChild(label);
+            }
+        },
+        addToMap,
+        targetArray: hubMarkers,
     });
 }
 
@@ -6043,6 +6116,19 @@ function setupFloatingChrome() {
         updateDecorationsSource();
         _onPoiToggleChange("trailhead");
     }, "trailheads");
+    // Hubs — same on/off pattern as Trailheads / Parking (no proximity
+    // filter). Hubs are trail-attached by definition, always relevant
+    // when their layer is on.
+    wirePeekToggle("toggle-hubs", "mtb.poi.hubs",
+            isDefaultVisible("hubs"), (on) => {
+        for (const m of hubMarkers) {
+            if (on) m.addTo(map);
+            else m.remove();
+        }
+        invalidateObstaclesCache();
+        updateDecorationsSource();
+        _onPoiToggleChange("hub");
+    }, "hubs");
 
     // Toilets + drinking water — proximity-filtered (500 m threshold,
     // see POI_AMENITY_PROXIMITY_METERS). Same on/off pattern as
@@ -6915,6 +7001,14 @@ function poiSwatchContent(el, type) {
         case "trailhead":
             el.classList.add("trailhead-swatch");
             el.textContent = "TH";
+            break;
+        case "hub":
+            el.classList.add("hub-swatch");
+            // Same inline SVG as the on-map hub marker so the finder
+            // swatch reads as a miniature of what the rider sees on
+            // the map. See HUB_SVG above for the polygon geometry +
+            // border treatment.
+            el.innerHTML = HUB_SVG;
             break;
         case "trail_marker":
             el.classList.add("marker-swatch");

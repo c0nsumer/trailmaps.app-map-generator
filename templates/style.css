@@ -896,6 +896,31 @@ body {
     font-size: var(--poi-marker-font-text-tight);
 }
 
+/* Trail hubs — Options swatch + finder POI row swatch. The visual
+ * is rendered via an inline SVG inside the .layer-swatch container
+ * (see index.html for the Options row and poiSwatchContent() in
+ * app.js for the finder rows). The container itself just provides
+ * the box; .hub-marker-shape / .hub-marker-letter (defined above)
+ * style the polygon and "H" identically to the on-map chip so the
+ * Options swatch reads as "this is the marker you'll see on the
+ * map, shrunk to row height."
+ *
+ * The base .layer-swatch rule applies `background: ...` and `border:
+ * 2px solid white;` — both of which would draw the standard
+ * rectangular chip behind our SVG. Override to transparent +
+ * borderless so only the SVG's hex silhouette is visible. */
+.hub-swatch {
+    background: transparent;
+    border: none;
+}
+
+.hub-swatch svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
 /* Labels — chrome indicator (not a sign), so it adapts to colour
  * scheme like the rest of the chrome. Light scheme: white chip
  * with slate tag icon (mirrors how labels render on a light
@@ -1477,6 +1502,98 @@ body {
     font-size: var(--poi-marker-font-text-tight);
     /* Wider chip than the standard square so "TH" reads cleanly. */
     width: var(--poi-marker-size-trailhead-w);
+}
+
+/* Trail hubs — named on-trail intersections, distinct POI type from
+ * Trailheads. Visual signature: a regular flat-top hexagon chip with
+ * "H" inside, plus the hub's name as a permanent inline label hung
+ * below the chip. The hex silhouette reads differently from the
+ * square TH and P chips at a glance so riders can tell hubs apart
+ * even without reading the letter. No popup is wired — the name IS
+ * the signal.
+ *
+ * Implementation: the chip is an inline SVG (not a CSS clip-path on
+ * a div) for two reasons:
+ *   1. Aspect ratio: a regular flat-top hex's width:height is 2:√3,
+ *      so squeezing it into a square via clip-path stretches it
+ *      visually (looked taller-than-wide). SVG's viewBox math lets
+ *      us inscribe a correctly-proportioned hex inside the chip
+ *      footprint with breathing room above and below.
+ *   2. Outline: CSS `border` doesn't follow clip-path edges, so the
+ *      original clip-path approach faked the white outline with
+ *      drop-shadow filters — fuzzy compared to the crisp 2 px
+ *      borders TH / P chips render with. SVG `stroke` gives a clean
+ *      outline that exactly follows the polygon edges.
+ *
+ * `pointer-events: none` on the wrapper passes clicks through to the
+ * trail underneath (matches feature-marker — there's no popup to
+ * receive a click anyway). MapLibre's marker rule sets the wrapper's
+ * position absolute / transform; we don't override position here
+ * (would break MapLibre's anchor math — see the long note on
+ * .event-poi-marker for why). */
+.hub-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateY(-7px);
+    pointer-events: none;
+}
+
+.hub-marker-icon {
+    width: var(--poi-marker-size);
+    height: var(--poi-marker-size);
+    /* Allow the 2 px stroke and drop-shadow to extend beyond the
+     * polygon's bounding box without being clipped to the SVG element. */
+    overflow: visible;
+    /* Soft shadow lifts the chip off the basemap; same colour family
+     * as .poi-marker's `--poi-marker-map-shadow`. */
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.35));
+}
+
+/* The hex polygon shape — fill comes from the per-map --hub-color
+ * token; stroke acts as the visible 2 px white border. stroke-linejoin:
+ * miter keeps the slant-to-flat corners crisp (round would soften the
+ * silhouette and make the hex read closer to a circle). */
+.hub-marker-shape {
+    fill: var(--hub-color, #f39c12);
+    stroke: var(--hub-border-color, #fff);
+    stroke-width: 2;
+    stroke-linejoin: miter;
+}
+
+/* The "H" glyph inside the hex. Centred horizontally via text-anchor;
+ * vertical centring is via the explicit y coordinate on the <text>
+ * element (SVG dominant-baseline is unreliable across browsers).
+ * font-family inherits from the page so the H matches the rest of
+ * the UI's system font stack rather than dropping to SVG's default
+ * sans-serif. */
+.hub-marker-letter {
+    fill: var(--hub-text-color, #fff);
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+}
+
+/* Hub name label — mirrors .feature-marker-label. DOM-rendered text
+ * under the chip, with an 8-direction text-shadow stack for a 1 px
+ * halo so glyphs read against any basemap. */
+.hub-marker-label {
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--feature-label-color);
+    text-align: center;
+    white-space: nowrap;
+    text-shadow:
+        -1px -1px 0 var(--feature-label-halo),
+         1px -1px 0 var(--feature-label-halo),
+        -1px  1px 0 var(--feature-label-halo),
+         1px  1px 0 var(--feature-label-halo),
+         0   -1px 0 var(--feature-label-halo),
+         0    1px 0 var(--feature-label-halo),
+        -1px  0   0 var(--feature-label-halo),
+         1px  0   0 var(--feature-label-halo);
 }
 
 /* Toilets + drinking water — no popup wired (the marker IS the

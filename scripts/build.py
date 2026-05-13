@@ -1558,6 +1558,7 @@ CONFIG_SPEC = [
     ("show_features",           "showFeatures",         True),
     ("show_parking",            "showParking",          True),
     ("show_trailheads",         "showTrailheads",       True),
+    ("show_hubs",               "showHubs",             True),
     ("show_toilets",            "showToilets",          True),
     ("show_drinking_water",     "showDrinkingWater",    True),
     ("show_terrain",            "showTerrain",          True),
@@ -1669,6 +1670,9 @@ CONFIG_SPEC = [
     ("trailhead_color",         "trailheadColor",       "#27ae60"),
     ("trailhead_text_color",    "trailheadTextColor",   "white"),
     ("trailhead_border_color",  "trailheadBorderColor", "white"),
+    ("hub_color",               "hubColor",             "#f39c12"),
+    ("hub_text_color",          "hubTextColor",         "white"),
+    ("hub_border_color",        "hubBorderColor",       "white"),
     ("feature_color",           "featureColor",         "#8e44ad"),
     ("feature_ring_color",      "featureRingColor",     "#ffffff"),
 
@@ -2550,6 +2554,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     print("POI fetching (gated by show_* keys):")
     for key, default in (("show_markers", True), ("show_features", True),
                          ("show_parking", True), ("show_trailheads", True),
+                         ("show_hubs", True),
                          ("show_toilets", True), ("show_drinking_water", True)):
         on = bool(config.get(key, default))
         print(f"  {key}: {'YES' if on else 'no'}")
@@ -2561,6 +2566,10 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         pk = config.get("parking") or []
         if pk:
             print(f"    parking from config: {len(pk)} point(s)")
+    if config.get("show_hubs", True):
+        hb = config.get("hubs") or []
+        if hb:
+            print(f"    hubs from config: {len(hb)} point(s)")
     print()
 
     # ---- Tile generation ----
@@ -2753,6 +2762,10 @@ def main():
         yaml_th = config.get("trailheads") or []
         if yaml_th:
             poi_counts["trailhead"] = poi_counts.get("trailhead", 0) + len(yaml_th)
+    if config.get("show_hubs", True):
+        yaml_hb = config.get("hubs") or []
+        if yaml_hb:
+            poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
     config["_poi_counts"] = poi_counts
 
     # Accent colour: stash the resolved hex (or None for "use
@@ -2906,7 +2919,8 @@ def main():
     if (not config.get("show_markers", True)
             and not config.get("show_features", True)
             and not config.get("show_parking", True)
-            and not config.get("show_trailheads", True)):
+            and not config.get("show_trailheads", True)
+            and not config.get("show_hubs", True)):
         print("POIs: Skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w") as f:

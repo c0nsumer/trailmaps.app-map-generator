@@ -206,6 +206,7 @@ automatically when the underlying data or sprite is absent.
 | `show_markers` | No | `true` | When false, skips the Overpass query for trail markers (guideposts + emergency-access points, merged into one category). Hides the Options Markers toggle too. |
 | `show_parking` | No | `true` | When false, parking markers from the config are not rendered. |
 | `show_trailheads` | No | `true` | When false, trailhead markers from the config are not rendered. |
+| `show_hubs` | No | `true` | When false, trail-hub markers from the config are not rendered. Hubs are curator-supplied named on-trail intersections — see [Trailhead and parking entries](#trailhead-and-parking-entries) for the schema. The Options Hubs toggle auto-hides when the map defines no hubs. |
 | `show_features` | No | `true` | When false, skips the Overpass query for `tourism=attraction` feature nodes. |
 | `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The Options Toilets toggle auto-hides if the build emitted no toilet features. |
 | `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Options Drinking Water toggle auto-hides if the build emitted none. |
@@ -241,7 +242,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms: omitted / empty list (everything off; riders opt in via Options); `"all"` (every supported layer on); list of layer names (only those layers on). Valid layer names: `parking`, `trailheads`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage` and overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows` (or use `"all"`) or list it in `forced_visible`; the build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
+| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms: omitted / empty list (everything off; riders opt in via Options); `"all"` (every supported layer on); list of layer names (only those layers on). Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage` and overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows` (or use `"all"`) or list it in `forced_visible`; the build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
 | `forced_visible` | No | `[]` | Layers force-rendered ON regardless of LS state / `default_visible`. Same accepted forms and same accepted layer names as `default_visible`. For each listed layer the toggle row in Options is hidden — the rider has no off affordance and any persisted localStorage state is ignored. Use for safety-critical layers (`direction_arrows` on flow trails) or maps where a layer must always be present. Subordinate to `show_*` gates: if a layer is suppressed via `show_X: false` (or has no data), `forced_visible` has nothing to force on. Replaces the legacy `direction_arrows_required: true` flag (validator hard-errors the old key with a rename hint). |
 | `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"` so a fresh visit produces a clean map with the rider opting into labels via the Labels segmented control. The in-UI select reflects `show_routes` / `show_trails`; options for hidden categories are removed. |
 | `forced_labels` | No | _(unset)_ | When set to `"routes"`, `"trails"`, or `"none"`, locks the labels mode to that value and hides the Labels segmented control in Options — the rider has no toggle and any persisted `localStorage` state is ignored. Distinct from `default_labels` (which seeds the initial value but lets the rider override). Validated at build time: `"routes"` is rejected when `show_routes: false`; `"trails"` is rejected when `show_trails: false`. Use for maps where a specific labels mode is part of the curator's chosen presentation. |
@@ -270,6 +271,9 @@ hex: one source of truth per colour. The accent colour follows the same pattern.
 | `trailhead_color` | No | `"#27ae60"` | Trailhead chip fill. |
 | `trailhead_text_color` | No | `"white"` | Trailhead glyph (`TH`) colour. |
 | `trailhead_border_color` | No | `"white"` | Trailhead outer halo border colour. |
+| `hub_color` | No | `"#f39c12"` | Trail-hub hexagonal chip fill. Default amber/orange chosen to read distinctly from trailhead green, parking blue, and feature purple. |
+| `hub_text_color` | No | `"white"` | Trail-hub glyph (`H`) colour. |
+| `hub_border_color` | No | `"white"` | Trail-hub outer halo border colour. Rendered as a CSS drop-shadow rather than a CSS border so the halo follows the hexagonal silhouette. |
 | `feature_color` | No | `"#8e44ad"` | Feature marker inner dot colour. |
 | `feature_ring_color` | No | `"#ffffff"` | Feature marker outer ring colour. |
 | `accent_color` | No | `"#2980b9"` | UI accent colour: active toggle pill, search input focus ring, link colour, FAB pressed state, segmented-control active fill, etc. Three accepted forms: omitted (framework default blue), 6-digit hex (e.g. `"#FF5733"`), or the literal string `"auto"` (derive from the logo at build time via Pillow: picks the most common saturated colour, auto-darkens for WCAG AA contrast against white text, caches per-source-hash). The build prints a warning when the resolved colour fails WCAG AA against either the light-mode or dark-mode sheet background. SVG-only logos fall back to the `icon:` raster as the derive source; if neither is raster, falls back to the default with a warning. |
@@ -295,6 +299,7 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 |-----|----------|---------|-------------|
 | `trailheads` | No | `[]` | List of trailhead locations. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
 | `parking` | No | `[]` | List of parking locations. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
+| `hubs` | No | `[]` | List of trail-hub locations — named on-trail intersections riders use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct POI type from trailheads. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
 
 ### PWA
 
@@ -829,6 +834,46 @@ supports:
 `directions_url` rather than adding both a trailhead and a parking entry at the
 same location. Use separate parking entries only for lots that aren't at a
 trailhead (e.g. overflow parking down the road).
+
+### Trail Hubs
+
+Trail Hubs are *named on-trail intersections* — landmarks riders use for
+wayfinding mid-ride ("meet me at the Saddle", "turn right at Bottle
+Junction"). Distinct POI type from Trailheads:
+
+- **Visual:** hexagonal "H" chip with the hub's name rendered as a
+  permanent inline label below the chip. The hexagonal silhouette reads
+  differently from the square TH and P chips at a glance, so riders can
+  tell hubs apart even without reading the letter. Default amber/orange
+  fill (configurable via `hub_color`, `hub_text_color`, `hub_border_color`).
+- **No popup, no directions link.** Riders can't drive to a hub —
+  surfacing a "Get Directions" link would mislead them into routing toward
+  a forest junction. The name inline is the entire signal a rider needs;
+  there's nothing useful to gate behind a tap.
+- **Options toggle:** independent from Trailheads (`Hubs`). Auto-hides
+  when no hubs are configured for the map. First-visit visibility is
+  controlled by `default_visible` (include `hubs` to default on); the
+  rider's choice persists in localStorage (`mtb.poi.hubs`).
+- **Search integration:** hubs appear in the Search overlay's POI scope
+  alongside trailheads and parking — tap a result to pan + ring-pulse the
+  marker (no popup-open, since there's no popup).
+
+Each entry supports:
+
+| Key | Required | Description |
+|---|---|---|
+| `name` | Yes | Display name shown inline under the on-map chip and in search results |
+| `coordinates` | Yes | `[longitude, latitude]` |
+
+Example:
+
+```yaml
+hubs:
+  - name: "Bottle Junction"
+    coordinates: [-87.500, 46.510]
+  - name: "The Saddle"
+    coordinates: [-87.495, 46.515]
+```
 
 ### Parking
 

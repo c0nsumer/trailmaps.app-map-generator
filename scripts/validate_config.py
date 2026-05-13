@@ -95,6 +95,9 @@ KNOWN_KEYS = {
     "trailhead_color":               str,
     "trailhead_text_color":          str,
     "trailhead_border_color":        str,
+    "hub_color":                     str,
+    "hub_text_color":                str,
+    "hub_border_color":              str,
     "feature_color":                 str,
     "feature_ring_color":            str,
 
@@ -105,6 +108,7 @@ KNOWN_KEYS = {
     "show_features":                 bool,
     "show_parking":                  bool,
     "show_trailheads":               bool,
+    "show_hubs":                     bool,
     "show_toilets":                  bool,
     "show_drinking_water":           bool,
     "show_terrain":                  bool,
@@ -125,6 +129,7 @@ KNOWN_KEYS = {
     # User-supplied feature data
     "trailheads":                    list,
     "parking":                       list,
+    "hubs":                          list,
     "base_layers":                   list,
 
     # Branding / chrome
@@ -183,8 +188,10 @@ BUILD_ONLY_KEYS = {
     "basemap_maxzoom",    # consumed by fetch_basemap.py
     "terrain_maxzoom",    # consumed by fetch_terrain.py
     # User-supplied points consumed by fetch_pois.py and baked into
-    # pois.geojson; the runtime reads pois.geojson, not CONFIG.trailheads.
+    # pois.geojson; the runtime reads pois.geojson, not CONFIG.trailheads /
+    # CONFIG.hubs.
     "trailheads",
+    "hubs",
     # Build output destination
     "output_dir",
 }
@@ -641,8 +648,8 @@ def _validate_dashed_relations(report, config):
 
 
 def _validate_point_lists(report, config):
-    """trailheads / parking are list-of-dicts with name + coordinates."""
-    for key in ("trailheads", "parking"):
+    """trailheads / parking / hubs are list-of-dicts with name + coordinates."""
+    for key in ("trailheads", "parking", "hubs"):
         lst = config.get(key)
         if not isinstance(lst, list):
             continue
@@ -923,6 +930,7 @@ def _validate_custom_routes(report, config):
 DEFAULT_VISIBLE_LAYERS = {
     "parking",
     "trailheads",
+    "hubs",
     "features",
     "trail_markers",
     "toilets",

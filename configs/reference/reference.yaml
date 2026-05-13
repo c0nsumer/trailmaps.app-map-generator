@@ -146,6 +146,12 @@ relations:
 # When false, trailhead markers from the config are not rendered.
 # show_trailheads: true
 
+# When false, hub markers from the config are not rendered. Trail Hubs are
+# curator-supplied named on-trail intersections — see User-supplied points
+# (hubs:) below. Distinct from Trailheads: render with the name inline
+# (no popup, no directions link, no parking semantics).
+# show_hubs: true
+
 # When false, skips the Overpass query for amenity=toilets nodes. The
 # Options Toilets toggle auto-hides if the build emitted no toilet
 # features.
@@ -383,6 +389,20 @@ relations:
 # Trailhead outer halo border colour.
 # trailhead_border_color: "white"
 
+# Trail Hub chip fill. Hubs are named on-trail intersections (see hubs:
+# under User-supplied points); the hexagonal chip silhouette + inline name
+# label makes them visually distinct from the square TH and P chips. The
+# default amber/orange is chosen to read separately from the trailhead
+# green, parking blue, and feature purple.
+# hub_color: "#f39c12"
+
+# Trail Hub glyph (H) colour.
+# hub_text_color: "white"
+
+# Trail Hub outer halo border colour (rendered as a drop-shadow halo
+# rather than a CSS border so it follows the hex silhouette).
+# hub_border_color: "white"
+
 # Feature marker inner dot colour.
 # feature_color: "#8e44ad"
 
@@ -440,6 +460,14 @@ relations:
 
 # List of parking locations. See Trailhead and parking entries.
 # parking: []
+
+# List of trail hub locations — named on-trail intersections riders use
+# as wayfinding landmarks ("meet me at Bottle Junction"). Each entry needs
+# `name` and `coordinates: [lon, lat]`. Distinct from Trailheads: hubs
+# render with the name inline (no popup, no directions link), in a
+# hexagonal "H" chip distinguishable at a glance from the square TH and P
+# chips. Surfacing in Options auto-gates on hubs being defined here.
+# hubs: []
 
 # ============================================================
 # PWA

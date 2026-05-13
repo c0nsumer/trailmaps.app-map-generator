@@ -329,6 +329,32 @@
                         </div>
                     </div>
 
+                    <!-- Trail hubs — curator-supplied named on-trail
+                         intersections. Starts visible; app.js hides
+                         this row via hideToggleRow when the map
+                         defines no hubs (matches the trailheads /
+                         parking pattern — hubs are not proximity-
+                         gated so they don't need the toilet / water
+                         start-hidden-then-reveal flow). -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-hubs" data-poi="hubs" aria-pressed="true">
+                        <!-- Inline SVG matches the on-map hub marker (HUB_SVG
+                             in app.js) and the finder POI row swatch
+                             (poiSwatchContent case "hub"). Three contexts,
+                             one rendering — see the .hub-marker-* CSS for
+                             the polygon + stroke styling. -->
+                        <span class="layer-swatch hub-swatch" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <polygon class="hub-marker-shape" points="6.5,2.5 17.5,2.5 23,12 17.5,21.5 6.5,21.5 1,12"/>
+                                <text class="hub-marker-letter" x="12" y="16" text-anchor="middle">H</text>
+                            </svg>
+                        </span>
+                        <span class="opt-toggle-row-label">Hubs</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Hubs">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
+
                     <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-parking" data-poi="parking" aria-pressed="true">
                         <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
                         <span class="opt-toggle-row-label">Parking</span>
