@@ -5324,14 +5324,19 @@ function addTrailheadMarkers(addToMap) {
 const HUB_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
     // Regular flat-top hex polygon, side length 11, inscribed at
     // 22 × 19.05 inside the 24 × 24 viewBox, centred vertically
-    // (top edge at y ≈ 2.5, bottom edge at y ≈ 21.5). The 1 px slack
-    // on each side leaves room for the 2 px stroke.
+    // (top edge at y ≈ 2.5, bottom edge at y ≈ 21.5; hex centre at
+    // y=12). The 1 px slack on each side leaves room for the 2 px
+    // stroke.
     + '<polygon class="hub-marker-shape" points="6.5,2.5 17.5,2.5 23,12 17.5,21.5 6.5,21.5 1,12"/>'
-    // "H" centred horizontally via text-anchor=middle; y=16 places
-    // the baseline so the glyph's optical centre sits at the hex's
-    // vertical midpoint (y=12). SVG dominant-baseline=central is
-    // unreliable across browsers; explicit y is the portable form.
-    + '<text class="hub-marker-letter" x="12" y="16" text-anchor="middle">H</text>'
+    // "H" centred horizontally via text-anchor=middle. SVG <text>'s
+    // `y` is the BASELINE, not the visual centre — so to place the
+    // optical centre of a capital letter at the hex centre (y=12),
+    // baseline = 12 + cap_height/2. For a 12 px sans-serif (system-
+    // font stack via font-family:inherit), cap-height ≈ 0.7×12 ≈
+    // 8.4 px, so baseline at y = 12 + 4.2 = 16.2. SVG
+    // dominant-baseline=central is unreliable across browsers and
+    // varies per font; explicit y is the portable form.
+    + '<text class="hub-marker-letter" x="12" y="16.2" text-anchor="middle">H</text>'
     + '</svg>';
 
 function addHubMarkers(addToMap) {
