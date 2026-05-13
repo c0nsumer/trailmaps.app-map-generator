@@ -199,8 +199,10 @@ relations:
 # affect custom base layers).
 # suppress_basemap_path_labels: false
 
-# Hide POI labels (tourism, attractions, viewpoints) from the Protomaps
-# basemap (does not affect custom base layers).
+# Hide POI labels (tourism, attractions, viewpoints) AND place=locality
+# labels (named neighbourhoods, clearings, hamlets) from the Protomaps
+# basemap. Higher-tier place labels (country / region / subplace) stay
+# visible. Does not affect custom base layers.
 # suppress_basemap_pois: false
 
 # When true, computes per-route distance at build time (sum of haversine

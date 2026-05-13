@@ -7260,8 +7260,21 @@ function suppressBasemapPathLabels() {
 
 function suppressBasemapPois() {
     if (!CONFIG.suppressBasemapPois) return;
-    if (map.getLayer("pois")) {
-        map.setLayoutProperty("pois", "visibility", "none");
+    // Two basemap layers fall under this flag — both are "decorative
+    // detail that competes with the trail layer for visual attention":
+    //   - "pois"             generic POI labels (peaks, museums, viewpoints)
+    //   - "places_locality"  small-place labels (named neighbourhoods,
+    //                        clearings, hamlets). These can read as
+    //                        "trail features" inside a trail-system bbox
+    //                        and clutter the map even though they're
+    //                        actually settlement labels.
+    // Higher-tier place labels (places_country / places_region /
+    // places_subplace) stay visible — they help with context at low
+    // zooms and don't crowd the trail layer the way locality does.
+    for (const layerId of ["pois", "places_locality"]) {
+        if (map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, "visibility", "none");
+        }
     }
 }
 
