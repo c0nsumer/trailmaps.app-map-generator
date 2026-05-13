@@ -158,10 +158,25 @@ self.addEventListener("fetch", (event) => {
     // priority list get cached on first use, so offline coverage
     // grows as the rider explores even before the background
     // precache catches up.
+    //
+    // The network fallback uses `cache: "no-cache"` to force the
+    // browser to revalidate against the server via a conditional
+    // GET (If-Modified-Since / If-None-Match). Without this, the
+    // default fetch honours the browser's HTTP cache — and Caddy
+    // ships most assets with `Cache-Control: public, max-age=86400`,
+    // so for up to 24 h post-deploy a SW cache miss could blindly
+    // return yesterday's HTTP-cached bytes to the page (visible
+    // as "I just deployed and clicked Reload but the page still
+    // shows the old map until I shift-reload"). Revalidation is
+    // ~50 ms of overhead when content hasn't changed (304 response,
+    // no body) and free correctness when it has. Same posture as
+    // backgroundPrecache's `cache: "reload"`, but cheaper because
+    // it allows 304s.
     event.respondWith(
         caches.match(event.request).then((cached) => {
             if (cached) return cached;
-            return fetch(event.request)
+            const networkReq = new Request(event.request, { cache: "no-cache" });
+            return fetch(networkReq)
                 .then((response) => {
                     // Cache successful same-origin GET responses
                     // only. Skip opaque (cross-origin no-CORS),
