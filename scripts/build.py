@@ -2632,11 +2632,23 @@ def main():
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate config and print what would be fetched / generated, then exit. "
                              "No Overpass calls, no tile downloads, no file writes.")
-    parser.add_argument("--minify", action="store_true",
-                        help="Minify app.js and style.css in the build output. "
-                             "Off by default for fast local-iteration builds + readable "
-                             "debugging output. tools/build_and_deploy.sh passes this "
-                             "automatically when building for deploy.")
+    # Minification defaults to ON: the canonical use of build.py is
+    # "produce ready-to-deploy artifacts," regardless of which deploy
+    # mechanism (SSH/rsync via tools/build_and_deploy.sh, or any other
+    # static-host workflow) will ship them. Local-iteration debug is
+    # the explicit opt-out via --no-minify. --minify stays as a no-op
+    # alias for backwards compatibility (any older script or shell
+    # history that passes it still works; the flag's presence is
+    # redundant with the default but never wrong).
+    parser.add_argument("--minify", action="store_true", default=True,
+                        help="Minify app.js and style.css in the build output "
+                             "(default: enabled). Pass --no-minify for "
+                             "local-iteration debug where readable output is "
+                             "more useful than smaller output.")
+    parser.add_argument("--no-minify", dest="minify", action="store_false",
+                        help="Disable minification (overrides the default). "
+                             "Use for local-iteration debug; for deploy, "
+                             "leave the default on.")
     args = parser.parse_args()
 
     config = load_config(args.config)

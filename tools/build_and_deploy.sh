@@ -11,7 +11,15 @@
 set -euo pipefail
 
 # ── Default configuration ─────────────────────────────────────
-DEFAULT_DEPLOY_DEST="mappingadmin@trailmaps.app:/var/www/trailmaps.app/test"
+# The default deploy destination is read from the
+# TRAILMAPS_DEPLOY_DEST environment variable. If unset, the script
+# errors out with a clear hint when --dest also isn't passed (see
+# the deploy-dest check after argument parsing). Set this in your
+# shell rc, e.g.
+#   export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/maps
+# so daily `./tools/build_and_deploy.sh <slug>` invocations Just
+# Work. Forkers see no hardcoded server address in the script.
+DEFAULT_DEPLOY_DEST="${TRAILMAPS_DEPLOY_DEST:-}"
 # ──────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +43,8 @@ Options:
   --force            Pass --force to build.py (re-fetch all data)
   --dry-run          Show what would happen; don't build or transfer
   --dest <ssh-path>  Override deploy destination
-                     (default: ${DEFAULT_DEPLOY_DEST})
+                     (default: \$TRAILMAPS_DEPLOY_DEST env var;
+                     required if the env var isn't set)
   --skip-ssh-check   Skip the pre-flight SSH connectivity check
   -h, --help         Show this help
 
@@ -209,6 +218,26 @@ if $VALIDATE_ONLY; then
     exit 0
 fi
 
+# Deploy-destination resolution. We need a destination if we're
+# going to deploy at all. Surface the missing-config case with a
+# helpful "set this env var or pass --dest" hint rather than
+# silently failing later inside rsync.
+if $DEPLOY && [ -z "$DEPLOY_DEST" ]; then
+    cat >&2 <<EOF
+ERROR: No deploy destination set.
+
+Either pass --dest <user@host:/path> on this invocation, or set
+TRAILMAPS_DEPLOY_DEST in your shell environment:
+
+    export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
+
+(Add the export to your ~/.zshrc or ~/.bashrc to persist it.)
+
+To build without deploying, pass --build-only.
+EOF
+    exit 1
+fi
+
 if $DEPLOY && ! $SKIP_SSH_CHECK && ! $DRY_RUN; then
     echo "━━━ Checking SSH connectivity to ${DEPLOY_DEST%%:*} ━━━"
     ssh_precheck "$DEPLOY_DEST" || exit 1
@@ -239,18 +268,19 @@ for name in "${configs[@]}"; do
     # Build
     if $BUILD; then
         echo "━━━ Building ${name} ━━━"
-        # Always pass --minify when building via this script: every code
-        # path here is en route to a deploy (either DEPLOY=true on this
-        # invocation, or --build-only producing artifacts the curator
-        # will deploy later). Local-iteration builds skip this script
-        # entirely and call scripts/build.py directly without --minify
-        # so the unminified output stays readable for debugging.
+        # scripts/build.py produces ready-to-deploy artifacts by
+        # default (minification on, etc.) — quality-posture
+        # decisions live in the build pipeline, not in this helper.
+        # If you need unminified output for local debug via this
+        # script (rare; usually you'd just call build.py directly),
+        # pass `-- --no-minify` after the slug list:
+        #   ./tools/build_and_deploy.sh --build-only ramba -- --no-minify
         if $DRY_RUN; then
-            echo "[dry-run] $PYTHON scripts/build.py $config_file $FORCE --minify ${build_extra_args[*]:-}"
+            echo "[dry-run] $PYTHON scripts/build.py $config_file $FORCE ${build_extra_args[*]:-}"
         else
             # The "${arr[@]+...}" expansion is the standard workaround for
             # nounset (set -u) tripping on empty arrays in older Bash.
-            if ! "${PYTHON}" scripts/build.py "$config_file" $FORCE --minify \
+            if ! "${PYTHON}" scripts/build.py "$config_file" $FORCE \
                     "${build_extra_args[@]+"${build_extra_args[@]}"}"; then
                 echo "ERROR: Build failed for ${name}" >&2
                 failed+=("$name")

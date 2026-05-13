@@ -4,9 +4,29 @@ Helper scripts for building and deploying trail maps.
 
 ## build_and_deploy.sh
 
-Builds and/or deploys one or more trail map configs. By default, processes all YAML configs in `configs/` (excluding the `configs/reference/` folder of templates).
+A convenience wrapper for the **SSH/rsync** deploy workflow.
+Builds and/or rsyncs one or more trail map configs. By default,
+processes all YAML configs in `configs/` (excluding the
+`configs/reference/` folder of templates).
 
-The deploy destination is configured via the `DEPLOY_DEST` variable at the top of the script.
+This is *one* way to deploy, not the only one. The build pipeline
+itself (`scripts/build.py`) produces production-quality output by
+default — if you deploy via S3, Netlify, GitHub Pages, Cloudflare
+Pages, or manual upload, call `python scripts/build.py <config>`
+directly and ship the resulting `build/<slug>/` tree with whichever
+tool fits your host. See [`docs/deployment.md#deploying-by-other-means`](../docs/deployment.md#deploying-by-other-means)
+for recipes.
+
+The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
+environment variable. Set it in your shell rc (`~/.zshrc` /
+`~/.bashrc`):
+
+```bash
+export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
+```
+
+Override per-run with `--dest <ssh-path>`. The script errors out
+with a clear hint if neither is set.
 
 ### Usage
 
@@ -38,7 +58,11 @@ The deploy destination is configured via the `DEPLOY_DEST` variable at the top o
 | `--all` | Build and deploy all configs (default if no args given) |
 | `--build-only` | Build but skip deploy |
 | `--deploy-only` | Deploy existing builds without rebuilding |
+| `--validate-only` | Run config validation, no fetch/build/deploy |
 | `--force` | Pass `--force` to `build.py` (re-fetch all OSM and basemap data) |
+| `--dry-run` | Show what would happen; don't build or transfer |
+| `--dest <ssh-path>` | Override deploy destination (default: `$TRAILMAPS_DEPLOY_DEST`) |
+| `--skip-ssh-check` | Skip the pre-flight SSH connectivity probe |
 | `--` | Separator; everything after this is passed directly to `build.py` |
 
 ### Notes

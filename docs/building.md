@@ -126,11 +126,22 @@ python scripts/serve.py build/example
 This is the fastest way to test changes without a production deploy.
 The server honours Range requests properly so PMTiles work end-to-end.
 
-## Convenience wrapper: build_and_deploy.sh
+## SSH/rsync convenience wrapper: build_and_deploy.sh
 
-`tools/build_and_deploy.sh` validates every config first, then builds
-and (optionally) deploys via `rsync`. Run `./tools/build_and_deploy.sh
---help` for full usage. Common patterns:
+`tools/build_and_deploy.sh` is a convenience wrapper for the common
+SSH/rsync deploy workflow: it validates every config first, then
+builds via `scripts/build.py`, then `rsync`s each map to a remote
+host. It's one way to deploy — not the only one. If you deploy via
+a different mechanism (S3, Netlify, GitHub Pages, manual upload),
+run `python scripts/build.py <config>` directly and ship the
+resulting `build/<slug>/` tree. The output is production-quality
+(minified `app.js` / `style.css`, content-hashed service worker,
+trimmed font set, etc.) by default — no flag needed. See
+[`deployment.md`](deployment.md) for recipes targeting other
+static hosts.
+
+Run `./tools/build_and_deploy.sh --help` for full usage. Common
+patterns:
 
 ```bash
 # Build and deploy every map under configs/ (excluding configs/reference/)
@@ -149,10 +160,38 @@ and (optionally) deploys via `rsync`. Run `./tools/build_and_deploy.sh
 ./tools/build_and_deploy.sh example -- --skip-basemap --skip-terrain
 ```
 
-The deploy destination is the `DEFAULT_DEPLOY_DEST` constant at the
-top of the script; override per-run via `--dest <ssh-path>`.
+The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
+environment variable. Set it in your shell rc once:
+
+```bash
+# in ~/.zshrc or ~/.bashrc
+export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
+```
+
+Daily invocations then Just Work. Override per-run with `--dest
+<ssh-path>`. If neither the env var nor `--dest` is set, the
+script errors out with a clear hint rather than silently shipping
+to a wrong (or empty) target.
 
 See [`tools/README.md`](../tools/README.md) for the full option table.
+
+### Building unminified output for local debug
+
+The default build path produces minified `app.js` and `style.css`
+(faster page loads, smaller cache footprint). If you need readable
+output for in-browser debugging:
+
+```bash
+# Direct: produces unminified output in build/<slug>/
+python scripts/build.py configs/<slug>/<slug>.yaml --no-minify
+
+# Through the wrapper (rare; usually you'd call build.py directly):
+./tools/build_and_deploy.sh --build-only <slug> -- --no-minify
+```
+
+The original `app.js` / `style.css` sources under `templates/`
+are unminified in the repo, so most debug work is on those rather
+than on the build output anyway.
 
 ## Validate a config without building
 

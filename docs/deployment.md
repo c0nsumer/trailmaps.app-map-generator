@@ -7,6 +7,7 @@ worker over the long term.
 ## Contents
 
 - [Quick deploy: any static file server](#quick-deploy-any-static-file-server)
+- [Deploying by other means](#deploying-by-other-means)
 - [Caddy configuration](#caddy-configuration)
 - [Service worker update cadence](#service-worker-update-cadence)
 - [PWA and offline support](#pwa-and-offline-support)
@@ -20,15 +21,69 @@ support HTTP Range requests for PMTiles (Caddy, nginx, Apache all do). No
 special CORS or rewrite rules are needed; a standard `file_server` config is
 sufficient.
 
-The convenience wrapper `tools/build_and_deploy.sh` handles validate-build-rsync
-in one shot:
+`scripts/build.py` produces production-quality output by default
+(minified `app.js` / `style.css`, content-hashed service worker,
+trimmed font set, etc.) — no flag needed:
 
 ```bash
-./tools/build_and_deploy.sh ramba
+python scripts/build.py configs/<slug>/<slug>.yaml
+# → build/<slug>/ is ready to ship
 ```
 
-The `DEFAULT_DEPLOY_DEST` constant at the top of the script controls the default
-rsync destination; override per-run with `--dest <ssh-path>`.
+The convenience wrapper `tools/build_and_deploy.sh` handles
+validate-build-rsync in one shot for the **SSH/rsync** case:
+
+```bash
+./tools/build_and_deploy.sh <slug>
+```
+
+The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
+environment variable. Set it in your shell rc:
+
+```bash
+# in ~/.zshrc or ~/.bashrc
+export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
+```
+
+Override per-run with `--dest <ssh-path>`. If neither the env var
+nor `--dest` is set, the wrapper errors out with a clear hint
+rather than silently shipping to a wrong (or empty) target.
+
+## Deploying by other means
+
+The wrapper above assumes SSH/rsync. For any other static-host
+deploy mechanism, run `python scripts/build.py <config>` and ship
+the resulting `build/<slug>/` tree with whichever tool fits your
+host. The output is the same regardless of how you transport it.
+
+```bash
+# Build once (production-quality by default — no flag needed)
+python scripts/build.py configs/<slug>/<slug>.yaml
+
+# Then ship. Pick one:
+
+# AWS S3
+aws s3 sync build/<slug>/ s3://your-bucket/<slug>/ --delete
+
+# Netlify CLI
+netlify deploy --dir=build/<slug> --prod
+
+# GitHub Pages (using gh-pages npm helper)
+npx gh-pages -d build/<slug>
+
+# Cloudflare Pages (wrangler CLI)
+wrangler pages deploy build/<slug>
+
+# Any old-school SFTP / FTP / WebDAV / manual host
+# — point your tool at build/<slug>/ as the source directory
+```
+
+Every static host that serves HTTP Range requests properly will
+work (S3, Netlify, Cloudflare Pages, GitHub Pages, nginx, Apache,
+Caddy). The Caddy-specific config below is one example of headers
+you may want to set on whichever host you use; the same intent
+(cache JS/CSS forever, revalidate HTML, allow Range on PMTiles)
+translates to most server configs.
 
 ## Caddy configuration
 
