@@ -3386,10 +3386,33 @@ async function loadTrails() {
     const byDifficulty = CONFIG.colorBy === "trail";
 
     // Pass 1: casings
+    //
+    // Casing halo posture:
+    //   - Solid routes always get the outline halo (1-1.5 px beyond
+    //     the fill on each side, ~50% opacity, derived darker shade
+    //     via casingColor()).
+    //   - Two-colour dashed routes (`colors: [A, B]`) get the halo
+    //     too. The second colour renders as a solid underlay (see
+    //     fill2 below) that fills the dash gaps, so a solid casing
+    //     behind everything reads as a clean outline around the whole
+    //     line — same visual contract as solid routes.
+    //   - Single-colour dashed routes (`colors: [A]` or no `colors`
+    //     at all) suppress the casing. Making it solid would defeat
+    //     the dashed appearance because the casing colour would show
+    //     through the dash gaps. A "dashed casing" alternative would
+    //     need width-proportional dash-array adjustment to keep dashes
+    //     aligned between casing and fill (MapLibre's line-dasharray
+    //     is in line-widths, so a wider casing produces longer dashes
+    //     than the fill at the same array) — defer until there's a
+    //     concrete need.
     for (const [routeId, routeInfo] of sortedRoutes) {
         const dashed = isDashed(routeInfo);
+        const dashColors = getDashColors(routeInfo);
         const cap = getDashCap(routeInfo);
         const wmul = routeInfo.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
+
+        const hasUnderlay = !!(dashColors && dashColors.length >= 2);
+        const casingVisible = !dashed || hasUnderlay;
 
         const casingCol = byDifficulty
             ? difficultyCasingExpr()
@@ -3402,16 +3425,24 @@ async function loadTrails() {
             filter: ["==", ["get", "route_id"], routeId],
             paint: {
                 "line-color": casingCol,
-                "line-width": dashed
-                    ? ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul]
-                    : ["interpolate", ["linear"], ["zoom"], 10, 3 * wmul, 14, 6 * wmul, 18, 10 * wmul],
+                // Visible casing uses the wider "solid-route" stops so
+                // it extends ~1-1.5 px beyond the fill on each side
+                // (the halo). Invisible casing keeps the narrower stops
+                // since it's not drawn anyway — keeps any future
+                // debugging consistent with what's actually rendered
+                // for single-colour dashed.
+                "line-width": casingVisible
+                    ? ["interpolate", ["linear"], ["zoom"], 10, 3 * wmul, 14, 6 * wmul, 18, 10 * wmul]
+                    : ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
                 "line-offset": makeOffsetExpr(),
-                "line-opacity": dashed ? 0 : 0.5,
-                "line-dasharray": getDashPattern(routeInfo),
+                "line-opacity": casingVisible ? 0.5 : 0,
+                // No line-dasharray on the casing — it's always a
+                // solid outline (when visible) behind either the solid
+                // fill or the two-colour-dashed fill+underlay stack.
             },
             layout: {
-                "line-cap": dashed ? cap : "round",
-                "line-join": dashed ? (cap === "square" ? "miter" : "round") : "round",
+                "line-cap": cap,
+                "line-join": cap === "square" ? "miter" : "round",
             },
         });
     }
