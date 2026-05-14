@@ -3192,11 +3192,11 @@ function updateMarkerProximity() {
         updateDecorationsSource();
     }
 
-    // Re-evaluate the proximity-gated toggle rows (Features, Toilets,
-    // Drinking water). If the visible-routes set leaves zero of a
-    // type within POI_PROXIMITY_METERS of any trail, that toggle is
-    // a dead control — hide its row. The row comes back the moment
-    // a route change brings a near-trail member into scope.
+    // Re-evaluate the proximity-gated toggle rows (Markers, Features,
+    // Toilets, Drinking water). If the visible-routes set leaves zero
+    // of a type within its proximity threshold of any trail, that
+    // toggle is a dead control — hide its row. The row comes back the
+    // moment a route change brings a near-trail member into scope.
     updatePoiToggleVisibility();
 }
 
@@ -3218,8 +3218,8 @@ function hasVisibleProximityPois(poiType, threshold) {
     return false;
 }
 
-// Show/hide each proximity-gated POI toggle (Features, Toilets,
-// Drinking water) based on (a) its YAML show_* gate and
+// Show/hide each proximity-gated POI toggle (Markers, Features,
+// Toilets, Drinking water) based on (a) its YAML show_* gate and
 // (b) whether the proximity filter would currently let any of that
 // type render at the per-type threshold. Called on initial POI load
 // and after every route-visibility change. The toggle row is
@@ -3227,8 +3227,20 @@ function hasVisibleProximityPois(poiType, threshold) {
 // persisted aria-pressed state is untouched, so toggling a
 // category back on once a near-trail POI of that type reappears
 // just works.
+//
+// Why Markers are in this list (subtle): trail-marker render is
+// proximity-filtered at the layer level (see updateMarkerProximity),
+// so a marker tagged in OSM well off the trail line — typical for
+// guideposts at parking-area signs or trail-entrance posts placed
+// outside the bbox-tight trail polyline — never renders at the
+// default 50 m threshold even when the toggle is on. Without this
+// entry the toggle row stayed visible regardless, creating a
+// chicken-and-egg trap: data exists → row shown → tap toggles on →
+// nothing on the map. Now the row tracks whether any marker is
+// currently in scope; out-of-scope markers hide the row.
 function updatePoiToggleVisibility() {
     const flips = [
+        ["toggle-markers",        CONFIG.showMarkers,        POI.TRAIL_MARKER,    POI_PROXIMITY_METERS],
         ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS],
         ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS],
         ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS],
