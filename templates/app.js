@@ -7923,7 +7923,21 @@ function updateLocationIndicator() {
     const center = map.getCenter();
     const dist = haversineDistance([center.lng, center.lat], userLocation);
 
-    el.innerHTML = `<span class="off-screen-indicator-arrow" style="transform:rotate(${degrees}deg)">&#9650;</span>`
+    // mdi:arrow-up-bold (Apache 2.0, Pictogrammers) — a chunky
+    // shafted arrow that reads as a directional pointer rather
+    // than a location marker. Earlier this was the Unicode
+    // triangle ▲ (U+25B2), which had a 3-fold rotational
+    // symmetry problem: at rotations like 60° / 120° / 180° the
+    // base corners read as visually equal to the apex, making
+    // the pointing direction ambiguous at small sizes. The
+    // shafted arrow's clear head + tail kills that ambiguity.
+    // Apex is at the top of the 24×24 viewBox so the existing
+    // bearing-to-rotation math (0° = north = up) is unchanged.
+    el.innerHTML = `<span class="off-screen-indicator-arrow" style="transform:rotate(${degrees}deg)">`
+        + `<svg viewBox="0 0 24 24" aria-hidden="true">`
+        + `<path d="M14,20H10V11L6.5,14.5L4.08,12.08L12,4.16L19.92,12.08L17.5,14.5L14,11V20Z"/>`
+        + `</svg>`
+        + `</span>`
         + `<span class="off-screen-indicator-dist">${formatDistance(dist)}</span>`;
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;

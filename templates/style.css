@@ -1950,11 +1950,48 @@ body {
     user-select: none;
 }
 
+/* Indicator arrow — inline SVG (mdi:arrow-up-bold), see app.js's
+ * off-screen indicator renderer. Sized to match the MapLibre
+ * user-location dot's visual weight: dot is 15 px blue + 2 px
+ * white border outside (19 px total); the arrow is bumped to
+ * 28 px so it reads as a similarly-prominent piece of "location
+ * chrome" with the same blue + white vocabulary.
+ *
+ * paint-order: stroke is the key trick — by default SVG paints
+ * fill first then stroke, so the stroke centres on the path edge
+ * (half inside the fill, half outside). Setting paint-order:
+ * stroke flips the order: stroke paints first, then fill on top.
+ * The fill covers the inner half of the stroke, leaving only the
+ * outer half visible. With stroke-width: 4 that's a 2 px white
+ * halo entirely outside the blue fill — matching the
+ * location-dot's "blue inside white ring" structure.
+ *
+ * stroke-linejoin: miter keeps the arrowhead apex sharp; rounded
+ * joins would soften the point and weaken the directional read. */
 .off-screen-indicator-arrow {
-    font-size: 22px;
-    line-height: 1;
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    line-height: 0;
     color: #3498db;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.off-screen-indicator-arrow svg {
+    width: 100%;
+    height: 100%;
+    fill: currentColor;
+    stroke: #fff;
+    stroke-width: 4;
+    stroke-linejoin: miter;
+    paint-order: stroke;
+    display: block;
+    /* Allow the stroke's outer half to extend slightly beyond the
+     * SVG viewBox edges without clipping. With the arrow path's
+     * actual extents (~4-20) inside a 0-24 viewBox and the visible
+     * stroke half at 2 viewBox-units outside the path, the outline
+     * stays well within the viewBox, but overflow:visible is
+     * defensive against any future path tweaks. */
+    overflow: visible;
 }
 
 .off-screen-indicator-dist {
