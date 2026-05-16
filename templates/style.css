@@ -921,6 +921,29 @@ body {
     overflow: visible;
 }
 
+/* Off state for the hub swatch — match the other swatches' three-
+ * cue off treatment exactly. The base .layer-swatch off-state rule
+ * already handles the container (transparent background + 1.5 px
+ * grey rectangle border + diagonal slash via ::after), so the
+ * container styling is shared with every other swatch. All we
+ * need to add is the SVG-content greying: polygon fill goes
+ * transparent + stroke goes grey (parallel to the rectangle
+ * border's grey), and the "H" letter goes grey. The result
+ * matches the framework's "outer hairline rectangle + greyed
+ * inner glyph + diagonal slash" pattern, with the hex silhouette
+ * playing the role that the "P" or "TH" letter plays in other
+ * swatches. */
+.opt-toggle-row[aria-pressed="false"] .hub-swatch .hub-marker-shape,
+.opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-shape {
+    fill: transparent !important;
+    stroke: #9aa0a6 !important;
+}
+
+.opt-toggle-row[aria-pressed="false"] .hub-swatch .hub-marker-letter,
+.opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-letter {
+    fill: #9aa0a6 !important;
+}
+
 /* Labels — chrome indicator (not a sign), so it adapts to colour
  * scheme like the rest of the chrome. Light scheme: white chip
  * with slate tag icon (mirrors how labels render on a light
