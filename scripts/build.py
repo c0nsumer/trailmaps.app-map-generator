@@ -41,9 +41,9 @@ from validate_config import validate_config, DEFAULT_VISIBLE_LAYERS
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
 VENDOR_LIBS = {
-    "maplibre-gl.css": "https://unpkg.com/maplibre-gl@5.5.0/dist/maplibre-gl.css",
-    "maplibre-gl.js": "https://unpkg.com/maplibre-gl@5.5.0/dist/maplibre-gl.js",
-    "pmtiles.js": "https://unpkg.com/pmtiles@4.2.1/dist/pmtiles.js",
+    "maplibre-gl.css": "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css",
+    "maplibre-gl.js": "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+    "pmtiles.js": "https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js",
     "basemaps.js": "https://unpkg.com/@protomaps/basemaps@5.7.2/dist/basemaps.js",
 }
 
