@@ -1483,21 +1483,25 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # ----- Subway-style parallel-route smoothing (always on) -----
     # Runs LAST so custom routes are included in the junction analysis.
     # Idempotent: strips prior stub features (isStub: true) AND
+    # prior mode-host-variant features (_subwayHostVariant: true) AND
     # restores any host corridors whose first vertex was truncated by
-    # a previous subway-style pass. Without the restore, re-runs would
-    # leave the truncation baked in; with it, every build starts from
-    # the canonical fetched geometry.
+    # a previous single-mode subway-style pass. Without these, re-runs
+    # would leave truncations/variants baked in; with them, every
+    # build starts from the canonical fetched geometry.
     pre_stub_count = len(trails_geojson["features"])
     trails_geojson["features"] = [
         f for f in trails_geojson["features"]
-        if not f.get("properties", {}).get("isStub")
+        if not (f.get("properties", {}).get("isStub")
+                or f.get("properties", {}).get("_subwayHostVariant"))
     ]
     stripped_stubs = pre_stub_count - len(trails_geojson["features"])
     if stripped_stubs:
         changed = True
     # Restore any prior subway-style truncations so re-runs don't
-    # compound. apply_subway_style stashes the original first vertex
-    # in _subwayOriginalCoord0 when it truncates.
+    # compound. apply_subway_style (single-mode) stashes the original
+    # first vertex in _subwayOriginalCoord0 when it truncates. Also
+    # clear any leftover _subwayHasVariants flag from a prior
+    # multi-mode pass.
     for feat in trails_geojson["features"]:
         geom = feat.get("geometry", {}) or {}
         if geom.get("type") != "LineString":
@@ -1508,13 +1512,70 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
             geom["coordinates"][0] = list(orig)
             del props["_subwayOriginalCoord0"]
             changed = True
-    from parallel_routes import apply_subway_style
-    added = apply_subway_style(trails_geojson)
-    if added:
-        print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
-        changed = True
+        if props.pop("_subwayHasVariants", None) is not None:
+            changed = True
+
+    # ---- Compute route ordering per visible mode ----------------
+    # The MLNCM (Metro-Line Node Crossing Minimization) optimizer in
+    # route_order.py finds a global route ordering that minimizes the
+    # number of corridor-junction sign flips. Each visible mode
+    # (summer / winter / + emergency) gets its own routeOrder, since
+    # the effective adjacency graph differs per mode.
+    from route_order import compute_route_orders
+    from parallel_routes import apply_subway_style, apply_subway_style_modes
+
+    routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
+    previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
+
+    route_orders, route_order_stats = compute_route_orders(
+        routes_metadata,
+        trails_geojson["features"],
+        previous_orders=previous_orders,
+        verbose=False,
+    )
+
+    if route_orders:
+        # Stash for runtime injection into CONFIG.routeOrders.
+        trails_geojson.setdefault("metadata", {})["routeOrders"] = route_orders
+        for mode_key, order in sorted(route_orders.items()):
+            flips, seps = route_order_stats[mode_key]
+            print(
+                f"  Route order [{mode_key}]: "
+                f"{flips} sign flip(s), {seps} separation(s) "
+                f"(routes: {len(order)})"
+            )
+        # Mode-aware subway-style: emits per-mode stubs + variants.
+        modes = {k: frozenset(v) for k, v in
+                 _route_modes_from_orders(routes_metadata).items()}
+        added = apply_subway_style_modes(trails_geojson, route_orders, modes)
+        if added:
+            print(
+                f"  Subway style: emitted {added} mode-tagged feature(s) "
+                f"across {len(modes)} mode(s)"
+            )
+            changed = True
+    else:
+        # No modes detected — fall back to legacy single-mode behavior.
+        trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
+        added = apply_subway_style(trails_geojson)
+        if added:
+            print(f"  Subway style: emitted {added} junction transition "
+                  f"micro-feature(s)")
+            changed = True
 
     return changed
+
+
+def _route_modes_from_orders(routes_metadata):
+    """Return mode_key → frozenset of route IDs, matching the modes
+    that route_order.enumerate_modes would produce.
+
+    Kept here as a small helper so build.py can compute modes the
+    same way as route_order.compute_route_orders did internally —
+    they need to agree on which mode keys are active.
+    """
+    from route_order import enumerate_modes
+    return enumerate_modes(routes_metadata)
 
 
 # Declarative config spec: (yaml_key, js_key, default).
@@ -2032,6 +2093,16 @@ def inject_config_into_template(template_content, config, trails_geojson):
             break
     config_obj["hasOnewayTrails"] = has_oneway
     config_obj["hasDifficultyTrails"] = has_difficulty
+    # Per-mode route orderings from MLNCM optimization (see
+    # route_order.compute_route_orders). Runtime app.js looks up the
+    # active mode's order in computeOffsetsAndFilter / computeLabelData
+    # to keep within-corridor offsets side-stable across adjacent
+    # corridors. Missing → app.js falls back to natural-sort
+    # (legacy behavior).
+    config_obj["routeOrders"] = (
+        (trails_geojson.get("metadata") or {}).get("routeOrders") or {}
+        if trails_geojson else {}
+    )
     config_obj["about"] = config.get("about") or None
     # Welcome modal config: pass through unchanged. Three forms
     # accepted: omitted (None → framework default), false (modal

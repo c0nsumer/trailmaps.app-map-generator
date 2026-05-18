@@ -815,12 +815,12 @@ function clipCoordsAroundObstacles(coords, obstaclesIndex, radius) {
 function collectCanonicalWays() {
     if (!routesData) return [];
 
-    const allRouteIds = Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE);
-    const globalRank = new Map();
-    allRouteIds.forEach((id, i) => globalRank.set(id, i));
+    const globalRank = modeAwareGlobalRank();
 
     const ways = [];
     for (const f of routesData.features) {
+        if (!featurePassesModeFilter(f)) continue;
+        if (f.properties.isStub === true) continue;
         const props = f.properties;
         const routeId = props.route_id;
         const shared = props.shared_routes || [routeId];
@@ -3072,6 +3072,8 @@ function distanceToVisibleTrails(lng, lat) {
     if (!routesData) return Infinity;
     let minDist = Infinity;
     for (const f of routesData.features) {
+        if (!featurePassesModeFilter(f)) continue;
+        if (f.properties.isStub === true) continue;
         if (!visibleRoutes.has(f.properties.route_id)) continue;
         const coords = f.geometry.type === "LineString"
             ? f.geometry.coordinates
@@ -3098,6 +3100,8 @@ function distanceToHighlighted(lng, lat) {
     if (!routesData || !highlight) return Infinity;
     let minDist = Infinity;
     for (const f of routesData.features) {
+        if (!featurePassesModeFilter(f)) continue;
+        if (f.properties.isStub === true) continue;
         const props = f.properties;
         let match = false;
         if (highlight.kind === "route") {
@@ -3980,17 +3984,63 @@ function offsetLineGeometry(coords, offsetPx) {
 // ============================================================
 // Dynamic offset computation
 // ============================================================
+// Mode key matching the build-time route_order.enumerate_modes
+// scheme. Used to look up the active routeOrder in CONFIG.routeOrders
+// and to filter mode-tagged features (stubs + host variants).
+function currentModeKey() {
+    const season = (seasonMode === "winter") ? "winter" : "summer";
+    return emergencyOn ? `${season}_emergency` : season;
+}
+
+// Per-mode global rank map. Sorts each corridor's routes by index
+// into the active mode's routeOrder (from CONFIG.routeOrders). Falls
+// back to natural-sort if the active mode's order isn't available
+// (e.g. legacy builds, or modes that resolved to no routes).
+//
+// Returned Map maps route_id → rank (lower = first in the corridor).
+// Routes that don't appear in routeOrder fall to the end, then sort
+// by ROUTE_ID_COMPARE among themselves.
+function modeAwareGlobalRank() {
+    const orders = CONFIG.routeOrders || {};
+    const mode = currentModeKey();
+    const order = orders[mode];
+    if (!Array.isArray(order) || order.length === 0) {
+        // Legacy fallback: natural-sort over CONFIG.routes.
+        const allRouteIds = Object.keys(CONFIG.routes)
+            .slice().sort(ROUTE_ID_COMPARE);
+        const rank = new Map();
+        allRouteIds.forEach((id, i) => rank.set(id, i));
+        return rank;
+    }
+    const rank = new Map();
+    order.forEach((id, i) => rank.set(String(id), i));
+    // Append any CONFIG-listed routes missing from the order (e.g.
+    // custom routes added post-build) at the end, by natural-sort.
+    const missing = Object.keys(CONFIG.routes)
+        .filter((id) => !rank.has(id))
+        .sort(ROUTE_ID_COMPARE);
+    let next = order.length;
+    missing.forEach((id) => rank.set(id, next++));
+    return rank;
+}
+
+// Mode-tag filter: a feature renders if it has no `mode` property
+// (mode-independent — most features) OR its `mode` matches the
+// current mode. Stubs and host variants emitted by mode-aware
+// apply_subway_style_modes carry the property; everything else
+// passes through.
+function featurePassesModeFilter(f) {
+    const m = f.properties && f.properties.mode;
+    return !m || m === currentModeKey();
+}
+
 function computeOffsetsAndFilter() {
     if (!routesData) return { type: "FeatureCollection", features: [] };
 
-    // Global rank for each route id (consistent across recomputes).
-    // Using ROUTE_ID_COMPARE: numeric-aware, so OSM ints sort 1,2,10
-    // and string custom ids fall in lexicographically.
-    const allRouteIds = Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE);
-    const globalRank = new Map();
-    allRouteIds.forEach((id, i) => globalRank.set(id, i));
-
-    const features = routesData.features.map((f) => {
+    const globalRank = modeAwareGlobalRank();
+    const features = routesData.features
+        .filter(featurePassesModeFilter)
+        .map((f) => {
         const props = f.properties;
         const routeId = props.route_id;
 
@@ -4048,11 +4098,9 @@ function computeOffsetsAndFilter() {
 function computeLabelData() {
     if (!routesData) return { type: "FeatureCollection", features: [] };
 
-    const allRouteIds = Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE);
-    const globalRank = new Map();
-    allRouteIds.forEach((id, i) => globalRank.set(id, i));
-
+    const globalRank = modeAwareGlobalRank();
     const features = routesData.features
+        .filter(featurePassesModeFilter)
         .filter((f) => visibleRoutes.has(f.properties.route_id))
         .map((f) => {
             const props = f.properties;
@@ -4885,6 +4933,8 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     let hasCoords = false;
 
     for (const f of routesData.features) {
+        if (!featurePassesModeFilter(f)) continue;
+        if (f.properties.isStub === true) continue;
         const props = f.properties;
         let match = false;
         if (routeId !== undefined) {

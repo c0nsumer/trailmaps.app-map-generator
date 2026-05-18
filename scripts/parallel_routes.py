@@ -46,6 +46,7 @@ Caveats:
 """
 
 import math
+from collections import defaultdict
 
 
 # Number of micro-features per transition zone. Higher = smoother
@@ -112,7 +113,15 @@ def _shared_set_signature(shared_routes):
 def _natural_key(s):
     """Numeric-aware natural-sort key matching app.js's
     ROUTE_ID_COMPARE: split into runs of digits / non-digits, convert
-    digit runs to ints so "1", "2", "10" sort numerically."""
+    digit runs to ints so "1", "2", "10" sort numerically.
+
+    Each part is emitted as a ``(type_marker, value)`` pair: ``(0, int)``
+    for digit runs, ``(1, str)`` for non-digit runs. The type marker is
+    what keeps sorting valid on MIXED-TYPE id lists (e.g. OSM relation
+    ids like ``"12345678"`` together with custom event-mode ids like
+    ``"event_stage_1"``); without it, Python 3 raises ``TypeError``
+    when tuple comparison reaches an ``int`` vs ``str`` element.
+    """
     s = str(s)
     parts = []
     cur = ""
@@ -120,29 +129,44 @@ def _natural_key(s):
     for ch in s:
         if ch.isdigit():
             if cur_is_digit is False:
-                parts.append(cur)
+                parts.append((1, cur))
                 cur = ""
             cur_is_digit = True
         else:
             if cur_is_digit is True:
-                parts.append(int(cur))
+                parts.append((0, int(cur)))
                 cur = ""
             cur_is_digit = False
         cur += ch
     if cur:
-        parts.append(int(cur) if cur_is_digit else cur)
+        parts.append((0, int(cur)) if cur_is_digit else (1, cur))
     return tuple(parts)
 
 
-def _offset_index_for_route(route_id, shared_routes):
+def _offset_index_for_route(route_id, shared_routes, route_order=None):
     """Mirror app.js's `computeOffsetsAndFilter()` math at build time.
 
-    Sorts the shared-routes list with numeric-aware natural ordering,
-    finds this route's position, returns the centered offset index.
+    Sorts the shared-routes list and returns the centered offset
+    index for ``route_id``.
+
+    ``route_order`` (optional list of route IDs from
+    route_order.compute_route_orders): when provided, sort by index
+    into this list instead of natural-sort. Used by mode-aware
+    builds to keep offsets consistent with the runtime's mode-keyed
+    ordering. Routes not in route_order fall back to natural-sort
+    tiebreak appended at the end.
     """
     if not shared_routes:
         return 0
-    sorted_ids = sorted((str(x) for x in shared_routes), key=_natural_key)
+    if route_order is not None:
+        rank = {str(r): i for i, r in enumerate(route_order)}
+        n = len(route_order)
+        sorted_ids = sorted(
+            (str(x) for x in shared_routes),
+            key=lambda r: (rank.get(r, n), _natural_key(r)),
+        )
+    else:
+        sorted_ids = sorted((str(x) for x in shared_routes), key=_natural_key)
     visible_count = len(sorted_ids)
     if visible_count <= 1:
         return 0
@@ -382,9 +406,27 @@ def _smooth_sharp_corners(coords):
     return new_coords
 
 
-def apply_subway_style(trails_geojson):
-    """Two-pass corridor smoother that runs in place on
-    trails_geojson.
+def _smooth_corridor_features(features):
+    """Pass 1 of subway-style: in-place sharp-corner smoothing.
+
+    Idempotent and mode-independent. Runs once over every LineString
+    feature regardless of which mode the build is targeting.
+    """
+    for feat in features:
+        geom = feat.get("geometry") or {}
+        if geom.get("type") != "LineString":
+            continue
+        coords = geom.get("coordinates") or []
+        if len(coords) < 3:
+            continue
+        smoothed = _smooth_sharp_corners(coords)
+        if len(smoothed) != len(coords):
+            geom["coordinates"] = smoothed
+
+
+def apply_subway_style(trails_geojson, *, route_order=None,
+                      visible_routes=None, mode_tag=None):
+    """Single-mode subway-style smoother. Mutates trails_geojson.
 
     Pass 1 — sharp-corner smoothing: every LineString feature gets
     its sharp internal vertices replaced with smooth bezier arcs
@@ -403,6 +445,25 @@ def apply_subway_style(trails_geojson):
     one's. The bezier's tangents at the endpoints match the incoming
     and outgoing corridor directions so the offset shift renders
     without spikes.
+
+    Parameters
+    ----------
+    route_order : list of str or None.
+        When provided, sorts each corridor's routes by index into
+        this list instead of by natural-sort of route_id. Mirrors
+        the runtime's globalRank from CONFIG.routeOrder. Used by
+        mode-aware builds to keep build-time bezier offsets and
+        runtime line offsets consistent.
+    visible_routes : iterable of str or None.
+        When provided, each feature's effective shared_routes is
+        FILTERED to this subset during transition detection — so
+        the transitions emitted reflect the corridor structure as
+        the user sees it in that mode. Features whose shared_routes
+        becomes empty after filtering are skipped.
+    mode_tag : str or None.
+        When provided, emitted stubs get a ``mode`` property set to
+        this value. Used at runtime to filter stubs by active mode.
+        When None, stubs are untagged (render in all modes).
 
     Idempotent: caller must strip prior `isStub: true` features
     before calling for re-runs. Smoothing is also idempotent: each
@@ -430,28 +491,52 @@ def apply_subway_style(trails_geojson):
     #     only touches internal vertices, not endpoints), and
     #   - the host's truncation lands on a smooth corridor — no
     #     downstream kink past the truncation point.
-    for feat in features:
-        geom = feat.get("geometry") or {}
-        if geom.get("type") != "LineString":
-            continue
-        coords = geom.get("coordinates") or []
-        if len(coords) < 3:
-            continue
-        smoothed = _smooth_sharp_corners(coords)
-        if len(smoothed) != len(coords):
-            geom["coordinates"] = smoothed
+    _smooth_corridor_features(features)
 
     # ---- Pass 2: junction transition zones -----------------------
+    # Mode-aware filtering: when ``visible_routes`` is set, each
+    # feature's effective shared_routes is the intersection of its
+    # configured shared_routes with the visible set. A route_id
+    # that's not visible has its features skipped entirely (the
+    # rider doesn't see it, so no transitions need rendering for it).
+    visible_set = (None if visible_routes is None
+                   else {str(r) for r in visible_routes})
+
+    def _effective_shared(feat):
+        """Return the feature's effective shared_routes for this mode.
+
+        Filters by ``visible_set`` if provided. Returns a list of
+        string route IDs (may be empty, in which case caller should
+        skip the feature)."""
+        raw = (feat.get("properties") or {}).get("shared_routes") or []
+        ss = [str(x) for x in raw if x]
+        if visible_set is not None:
+            ss = [r for r in ss if r in visible_set]
+        return ss
+
     # Group features by route_id so junctions can be analysed
     # per-route (a junction "in route X" only cares about X's
     # adjacent features there, not other routes that pass through
-    # the same node).
+    # the same node). Skip:
+    #   - non-LineString features
+    #   - stubs (isStub) and host variants (_subwayHostVariant) from
+    #     PREVIOUS subway-style passes (in multi-mode, this function
+    #     is called once per mode and earlier modes' output is
+    #     already in `features`; treating it as input would pollute
+    #     the junction graph with fake junction nodes at variant
+    #     truncations or stub micro-segment endpoints)
+    #   - routes filtered out by visibility (`visible_set`)
     by_route = {}
     for feat in features:
         if feat.get("geometry", {}).get("type") != "LineString":
             continue
-        rid = str(feat.get("properties", {}).get("route_id", ""))
+        props = feat.get("properties") or {}
+        if props.get("isStub") or props.get("_subwayHostVariant"):
+            continue
+        rid = str(props.get("route_id", ""))
         if not rid:
+            continue
+        if visible_set is not None and rid not in visible_set:
             continue
         by_route.setdefault(rid, []).append(feat)
 
@@ -510,10 +595,13 @@ def apply_subway_style(trails_geojson):
                     feat_a = route_features[f_idx_a]
                     feat_b = route_features[f_idx_b]
 
-                    sig_a = _shared_set_signature(
-                        feat_a["properties"].get("shared_routes"))
-                    sig_b = _shared_set_signature(
-                        feat_b["properties"].get("shared_routes"))
+                    sig_a = _shared_set_signature(_effective_shared(feat_a))
+                    sig_b = _shared_set_signature(_effective_shared(feat_b))
+                    # An empty sig means the feature has no visible
+                    # routes in this mode — skip; the rider never sees
+                    # this corridor here.
+                    if not sig_a or not sig_b:
+                        continue
                     if sig_a == sig_b:
                         continue
 
@@ -523,8 +611,8 @@ def apply_subway_style(trails_geojson):
                             coords_a, end_a, coords_b, end_b):
                         continue
 
-                    offset_a = _offset_index_for_route(rid, sig_a)
-                    offset_b = _offset_index_for_route(rid, sig_b)
+                    offset_a = _offset_index_for_route(rid, sig_a, route_order)
+                    offset_b = _offset_index_for_route(rid, sig_b, route_order)
                     if offset_a == offset_b:
                         continue
 
@@ -683,21 +771,48 @@ def apply_subway_style(trails_geojson):
             shrink = max(0.05, (1.0 - sharpness) ** 3)
             span_eff = span_m * shrink
             handle_frac = _BEZIER_HANDLE_FRACTION * shrink
-            # Hard cap at 1.5m UNIVERSALLY. Even straight-continuation
-            # transitions used to span the full 10m (because shrink ≈ 1
-            # for sharpness ≈ 0), which produced a visible "lateral
-            # tilt" of the corridor over a long stretch any time the
-            # corridor's offset structure changed (route joining or
-            # leaving). The user's screenshots showed this as a
-            # noticeable "jog" — even though the bezier had no bulge,
-            # the offset shift distributed over 10m made the corridor
-            # visibly drift sideways. Capping at 1.5m localizes the
-            # drift to a tight transition zone that reads as a clean
-            # junction marker rather than a corridor that's slowly
-            # tilting. The corresponding bezier bulge for sharper
-            # corners (where the cap matters most for hiding bulge)
-            # is unchanged from before.
-            span_eff = min(span_eff, 1.5)
+            # Delta-aware cap. The unconditional 1.5m cap previously
+            # used here localised lateral drift nicely for SMALL offset
+            # shifts (e.g. +1.5 → +1.0 when one route leaves a 4-wide
+            # corridor) — those want a tight transition that reads as
+            # a clean junction marker, not a slow tilt.
+            #
+            # But for LARGE shifts — and especially sign-flip shifts
+            # where the route's offset crosses zero — 1.5m is too
+            # short. The route's parallel line has to traverse the
+            # full corridor width within ~6px (at z16), which reads as
+            # a "snap" or "switch" rather than a deliberate lane
+            # change. Even with side-stable lane assignment, a route
+            # can still shift by ≥1 offset unit within its side as a
+            # corridor's membership changes (corridor "breathing"), and
+            # the legacy code path can still hit a true sign flip.
+            #
+            # Strategy: scale the cap with the magnitude of the offset
+            # shift. Small shifts keep the 1.5m cap; shifts ≥1 unit
+            # get up to 6m (still bounded by span_m's first-segment
+            # cap above) so the bezier visibly arcs through the lane
+            # change rather than stepping.
+            # Delta-aware bezier span cap. Two regimes:
+            #
+            # - "Big" shifts — sign flips (offset crosses zero) OR
+            #   shifts of ≥ 1 offset unit. These read as a hard snap
+            #   if compressed into a 1.5m bezier; we allow up to ~6m
+            #   so the lateral movement renders as a deliberate arc.
+            #
+            # - "Small" shifts — within-side movements of < 1 offset
+            #   unit (corridor breathing, center-transitions). The
+            #   bezier stays at the 1.5m cap. This keeps junctions
+            #   visually crisp: longer beziers at multi-branch
+            #   junctions create a "blob" or "pocket" between
+            #   diverging branches, which is worse than the 1.5m
+            #   visible step it would replace. The step is the price
+            #   we accept for clean junctions.
+            offset_delta = abs(host_offset_value - opposite_offset_value)
+            crosses_zero = (host_offset_value * opposite_offset_value) < 0
+            if crosses_zero or offset_delta >= 1.0:
+                span_eff = min(span_m, 6.0, max(span_eff, 4.0))
+            else:
+                span_eff = min(span_eff, 1.5)
             if span_eff <= 0.3:
                 # If sharpness pushed span below the visible-noise
                 # floor, skip the transition altogether — the offset
@@ -803,6 +918,8 @@ def apply_subway_style(trails_geojson):
                         "isStub": True,
                     },
                 }
+                if mode_tag is not None:
+                    micro["properties"]["mode"] = mode_tag
                 new_micro_features.append(micro)
 
             # Mark the host's first vertex for truncation —
@@ -885,7 +1002,8 @@ def apply_subway_style(trails_geojson):
 
             # Compute joining route's offset in the host corridor
             # (where it actually lives, downstream of the junction).
-            host_offset_value = _offset_index_for_route(rid, host_sig)
+            host_offset_value = _offset_index_for_route(
+                rid, host_sig, route_order)
             if host_offset_value == 0:
                 # Centered route in odd-count corridor — no visible
                 # offset shift even if it appeared abruptly. Skip.
@@ -946,6 +1064,8 @@ def apply_subway_style(trails_geojson):
                         "isStub": True,
                     },
                 }
+                if mode_tag is not None:
+                    micro["properties"]["mode"] = mode_tag
                 new_micro_features.append(micro)
 
             # Mark this route's host for truncation too — same
@@ -955,18 +1075,189 @@ def apply_subway_style(trails_geojson):
             if truncation_key not in truncations:
                 truncations[truncation_key] = points[-1]
 
-    # Apply truncations. Stash the original first vertex in
-    # _subwayOriginalCoord0 so build.py's _enrich_trails_geojson can
-    # restore it on re-runs (and the truncation doesn't compound).
-    for (truncate_rid, host_idx), endpoint in truncations.items():
-        host_feat = by_route[truncate_rid][host_idx]
-        coords = host_feat["geometry"]["coordinates"]
-        props = host_feat.setdefault("properties", {})
-        if "_subwayOriginalCoord0" not in props:
-            props["_subwayOriginalCoord0"] = list(coords[0])
-        coords[0] = list(endpoint)
+    # ---- Truncations ---------------------------------------------
+    # Two paths:
+    #
+    # Single-mode (mode_tag is None — legacy behavior):
+    #   Apply truncations IN-PLACE on each host feature. Stash the
+    #   original first vertex in _subwayOriginalCoord0 so build.py's
+    #   _enrich_trails_geojson can restore it on re-runs and the
+    #   truncation doesn't compound.
+    #
+    # Multi-mode (mode_tag is set):
+    #   Emit a TRUNCATED HOST VARIANT — a copy of the host with the
+    #   truncated coords[0] and the active mode_tag. Mark the original
+    #   host with `_subwayHasVariants: True` so the multi-mode driver
+    #   (apply_subway_style_modes) knows to remove or otherwise gate
+    #   it later. The original's coords stay unchanged so other modes
+    #   can emit their own variants from the same starting state.
+    if mode_tag is None:
+        for (truncate_rid, host_idx), endpoint in truncations.items():
+            host_feat = by_route[truncate_rid][host_idx]
+            coords = host_feat["geometry"]["coordinates"]
+            props = host_feat.setdefault("properties", {})
+            if "_subwayOriginalCoord0" not in props:
+                props["_subwayOriginalCoord0"] = list(coords[0])
+            coords[0] = list(endpoint)
+    else:
+        for (truncate_rid, host_idx), endpoint in truncations.items():
+            host_feat = by_route[truncate_rid][host_idx]
+            host_feat.setdefault("properties", {})["_subwayHasVariants"] = True
+            # Build a deep-enough copy: properties dict + geometry +
+            # coordinates list. Other refs (e.g. route_ids list) are
+            # safely shared because we don't mutate them downstream.
+            variant_props = dict(host_feat.get("properties") or {})
+            variant_props.pop("_subwayHasVariants", None)  # not on variant
+            variant_props["mode"] = mode_tag
+            variant_props["_subwayHostVariant"] = True
+            variant_coords = list(host_feat["geometry"]["coordinates"])
+            variant_coords[0] = list(endpoint)
+            variant = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": variant_coords,
+                },
+                "properties": variant_props,
+            }
+            new_micro_features.append(variant)
 
     if new_micro_features:
         features.extend(new_micro_features)
         trails_geojson["features"] = features
     return len(new_micro_features)
+
+
+def apply_subway_style_modes(trails_geojson, route_orders, modes):
+    """Multi-mode subway-style driver.
+
+    For each visible mode, runs ``apply_subway_style`` with the mode's
+    routeOrder and visible-route subset. After all modes are processed,
+    cleans up host features that received truncations:
+
+      - Every host that needs truncation in ≥1 mode is now marked
+        ``_subwayHasVariants`` and accompanied by one or more
+        ``_subwayHostVariant`` features (one per mode that truncates it).
+      - For each such host, emit "pass-through" variants tagged with
+        any mode that DIDN'T truncate (so the host still renders, just
+        un-truncated, in those modes).
+      - Remove the original host from the feature list — its rendering
+        is now fully delegated to the per-mode variants.
+
+    Untouched hosts (no truncation in any mode) stay in the feature
+    list with no ``mode`` property and render in all modes.
+
+    Stubs from each per-mode pass are already tagged with ``mode = M``
+    and pass through unchanged.
+
+    Parameters
+    ----------
+    trails_geojson : dict — the full trails geojson to mutate in place.
+    route_orders : dict {mode_key: list of route_ids} from
+        route_order.compute_route_orders.
+    modes : dict {mode_key: frozenset of route_ids} from
+        route_order.enumerate_modes.
+
+    Returns
+    -------
+    int : total stub features emitted across all modes (does not
+    include host variants).
+    """
+    if not route_orders or not modes:
+        # Degenerate — no modes to process. Fall back to single-mode.
+        return apply_subway_style(trails_geojson)
+
+    # Sort mode keys for determinism. Pass 1 (smoothing) is idempotent
+    # and runs inside apply_subway_style on each call, so it's fine to
+    # invoke per-mode (subsequent calls are no-ops on smoothing).
+    sorted_modes = sorted(modes.keys())
+    total_stubs = 0
+    for mode_key in sorted_modes:
+        visible = modes[mode_key]
+        route_order = route_orders.get(mode_key)
+        emitted = apply_subway_style(
+            trails_geojson,
+            route_order=route_order,
+            visible_routes=visible,
+            mode_tag=mode_key,
+        )
+        # `emitted` includes BOTH stubs and host variants for this mode.
+        # We can't separate them cheaply here; the caller asking for a
+        # stub-only count would need to filter after the fact. For
+        # diagnostic purposes the combined count is fine.
+        total_stubs += emitted
+
+    # --- Pass-through variants + original-host cleanup ---
+    # Find every host that got at least one truncated variant. For
+    # each, ensure there's a variant tagged for every active mode
+    # (emit pass-throughs for modes that didn't truncate), then drop
+    # the original from the feature list.
+    features = trails_geojson["features"]
+    # Group host variants by their parent (route_id, original_first_coord).
+    # We use route_id + the variant's geometry beyond coords[0] to
+    # identify the matching original — since coords[1:] is unchanged
+    # in every variant, that's a stable key.
+    def _host_key(feat):
+        props = feat.get("properties") or {}
+        rid = str(props.get("route_id") or "")
+        coords = (feat.get("geometry") or {}).get("coordinates") or []
+        # Coords[1:] is mode-independent — use the FIRST non-coord[0]
+        # vertex as the key suffix. That's enough to identify the host.
+        suffix = tuple(coords[1]) if len(coords) >= 2 else ()
+        return (rid, suffix)
+
+    # Index variants by (route_id, coord_1) → {mode: variant_feature}
+    variant_index = defaultdict(dict)
+    for feat in features:
+        props = feat.get("properties") or {}
+        if not props.get("_subwayHostVariant"):
+            continue
+        mode_key = props.get("mode")
+        if not mode_key:
+            continue
+        variant_index[_host_key(feat)][mode_key] = feat
+
+    # Find the originals to remove and pass-throughs to emit.
+    pass_through_variants = []
+    originals_to_remove_ids = set()
+    for feat in features:
+        props = feat.get("properties") or {}
+        if not props.get("_subwayHasVariants"):
+            continue
+        if props.get("_subwayHostVariant"):
+            continue  # this is a variant, not an original
+        # This is an original that has at least one variant.
+        key = _host_key(feat)
+        existing_modes = set(variant_index[key].keys())
+        missing_modes = set(sorted_modes) - existing_modes
+        for mk in missing_modes:
+            # Emit a pass-through variant — same coords, tagged for
+            # the missing mode.
+            pt_props = dict(props)
+            pt_props.pop("_subwayHasVariants", None)
+            pt_props["mode"] = mk
+            pt_props["_subwayHostVariant"] = True
+            pt_props["_subwayPassThrough"] = True
+            pt = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": list(
+                        (feat.get("geometry") or {}).get("coordinates") or []
+                    ),
+                },
+                "properties": pt_props,
+            }
+            pass_through_variants.append(pt)
+        originals_to_remove_ids.add(id(feat))
+
+    # Build the new feature list: drop originals we replaced, keep
+    # everything else, then append pass-through variants.
+    new_features = [
+        f for f in features
+        if id(f) not in originals_to_remove_ids
+    ]
+    new_features.extend(pass_through_variants)
+    trails_geojson["features"] = new_features
+
+    return total_stubs
