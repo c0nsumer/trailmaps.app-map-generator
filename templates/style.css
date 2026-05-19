@@ -645,7 +645,12 @@ body {
     background: var(--input-bg);
     color: var(--sheet-text);
     font-family: inherit;
-    font-size: 14px;
+    /* 16px specifically — iOS Safari auto-zooms the visual viewport
+     * before opening the native <select> picker if computed font-size
+     * is < 16px, and the post-picker blur often fails to restore
+     * scale to 1.0. Same trigger and same mitigation as
+     * .search-overlay-input. */
+    font-size: 16px;
     cursor: pointer;
     appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
@@ -2634,7 +2639,13 @@ body.fabs-labeled .fab-label {
     background: var(--input-bg);
     color: var(--sheet-text);
     font: inherit;
-    font-size: 15px;
+    /* 16px specifically — iOS Safari auto-zooms the visual viewport
+     * on focus of any input with computed font-size < 16px, and the
+     * blur often fails to restore scale to 1.0, leaving fixed chrome
+     * (logo, FABs) slightly clipped at the corners. 16px is the
+     * minimum threshold; the visual difference vs 15px is one CSS
+     * pixel of glyph height, imperceptible in practice. */
+    font-size: 16px;
     appearance: none;
 }
 
