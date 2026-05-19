@@ -181,6 +181,19 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--sheet-text);
     background: var(--page-bg);
+    /* Block page-level pinch-zoom across all UI chrome (FABs,
+     * overlays, modals, brand, toasts). Without this, a pinch
+     * starting on any non-map surface zooms the visual viewport —
+     * which iOS Safari won't let JS reset — leaving position:fixed
+     * chrome stranded outside the visible area until the user
+     * manually pinches back. The map keeps its own zoom gesture via
+     * MapLibre (which captures touches on #map and preventDefaults);
+     * see #map's `touch-action: none` override. Accessibility
+     * fallbacks for UI-text zoom: iOS Safari's "AA" → Page Zoom in
+     * the URL bar, and iOS Settings → Accessibility → Larger Text
+     * (the latter requires relative font units we don't yet use
+     * universally — known limitation). */
+    touch-action: pan-x pan-y;
     /* Disable the browser's edge-swipe-to-go-back / pull-to-refresh
      * gestures. A rider panning the map near the screen edge would
      * otherwise occasionally trigger history navigation (Android +
@@ -225,6 +238,13 @@ body {
      * edge-to-edge, restoring the intended fullscreen look. */
     position: fixed;
     inset: 0;
+    /* MapLibre owns all map gestures via its own touch handlers
+     * (preventDefault on pinch/pan). `touch-action: none` keeps the
+     * browser out of the way — without it, body's `pan-x pan-y`
+     * would let one-finger pans on the map be interpreted as page
+     * pans (where the page has nothing to scroll, but iOS Safari
+     * still leaks subtle visual-viewport drift via that path). */
+    touch-action: none;
 }
 
 .hidden {
@@ -528,7 +548,7 @@ body {
     background: transparent;
     color: var(--sheet-text-muted);
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -2715,6 +2735,11 @@ body.fabs-labeled .fab-label {
 .search-overlay-results {
     flex: 1 1 auto;
     overflow-y: auto;
+    /* See .options-overlay-body for the rationale. Pinning overflow-x
+     * hidden prevents iOS Safari from interpreting a stray horizontal
+     * swipe as a visual-viewport pan, which would otherwise drift
+     * position:fixed chrome off-screen until the user swiped back. */
+    overflow-x: hidden;
     overscroll-behavior: contain;
     padding: 4px 0;
 }
@@ -2824,6 +2849,14 @@ body.fabs-labeled .fab-label {
 .options-overlay-body {
     flex: 1 1 auto;
     overflow-y: auto;
+    /* overflow-x pinned hidden — without it CSS computes overflow-x
+     * to `auto` (any non-visible y forces auto x), and a one-finger
+     * horizontal swipe on iOS Safari can then pan the visual viewport
+     * relative to the layout viewport, drifting position:fixed chrome
+     * (logo, FABs) off-screen until the user swipes back the other
+     * way. Reproduces with sub-pixel overflow from the panel's slide-
+     * in transform, segmented-pill rows on narrow phones, etc. */
+    overflow-x: hidden;
     overscroll-behavior: contain;
 }
 
