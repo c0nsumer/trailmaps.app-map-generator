@@ -50,7 +50,9 @@ def _parse_relations(data):
                 "id": element["id"],
                 "members": element.get("members", []),
                 "name": tags.get("name", f"Route {element['id']}"),
-                "colour": tags.get("colour", "#808080"),
+                # None when OSM has no colour tag — runtime layered fallback:
+                # relation_colors → default_trail_color → #808080 build-time default.
+                "colour": tags.get("colour"),
                 "ref": tags.get("ref", ""),
                 "route": tags.get("route", ""),
                 "seasonal": tags.get("seasonal", ""),
@@ -641,7 +643,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         _log_expansions("expanded", source_expansions)
         print(f"  Found {len(relations)} relation(s):")
         for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
-            print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
+            print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
         clipped_relations = {}
         if clipped_relation_ids:
@@ -651,7 +653,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             super_relation_expansions.update(clipped_expansions)
             _log_expansions("clipped", clipped_expansions)
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour']} [clipped]")
+                print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]")
             relations.update(clipped_relations)
 
         # Expand winter sets through the super-relation map BEFORE
@@ -691,14 +693,14 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
         print(f"  Found {len(members)} relation(s):")
         for rel_id, info in sorted(members.items(), key=lambda x: x[1]["name"]):
-            print(f"    {info['name']} ({rel_id}) colour={info['colour']}")
+            print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
         relations = dict(members)
 
         if clipped_relations:
             print(f"  Found {len(clipped_relations)} clipped relation(s):")
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour']} [clipped]")
+                print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]")
             relations.update(clipped_relations)
 
         # Apply winter_relations config override (marks relations as winter

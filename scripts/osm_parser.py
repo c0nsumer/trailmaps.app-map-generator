@@ -73,7 +73,9 @@ def _relation_info(rel):
     return {
         "id": rel["id"],
         "name": tags.get("name", f"Route {rel['id']}"),
-        "colour": tags.get("colour", "#808080"),
+        # None when OSM has no colour tag — runtime layered fallback:
+        # relation_colors → default_trail_color → #808080 build-time default.
+        "colour": tags.get("colour"),
         "ref": tags.get("ref", ""),
         "route": tags.get("route", ""),
         "seasonal": tags.get("seasonal", ""),
@@ -293,7 +295,7 @@ if __name__ == "__main__":
         print(f"  ERROR: No relations resolved from {relation_ids} in {osm_path}")
         sys.exit(1)
     for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
-        print(f"  {info['name']} ({rel_id}) colour={info['colour']}")
+        print(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
     print(f"\nExtracting ways for {len(rels)} relations:")
     all_ways = extract_ways(parsed, list(rels.keys()))
