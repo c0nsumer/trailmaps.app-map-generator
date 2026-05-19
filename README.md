@@ -77,6 +77,19 @@ terrain, sprites). Subsequent rebuilds with cached data finish in under 30
 seconds. See [`docs/building.md`](docs/building.md) for the full pipeline, CLI
 flags, and caching behaviour.
 
+The build can also be invoked as a package, which lets the caller redirect
+output and cache to arbitrary paths without touching the config file:
+
+```bash
+python -m map_generator build configs/example/example.yaml \
+    --output-dir /tmp/example-build \
+    --cache-dir  /tmp/example-cache
+```
+
+Both entry points are interchangeable; the package form just forwards flags
+to `scripts/build.py`. Omit `--output-dir` / `--cache-dir` and the legacy
+`build/<slug>/` and `cache/` layout under the repo root is used.
+
 ## Creating a new basic map with PWA support
 
 1. Map your trails in OpenStreetMap as route relations under a relation or

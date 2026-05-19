@@ -2693,13 +2693,23 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     print("Dry run complete — no files written, no network calls made.")
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
     parser.add_argument("--force", action="store_true", help="Force re-fetch all data (including Overpass cache)")
     parser.add_argument("--trails", action="store_true", help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.")
     parser.add_argument("--skip-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--skip-basemap", action="store_true", help="Skip basemap extraction")
+    parser.add_argument("--output-dir",
+                        help="Write build output to this directory. Overrides "
+                             "the config 'output_dir' field and the default "
+                             "'build/<slug>/' layout. Resolved against the "
+                             "current working directory if relative.")
+    parser.add_argument("--cache-dir",
+                        help="Use this directory for the Overpass / derive-accent "
+                             "/ route-stats cache. Defaults to 'cache/' at the "
+                             "repo root. Resolved against the current working "
+                             "directory if relative.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Validate config and print what would be fetched / generated, then exit. "
                              "No Overpass calls, no tile downloads, no file writes.")
@@ -2720,7 +2730,7 @@ def main():
                         help="Disable minification (overrides the default). "
                              "Use for local-iteration debug; for deploy, "
                              "leave the default on.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -2738,8 +2748,23 @@ def main():
             print(line)
         sys.exit(1)
 
-    output_dir = os.path.join(project_root, config.get("output_dir", os.path.join("build", config["slug"])))
-    cache_dir = os.path.join(project_root, "cache")
+    # Path resolution precedence: CLI flag > config field > legacy default.
+    # CLI-flag paths resolve against the current working directory so the
+    # caller (orchestrator or shell) controls layout entirely; config-field
+    # and default paths resolve against project_root so the legacy
+    # `python scripts/build.py configs/<slug>/<slug>.yaml` invocation keeps
+    # writing to `build/<slug>/` under the repo regardless of cwd.
+    if args.output_dir:
+        output_dir = os.path.abspath(args.output_dir)
+    elif config.get("output_dir"):
+        output_dir = os.path.join(project_root, config["output_dir"])
+    else:
+        output_dir = os.path.join(project_root, "build", config["slug"])
+
+    if args.cache_dir:
+        cache_dir = os.path.abspath(args.cache_dir)
+    else:
+        cache_dir = os.path.join(project_root, "cache")
 
     # --dry-run: print what would happen, exit before any work.
     # Runs AFTER validate_config so any schema/value errors still abort
