@@ -32,7 +32,7 @@ What it CANNOT tell you:
 
 Usage:
   # Compare a single map (uses build/<slug>/trails.geojson by default)
-  python scripts/compare_elevation_sources.py --config configs/ramba/ramba.yaml
+  python scripts/compare_elevation_sources.py --config configs/example/example.yaml
 
   # Compare every built map
   python scripts/compare_elevation_sources.py --all
@@ -42,7 +42,7 @@ Usage:
   python scripts/compare_elevation_sources.py --all --spacing 50 --smoothing 3 --threshold 2.0
 
   # Limit to one source (useful for tuning one side without re-running both)
-  python scripts/compare_elevation_sources.py --config configs/ramba/ramba.yaml --source 3dep
+  python scripts/compare_elevation_sources.py --config configs/example/example.yaml --source 3dep
 
   # Bypass the comparison cache (force re-fetch from APIs)
   python scripts/compare_elevation_sources.py --all --no-cache

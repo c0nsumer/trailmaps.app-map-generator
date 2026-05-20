@@ -4,6 +4,8 @@ cache/
 __pycache__/
 *.pyc
 .venv/
+# Per-map configs are not tracked by the engine repo. Bring your own.
+# Only the reference templates and a worked example ship with the OSS.
 configs/*
 !configs/reference/
 !configs/example/

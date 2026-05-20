@@ -3,7 +3,7 @@
 
 Run automatically at the top of `build.py`, or standalone:
 
-    python scripts/validate_config.py configs/ramba/ramba.yaml [configs/dte/dte.yaml ...]
+    python scripts/validate_config.py configs/example/example.yaml [more.yaml ...]
 
 Catches the kinds of mistakes the build pipeline silently swallows:
 unknown top-level keys (typos like `Default_Direction_Schedule`), wrong

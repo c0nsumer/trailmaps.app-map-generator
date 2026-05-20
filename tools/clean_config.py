@@ -11,8 +11,8 @@ sections renamed, etc. This tool re-aligns a config to the canonical
 template without losing any explicitly-set values.
 
 Usage:
-    python tools/clean_config.py configs/potoloo/potoloo.yaml
-    python tools/clean_config.py configs/potoloo/potoloo.yaml \\
+    python tools/clean_config.py configs/example/example.yaml
+    python tools/clean_config.py configs/example/example.yaml \\
         --template configs/reference/reference-minimal.yaml
 
 The output file is `<input-stem>-cleaned.yaml` in the same directory.

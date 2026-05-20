@@ -90,6 +90,27 @@ Both entry points are interchangeable; the package form just forwards flags
 to `scripts/build.py`. Omit `--output-dir` / `--cache-dir` and the legacy
 `build/<slug>/` and `cache/` layout under the repo root is used.
 
+## Bring your own configs
+
+The engine itself does not ship any specific trail data. The only configs
+tracked in this repo are:
+
+- [`configs/example/`](configs/example/) : a worked example with a small
+  config, an icon, and a logo. Build it as a smoke test, or copy it to
+  start a new map.
+- [`configs/reference/`](configs/reference/) : the canonical schema
+  references. `reference-minimal.yaml` is a terse skeleton for new maps;
+  `reference.yaml` is annotated with every supported key.
+
+The `configs/*` glob is gitignored, with explicit exceptions only for
+those two folders. Any `configs/<slug>/` you create stays private to your
+checkout. Point the engine at a config anywhere on disk via the positional
+`config` argument plus `--output-dir` / `--cache-dir` to keep your data
+fully outside this repo.
+
+The trailmaps.app maps that originally lived in this repo now live in a
+separate private orchestrator that drives this engine as a CLI tool.
+
 ## Creating a new basic map with PWA support
 
 1. Map your trails in OpenStreetMap as route relations under a relation or

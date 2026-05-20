@@ -5,10 +5,10 @@ Runs all pipeline steps, assembles templates with injected config,
 and copies assets to produce a deployable static site.
 
 Usage:
-    python scripts/build.py configs/ramba/ramba.yaml
-    python scripts/build.py configs/ramba/ramba.yaml --force
-    python scripts/build.py configs/ramba/ramba.yaml --trails
-    python scripts/build.py configs/ramba/ramba.yaml --skip-terrain
+    python scripts/build.py configs/example/example.yaml
+    python scripts/build.py configs/example/example.yaml --force
+    python scripts/build.py configs/example/example.yaml --trails
+    python scripts/build.py configs/example/example.yaml --skip-terrain
 """
 
 import argparse

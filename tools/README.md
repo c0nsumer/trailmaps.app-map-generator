@@ -89,7 +89,7 @@ swap it in manually when satisfied.
 
 ```bash
 # Default template (configs/reference/reference-minimal.yaml)
-python tools/clean_config.py configs/potoloo/potoloo.yaml
+python tools/clean_config.py configs/example/example.yaml
 
 # Custom template (e.g. the verbose annotated reference)
 python tools/clean_config.py configs/foo/foo.yaml \
