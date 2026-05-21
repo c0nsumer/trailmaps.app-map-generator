@@ -27,11 +27,22 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="__OG_TITLE__">
     <meta property="og:description" content="__OG_DESCRIPTION__">
-    <meta property="og:image" content="icons/android-chrome-512x512.png">
-    <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="__OG_TITLE__">
     <meta name="twitter:description" content="__OG_DESCRIPTION__">
+    <!-- BEGIN OG -->
+    <!-- Image-related OG tags. Default block points at the PWA icon
+         as a small-summary card so OSS consumers (who don't run the
+         trailmaps.app orchestrator) still get a functional preview.
+         The trailmaps.app orchestrator's inject-og-meta.py replaces
+         this whole block with 1200x630 summary_large_image tags
+         that reference a generated per-map og-image.png. -->
+    <meta property="og:image" content="icons/android-chrome-512x512.png">
+    <meta property="og:image:width" content="512">
+    <meta property="og:image:height" content="512">
+    <meta property="og:image:alt" content="__OG_TITLE__">
+    <meta name="twitter:card" content="summary">
     <meta name="twitter:image" content="icons/android-chrome-512x512.png">
+    <!-- END OG -->
 
     <!-- Icons start -->
     <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
