@@ -3206,15 +3206,34 @@ async function addTerrainLayers() {
 }
 
 // ============================================================
-// Helper: perceived luminance of a CSS hex color (0–1)
+// Helper: perceived luminance of any CSS color (0–1)
 // ============================================================
-function colorLuminance(hex) {
-    hex = hex.replace("#", "");
-    if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
-    const r = parseInt(hex.substring(0, 2), 16) / 255;
-    const g = parseInt(hex.substring(2, 4), 16) / 255;
-    const b = parseInt(hex.substring(4, 6), 16) / 255;
-    return 0.299 * r + 0.587 * g + 0.114 * b;
+// Resolve the color through a canvas 2D context first, so NAMED colors
+// (OSM `colour=white` and friends, which arrive verbatim) normalize to
+// rgb. The old hex-only parse turned every named color into NaN, and
+// `NaN > threshold` is false — silently flipping casing/halo decisions to
+// the wrong direction (white routes lost their dark casing entirely).
+let _luminanceCtx = null;
+function colorLuminance(color) {
+    if (!_luminanceCtx) {
+        _luminanceCtx = document.createElement("canvas").getContext("2d");
+    }
+    // Seed with a sentinel so an unparseable color is deterministic and
+    // doesn't inherit the previous call's value.
+    _luminanceCtx.fillStyle = "#000000";
+    _luminanceCtx.fillStyle = color;
+    const norm = _luminanceCtx.fillStyle;   // "#rrggbb" or "rgba(r, g, b, a)"
+    let r, g, b;
+    if (norm[0] === "#") {
+        const hex = norm.slice(1);
+        r = parseInt(hex.substring(0, 2), 16);
+        g = parseInt(hex.substring(2, 4), 16);
+        b = parseInt(hex.substring(4, 6), 16);
+    } else {
+        [r, g, b] = norm.slice(norm.indexOf("(") + 1, norm.indexOf(")"))
+            .split(",").map((s) => parseFloat(s));
+    }
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
 // Resolve the colour a route appears as on the map, in priority order:
