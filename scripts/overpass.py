@@ -72,6 +72,19 @@ class StaleSnapshotError(Exception):
     pass
 
 
+class PartialResponseError(Exception):
+    """Raised when Overpass returns HTTP 200 with a runtime-error remark.
+
+    Overpass signals a resource overrun (query timed out, or ran out of
+    memory) by setting a top-level `remark` beginning "runtime error: ..."
+    and returning whatever elements it managed to produce. The payload is
+    truncated but otherwise well-formed, so the element-count checks treat
+    it as success. We raise this instead so the caller retries and never
+    caches the partial result.
+    """
+    pass
+
+
 def _check_snapshot_freshness(data, server):
     """Raise StaleSnapshotError if the response's osm_base is too old.
 
@@ -161,6 +174,16 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             resp.raise_for_status()
             data = resp.json()
 
+            # A runtime-error remark means Overpass aborted mid-query (timeout
+            # or OOM) and returned a TRUNCATED element list with HTTP 200. That
+            # partial payload passes the empty-check below and would otherwise
+            # be cached and frozen into the build's trails.geojson via its .sig
+            # fingerprint, silently dropping trail geometry. Treat it as a
+            # transient failure: retry on the backoff schedule, never cache.
+            remark = data.get("remark")
+            if remark and "runtime error" in remark.lower():
+                raise PartialResponseError(remark.strip())
+
             if require_elements and not data.get("elements"):
                 # Empty response is ambiguous — it may be a transient
                 # server hiccup, OR the query is correctly formed but
@@ -197,7 +220,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                     json.dump(data, f)
 
             return data
-        except (EmptyResponseError, StaleSnapshotError) as e:
+        except (EmptyResponseError, StaleSnapshotError, PartialResponseError) as e:
             last_error = e
             print(f"    {server}: {e}")
         except (requests.RequestException, ValueError) as e:
