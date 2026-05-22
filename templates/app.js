@@ -116,6 +116,12 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("decor-route-name", "text-color", t.labelText);
         map.setPaintProperty("decor-route-name", "text-halo-color", t.labelHalo);
     }
+    for (const ptLayer of ["decor-route-name-pt", "decor-trail-name-pt"]) {
+        if (map.getLayer(ptLayer)) {
+            map.setPaintProperty(ptLayer, "text-color", t.labelText);
+            map.setPaintProperty(ptLayer, "text-halo-color", t.labelHalo);
+        }
+    }
     // Per-route name labels (one layer per route, id="trail-label-<routeId>",
     // added by addLineLabelLayers around line 3316). These render the route
     // name when labelMode === "routes" and need the same per-scheme paint
@@ -535,6 +541,11 @@ const KIND = Object.freeze({
     ROUTE_NAME: "route_name",
     DIAMOND:    "diamond",
     ARROW:      "arrow",
+    // Point-placed name labels shown only at overview zoom (a single
+    // loop/trail name at a representative point), distinct from the
+    // curve-following TRAIL_NAME/ROUTE_NAME LineString labels.
+    ROUTE_LABEL_PT: "route_label_pt",
+    TRAIL_LABEL_PT: "trail_label_pt",
 });
 const POI = Object.freeze({
     TRAIL_MARKER:    "trail_marker",
@@ -890,16 +901,157 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
     return false;
 }
 
+// ---- Decoration density tiers (min_zoom gates; eye-tunable) ----
+// Direction arrows AND difficulty diamonds share these tiers. Density
+// grows with zoom: the overview band (below PER_WAY) shows markers spaced
+// along each connected run so every stretch reads at a glance without the
+// per-way speckle; detail zooms layer on the per-way pair, then the 400 m
+// and 200 m sweeps.
+const DECOR_MZ_RUN     = 0;   // run-spaced overview markers
+const DECOR_MZ_PER_WAY = 14;  // 2 per physical way
+const DECOR_MZ_D400    = 15;  // every 400 m
+const DECOR_MZ_D200    = 16;  // every 200 m (close-in)
+
+// Ground-distance spacing between overview (run-tier) markers. Larger =
+// sparser when zoomed out; a run gets one marker per this many metres
+// (straight-line), with a guaranteed minimum of one so no run is unmarked.
+const OVERVIEW_ARROW_SPACING_M   = 500;
+const OVERVIEW_DIAMOND_SPACING_M = 500;
+
+// Overview point labels (a single loop/trail name at a representative
+// point) cover the zooms where the curve-following line labels can't
+// fit. The layer maxzoom hands back to the line labels at this zoom.
+const POINT_LABEL_MAX_ZOOM = DECOR_MZ_PER_WAY;
+// Set false to drop the trails-mode point label (keep routes-mode only)
+// if per-trail overview labels prove too cluttered.
+const POINT_LABELS_IN_TRAILS_MODE = true;
+
+// Endpoint key for way-connectivity matching. OSM-derived way geometry
+// shares exact node coordinates at junctions; rounding to ~0.1 m guards
+// against float drift from any upstream processing.
+function endpointKey(lng, lat) {
+    return lng.toFixed(6) + "," + lat.toFixed(6);
+}
+
+// Group ways into maximal connected runs. `isEligible(way)` selects the
+// participating ways; two eligible ways join when they meet at an endpoint,
+// share at least one route id (so two loops crossing at a junction stay
+// separate), AND share the same `groupKey(way)`. For arrows the key is
+// constant (direction only); for diamonds it's the difficulty, so a black
+// pitch inside a blue loop forms its own run and keeps its own overview
+// marker. Returns one entry per run: { ways: [...] }.
+function computeConnectedRuns(ways, isEligible, groupKey) {
+    const eligible = ways.filter(isEligible);
+    const parent = eligible.map((_, i) => i);
+    const find = (x) => {
+        while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
+    };
+    const union = (a, b) => {
+        const ra = find(a), rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+    };
+
+    const atNode = new Map();   // endpoint key -> [{ idx, routes, gk }]
+    for (let i = 0; i < eligible.length; i++) {
+        const c = eligible[i].coords;
+        const routes = new Set(
+            (eligible[i].sharedRoutes && eligible[i].sharedRoutes.length)
+                ? eligible[i].sharedRoutes : [eligible[i].routeId]);
+        const gk = groupKey(eligible[i]);
+        for (const e of [c[0], c[c.length - 1]]) {
+            const k = endpointKey(e[0], e[1]);
+            let bucket = atNode.get(k);
+            if (!bucket) { bucket = []; atNode.set(k, bucket); }
+            for (const other of bucket) {
+                if (other.gk !== gk) continue;
+                for (const r of routes) {
+                    if (other.routes.has(r)) { union(i, other.idx); break; }
+                }
+            }
+            bucket.push({ idx: i, routes, gk });
+        }
+    }
+
+    const runs = new Map();
+    for (let i = 0; i < eligible.length; i++) {
+        const root = find(i);
+        let run = runs.get(root);
+        if (!run) { run = { ways: [] }; runs.set(root, run); }
+        run.ways.push(eligible[i]);
+    }
+    return Array.from(runs.values());
+}
+
+// Place run-tier overview markers: walk each run's member ways longest-
+// first and drop a marker every ~spacingM of straight-line distance
+// (tracked in `acceptedPts`), guaranteeing at least one per run even when a
+// neighbour run already sits within spacing. Straight-line (not arc)
+// spacing keeps overview density even in screen space, so tight switchback
+// clusters don't each demand a marker. Each placement clears POI/marker
+// footprints via the shared `placed` index and registers itself there so
+// detail-tier markers don't stack on it. extraPropsFn(way, pt) supplies the
+// kind-specific feature properties.
+function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
+                           decorations, placed, extraPropsFn) {
+    const acceptedPts = [];
+    const farEnough = (lng, lat) => {
+        for (const p of acceptedPts) {
+            if (haversineMeters(lng, lat, p[0], p[1]) < spacingM) return false;
+        }
+        return true;
+    };
+    const place = (w, frac, ignoreSpacing) => {
+        const L = w.totalLength;
+        for (const f of [frac, frac - 0.06, frac + 0.06]) {
+            if (f <= 0 || f >= 1) continue;
+            const pt = pointAtArcLength(w.segments, L, L * f);
+            if (!pt) continue;
+            if (!ignoreSpacing && !farEnough(pt.lng, pt.lat)) continue;
+            if (placedCollides(pt.lng, pt.lat, radius, placed)) continue;
+            decorations.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
+                properties: { kind, min_zoom: minZoom, ...extraPropsFn(w, pt) },
+            });
+            placed.add({ lngLat: [pt.lng, pt.lat], radiusM: radius });
+            acceptedPts.push([pt.lng, pt.lat]);
+            return true;
+        }
+        return false;
+    };
+    for (const run of runs) {
+        const members = run.ways.slice()
+            .sort((a, b) => b.totalLength - a.totalLength);
+        let placedAny = false;
+        for (const w of members) {
+            const n = Math.max(1, Math.round(w.totalLength / spacingM));
+            for (let kk = 1; kk <= n; kk++) {
+                if (place(w, kk / (n + 1), false)) placedAny = true;
+            }
+        }
+        if (!placedAny && members.length) {
+            place(members[0], 0.5, true);   // guarantee >=1 per run
+        }
+    }
+}
+
 // Build the full decoration FeatureCollection for the current visible
 // route set. Order matters:
-//   Pass 1 — labels (LineString features rendered via symbol-placement:
-//            line so text follows the trail curve; not pre-deconflicted)
-//   Pass 2 — tier-0 mandatory icons (2 diamonds + 2 arrows per
-//            applicable way, ensures even short trails get markings)
-//   Pass 3 — tier-1 (zoom>=13) icons every 400m
-//   Pass 4 — tier-2 (zoom>=15) icons every 200m (fills tier-1 gaps)
-// Each icon-tier's candidates are deconflicted against everything
-// already placed, including obstacle markers gathered up front.
+//   Pass 1   — line labels (symbol-placement: line; text follows the
+//              trail curve; not pre-deconflicted)
+//   Pass 1.5 — run-tier overview markers: arrows and diamonds spaced
+//              along each connected run, placed first so detail-tier
+//              markers can't double up on them
+//   Pass 2   — per-way mandatory icons (2 diamonds + 2 arrows per
+//              applicable way) so even short trails get markings
+//   Pass 3   — 400 m icon sweep
+//   Pass 4   — 200 m icon sweep (fills the 400 m gaps)
+//   Pass 5   — overview point labels (one loop/trail name at a
+//              representative point; maxzoom hands back to line labels)
+// Arrows and diamonds share the DECOR_MZ_* zoom tiers above. Each
+// icon-tier's candidates are deconflicted against everything already
+// placed, including obstacle markers gathered up front.
 function computeDecorations() {
     const decorations = [];
     // Build a spatial-hash index of all collision targets. Seed with
@@ -919,6 +1071,7 @@ function computeDecorations() {
     ways.sort((a, b) => b.totalLength - a.totalLength);
 
     const reverseSet = reverseRoutesToday;
+    const arrowsAllowed = CONFIG.showDirectionArrows !== false;
 
     // ---- Pass 1: labels (one or more LineString runs per way;
     //      MapLibre's symbol-placement:line auto-curves text along the
@@ -965,9 +1118,41 @@ function computeDecorations() {
         }
     }
 
-    // ---- Pass 2: tier-0 mandatory decor — 2 diamonds + 2 arrows per
+    // ---- Pass 1.5: run-tier overview markers — arrows and diamonds
+    //      spaced along each connected run so every directional stretch
+    //      and difficulty band reads when zoomed out, without the per-way
+    //      speckle. Placed before the per-way passes so they seed the
+    //      collision index and coincident detail-tier markers get
+    //      suppressed. ----
+    if (arrowsAllowed) {
+        const arrowRuns = computeConnectedRuns(ways,
+            (w) => w.oneway === "yes" || w.oneway === "reversible",
+            () => "");
+        placeOverviewRuns(arrowRuns, KIND.ARROW, DECOR_RADIUS_M.arrow,
+            DECOR_MZ_RUN, OVERVIEW_ARROW_SPACING_M, decorations, placed,
+            (w, pt) => {
+                const reverse = reverseSet.has(w.routeId)
+                    || w.sharedRoutes.some((id) => reverseSet.has(id));
+                return {
+                    rotation: arrowRotateForBearing(pt.bearing, reverse),
+                    trail_name: w.trailName,
+                    shared_routes: w.sharedRoutes,
+                };
+            });
+    }
+    const diamondRuns = computeConnectedRuns(ways,
+        (w) => ["0", "1", "2", "3", "4", "5"].includes(w.imba),
+        (w) => w.imba);
+    placeOverviewRuns(diamondRuns, KIND.DIAMOND, DECOR_RADIUS_M.diamond,
+        DECOR_MZ_RUN, OVERVIEW_DIAMOND_SPACING_M, decorations, placed,
+        (w) => ({
+            imba_difficulty: w.imba,
+            trail_name: w.trailName,
+            shared_routes: w.sharedRoutes,
+        }));
+
+    // ---- Pass 2: per-way mandatory decor — 2 diamonds + 2 arrows per
     //      applicable way so even short trails get clear markings. ----
-    const arrowsAllowed = CONFIG.showDirectionArrows !== false;
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
@@ -984,7 +1169,7 @@ function computeDecorations() {
                 [L * 0.75, L * 0.85, L * 0.65, L * 0.90],
             ];
             for (const cand of anchors) {
-                tryPlaceDecoration(way, cand, KIND.DIAMOND, 0,
+                tryPlaceDecoration(way, cand, KIND.DIAMOND, DECOR_MZ_PER_WAY,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -998,7 +1183,7 @@ function computeDecorations() {
                 [L * 0.85, L * 0.80, L * 0.90, L * 0.75],
             ];
             for (const cand of anchors) {
-                tryPlaceDecoration(way, cand, KIND.ARROW, 0,
+                tryPlaceDecoration(way, cand, KIND.ARROW, DECOR_MZ_PER_WAY,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
@@ -1021,7 +1206,7 @@ function computeDecorations() {
 
         if (hasDiamond) {
             for (let arc = 400; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], KIND.DIAMOND, 13,
+                tryPlaceDecoration(way, [arc], KIND.DIAMOND, DECOR_MZ_D400,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -1031,7 +1216,7 @@ function computeDecorations() {
         }
         if (hasArrow) {
             for (let arc = 200; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], KIND.ARROW, 13,
+                tryPlaceDecoration(way, [arc], KIND.ARROW, DECOR_MZ_D400,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
@@ -1055,7 +1240,7 @@ function computeDecorations() {
 
         if (hasDiamond) {
             for (let arc = 200; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], KIND.DIAMOND, 15,
+                tryPlaceDecoration(way, [arc], KIND.DIAMOND, DECOR_MZ_D200,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -1065,13 +1250,76 @@ function computeDecorations() {
         }
         if (hasArrow) {
             for (let arc = 100; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], KIND.ARROW, 15,
+                tryPlaceDecoration(way, [arc], KIND.ARROW, DECOR_MZ_D200,
                     decorations, placed, (pt) => ({
                         rotation: arrowRotateForBearing(pt.bearing, reverse),
                         trail_name: way.trailName,
                         shared_routes: way.sharedRoutes,
                     }));
             }
+        }
+    }
+
+    // ---- Pass 5: overview point labels — one loop name per visible
+    //      route (at its centroid, which sits clear of the on-trail
+    //      arrows/diamonds) and, in trails mode, one trail name per trail
+    //      (at its longest way's midpoint). A layer maxzoom hands back to
+    //      the curve-following line labels as the rider zooms in. The
+    //      symbol_sort_key (negative length) lets the longest, most
+    //      significant names win MapLibre's collision drop. ----
+    const routeAgg = new Map();   // routeId -> { sx, sy, n, longest }
+    for (const way of ways) {
+        const rids = (way.sharedRoutes && way.sharedRoutes.length)
+            ? way.sharedRoutes : [way.routeId];
+        for (const rid of rids) {
+            if (!visibleRoutes.has(rid)) continue;
+            let agg = routeAgg.get(rid);
+            if (!agg) { agg = { sx: 0, sy: 0, n: 0, longest: way }; routeAgg.set(rid, agg); }
+            for (const c of way.coords) { agg.sx += c[0]; agg.sy += c[1]; agg.n++; }
+            if (way.totalLength > agg.longest.totalLength) agg.longest = way;
+        }
+    }
+    for (const [rid, agg] of routeAgg) {
+        const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
+        if (!name || agg.n === 0) continue;
+        decorations.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [agg.sx / agg.n, agg.sy / agg.n] },
+            properties: {
+                kind: KIND.ROUTE_LABEL_PT,
+                min_zoom: 0,
+                text: name,
+                symbol_sort_key: -Math.round(agg.longest.totalLength),
+                solo_route_id: rid,
+                shared_routes: agg.longest.sharedRoutes,
+            },
+        });
+    }
+    if (POINT_LABELS_IN_TRAILS_MODE) {
+        const trailLongest = new Map();   // trailName -> way
+        for (const way of ways) {
+            if (!way.trailName) continue;
+            const cur = trailLongest.get(way.trailName);
+            if (!cur || way.totalLength > cur.totalLength) {
+                trailLongest.set(way.trailName, way);
+            }
+        }
+        for (const [tname, way] of trailLongest) {
+            const mid = pointAtArcLength(way.segments, way.totalLength,
+                way.totalLength * 0.5);
+            if (!mid) continue;
+            decorations.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [mid.lng, mid.lat] },
+                properties: {
+                    kind: KIND.TRAIL_LABEL_PT,
+                    min_zoom: 0,
+                    text: tname,
+                    symbol_sort_key: -Math.round(way.totalLength),
+                    trail_name: tname,
+                    shared_routes: way.sharedRoutes,
+                },
+            });
         }
     }
 
@@ -1222,6 +1470,60 @@ function addDecorationLayers() {
             // LS value yet). Wired to the Direction-arrows toggle in
             // setupFloatingChrome.
             "visibility": directionArrowsToggleOn() ? "visible" : "none",
+        },
+    });
+
+    // Overview point labels — a single loop/trail name at a representative
+    // point, shown only below POINT_LABEL_MAX_ZOOM where the curve-
+    // following line labels can't fit. maxzoom hands back to those line
+    // labels as the rider zooms in. symbol-sort-key (negative length)
+    // makes the longest names win MapLibre's overlap drop.
+    map.addLayer({
+        id: "decor-route-name-pt",
+        type: "symbol",
+        source: "trail-decorations",
+        maxzoom: POINT_LABEL_MAX_ZOOM,
+        filter: ["all",
+            ["==", ["get", "kind"], KIND.ROUTE_LABEL_PT],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ],
+        layout: {
+            "symbol-placement": "point",
+            "text-field": ["get", "text"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13],
+            "text-padding": 4,
+            "symbol-sort-key": ["get", "symbol_sort_key"],
+            "visibility": labelMode === "routes" ? "visible" : "none",
+        },
+        paint: {
+            "text-color": "#1a1a1a",
+            "text-halo-color": "rgba(255,255,255,0.9)",
+            "text-halo-width": 2,
+        },
+    });
+    map.addLayer({
+        id: "decor-trail-name-pt",
+        type: "symbol",
+        source: "trail-decorations",
+        maxzoom: POINT_LABEL_MAX_ZOOM,
+        filter: ["all",
+            ["==", ["get", "kind"], KIND.TRAIL_LABEL_PT],
+            ["<=", ["get", "min_zoom"], ["zoom"]],
+        ],
+        layout: {
+            "symbol-placement": "point",
+            "text-field": ["get", "text"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13],
+            "text-padding": 4,
+            "symbol-sort-key": ["get", "symbol_sort_key"],
+            "visibility": labelMode === "trails" ? "visible" : "none",
+        },
+        paint: {
+            "text-color": "#1a1a1a",
+            "text-halo-color": "rgba(255,255,255,0.9)",
+            "text-halo-width": 2,
         },
     });
 }
@@ -3907,6 +4209,43 @@ function updateLabels() {
                 filter = buildLabelFilter(KIND.TRAIL_NAME);
             }
             map.setFilter("decor-trail-name", filter);
+        }
+    }
+
+    // Overview point labels — same mode / highlight-dim semantics as the
+    // line labels above; the layer maxzoom (set at creation) restricts
+    // them to overview zoom.
+    if (map.getLayer("decor-route-name-pt")) {
+        let visible = labelMode === "routes" && !CONFIG.eventModeActive;
+        let filter = buildLabelFilter(KIND.ROUTE_LABEL_PT);
+        if (visible && dim) {
+            if (highlight.kind === "route") {
+                filter = buildLabelFilter(KIND.ROUTE_LABEL_PT,
+                    ["==", ["get", "solo_route_id"], highlight.key]);
+            } else {
+                visible = false;
+            }
+        }
+        map.setLayoutProperty("decor-route-name-pt",
+            "visibility", visible ? "visible" : "none");
+        if (visible) map.setFilter("decor-route-name-pt", filter);
+    }
+    if (map.getLayer("decor-trail-name-pt")) {
+        const visible = labelMode === "trails";
+        map.setLayoutProperty("decor-trail-name-pt",
+            "visibility", visible ? "visible" : "none");
+        if (visible) {
+            let filter;
+            if (dim && highlight.kind === "route") {
+                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT,
+                    ["in", highlight.key, ["get", "shared_routes"]]);
+            } else if (dim && highlight.kind === "trail") {
+                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT,
+                    ["==", ["get", "trail_name"], highlight.key]);
+            } else {
+                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT);
+            }
+            map.setFilter("decor-trail-name-pt", filter);
         }
     }
 }
