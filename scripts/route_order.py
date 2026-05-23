@@ -27,10 +27,13 @@ Algorithm
 =========
 Local search (pairwise-swap hill climbing) with multi-restart. The
 first restart seeds from the previous-build's routeOrder when
-available, then from natural-sort if not; subsequent restarts shuffle
-randomly. Deterministic given the same input + seed (default 42).
-Empirically converges to within 1 sign-flip of optimum on every map
-in our network.
+available, else from natural-sort; subsequent restarts shuffle a
+natural-sorted base. On score ties the previous order wins, so an
+unchanged-topology rebuild is a true no-op; otherwise the lex-smallest
+ordering wins. Output is a deterministic function of the input
+geometry + seed (default 42), reproducible across processes regardless
+of PYTHONHASHSEED. Empirically converges to within 1 sign-flip of
+optimum on every map in our network.
 
 ILP-based optimal solutions (LOOM Section 3.2) are not implemented
 here — heuristic is sufficient for our scale (≤15 routes per map).
@@ -254,9 +257,11 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previou
     to this build are appended by natural-sort) or natural-sort
     otherwise. Restarts 1..N-1 use random shuffles seeded by ``seed``.
 
-    Tiebreaking: when two restarts find orderings with equal scores,
-    pick the lex-smallest tuple — ensures rebuilds with the same
-    inputs produce bit-identical output.
+    Tiebreaking: among equal-score orderings, prefer ``previous_order``
+    (so an unchanged-topology rebuild is a true no-op); for the first
+    build, fall back to the lex-smallest tuple. The shuffle base is
+    natural-sorted, so output is reproducible across processes
+    regardless of PYTHONHASHSEED.
 
     Parameters
     ----------
@@ -279,42 +284,60 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previou
     -------
     (order, flip_count, separation_count)
     """
-    routes_str = [str(r) for r in route_ids]
+    # Natural-sort the route set up front so the random-restart shuffle
+    # base order does not depend on the caller's iteration order.
+    # Callers pass list(frozenset), whose order is hash-seed-dependent
+    # across processes (PYTHONHASHSEED unset) — without this sort, a
+    # fixed seed produces a different shuffle sequence each build, so the
+    # ordering churns build-to-build even with identical input geometry.
+    routes_str = sorted((str(r) for r in route_ids), key=_natural_key)
     if not routes_str:
         return [], 0, 0
     if len(routes_str) == 1:
         return list(routes_str), 0, 0
+
+    # Reconstruct the previous-build order restricted to the current
+    # route set: keep prior routes in their prior order, drop departed
+    # ones, append newly-added routes by natural-sort. Seeds restart 0
+    # AND is the preferred winner on score ties below.
+    prev_seed = None
+    if previous_order is not None:
+        seen = set()
+        prev_seed = []
+        for r in previous_order:
+            r = str(r)
+            if r in routes_str and r not in seen:
+                prev_seed.append(r)
+                seen.add(r)
+        prev_seed += sorted(set(routes_str) - seen, key=_natural_key)
+
     rng = random.Random(seed)
     best_order = None
-    best_s = float("inf")
+    best_key = None
 
     for k in range(restarts):
         if k == 0:
-            if previous_order is not None:
-                seen = set()
-                start = []
-                for r in previous_order:
-                    r = str(r)
-                    if r in routes_str and r not in seen:
-                        start.append(r)
-                        seen.add(r)
-                # New routes (added since previous build) — append by
-                # natural-sort. Local search will move them as needed.
-                missing = sorted(set(routes_str) - seen, key=_natural_key)
-                start = start + missing
-            else:
-                start = sorted(routes_str, key=_natural_key)
+            start = list(prev_seed) if prev_seed is not None else list(routes_str)
         else:
             start = list(routes_str)
             rng.shuffle(start)
         order, s = local_search(start, adjacencies)
-        # Strict-less-than first; lex tiebreak on equal scores.
-        if s < best_s or (s == best_s and (best_order is None or tuple(order) < tuple(best_order))):
-            best_s = s
+        # Candidate ranking (lexicographic tuple, lower wins):
+        #   1. score — primary flip objective + separation tiebreak.
+        #   2. 0 if this order equals the previous build's order, else 1
+        #      — an unchanged-topology rebuild reproduces the prior order
+        #      byte-for-byte (a true no-op) rather than drifting to a
+        #      different but equally-optimal ordering.
+        #   3. the order tuple — lex tiebreak for the first build (no
+        #      previous_order), reproducible across processes.
+        key = (s, 0 if order == prev_seed else 1, tuple(order))
+        if best_key is None or key < best_key:
+            best_key = key
             best_order = order
 
     # Decompose the weighted score back into its components for
     # diagnostic reporting.
+    best_s = best_key[0]
     flip_count = best_s // _FLIP_WEIGHT
     sep_count = best_s - flip_count * _FLIP_WEIGHT
     return best_order, int(flip_count), int(sep_count)

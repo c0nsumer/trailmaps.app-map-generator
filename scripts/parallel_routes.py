@@ -1232,7 +1232,9 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
         # This is an original that has at least one variant.
         key = _host_key(feat)
         existing_modes = set(variant_index[key].keys())
-        missing_modes = set(sorted_modes) - existing_modes
+        # Iterate sorted_modes (not a set difference) so pass-through
+        # variants append in a deterministic, process-independent order.
+        missing_modes = [m for m in sorted_modes if m not in existing_modes]
         for mk in missing_modes:
             # Emit a pass-through variant — same coords, tagged for
             # the missing mode.

@@ -268,6 +268,56 @@ def test_previous_order_handles_new_routes():
     assert set(order) == {"A", "B", "C", "D", "E"}
 
 
+def test_rerun_with_previous_order_is_noop():
+    """Regression: a rebuild with unchanged topology must reproduce the
+    previous routeOrder byte-for-byte, even when other orderings tie.
+
+    Before the fix the tiebreak was pure lex-min, so any equally-optimal
+    ordering that sorted smaller would beat the previous order — and
+    which tied ordering got *discovered* depended on the hash-randomized
+    shuffle base, so multi-mode maps churned a new routeOrder on every
+    build. That changed trails.geojson + app.js and fired a spurious PWA
+    update toast on no-data-change rebuilds.
+    """
+    # No adjacencies → every ordering ties at score 0, so the tiebreak
+    # alone decides the winner.
+    routes = ["1", "2", "3", "4"]
+    prev = ["3", "1", "4", "2"]  # optimal (all are) but NOT lex-min
+    order, flips, seps = compute_route_order(routes, [], previous_order=prev)
+    assert order == prev
+    assert (flips, seps) == (0, 0)
+    # Feeding the result back in stays put — the build feedback loop.
+    again, _, _ = compute_route_order(routes, [], previous_order=order)
+    assert again == prev
+
+
+def test_output_independent_of_input_order():
+    """Output must not depend on the iteration order of ``route_ids``.
+
+    The build passes ``list(frozenset)``, whose order is hash-seed-
+    dependent across processes (PYTHONHASHSEED unset). This graph has
+    several equally-optimal (0-flip) orderings; before the fix the
+    shuffle base inherited the caller's input order, so different input
+    orders discovered different tied optima and the chosen routeOrder
+    drifted build-to-build. The optimizer now natural-sorts its input
+    before seeding the restarts.
+    """
+    import random
+
+    routes = ["A", "B", "C", "D", "E"]
+    adjs = [
+        _adj(["A", "B"], ["A", "B", "C", "D", "E"], "A", "B"),
+        _adj(["A", "B", "C", "D", "E"], ["C", "D", "E"], "C", "D", "E"),
+    ]
+    outs = set()
+    for t in range(12):
+        scrambled = list(routes)
+        random.Random(t).shuffle(scrambled)
+        order, _, _ = compute_route_order(scrambled, adjs)
+        outs.add(tuple(order))
+    assert len(outs) == 1, f"input order changed output: {sorted(outs)}"
+
+
 def test_separation_tiebreaker_engages():
     """When multiple orderings have equal flip count, prefer fewer
     separations.
