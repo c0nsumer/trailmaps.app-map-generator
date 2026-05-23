@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import date, timedelta
 
+import cli
 import console
 import requests
 import yaml
@@ -149,17 +150,12 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles] [planet_url]")
-        sys.exit(1)
-
-    config_path = sys.argv[1]
-    config = load_config(config_path)
-    output = (
-        sys.argv[2]
-        if len(sys.argv) > 2
-        else os.path.join("build", config["slug"], "basemap.pmtiles")
+    parser = cli.config_output_parser("Extract basemap tiles from a Protomaps planet build.")
+    parser.add_argument(
+        "planet_url", nargs="?", help="Planet build URL (default: auto-detect the latest)"
     )
-    planet = sys.argv[3] if len(sys.argv) > 3 else None
+    args = parser.parse_args()
 
-    fetch_basemap(config_path, output, planet)
+    config = load_config(args.config)
+    output = args.output or os.path.join("build", config["slug"], "basemap.pmtiles")
+    fetch_basemap(args.config, output, args.planet_url)

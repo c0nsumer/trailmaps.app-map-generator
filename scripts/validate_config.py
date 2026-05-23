@@ -17,6 +17,7 @@ Exit code is 0 on success, 1 on any error. Warnings (e.g. file-not-found
 for assets that may be populated later) print but do not fail the build.
 """
 
+import argparse
 import difflib
 import os
 import re
@@ -1626,19 +1627,25 @@ def assert_spec_coverage():
 
 
 def main():
-    args = sys.argv[1:]
-    if not args:
-        print(
-            "usage: validate_config.py [--check-spec] <config.yaml> [<config.yaml> ...]",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    parser = argparse.ArgumentParser(
+        description="Validate one or more trailmaps.app Map Generator YAML configs."
+    )
+    parser.add_argument(
+        "--check-spec",
+        action="store_true",
+        help="Self-test that CONFIG_SPEC / KNOWN_KEYS stay in sync, then exit.",
+    )
+    parser.add_argument("config", nargs="*", help="Config file(s) to validate")
+    args = parser.parse_args()
 
-    if args[0] == "--check-spec":
+    if args.check_spec:
         sys.exit(0 if assert_spec_coverage() else 1)
 
+    if not args.config:
+        parser.error("at least one config file is required (or pass --check-spec)")
+
     overall_errors = 0
-    for path in args:
+    for path in args.config:
         errors, warnings = validate_config_file(path)
         status = "FAIL" if errors else "OK"
         console.step(f"{status}: {path}")

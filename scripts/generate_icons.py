@@ -13,6 +13,7 @@ Usage as standalone:
     python scripts/generate_icons.py source.png output_dir/ "Map Title" "ShortName"
 """
 
+import argparse
 import json
 import os
 import shutil
@@ -326,17 +327,20 @@ def generate_icons(source_path, output_dir, config):
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser(
+        description="Generate favicon/icon variants and a PWA manifest from a source image."
+    )
+    parser.add_argument("source_image", help="Path to the source image")
+    parser.add_argument("output_dir", help="Directory to write icons into")
+    parser.add_argument(
+        "title", nargs="?", default="Trail Map", help="Manifest title (default: Trail Map)"
+    )
+    parser.add_argument(
+        "short_name", nargs="?", default="Map", help="Manifest short_name (default: Map)"
+    )
+    args = parser.parse_args()
 
-    if len(sys.argv) < 3:
-        console.step(f"Usage: {sys.argv[0]} <source_image> <output_dir> [title] [short_name]")
-        sys.exit(1)
-
-    source = sys.argv[1]
-    out = sys.argv[2]
-    title = sys.argv[3] if len(sys.argv) > 3 else "Trail Map"
-    name = sys.argv[4] if len(sys.argv) > 4 else "Map"
-
-    os.makedirs(out, exist_ok=True)
-    cfg = {"title": title, "name": name}
-    generate_icons(source, out, cfg)
+    os.makedirs(args.output_dir, exist_ok=True)
+    generate_icons(
+        args.source_image, args.output_dir, {"title": args.title, "name": args.short_name}
+    )

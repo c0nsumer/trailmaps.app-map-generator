@@ -12,6 +12,8 @@ Usage as standalone:
     python scripts/osm_parser.py data/mytrails.osm 12345
 """
 
+import argparse
+import sys
 import xml.etree.ElementTree as ET
 
 import console
@@ -274,17 +276,17 @@ def extract_guideposts(parsed, bbox):
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser(
+        description="Parse a local .osm file and report what would be extracted (dry-run). "
+        "Each relation_id may be a leaf route OR a super-relation, "
+        "auto-expanded into its child routes one level deep."
+    )
+    parser.add_argument("osm_file", help="Path to the .osm XML file")
+    parser.add_argument("relation_id", type=int, nargs="+", help="One or more relation IDs")
+    args = parser.parse_args()
 
-    if len(sys.argv) < 3:
-        console.step(f"Usage: {sys.argv[0]} <file.osm> <relation_id> [<relation_id> ...]")
-        console.info("Dry-run: shows what would be extracted from the .osm file")
-        console.info("Each <relation_id> may be a leaf route relation OR a super-")
-        console.info("relation (auto-expanded into its child routes one level deep).")
-        sys.exit(1)
-
-    osm_path = sys.argv[1]
-    relation_ids = [int(x) for x in sys.argv[2:]]
+    osm_path = args.osm_file
+    relation_ids = args.relation_id
 
     console.step(f"Parsing: {osm_path}")
     parsed = parse_osm_file(osm_path)

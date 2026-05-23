@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 
+import cli
 import console
 import yaml
 
@@ -231,16 +232,9 @@ def fetch_terrain(config_or_path, output_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles]")
-        sys.exit(1)
+    parser = cli.config_output_parser("Generate terrain/hillshade PMTiles for the configured bbox.")
+    args = parser.parse_args()
 
-    config_path = sys.argv[1]
-    config = load_config(config_path)
-    output = (
-        sys.argv[2]
-        if len(sys.argv) > 2
-        else os.path.join("build", config["slug"], "terrain.pmtiles")
-    )
-
-    fetch_terrain(config_path, output)
+    config = load_config(args.config)
+    output = args.output or os.path.join("build", config["slug"], "terrain.pmtiles")
+    fetch_terrain(args.config, output)

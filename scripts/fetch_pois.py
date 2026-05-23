@@ -10,8 +10,8 @@ Parking areas are defined entirely in the YAML config, not fetched from OSM.
 
 import json
 import os
-import sys
 
+import cli
 import console
 
 # Shared narrow-resolution loader (handles ``osm_file:`` only — the
@@ -430,15 +430,12 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.geojson] [cache_dir]")
-        sys.exit(1)
-
-    config_path = sys.argv[1]
-    config = load_config(config_path)
-    output = (
-        sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "pois.geojson")
+    parser = cli.config_output_parser("Fetch points of interest from OpenStreetMap via Overpass.")
+    parser.add_argument(
+        "cache_dir", nargs="?", default="cache", help="Cache directory (default: cache)"
     )
-    cache = sys.argv[3] if len(sys.argv) > 3 else "cache"
+    args = parser.parse_args()
 
-    fetch_pois(config_path, output, cache)
+    config = load_config(args.config)
+    output = args.output or os.path.join("build", config["slug"], "pois.geojson")
+    fetch_pois(args.config, output, args.cache_dir)

@@ -11,6 +11,7 @@ Usage as standalone dry-run:
     python scripts/font_trimmer.py build/ramba/
 """
 
+import argparse
 import gzip
 import json
 import mmap
@@ -235,21 +236,22 @@ def copy_trimmed_fonts(output_dir, fonts_src):
 
 
 if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) < 2:
-        console.step(f"Usage: {sys.argv[0]} <output_dir> [fonts_src]")
-        console.info("Dry-run: shows which fonts/ranges would be kept")
-        sys.exit(1)
-
-    output_dir = sys.argv[1]
-    fonts_src = (
-        sys.argv[2]
-        if len(sys.argv) > 2
-        else os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts"
-        )
+    parser = argparse.ArgumentParser(
+        description="Dry-run: scan a build dir and report which fonts/ranges would be kept."
     )
+    parser.add_argument("output_dir", help="Build output directory to scan")
+    parser.add_argument(
+        "fonts_src",
+        nargs="?",
+        default=os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts"
+        ),
+        help="Fonts source directory (default: assets/fonts)",
+    )
+    args = parser.parse_args()
+
+    output_dir = args.output_dir
+    fonts_src = args.fonts_src
 
     console.step(f"Scanning: {output_dir}")
     console.step(f"Fonts source: {fonts_src}")
