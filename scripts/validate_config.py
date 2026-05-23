@@ -1588,11 +1588,11 @@ def assert_spec_coverage():
     used to ship to production. Run via `validate_config.py --check-spec`
     and any time CONFIG_SPEC or KNOWN_KEYS changes.
     """
-    # Lazy import: build.py imports validate_config at top, so a top-level
-    # `from build import CONFIG_SPEC` would be a circular import. The
-    # function-level import only runs when the lint is invoked, by which
-    # time both modules are fully loaded.
-    from build import CONFIG_SPEC
+    # Lazy import: template_inject imports validate_config at top, so a
+    # top-level `from template_inject import CONFIG_SPEC` would be a circular
+    # import. The function-level import only runs when the lint is invoked,
+    # by which time both modules are fully loaded.
+    from template_inject import CONFIG_SPEC
 
     spec_keys = {yaml_key for yaml_key, _, _ in CONFIG_SPEC}
     accounted = spec_keys | BUILD_ONLY_KEYS | HANDLED_SPECIALLY
