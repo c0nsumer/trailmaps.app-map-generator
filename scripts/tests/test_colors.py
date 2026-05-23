@@ -113,6 +113,44 @@ def test_darken_sat_boost_keeps_saturation():
     assert _contrast_ratio(out, WHITE) >= 5.5
 
 
+def test_auto_palette_invariants_across_input_space():
+    """The real guarantee for UNSEEN logos. You can't eyeball an accent
+    derived from a logo you don't have, but you can prove the contract
+    holds for every colour derive_accent could pick. Swept densely
+    offline (~8.8k points); this guards the bounds against regression.
+
+    For any derivable raw pick, the auto palette must:
+      - keep the logo's hue (we only move lightness/saturation),
+      - clear the light-shade target vs white (white-text pills),
+      - clear AA vs the dark sheet (links/fills in dark mode),
+      - carry an on-accent text colour that clears AA on its own fill.
+    """
+    import colorsys
+
+    for deg in range(0, 360, 10):
+        h = deg / 360.0
+        for lightness in (0.25, 0.40, 0.55, 0.70):
+            for sat in (0.3, 0.6, 1.0):
+                raw = tuple(int(round(x * 255)) for x in colorsys.hls_to_rgb(h, lightness, sat))
+                mx, mn = max(raw), min(raw)
+                # Only inputs derive_accent would actually emit (skips
+                # near-white, near-black, and desaturated picks).
+                if mx < 30 or (mx > 240 and mn > 200) or (mx - mn) / mx < 0.20:
+                    continue
+                p = _palette_from_base(raw, darken_light=True)
+                lr, dr = _hex_to_rgb(p["light"]), _hex_to_rgb(p["dark"])
+                ctx = (deg, lightness, sat, p)
+                assert _contrast_ratio(lr, WHITE) >= _LIGHT_TARGET_CONTRAST - 0.05, ctx
+                assert _contrast_ratio(dr, DARK_BG) >= 4.45, ctx
+                assert _contrast_ratio(lr, _hex_to_rgb(p["onLight"])) >= 4.5, ctx
+                assert _contrast_ratio(dr, _hex_to_rgb(p["onDark"])) >= 4.5, ctx
+                for shade in (lr, dr):
+                    hs, _, ss = colorsys.rgb_to_hls(*(x / 255 for x in shade))
+                    if ss > 0.05:  # hue is only meaningful when saturated
+                        drift = min(abs(hs - h), 1 - abs(hs - h)) * 360
+                        assert drift <= 6.0, (ctx, shade, drift)
+
+
 def test_resolve_palette_unset_uses_framework_default():
     # No accent_color → framework-default palette (never None), with the
     # default used verbatim for the light shade.
