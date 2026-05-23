@@ -214,27 +214,6 @@ they exist as
 [`amenity=parking`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dparking)
 in OSM, you can still reference them by their lat/lon in the YAML.
 
-## Practical advice
-
-- **Start with the relation, then add ways.** Every trail starts as a way;
-  assemble those ways into a route relation once the system's shape is settled.
-  Mapping the relation first makes it easy to track which ways still need to be
-  attached.
-- **One way per name.** If a singletrack changes character (rating, surface,
-  direction) along its length, split it at the transition. IMBA difficulty,
-  `oneway`, and `surface` all live on ways, so splitting is the only way to
-  express variation.
-- **Don't merge across junctions.** Even if two segments share a name, if they
-  meet at a junction with a third trail, they should be separate ways meeting at
-  the junction node. Routing tools and trail-network analysers depend on this.
-- **Verify on the ground when you can.** Trail systems evolve fast: rerouted
-  sections, new builds, decommissioned trails. Local mapping beats armchair
-  tracing for accuracy.
-- **Get the colour right at the relation level.** When the renderer uses
-  `color_by: relation` (the default), the relation's `colour=` tag is what
-  riders see for that route. A relation without `colour=` renders in the per-map
-  default (usually grey), fine as a fallback but lifeless on a complex map.
-
 ## Example: a minimal MTB route
 
 Way `123` (a singletrack):
