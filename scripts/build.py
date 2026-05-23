@@ -900,22 +900,73 @@ def _trails_fetch_fingerprint(config):
     return "trails-fp=" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+def _trails_content_hash(trails_path):
+    """SHA-256 of trails.geojson exactly as it sits on disk.
+
+    Recorded in the sidecar at the end of every successful build and
+    re-checked at the start of the next one. Lets the build notice when
+    trails.geojson was changed out from under it (truncated, reverted by
+    a backup/sync restore, hand-edited, half-written) and refetch instead
+    of silently reusing a bad file. We only ever compare a build's output
+    against what THAT build recorded, so enrichment's between-build
+    rewrite non-determinism is irrelevant: the stored hash always tracks
+    the bytes the previous build actually left on disk.
+    """
+    h = hashlib.sha256()
+    try:
+        with open(trails_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 16), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
 def _trails_needs_refetch(trails_path, config):
-    """True iff the cached trails.geojson exists but its sidecar
-    fingerprint doesn't match the current config. Returns
-    (needs_refetch, reason). Missing sidecar is treated as a
-    silent backwards-compat backfill (assume match, write sidecar
-    on next save), not a refetch — avoids surprise refetches on every
-    map the first time after upgrading to fingerprinted caches.
+    """True iff the cached trails.geojson must be refetched. Returns
+    (needs_refetch, reason).
+
+    Two independent triggers:
+      1. Config inputs changed since the file was fetched (the sidecar's
+         config-fingerprint line no longer matches the current config).
+      2. The file's bytes no longer match the `trails-content` hash the
+         last build recorded, meaning trails.geojson was modified,
+         truncated, or reverted out from under us. This guard stops a
+         reverted/partial build/site from being silently reused and
+         shipped (the failure that dropped half of Addison's trails).
+
+    A missing sidecar (legacy build), or one without the content line,
+    is treated as a backfill: reuse the file and write a full sidecar on
+    the next save, rather than forcing a surprise refetch.
     """
     if not os.path.exists(trails_path):
         return True, "file missing"
-    expected = _trails_fetch_fingerprint(config)
-    actual = _load_signature(trails_path)
-    if actual is None:
+    raw = _load_signature(trails_path)
+    if raw is None:
         return False, "fingerprint sidecar missing (legacy build, backfilling)"
-    if actual != expected:
-        return True, f"config inputs changed since last fetch ({actual!r} → {expected!r})"
+
+    # Sidecar layout (newest format, oldest is just line 0):
+    #   trails-fp=<config fingerprint>
+    #   trails-content=<sha256 of trails.geojson as last written>
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    stored_fp = lines[0] if lines else ""
+    expected_fp = _trails_fetch_fingerprint(config)
+    if stored_fp != expected_fp:
+        return True, f"config inputs changed since last fetch ({stored_fp!r} → {expected_fp!r})"
+
+    stored_content = None
+    for ln in lines[1:]:
+        if ln.startswith("trails-content="):
+            stored_content = ln[len("trails-content="):]
+            break
+    if stored_content:
+        actual_content = _trails_content_hash(trails_path)
+        if actual_content and actual_content != stored_content:
+            return True, (
+                f"trails.geojson changed on disk since it was built "
+                f"(content {stored_content[:12]}... vs {actual_content[:12]}...); "
+                f"refetching so a truncated or reverted file isn't reused"
+            )
     return False, None
 
 
@@ -2787,46 +2838,58 @@ def main(argv=None):
 
     # Step 1: Fetch trails
     trails_path = os.path.join(output_dir, "trails.geojson")
+    # trails.geojson is the EXPANDED render output (subway-style parallel
+    # routes, per-mode stubs, etc.), regenerated from scratch on every build.
+    # That expansion is NOT reversible, so re-running enrichment on an
+    # already-expanded trails.geojson silently destroys geometry. We therefore
+    # cache the canonical, pre-enrichment fetched geometry separately in
+    # trails.src.geojson and always re-expand FROM it. All reuse / fingerprint
+    # / content-guard logic keys off the base file, never the expanded output.
+    trails_src_path = os.path.join(output_dir, "trails.src.geojson")
     auto_refetch_reason = None
-    if not (args.force or args.trails or not os.path.exists(trails_path)):
-        # Cached file exists; check if config inputs have changed since
-        # it was fetched. A mismatched fingerprint promotes "use cache"
-        # into "refetch" so adding a relation (or swapping osm_file,
-        # editing direction_schedule, etc.) doesn't silently produce a
-        # stale build. Missing sidecar is the legacy-build backfill
-        # path — reuses the cache and writes a fingerprint on next
-        # save.
-        needs, reason = _trails_needs_refetch(trails_path, config)
+    if not (args.force or args.trails or not os.path.exists(trails_src_path)):
+        # Base cache exists; refetch only if the config inputs changed or the
+        # base file was modified out from under us (content-guard). A missing
+        # sidecar is a legacy backfill, not a refetch.
+        needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
-    if (args.force or args.trails or not os.path.exists(trails_path)
+    if (args.force or args.trails or not os.path.exists(trails_src_path)
             or auto_refetch_reason):
         if auto_refetch_reason:
-            print(f"Trails: refetching — {auto_refetch_reason}")
+            print(f"Trails: refetching ({auto_refetch_reason})")
         trails_geojson = fetch_trails(config, trails_path, cache_dir)
-        # Record the fetch fingerprint so the next build can detect
-        # a config change and refetch automatically. Written after
-        # fetch_trails succeeds so a partial/aborted fetch doesn't
-        # leave a stale fingerprint claiming "all good."
-        _save_signature(trails_path, _trails_fetch_fingerprint(config))
+        # Snapshot the canonical base BEFORE enrichment expands it in place,
+        # so the next build re-expands from clean geometry instead of
+        # re-enriching (and destroying) the expanded output. Copied after
+        # fetch_trails succeeds so a partial/aborted fetch leaves no base.
+        shutil.copyfile(trails_path, trails_src_path)
+        _save_signature(
+            trails_src_path,
+            _trails_fetch_fingerprint(config)
+            + "\ntrails-content=" + (_trails_content_hash(trails_src_path) or ""),
+        )
     else:
-        print(f"Trails: Using existing {trails_path}")
-        with open(trails_path) as f:
+        print(f"Trails: reusing base {trails_src_path}")
+        with open(trails_src_path) as f:
             trails_geojson = json.load(f)
-        # Backfill the fingerprint sidecar for legacy builds so the
-        # next config change triggers a clean refetch. No-op if the
-        # sidecar already matches (overwriting with the same value).
-        if _load_signature(trails_path) is None:
-            _save_signature(trails_path, _trails_fetch_fingerprint(config))
+        # Backfill the sidecar for a base written before content-guarding.
+        if _load_signature(trails_src_path) is None:
+            _save_signature(
+                trails_src_path,
+                _trails_fetch_fingerprint(config)
+                + "\ntrails-content=" + (_trails_content_hash(trails_src_path) or ""),
+            )
 
-    # Record the data date from the trails file modification time, including
-    # local-time HH:MM so the About modal can show fetch granularity finer
-    # than a single day. Also feeds the service-worker cache key (line ~109),
-    # so finer precision means stale clients update more reliably.
-    # Captured BEFORE enrichment write-back so the displayed "data date"
-    # tracks when OSM was fetched, not when this build re-enriched.
+    # Record the data date from the BASE file's modification time (the moment
+    # OSM was last fetched), including local-time HH:MM so the About modal can
+    # show fetch granularity finer than a single day. Also feeds the
+    # service-worker cache key, so finer precision means stale clients update
+    # more reliably. Uses trails.src.geojson, not the expanded output: the
+    # latter is rewritten on every build and would report the re-enrich time
+    # rather than the fetch time.
     config["_data_date"] = datetime.fromtimestamp(
-        os.path.getmtime(trails_path)
+        os.path.getmtime(trails_src_path)
     ).strftime("%Y-%m-%d %H:%M")
 
     # Tell the runtime whether clip_endpoints.geojson exists in this
@@ -2962,20 +3025,25 @@ def main(argv=None):
     from compute_route_stats import compute_and_attach as compute_route_stats
     stats_changed = compute_route_stats(trails_geojson, config, cache_dir)
 
-    if enriched or stats_changed or arrows_restricted:
-        with open(trails_path, "w") as f:
-            json.dump(trails_geojson, f, separators=(",", ":"))
-        custom_count = len(config.get("custom_routes") or [])
-        bits = []
-        if enriched:
-            bits.append("bucket flags"
-                        + (f" + {custom_count} custom route"
-                           f"{'s' if custom_count != 1 else ''}"
-                           if custom_count else ""))
-        if stats_changed:
-            bits.append("route stats")
-        if arrows_restricted:
-            bits.append("event-mode arrow restriction")
+    # Always (re)write the expanded trails.geojson. It is the render output,
+    # regenerated from the base on every build, so it must reflect this
+    # build's enrichment regardless of which passes reported a change. (The
+    # reuse fingerprint + content-guard live on trails.src.geojson, written
+    # at fetch time above; the expanded output is never reused as a cache.)
+    with open(trails_path, "w") as f:
+        json.dump(trails_geojson, f, separators=(",", ":"))
+    custom_count = len(config.get("custom_routes") or [])
+    bits = []
+    if enriched:
+        bits.append("bucket flags"
+                    + (f" + {custom_count} custom route"
+                       f"{'s' if custom_count != 1 else ''}"
+                       if custom_count else ""))
+    if stats_changed:
+        bits.append("route stats")
+    if arrows_restricted:
+        bits.append("event-mode arrow restriction")
+    if bits:
         print(f"  Enriched {os.path.basename(trails_path)} "
               f"with {' and '.join(bits)}")
 
