@@ -67,7 +67,8 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     terrain_url = os.environ.get("MAPTERHORN_URL", MAPTERHORN_URL)
 
     cmd = [
-        pmtiles_cli, "extract",
+        pmtiles_cli,
+        "extract",
         terrain_url,
         output_path,
         f"--bbox={bbox_str}",
@@ -78,7 +79,7 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"  ERROR: pmtiles extract failed:")
+        print("  ERROR: pmtiles extract failed:")
         print(f"  stdout: {result.stdout}")
         print(f"  stderr: {result.stderr}")
         return False
@@ -130,38 +131,62 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
 
     # Step 2: Reproject to Web Mercator
     print("  Reprojecting to Web Mercator...")
-    result = subprocess.run([
-        "gdalwarp",
-        "-t_srs", "EPSG:3857",
-        "-r", "cubicspline",
-        "-overwrite",
-        dem_path, dem_mercator_path,
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "gdalwarp",
+            "-t_srs",
+            "EPSG:3857",
+            "-r",
+            "cubicspline",
+            "-overwrite",
+            dem_path,
+            dem_mercator_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"  ERROR: gdalwarp failed: {result.stderr}")
         return False
 
     # Step 3: Encode as Terrain RGB
     print("  Encoding as Terrain RGB...")
-    result = subprocess.run([
-        "rio", "rgbify",
-        "-b", "-10000",
-        "-i", "0.1",
-        dem_mercator_path, terrain_rgb_path,
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "rio",
+            "rgbify",
+            "-b",
+            "-10000",
+            "-i",
+            "0.1",
+            dem_mercator_path,
+            terrain_rgb_path,
+        ],
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"  ERROR: rio rgbify failed: {result.stderr}")
         return False
 
     # Step 4: Package as PMTiles
     print("  Packaging as PMTiles...")
-    result = subprocess.run([
-        "rio", "pmtiles",
-        terrain_rgb_path, output_path,
-        "--format", "PNG",
-        "--resampling", "bilinear",
-        "--maxzoom", str(maxzoom),
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "rio",
+            "pmtiles",
+            terrain_rgb_path,
+            output_path,
+            "--format",
+            "PNG",
+            "--resampling",
+            "bilinear",
+            "--maxzoom",
+            str(maxzoom),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
         print(f"  ERROR: rio pmtiles failed: {result.stderr}")
         return False
@@ -211,6 +236,10 @@ if __name__ == "__main__":
 
     config_path = sys.argv[1]
     config = load_config(config_path)
-    output = sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "terrain.pmtiles")
+    output = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else os.path.join("build", config["slug"], "terrain.pmtiles")
+    )
 
     fetch_terrain(config_path, output)

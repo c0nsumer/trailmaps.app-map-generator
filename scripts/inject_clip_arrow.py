@@ -22,7 +22,6 @@ import os
 
 from PIL import Image
 
-
 SPRITE_NAME = "clip-arrow"
 
 

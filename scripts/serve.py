@@ -12,7 +12,6 @@ Usage:
 
 import argparse
 import os
-import sys
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 
@@ -55,6 +54,7 @@ class RangeRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
 
             import io
+
             return io.BytesIO(data)
         except (ValueError, IndexError):
             return super().send_head()

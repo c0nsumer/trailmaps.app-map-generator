@@ -16,7 +16,6 @@ accuracy floor of any trail-scale measurement we care about.
 
 import math
 
-
 # Mean Earth radius in metres. Matches the convention used by every
 # Python script in the build pipeline. Off by ~0.1% from the WGS84
 # equatorial radius (templates/app.js:EARTH_RADIUS_M = 6378137) — the
@@ -35,6 +34,5 @@ def haversine_m(lng1, lat1, lng2, lat2):
     rlat2 = math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
     dlng = math.radians(lng2 - lng1)
-    a = (math.sin(dlat / 2) ** 2
-         + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlng / 2) ** 2)
+    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlng / 2) ** 2
     return EARTH_R_M * 2 * math.asin(math.sqrt(a))

@@ -52,11 +52,13 @@ def parse_osm_file(osm_path):
             rel_id = int(elem.attrib["id"])
             members = []
             for member in elem.findall("member"):
-                members.append({
-                    "type": member.attrib["type"],
-                    "ref": int(member.attrib["ref"]),
-                    "role": member.attrib.get("role", ""),
-                })
+                members.append(
+                    {
+                        "type": member.attrib["type"],
+                        "ref": int(member.attrib["ref"]),
+                        "role": member.attrib.get("role", ""),
+                    }
+                )
             tags = {tag.attrib["k"]: tag.attrib["v"] for tag in elem.findall("tag")}
             relations[rel_id] = {
                 "id": rel_id,
@@ -123,8 +125,7 @@ def extract_source_relations(parsed, relation_ids):
         # outside the .osm file fall through to the leaf path — we
         # can't render what we don't have.)
         child_ids = [
-            m["ref"] for m in rel["members"]
-            if m["type"] == "relation" and m["ref"] in relations
+            m["ref"] for m in rel["members"] if m["type"] == "relation" and m["ref"] in relations
         ]
         if child_ids:
             expansions[rel_id] = child_ids
@@ -225,21 +226,24 @@ def extract_guideposts(parsed, bbox):
         if not (west <= lon <= east and south <= lat <= north):
             continue
 
-        is_guidepost = (tags.get("tourism") == "information"
-                        and tags.get("information") == "guidepost")
+        is_guidepost = (
+            tags.get("tourism") == "information" and tags.get("information") == "guidepost"
+        )
         is_emergency = tags.get("highway") == "emergency_access_point"
         is_feature = tags.get("tourism") == "attraction"
         is_toilet = tags.get("amenity") == "toilets"
         is_water = tags.get("amenity") == "drinking_water"
 
         if is_guidepost or is_emergency or is_feature or is_toilet or is_water:
-            elements.append({
-                "type": "node",
-                "id": node_id,
-                "lon": lon,
-                "lat": lat,
-                "tags": tags,
-            })
+            elements.append(
+                {
+                    "type": "node",
+                    "id": node_id,
+                    "lon": lon,
+                    "lat": lat,
+                    "tags": tags,
+                }
+            )
 
     # Building-polygon toilets / drinking water — common enough in OSM
     # (mappers trace the building rather than placing a node) that
@@ -247,8 +251,7 @@ def extract_guideposts(parsed, bbox):
     # on the centroid (matches Overpass's bbox-on-center semantics).
     for way_id, way in ways.items():
         tags = way["tags"]
-        if not (tags.get("amenity") == "toilets"
-                or tags.get("amenity") == "drinking_water"):
+        if not (tags.get("amenity") == "toilets" or tags.get("amenity") == "drinking_water"):
             continue
         c = _way_centroid(way, nodes)
         if c is None:
@@ -256,12 +259,14 @@ def extract_guideposts(parsed, bbox):
         lon, lat = c
         if not (west <= lon <= east and south <= lat <= north):
             continue
-        elements.append({
-            "type": "way",
-            "id": way_id,
-            "center": {"lon": lon, "lat": lat},
-            "tags": tags,
-        })
+        elements.append(
+            {
+                "type": "way",
+                "id": way_id,
+                "center": {"lon": lon, "lat": lat},
+                "tags": tags,
+            }
+        )
 
     return {"elements": elements}
 
@@ -271,9 +276,9 @@ if __name__ == "__main__":
 
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} <file.osm> <relation_id> [<relation_id> ...]")
-        print(f"  Dry-run: shows what would be extracted from the .osm file")
-        print(f"  Each <relation_id> may be a leaf route relation OR a super-")
-        print(f"  relation (auto-expanded into its child routes one level deep).")
+        print("  Dry-run: shows what would be extracted from the .osm file")
+        print("  Each <relation_id> may be a leaf route relation OR a super-")
+        print("  relation (auto-expanded into its child routes one level deep).")
         sys.exit(1)
 
     osm_path = sys.argv[1]

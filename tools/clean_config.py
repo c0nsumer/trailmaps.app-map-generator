@@ -153,27 +153,25 @@ class _CleanDumper(yaml.SafeDumper):
        block-style otherwise (so `trailheads: \\n- name: ...\\n  ...`
        reads cleanly).
     """
+
     pass
 
 
 def _block_str_representer(dumper, data):
     if isinstance(data, str) and "\n" in data:
         cleaned = "\n".join(line.rstrip() for line in data.split("\n"))
-        return dumper.represent_scalar(
-            "tag:yaml.org,2002:str", cleaned, style="|")
+        return dumper.represent_scalar("tag:yaml.org,2002:str", cleaned, style="|")
     return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
 
 def _block_dict_representer(dumper, data):
-    return dumper.represent_mapping(
-        "tag:yaml.org,2002:map", data, flow_style=False)
+    return dumper.represent_mapping("tag:yaml.org,2002:map", data, flow_style=False)
 
 
 def _smart_list_representer(dumper, data):
     # All-scalar lists go flow; anything with nested structure goes block.
     flow = all(_is_scalar(v) for v in data)
-    return dumper.represent_sequence(
-        "tag:yaml.org,2002:seq", data, flow_style=flow)
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=flow)
 
 
 _CleanDumper.add_representer(str, _block_str_representer)
@@ -262,19 +260,22 @@ def main():
     # the project root. Curators running it via `python tools/...`
     # from the project root see the same default either way.
     _PROJECT_ROOT = os.path.dirname(_HERE)
-    default_template = os.path.join(
-        _PROJECT_ROOT, "configs", "reference", "reference-minimal.yaml")
+    default_template = os.path.join(_PROJECT_ROOT, "configs", "reference", "reference-minimal.yaml")
     parser.add_argument(
         "--template",
         default=default_template,
-        help=("Path to the canonical template YAML "
-              "(default: configs/reference/reference-minimal.yaml relative "
-              "to the project root)."),
+        help=(
+            "Path to the canonical template YAML "
+            "(default: configs/reference/reference-minimal.yaml relative "
+            "to the project root)."
+        ),
     )
     parser.add_argument(
-        "-o", "--output",
-        help=("Override output path. Default: same directory as input, "
-              "stem with '-cleaned' suffix."),
+        "-o",
+        "--output",
+        help=(
+            "Override output path. Default: same directory as input, stem with '-cleaned' suffix."
+        ),
     )
     args = parser.parse_args()
 

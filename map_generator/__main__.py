@@ -13,7 +13,6 @@ keeps working in parallel.
 import os
 import sys
 
-
 SUBCOMMANDS = ("build",)
 
 
@@ -49,6 +48,7 @@ def main(argv=None):
 
     if cmd == "build":
         from scripts.build import main as build_main
+
         return build_main(rest)
 
 

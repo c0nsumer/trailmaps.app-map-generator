@@ -20,7 +20,6 @@ import re
 import shutil
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import requests
 import yaml
@@ -29,14 +28,14 @@ import yaml
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS_DIR)
 
-from fetch_trails import fetch_trails
-from fetch_pois import fetch_pois
 from fetch_basemap import fetch_basemap
+from fetch_pois import fetch_pois
 from fetch_terrain import fetch_terrain
+from fetch_trails import fetch_trails
 from font_trimmer import copy_trimmed_fonts
-from inject_clip_arrow import inject_clip_arrow
 from generate_icons import generate_icons, generate_manifest
-from validate_config import validate_config, DEFAULT_VISIBLE_LAYERS
+from inject_clip_arrow import inject_clip_arrow
+from validate_config import DEFAULT_VISIBLE_LAYERS, validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -142,16 +141,17 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
             return None
 
     has_definite = (
-        width_m and _is_definite_pixel(width_m.group(1))
-        and height_m and _is_definite_pixel(height_m.group(1))
+        width_m
+        and _is_definite_pixel(width_m.group(1))
+        and height_m
+        and _is_definite_pixel(height_m.group(1))
     )
 
     if has_definite or not viewbox_m:
         shutil.copy2(source_path, output_path)
         print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         if has_definite:
-            return (_parse_pixel(width_m.group(1)),
-                    _parse_pixel(height_m.group(1)))
+            return (_parse_pixel(width_m.group(1)), _parse_pixel(height_m.group(1)))
         return (None, None)
 
     parts = viewbox_m.group(1).split()
@@ -176,19 +176,15 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
 
     new_tag = tag
     if width_m:
-        new_tag = re.sub(
-            r'\bwidth\s*=\s*"[^"]*"', f'width="{new_w}"', new_tag, count=1
-        )
+        new_tag = re.sub(r'\bwidth\s*=\s*"[^"]*"', f'width="{new_w}"', new_tag, count=1)
     else:
         new_tag = new_tag[:-1] + f' width="{new_w}">'
     if height_m:
-        new_tag = re.sub(
-            r'\bheight\s*=\s*"[^"]*"', f'height="{new_h}"', new_tag, count=1
-        )
+        new_tag = re.sub(r'\bheight\s*=\s*"[^"]*"', f'height="{new_h}"', new_tag, count=1)
     else:
         new_tag = new_tag[:-1] + f' height="{new_h}">'
 
-    new_text = text[:svg_open.start()] + new_tag + text[svg_open.end():]
+    new_text = text[: svg_open.start()] + new_tag + text[svg_open.end() :]
     try:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(new_text)
@@ -320,26 +316,24 @@ def _minify_assets(output_dir):
                 src = f.read()
             if lib == "rjsmin":
                 import rjsmin
+
                 minified = rjsmin.jsmin(src)
             else:
                 import rcssmin
+
                 minified = rcssmin.cssmin(src)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(minified)
             after = os.path.getsize(path)
             pct = (1 - after / before) * 100 if before else 0
-            results.append(
-                f"  {fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)"
-            )
+            results.append(f"  {fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
             results.append(
                 f"  warn: {lib} not installed — {fname} left unminified. "
                 f"Run: .venv/bin/pip install {lib}"
             )
         except (OSError, UnicodeDecodeError) as e:
-            results.append(
-                f"  warn: failed to minify {fname} ({e}) — left unminified"
-            )
+            results.append(f"  warn: failed to minify {fname} ({e}) — left unminified")
     return results
 
 
@@ -350,9 +344,11 @@ def _relative_luminance(rgb):
     in derive_accent. Formula from WCAG 2.x; sRGB linearisation +
     Rec. 709 luma weights.
     """
+
     def _channel(c):
         c = c / 255.0
         return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
     r, g, b = rgb
     return 0.2126 * _channel(r) + 0.7152 * _channel(g) + 0.0722 * _channel(b)
 
@@ -384,17 +380,18 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255)):
     iterations to avoid pathological inputs spinning forever.
     """
     import colorsys
+
     r, g, b = (c / 255.0 for c in rgb)
-    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
     for _ in range(40):
-        rgb = tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l, s))
+        rgb = tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, lightness, s))
         if _contrast_ratio(rgb, against) >= target_contrast:
             return rgb
-        l -= 0.025
-        if l < 0:
-            l = 0
+        lightness -= 0.025
+        if lightness < 0:
+            lightness = 0
             break
-    return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, l, s))
+    return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, lightness, s))
 
 
 def derive_accent(image_path):
@@ -495,8 +492,10 @@ def resolve_accent_color(config, project_root, cache_dir):
             continue
         candidates.append(abs_path)
     if not candidates:
-        print("  warn: accent_color: 'auto' requires a raster logo or icon "
-              "(PNG/WebP/JPG); none found. Falling back to framework default.")
+        print(
+            "  warn: accent_color: 'auto' requires a raster logo or icon "
+            "(PNG/WebP/JPG); none found. Falling back to framework default."
+        )
         return None
 
     source = candidates[0]
@@ -520,9 +519,11 @@ def resolve_accent_color(config, project_root, cache_dir):
 
     rgb = derive_accent(source)
     if rgb is None:
-        print(f"  warn: accent_color: 'auto' could not pick a colour from "
-              f"{os.path.basename(source)} (logo may be greyscale or fully "
-              "neutral). Falling back to framework default.")
+        print(
+            f"  warn: accent_color: 'auto' could not pick a colour from "
+            f"{os.path.basename(source)} (logo may be greyscale or fully "
+            "neutral). Falling back to framework default."
+        )
         return None
 
     # Auto-darken so white text on the accent stays readable (WCAG AA).
@@ -632,7 +633,7 @@ def generate_service_worker(config, output_dir):
         return rel_url.endswith("/0-255.pbf")
 
     all_files = []  # every file in output_dir, for the hash
-    for root, dirs, files in os.walk(output_dir):
+    for root, _dirs, files in os.walk(output_dir):
         for fname in sorted(files):
             if fname == "sw.js":
                 continue
@@ -730,7 +731,7 @@ def load_config(config_path):
         if key in config:
             config[key] = _resolve(config[key])
 
-    for entry in (config.get("custom_routes") or []):
+    for entry in config.get("custom_routes") or []:
         if isinstance(entry, dict) and "geometry" in entry:
             entry["geometry"] = _resolve(entry["geometry"])
 
@@ -740,7 +741,7 @@ def load_config(config_path):
     # downstream sees absolute paths.
     em = config.get("event_mode")
     if isinstance(em, dict):
-        for entry in (em.get("routes") or []):
+        for entry in em.get("routes") or []:
             if isinstance(entry, dict) and "geometry" in entry:
                 entry["geometry"] = _resolve(entry["geometry"])
 
@@ -752,8 +753,7 @@ def load_config(config_path):
     return config
 
 
-def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03,
-                             buffer_min=0.001, buffer_max=0.01):
+def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001, buffer_max=0.01):
     """Compute bounding box from trail geometry with a proportional buffer.
 
     Returns [west, south, east, north] with a buffer added on all sides.
@@ -842,6 +842,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 # just turns "different bbox now" from a silent staleness bug into an
 # automatic rebuild.
 
+
 def _bbox_signature(bbox, maxzoom):
     """Stable text signature for an (bbox, maxzoom) extraction request."""
     return f"bbox={','.join(f'{v:.4f}' for v in bbox)};maxzoom={maxzoom}"
@@ -891,8 +892,7 @@ def _trails_fetch_fingerprint(config):
         "clipped_relations": sorted(config.get("clipped_relations") or []),
         "winter_relations": sorted(config.get("winter_relations") or []),
         "summer_relations": sorted(config.get("summer_relations") or []),
-        "emergency_access_relations": sorted(
-            config.get("emergency_access_relations") or []),
+        "emergency_access_relations": sorted(config.get("emergency_access_relations") or []),
         "osm_file": config.get("osm_file") or "",
         "direction_schedule": config.get("direction_schedule") or {},
     }
@@ -957,7 +957,7 @@ def _trails_needs_refetch(trails_path, config):
     stored_content = None
     for ln in lines[1:]:
         if ln.startswith("trails-content="):
-            stored_content = ln[len("trails-content="):]
+            stored_content = ln[len("trails-content=") :]
             break
     if stored_content:
         actual_content = _trails_content_hash(trails_path)
@@ -1168,12 +1168,11 @@ def _apply_event_mode_to_feature_oneway(config, trails_geojson):
     if not em.get("direction_arrows"):
         return False
 
-    super_expansions = trails_geojson.get("metadata", {}).get(
-        "super_relation_expansions", {}) or {}
+    super_expansions = trails_geojson.get("metadata", {}).get("super_relation_expansions", {}) or {}
     featured = _event_mode_featured_set(config, super_expansions)
 
     stripped = 0
-    for feat in (trails_geojson.get("features") or []):
+    for feat in trails_geojson.get("features") or []:
         props = feat.get("properties") or {}
         if not props.get("oneway"):
             continue
@@ -1184,7 +1183,7 @@ def _apply_event_mode_to_feature_oneway(config, trails_geojson):
         rid = props.get("route_id")
         if rid is not None:
             rids.add(str(rid))
-        for sr in (props.get("shared_routes") or []):
+        for sr in props.get("shared_routes") or []:
             rids.add(str(sr))
         # If any of the feature's routes is featured, keep oneway.
         if rids & featured:
@@ -1194,8 +1193,10 @@ def _apply_event_mode_to_feature_oneway(config, trails_geojson):
         stripped += 1
 
     if stripped:
-        print(f"  Event mode: stripped `oneway` from {stripped} non-featured "
-              f"feature(s) so arrows render on the featured route(s) only.")
+        print(
+            f"  Event mode: stripped `oneway` from {stripped} non-featured "
+            f"feature(s) so arrows render on the featured route(s) only."
+        )
     return stripped > 0
 
 
@@ -1215,8 +1216,7 @@ def _apply_event_mode_to_relations(config, trails_geojson):
         return config
 
     routes = trails_geojson.get("metadata", {}).get("routes", {}) or {}
-    super_expansions = trails_geojson.get("metadata", {}).get(
-        "super_relation_expansions", {}) or {}
+    super_expansions = trails_geojson.get("metadata", {}).get("super_relation_expansions", {}) or {}
 
     featured = _event_mode_featured_set(config, super_expansions)
 
@@ -1292,10 +1292,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     """
     features = trails_geojson.get("features") or []
     # Strip previously-appended custom features for idempotent re-runs.
-    cleaned = [
-        f for f in features
-        if not f.get("properties", {}).get("isCustom")
-    ]
+    cleaned = [f for f in features if not f.get("properties", {}).get("isCustom")]
     stripped_count = len(features) - len(cleaned)
     trails_geojson["features"] = cleaned
 
@@ -1318,8 +1315,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # child route inherits the parent's bucket assignment (winter /
     # summer / emergency) without the curator having to enumerate the
     # children individually in YAML.
-    super_expansions = trails_geojson.get("metadata", {}).get(
-        "super_relation_expansions", {}) or {}
+    super_expansions = trails_geojson.get("metadata", {}).get("super_relation_expansions", {}) or {}
 
     def _expand(config_ids):
         out = set()
@@ -1336,15 +1332,17 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     emergency_ids = _expand(config.get("emergency_access_relations"))
 
     for rid_str, info in routes.items():
-        is_winter = (info.get("seasonal") == "winter") \
-            or (rid_str in winter_ids)
+        is_winter = (info.get("seasonal") == "winter") or (rid_str in winter_ids)
         is_emergency = rid_str in emergency_ids
-        is_summer = (rid_str in summer_ids) \
-            or (not is_winter and not is_emergency)
+        is_summer = (rid_str in summer_ids) or (not is_winter and not is_emergency)
 
         # Compare before overwriting so we can return a tight "changed?" bit.
-        prior = (info.get("summer"), info.get("winter"),
-                 info.get("emergency"), info.get("isCustom", False))
+        prior = (
+            info.get("summer"),
+            info.get("winter"),
+            info.get("emergency"),
+            info.get("isCustom", False),
+        )
         info["summer"] = is_summer
         info["winter"] = is_winter
         info["emergency"] = is_emergency
@@ -1390,14 +1388,12 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         cname = entry["name"]
         ccolor = entry["color"]
         cgeom_rel = entry["geometry"]
-        cgeom_abs = (cgeom_rel if os.path.isabs(cgeom_rel)
-                     else os.path.join(project_root, cgeom_rel))
+        cgeom_abs = cgeom_rel if os.path.isabs(cgeom_rel) else os.path.join(project_root, cgeom_rel)
 
         # Bucket flags: if none of the three are set, default to summer-only
         # to match the OSM-default rule. If any is set explicitly, use the
         # given values (False for the unset ones).
-        flags_given = any(k in entry
-                          for k in ("summer", "winter", "emergency"))
+        flags_given = any(k in entry for k in ("summer", "winter", "emergency"))
         if flags_given:
             c_summer = bool(entry.get("summer", False))
             c_winter = bool(entry.get("winter", False))
@@ -1428,10 +1424,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
             with open(cgeom_abs) as f:
                 gj = json.load(f)
         except (OSError, ValueError) as e:
-            sys.exit(
-                f"ERROR: custom_routes[{cid!r}].geometry: "
-                f"cannot read {cgeom_abs!r}: {e}"
-            )
+            sys.exit(f"ERROR: custom_routes[{cid!r}].geometry: cannot read {cgeom_abs!r}: {e}")
 
         if gj.get("type") == "FeatureCollection":
             gj_features = gj.get("features") or []
@@ -1456,10 +1449,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
                 )
             coords = geom.get("coordinates") or []
             if not coords:
-                sys.exit(
-                    f"ERROR: custom_routes[{cid!r}].geometry feature {i}: "
-                    f"empty coordinates"
-                )
+                sys.exit(f"ERROR: custom_routes[{cid!r}].geometry feature {i}: empty coordinates")
 
             # Normalise MultiLineString into separate LineString features
             # (matches fetch_trails.py's per-segment shape).
@@ -1482,8 +1472,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
                         "coordinates": line,
                     },
                     "properties": {
-                        "route_id": cid,          # string id; Phase 4 will
-                                                   # stringify OSM ids too.
+                        "route_id": cid,  # string id; Phase 4 will
+                        # stringify OSM ids too.
                         "route_name": cname,
                         "route_colour": ccolor,
                         "route_ref": "",
@@ -1541,9 +1531,12 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # build starts from the canonical fetched geometry.
     pre_stub_count = len(trails_geojson["features"])
     trails_geojson["features"] = [
-        f for f in trails_geojson["features"]
-        if not (f.get("properties", {}).get("isStub")
-                or f.get("properties", {}).get("_subwayHostVariant"))
+        f
+        for f in trails_geojson["features"]
+        if not (
+            f.get("properties", {}).get("isStub")
+            or f.get("properties", {}).get("_subwayHostVariant")
+        )
     ]
     stripped_stubs = pre_stub_count - len(trails_geojson["features"])
     if stripped_stubs:
@@ -1572,8 +1565,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # number of corridor-junction sign flips. Each visible mode
     # (summer / winter / + emergency) gets its own routeOrder, since
     # the effective adjacency graph differs per mode.
-    from route_order import compute_route_orders
     from parallel_routes import apply_subway_style, apply_subway_style_modes
+    from route_order import compute_route_orders
 
     routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
     previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
@@ -1596,8 +1589,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
                 f"(routes: {len(order)})"
             )
         # Mode-aware subway-style: emits per-mode stubs + variants.
-        modes = {k: frozenset(v) for k, v in
-                 _route_modes_from_orders(routes_metadata).items()}
+        modes = {k: frozenset(v) for k, v in _route_modes_from_orders(routes_metadata).items()}
         added = apply_subway_style_modes(trails_geojson, route_orders, modes)
         if added:
             print(
@@ -1610,8 +1602,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
         added = apply_subway_style(trails_geojson)
         if added:
-            print(f"  Subway style: emitted {added} junction transition "
-                  f"micro-feature(s)")
+            print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
             changed = True
 
     return changed
@@ -1626,6 +1617,7 @@ def _route_modes_from_orders(routes_metadata):
     they need to agree on which mode keys are active.
     """
     from route_order import enumerate_modes
+
     return enumerate_modes(routes_metadata)
 
 
@@ -1648,34 +1640,31 @@ def _route_modes_from_orders(routes_metadata):
 # skips IMBA sprite generation), not UI visibility.
 CONFIG_SPEC = [
     # Identity
-    ("name",                    "name",                 None),
-    ("slug",                    "slug",                 None),
-    ("title",                   "title",                None),
-
+    ("name", "name", None),
+    ("slug", "slug", None),
+    ("title", "title", None),
     # View geometry.
     # `bbox` still frames the trails for the initial view fit.
     # `pan_bbox` is the looser envelope used for maxBounds (the pan
     # wall) and gets precomputed from `bbox` + `pan_padding` above.
-    ("bbox",                    "bbox",                 None),
-    ("pan_bbox",                "panBbox",              None),
-    ("center",                  "center",               None),
-    ("zoom",                    "zoom",                 14),
-    ("min_zoom",                "minZoom",              10),
-    ("max_zoom",                "maxZoom",              18),
-
+    ("bbox", "bbox", None),
+    ("pan_bbox", "panBbox", None),
+    ("center", "center", None),
+    ("zoom", "zoom", 14),
+    ("min_zoom", "minZoom", 10),
+    ("max_zoom", "maxZoom", 18),
     # Build-time data gates (skip fetching / sprite-gen when False).
     # `show_markers` merges guideposts + emergency access points into
     # one "trail marker" category — they render identically now.
-    ("show_markers",            "showMarkers",          True),
-    ("show_features",           "showFeatures",         True),
-    ("show_parking",            "showParking",          True),
-    ("show_trailheads",         "showTrailheads",       True),
-    ("show_hubs",               "showHubs",             True),
-    ("show_toilets",            "showToilets",          True),
-    ("show_drinking_water",     "showDrinkingWater",    True),
-    ("show_terrain",            "showTerrain",          True),
-    ("show_difficulty",         "showDifficulty",       True),
-
+    ("show_markers", "showMarkers", True),
+    ("show_features", "showFeatures", True),
+    ("show_parking", "showParking", True),
+    ("show_trailheads", "showTrailheads", True),
+    ("show_hubs", "showHubs", True),
+    ("show_toilets", "showToilets", True),
+    ("show_drinking_water", "showDrinkingWater", True),
+    ("show_terrain", "showTerrain", True),
+    ("show_difficulty", "showDifficulty", True),
     # Distance (meters) from the nearest visible trail within which a
     # trail-marker or feature POI is allowed to render. Tight values
     # (~10 m) hide POIs that aren't directly on the trail; loose
@@ -1684,15 +1673,13 @@ CONFIG_SPEC = [
     # `tourism=attraction` features (often 10-50 m off-trail) while
     # keeping the filter useful. The Features peek toggle auto-hides
     # if no feature POI passes this check.
-    ("poi_proximity_m",         "poiProximityMeters",   50),
-
+    ("poi_proximity_m", "poiProximityMeters", 50),
     # UI gates for the Finder + Labels dropdown. Some systems have no
     # curated routes (trails only) or treat routes and trails as the
     # same set; turning one off hides the matching Finder section and
     # Labels option.
-    ("show_routes",             "showRoutes",           True),
-    ("show_trails",             "showTrails",           True),
-
+    ("show_routes", "showRoutes", True),
+    ("show_trails", "showTrails", True),
     # Build-time data gate for the direction-arrow layer. When False,
     # no arrows are placed on any oneway trail and the Options toggle
     # row is hidden — even if `direction_arrows` is in `forced_visible`
@@ -1700,13 +1687,12 @@ CONFIG_SPEC = [
     # display directional indicators regardless of the underlying OSM
     # tagging. Default True mirrors every other show_* gate's
     # "show by default, opt out per-map" pattern.
-    ("show_direction_arrows",    "showDirectionArrows",  True),
-
+    ("show_direction_arrows", "showDirectionArrows", True),
     # Display
     # Labels mode default. Was "routes" historically; now defaults to
     # "none" so a fresh-LS visit produces a clean map with the rider
     # opting into labels via the Labels segmented control.
-    ("default_labels",          "defaultLabels",        "none"),
+    ("default_labels", "defaultLabels", "none"),
     # Labels mode lock. When set ("routes" / "trails" / "none"), the
     # Labels segmented control is hidden in Options and the rider's
     # persisted choice is ignored. Validated at build time against
@@ -1716,7 +1702,7 @@ CONFIG_SPEC = [
     # "required key" sentinel for inject_config_into_template's loop;
     # the runtime check is `CONFIG.forcedLabels ? lock : free` which
     # treats "" as the unset/free state.
-    ("forced_labels",           "forcedLabels",         ""),
+    ("forced_labels", "forcedLabels", ""),
     # Initial colour scheme for first-visit riders. "light" / "dark"
     # / "auto" (auto resolves prefers-color-scheme). Default "light"
     # preserves existing behaviour for maps that don't opt in. The
@@ -1724,22 +1710,21 @@ CONFIG_SPEC = [
     # over this default on subsequent visits. The build also injects
     # this value into the inline <head> bootstrap script so first
     # paint already has the right scheme set on <html>.
-    ("default_color_scheme",    "defaultColorScheme",   "light"),
+    ("default_color_scheme", "defaultColorScheme", "light"),
     # Whether the brand-img logo should auto-invert in dark mode.
     # Default true matches historical behaviour; curators with
     # colored logos that look bad inverted set false per-map.
-    ("invert_logo_dark",        "invertLogoDark",       True),
-    ("color_by",                "colorBy",              "relation"),
+    ("invert_logo_dark", "invertLogoDark", True),
+    ("color_by", "colorBy", "relation"),
     ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
-    ("suppress_basemap_pois",   "suppressBasemapPois",  False),
+    ("suppress_basemap_pois", "suppressBasemapPois", False),
     # When true (the default), highlighting a route or trail dims
     # everything else on the map (basemap tint + non-highlighted
     # labels/arrows/difficulty hidden + POI markers faded) so the
     # highlighted feature reads as a spotlight. Set false per-map to
     # keep every route visible at full brightness behind the
     # highlight ribbon.
-    ("map_dim_on_highlight",    "mapDimOnHighlight",    True),
-
+    ("map_dim_on_highlight", "mapDimOnHighlight", True),
     # When true (the default), MapLibre writes `#zoom/lat/lon` to
     # the URL hash as the user pans/zooms, and honours any hash on
     # page load. Makes views shareable and survives reload, at the
@@ -1747,8 +1732,7 @@ CONFIG_SPEC = [
     # screenshots / screen-shares. Set false to drop the hash
     # entirely (URL stays clean, no persistence across reload, no
     # shareable deep-links).
-    ("url_hash",                "urlHash",              False),
-
+    ("url_hash", "urlHash", False),
     # Distance units for every distance/elevation display in the
     # app: off-screen indicator pill, route stats in the Finder,
     # highlight chip, any future distance display. The underlying
@@ -1757,8 +1741,7 @@ CONFIG_SPEC = [
     # ft for elevation gain); "km" → m + decimal km (and m for
     # elevation gain). Validator (validate_config.py) restricts the
     # value to "mi" or "km".
-    ("distance_units",          "distanceUnits",        "mi"),
-
+    ("distance_units", "distanceUnits", "mi"),
     # Share button in the expanded sheet (above Install). When true
     # (default), generates a shareable URL of the current view +
     # highlighted route/trail and surfaces it via the Web Share API
@@ -1766,31 +1749,28 @@ CONFIG_SPEC = [
     # is stripped from index.html at build time. Set false for maps
     # where the curator wants no share affordance (e.g. private/
     # family maps); leave true for community/public maps.
-    ("share_button",            "shareButton",          True),
-
+    ("share_button", "shareButton", True),
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).
     # parking/trailhead/feature colours flow to CSS custom
     # properties on :root so the peek-bar swatch, the on-map
     # marker, and the popup badge all stay in lockstep.
-    ("marker_color",            "markerColor",          "#795548"),
-    ("marker_text_color",       "markerTextColor",      "white"),
-    ("marker_border_color",     "markerBorderColor",    "white"),
-    ("parking_color",           "parkingColor",         "#2980b9"),
-    ("parking_text_color",      "parkingTextColor",     "white"),
-    ("parking_border_color",    "parkingBorderColor",   "white"),
-    ("trailhead_color",         "trailheadColor",       "#27ae60"),
-    ("trailhead_text_color",    "trailheadTextColor",   "white"),
-    ("trailhead_border_color",  "trailheadBorderColor", "white"),
-    ("hub_color",               "hubColor",             "#f39c12"),
-    ("hub_text_color",          "hubTextColor",         "white"),
-    ("hub_border_color",        "hubBorderColor",       "white"),
-    ("feature_color",           "featureColor",         "#8e44ad"),
-    ("feature_ring_color",      "featureRingColor",     "#ffffff"),
-
+    ("marker_color", "markerColor", "#795548"),
+    ("marker_text_color", "markerTextColor", "white"),
+    ("marker_border_color", "markerBorderColor", "white"),
+    ("parking_color", "parkingColor", "#2980b9"),
+    ("parking_text_color", "parkingTextColor", "white"),
+    ("parking_border_color", "parkingBorderColor", "white"),
+    ("trailhead_color", "trailheadColor", "#27ae60"),
+    ("trailhead_text_color", "trailheadTextColor", "white"),
+    ("trailhead_border_color", "trailheadBorderColor", "white"),
+    ("hub_color", "hubColor", "#f39c12"),
+    ("hub_text_color", "hubTextColor", "white"),
+    ("hub_border_color", "hubBorderColor", "white"),
+    ("feature_color", "featureColor", "#8e44ad"),
+    ("feature_ring_color", "featureRingColor", "#ffffff"),
     # PWA
-    ("pwa",                     "pwa",                  True),
-
+    ("pwa", "pwa", True),
     # When true, surface PWA install affordances on platforms that
     # support them (Chrome's mini-infobar + our custom Install button
     # via beforeinstallprompt; iOS Safari Add-to-Home-Screen
@@ -1799,10 +1779,9 @@ CONFIG_SPEC = [
     # beforeinstallprompt handler is not registered at all — silencing
     # Chrome's "page must call prompt()" warning — and the custom
     # Install button is hidden everywhere.
-    ("pwa_install_prompt",      "pwaInstallPrompt",     True),
-
+    ("pwa_install_prompt", "pwaInstallPrompt", True),
     # User-supplied
-    ("parking",                 "parking",              []),
+    ("parking", "parking", []),
 ]
 
 
@@ -1844,8 +1823,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #
     # Relations are just the grouping handle here — relations themselves don't
     # have direction; their member ways do.
-    VALID_WEEKDAYS = {"sunday", "monday", "tuesday", "wednesday",
-                      "thursday", "friday", "saturday"}
+    VALID_WEEKDAYS = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}
     # Parity tokens extend the vocabulary: a route with `reverse_days:
     # [even_days]` flips 180° on any even calendar date (2, 4, 6 …); `odd_days`
     # is the mirror. These are evaluated at runtime the same way weekday tokens
@@ -1861,9 +1839,14 @@ def inject_config_into_template(template_content, config, trails_geojson):
         days_norm = []
         for d in days_in or []:
             dl = str(d).strip().lower()
-            match = next((full for full in VALID_DAYS
-                          if full == dl or (len(dl) >= 3 and full.startswith(dl))),
-                         None)
+            match = next(
+                (
+                    full
+                    for full in VALID_DAYS
+                    if full == dl or (len(dl) >= 3 and full.startswith(dl))
+                ),
+                None,
+            )
             if match is None:
                 sys.exit(
                     f"ERROR: {error_label} contains unknown day token {d!r}; "
@@ -1896,8 +1879,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # [] } }` for a whole second trail system that doesn't reverse,
     # while still individually overriding one of its child routes if
     # needed.
-    super_expansions = trails_geojson.get("metadata", {}).get(
-        "super_relation_expansions", {}) or {}
+    super_expansions = trails_geojson.get("metadata", {}).get("super_relation_expansions", {}) or {}
     per_route_raw = sched_block.get("per_route") or {}
     sched_processed = {}
 
@@ -2006,11 +1988,14 @@ def inject_config_into_template(template_content, config, trails_geojson):
             ]
             for way_id, parents in unscheduled[:20]:
                 if way_id is None:
-                    lines.append(f"         (way_ids unavailable in cached GeoJSON)"
-                                 f"  →  parent relations: {parents}")
+                    lines.append(
+                        f"         (way_ids unavailable in cached GeoJSON)"
+                        f"  →  parent relations: {parents}"
+                    )
                 else:
-                    lines.append(f"         https://www.openstreetmap.org/way/{way_id}"
-                                 f"  →  {parents}")
+                    lines.append(
+                        f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}"
+                    )
             if len(unscheduled) > 20:
                 lines.append(f"         ... and {len(unscheduled) - 20} more")
             if unscheduled_no_wayids:
@@ -2069,7 +2054,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj = {}
     for yaml_key, js_key, default in CONFIG_SPEC:
         if default is None:
-            config_obj[js_key] = config[yaml_key]       # required keys
+            config_obj[js_key] = config[yaml_key]  # required keys
         else:
             config_obj[js_key] = config.get(yaml_key, default)
 
@@ -2080,7 +2065,8 @@ def inject_config_into_template(template_content, config, trails_geojson):
         # We emit the *resolved* per-route schedules (default expanded out for
         # every route it applies to, with per-relation overrides honored) so
         # the runtime doesn't need to know about the default/override layering.
-        str(rel_id): spec for rel_id, spec in effective_schedules.items()
+        str(rel_id): spec
+        for rel_id, spec in effective_schedules.items()
     }
     config_obj["baseLayers"] = config.get("base_layers") or []
     config_obj["customRoutes"] = [
@@ -2151,8 +2137,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # corridors. Missing → app.js falls back to natural-sort
     # (legacy behavior).
     config_obj["routeOrders"] = (
-        (trails_geojson.get("metadata") or {}).get("routeOrders") or {}
-        if trails_geojson else {}
+        (trails_geojson.get("metadata") or {}).get("routeOrders") or {} if trails_geojson else {}
     )
     config_obj["about"] = config.get("about") or None
     # Welcome modal config: pass through unchanged. Three forms
@@ -2224,8 +2209,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
 # those extensions can't fall back to icon source — generate_icons
 # would crash. Defined at module scope so resolve_icon_source() and
 # the icon-generation call site (copy_assets) share one definition.
-_PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp",
-                      ".gif", ".bmp", ".tiff", ".tif"}
+_PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
 
 
 def resolve_icon_source(config, project_root):
@@ -2283,8 +2267,8 @@ def copy_templates(config, output_dir, trails_geojson):
         if filename == "index.html":
             # Dynamic page title
             content = re.sub(
-                r'<title>.*?</title>',
-                f'<title>{config["title"]}</title>',
+                r"<title>.*?</title>",
+                f"<title>{config['title']}</title>",
                 content,
             )
 
@@ -2292,7 +2276,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # benefits search engines and the Share-button preview cards
             # equally. Values are HTML-attribute-escaped to survive
             # quotes / ampersands in trail-system names + descriptions.
-            og_title = (config.get("title") or config.get("name") or "Trail Map")
+            og_title = config.get("title") or config.get("name") or "Trail Map"
             about = config.get("about") or {}
             og_description_raw = (about.get("description") or "").strip()
             # First paragraph only (split on the first double-newline);
@@ -2309,18 +2293,21 @@ def copy_templates(config, output_dir, trails_geojson):
             # html.escape with quote=True turns " into &quot; so the
             # value is safe inside the `content="..."` attribute.
             from html import escape as _html_escape
-            content = content.replace("__OG_TITLE__",
-                                      _html_escape(og_title, quote=True))
-            content = content.replace("__OG_DESCRIPTION__",
-                                      _html_escape(og_description, quote=True))
+
+            content = content.replace("__OG_TITLE__", _html_escape(og_title, quote=True))
+            content = content.replace(
+                "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
+            )
 
             # Strip the Share button section when share_button: false.
             # Default true — the section's `hidden` class is only used
             # to keep the section invisible until app.js reveals it.
             if not config.get("share_button", True):
                 content = re.sub(
-                    r'\s*<!-- Share start -->.*?<!-- Share end -->\n',
-                    '', content, flags=re.DOTALL,
+                    r"\s*<!-- Share start -->.*?<!-- Share end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
                 )
 
             # Brand title — substitute the map's title text into both
@@ -2328,10 +2315,8 @@ def copy_templates(config, output_dir, trails_geojson):
             # fallback when the image is missing) AND the brand-title
             # span text (shown when no logo is configured at all). Same
             # value as the OG title.
-            brand_title = (config.get("title") or config.get("name")
-                          or "Trail Map")
-            content = content.replace("__BRAND_TITLE__",
-                                      _html_escape(brand_title, quote=True))
+            brand_title = config.get("title") or config.get("name") or "Trail Map"
+            content = content.replace("__BRAND_TITLE__", _html_escape(brand_title, quote=True))
 
             # Brand-img CLS-prevention dimensions. process_logo() stashes
             # the actual written pixel dimensions on config["_brand_img_dims"]
@@ -2352,9 +2337,7 @@ def copy_templates(config, output_dir, trails_geojson):
             brand_dims = config.get("_brand_img_dims") or (None, None)
             bw, bh = brand_dims
             if bw and bh:
-                content = content.replace(
-                    "__BRAND_IMG_DIMS__",
-                    f' width="{bw}" height="{bh}"')
+                content = content.replace("__BRAND_IMG_DIMS__", f' width="{bw}" height="{bh}"')
             else:
                 content = content.replace("__BRAND_IMG_DIMS__", "")
 
@@ -2367,7 +2350,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # "auto" against prefers-color-scheme.
             slug = config.get("slug", "")
             default_scheme = config.get("default_color_scheme", "light")
-            bootstrap_slug = json.dumps(slug)        # JS string-safe
+            bootstrap_slug = json.dumps(slug)  # JS string-safe
             bootstrap_default = json.dumps(default_scheme)
             # The runtime stores LS values JSON-stringified (see
             # LS.set in app.js: setItem(..., JSON.stringify(value))),
@@ -2381,14 +2364,14 @@ def copy_templates(config, output_dir, trails_geojson):
                 "<script>"
                 "(function(){"
                 "try{"
-                f"var raw=localStorage.getItem({bootstrap_slug}+\".mtb.colorScheme\");"
+                f'var raw=localStorage.getItem({bootstrap_slug}+".mtb.colorScheme");'
                 "var stored=null;"
                 "if(raw){try{stored=JSON.parse(raw);}catch(e){stored=raw;}}"
                 f"var s=stored||{bootstrap_default};"
-                "if(s===\"auto\"){"
-                "s=matchMedia(\"(prefers-color-scheme: dark)\").matches?\"dark\":\"light\";"
+                'if(s==="auto"){'
+                's=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";'
                 "}"
-                "document.documentElement.setAttribute(\"data-color-scheme\",s);"
+                'document.documentElement.setAttribute("data-color-scheme",s);'
                 # Sync the meta theme-color tag in the same pass so
                 # the Android Chrome PWA status bar paints the right
                 # colour on first frame (the static value in the
@@ -2397,13 +2380,12 @@ def copy_templates(config, output_dir, trails_geojson):
                 # until applyColorScheme runs much later in app.js).
                 "var m=document.querySelector('meta[name=\"theme-color\"]');"
                 "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
-                "m.setAttribute('content',s===\"dark\"?\"#1c1c1e\":\"#ffffff\");"
+                'm.setAttribute(\'content\',s==="dark"?"#1c1c1e":"#ffffff");'
                 "}catch(e){}"
                 "})();"
                 "</script>"
             )
-            content = content.replace("__COLOR_SCHEME_BOOTSTRAP__",
-                                      bootstrap_script)
+            content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
 
             # Inject or remove brand image. Logo source falls back to
             # icon: when logo: is omitted; raster sources are normalized
@@ -2422,19 +2404,25 @@ def copy_templates(config, output_dir, trails_geojson):
                     content = content.replace("logo.webp", out_name)
             else:
                 content = re.sub(
-                    r'\s*<!-- Brand img start -->.*?<!-- Brand img end -->\n',
-                    '', content, flags=re.DOTALL,
+                    r"\s*<!-- Brand img start -->.*?<!-- Brand img end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
                 )
 
             # Strip PWA install UI and SW registration when PWA is disabled
             if not config.get("pwa", True):
                 content = re.sub(
-                    r'\s*<!-- PWA start -->.*?<!-- PWA end -->\n',
-                    '', content, flags=re.DOTALL,
+                    r"\s*<!-- PWA start -->.*?<!-- PWA end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
                 )
                 content = re.sub(
-                    r'\s*<!-- SW start -->.*?<!-- SW end -->\n',
-                    '', content, flags=re.DOTALL,
+                    r"\s*<!-- SW start -->.*?<!-- SW end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
                 )
 
             # Strip icon links when no icon source is resolvable.
@@ -2449,8 +2437,10 @@ def copy_templates(config, output_dir, trails_geojson):
             icons_dir_legacy = config.get("icons_dir", "")
             if not resolve_icon_source(config, project_root) and not icons_dir_legacy:
                 content = re.sub(
-                    r'\s*<!-- Icons start -->.*?<!-- Icons end -->\n',
-                    '', content, flags=re.DOTALL,
+                    r"\s*<!-- Icons start -->.*?<!-- Icons end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
                 )
 
         dst = os.path.join(output_dir, filename)
@@ -2479,7 +2469,7 @@ def copy_assets(config, output_dir):
         candidate = os.path.join(project_root, icon_path)
         if os.path.isfile(candidate):
             logo_src = candidate
-            print(f"  No logo configured — using icon as logo")
+            print("  No logo configured — using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)
@@ -2500,13 +2490,13 @@ def copy_assets(config, output_dir):
     if icon_path and icon_path != config.get("icon", ""):
         # The fallback fired — the resolved source is the logo, not
         # an explicit icon: setting. Log it so the curator knows.
-        print(f"  No icon configured — using logo as icon source")
+        print("  No icon configured — using logo as icon source")
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
         # Manifest is generated inside generate_icons
     elif icons_dir_legacy:
-        print(f"  DEPRECATION: 'icons_dir' is deprecated, use 'icon' instead")
+        print("  DEPRECATION: 'icons_dir' is deprecated, use 'icon' instead")
         icons_src = os.path.join(project_root, icons_dir_legacy)
         icons_dst = os.path.join(output_dir, "icons")
         if os.path.exists(icons_src):
@@ -2532,7 +2522,7 @@ def copy_assets(config, output_dir):
         else:
             print(f"  warn: Icons directory not found: {icons_src}")
     else:
-        print(f"  No icon configured — skipping icon generation")
+        print("  No icon configured — skipping icon generation")
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
@@ -2545,7 +2535,7 @@ def copy_assets(config, output_dir):
     sprite_version = None
     if os.path.exists(app_js_path):
         with open(app_js_path) as f:
-            m = re.search(r'sprites/(v\d+)/', f.read())
+            m = re.search(r"sprites/(v\d+)/", f.read())
             if m:
                 sprite_version = m.group(1)
     sprites_injected_dirs = []  # collect for clip-arrow injection below
@@ -2561,12 +2551,12 @@ def copy_assets(config, output_dir):
             sprites_injected_dirs.append(ver_dst)
         else:
             print(f"  warn: Sprites {sprite_version} not found at {ver_src}")
-            print(f"  Download from: https://github.com/protomaps/basemaps-assets")
+            print("  Download from: https://github.com/protomaps/basemaps-assets")
     elif os.path.exists(sprites_src) and os.listdir(sprites_src):
         if os.path.exists(sprites_dst):
             shutil.rmtree(sprites_dst)
         shutil.copytree(sprites_src, sprites_dst)
-        print(f"  Copied sprites (all versions)")
+        print("  Copied sprites (all versions)")
         # Inject into every version directory found.
         for entry in sorted(os.listdir(sprites_dst)):
             sub = os.path.join(sprites_dst, entry)
@@ -2574,7 +2564,7 @@ def copy_assets(config, output_dir):
                 sprites_injected_dirs.append(sub)
     else:
         print(f"  warn: Sprites not found at {sprites_src}")
-        print(f"  Download from: https://github.com/protomaps/basemaps-assets")
+        print("  Download from: https://github.com/protomaps/basemaps-assets")
 
     # Inject the SDF clip-continuation arrowhead into each copied atlas so
     # the renderer can tint it per-route via icon-color. Idempotent — a no-op
@@ -2585,9 +2575,11 @@ def copy_assets(config, output_dir):
         for sprite_dir in sprites_injected_dirs:
             inject_clip_arrow(sprite_dir, sdf_1x, sdf_2x)
     else:
-        print(f"  warn: clip-arrow SDF assets missing — continuation "
-              f"arrowheads will not render. Run "
-              f"`python assets/extras/generate_clip_arrow.py` to regenerate.")
+        print(
+            "  warn: clip-arrow SDF assets missing — continuation "
+            "arrowheads will not render. Run "
+            "`python assets/extras/generate_clip_arrow.py` to regenerate."
+        )
 
 
 def print_summary(output_dir):
@@ -2599,7 +2591,7 @@ def print_summary(output_dir):
     fonts_size = 0
     fonts_count = 0
     fonts_dir = os.path.join(output_dir, "fonts")
-    for root, dirs, files in os.walk(output_dir):
+    for root, _dirs, files in os.walk(output_dir):
         for f in files:
             path = os.path.join(root, f)
             size = os.path.getsize(path)
@@ -2611,18 +2603,18 @@ def print_summary(output_dir):
                 continue
             rel = os.path.relpath(path, output_dir)
             if size > 1024 * 1024:
-                print(f"  {rel:40s} {size / (1024*1024):8.1f} MB")
+                print(f"  {rel:40s} {size / (1024 * 1024):8.1f} MB")
             else:
                 print(f"  {rel:40s} {size / 1024:8.1f} KB")
 
     if fonts_count > 0:
         label = f"fonts/ ({fonts_count} PBF files)"
         if fonts_size > 1024 * 1024:
-            print(f"  {label:40s} {fonts_size / (1024*1024):8.1f} MB")
+            print(f"  {label:40s} {fonts_size / (1024 * 1024):8.1f} MB")
         else:
             print(f"  {label:40s} {fonts_size / 1024:8.1f} KB")
 
-    print(f"  {'TOTAL':40s} {total / (1024*1024):8.1f} MB")
+    print(f"  {'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
     print("=" * 60)
 
 
@@ -2645,8 +2637,11 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     # what the user wrote in the YAML) and only fall back to the full
     # path if the file's missing.
     def _display_path(abs_path):
-        return os.path.basename(abs_path) if os.path.isfile(abs_path) \
+        return (
+            os.path.basename(abs_path)
+            if os.path.isfile(abs_path)
             else f"{os.path.basename(abs_path)}  → MISSING (looked for {abs_path})"
+        )
 
     # ---- OSM data source ----
     print("OSM data source:")
@@ -2655,9 +2650,12 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     else:
         print("  Overpass API")
         print(f"    relations: {config.get('relations') or []}")
-        for key in ("clipped_relations",
-                    "winter_relations", "summer_relations",
-                    "emergency_access_relations"):
+        for key in (
+            "clipped_relations",
+            "winter_relations",
+            "summer_relations",
+            "emergency_access_relations",
+        ):
             ids = config.get(key) or []
             if ids:
                 print(f"    {key}: {ids}")
@@ -2674,10 +2672,15 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- POI fetching ----
     print("POI fetching (gated by show_* keys):")
-    for key, default in (("show_markers", True), ("show_features", True),
-                         ("show_parking", True), ("show_trailheads", True),
-                         ("show_hubs", True),
-                         ("show_toilets", True), ("show_drinking_water", True)):
+    for key, default in (
+        ("show_markers", True),
+        ("show_features", True),
+        ("show_parking", True),
+        ("show_trailheads", True),
+        ("show_hubs", True),
+        ("show_toilets", True),
+        ("show_drinking_water", True),
+    ):
         on = bool(config.get(key, default))
         print(f"  {key}: {'YES' if on else 'no'}")
     if config.get("show_trailheads", True):
@@ -2702,8 +2705,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         bm_zoom = config.get("basemap_maxzoom", 15)
         print(f"  basemap: pan_bbox extracted to maxzoom {bm_zoom}")
     if args.skip_terrain or not config.get("show_terrain", True):
-        reason = ("--skip-terrain" if args.skip_terrain
-                  else "show_terrain: false")
+        reason = "--skip-terrain" if args.skip_terrain else "show_terrain: false"
         print(f"  terrain: SKIPPED ({reason})")
     else:
         tr_zoom = config.get("terrain_maxzoom", 12)
@@ -2718,8 +2720,10 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         if want_dist:
             print("  distance: computed (haversine, no API)")
         if want_elev:
-            print("  elevation gain + loss: USGS 3DEP getSamples "
-                  "(network calls, ~1 per route at 5m sampling)")
+            print(
+                "  elevation gain + loss: USGS 3DEP getSamples "
+                "(network calls, ~1 per route at 5m sampling)"
+            )
         print()
 
     # ---- Branding assets ----
@@ -2747,23 +2751,36 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
-    parser.add_argument("--force", action="store_true", help="Force re-fetch all data (including Overpass cache)")
-    parser.add_argument("--trails", action="store_true", help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.")
+    parser.add_argument(
+        "--force", action="store_true", help="Force re-fetch all data (including Overpass cache)"
+    )
+    parser.add_argument(
+        "--trails",
+        action="store_true",
+        help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.",
+    )
     parser.add_argument("--skip-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--skip-basemap", action="store_true", help="Skip basemap extraction")
-    parser.add_argument("--output-dir",
-                        help="Write build output to this directory. Overrides "
-                             "the config 'output_dir' field and the default "
-                             "'build/<slug>/' layout. Resolved against the "
-                             "current working directory if relative.")
-    parser.add_argument("--cache-dir",
-                        help="Use this directory for the Overpass / derive-accent "
-                             "/ route-stats cache. Defaults to 'cache/' at the "
-                             "repo root. Resolved against the current working "
-                             "directory if relative.")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Validate config and print what would be fetched / generated, then exit. "
-                             "No Overpass calls, no tile downloads, no file writes.")
+    parser.add_argument(
+        "--output-dir",
+        help="Write build output to this directory. Overrides "
+        "the config 'output_dir' field and the default "
+        "'build/<slug>/' layout. Resolved against the "
+        "current working directory if relative.",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        help="Use this directory for the Overpass / derive-accent "
+        "/ route-stats cache. Defaults to 'cache/' at the "
+        "repo root. Resolved against the current working "
+        "directory if relative.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate config and print what would be fetched / generated, then exit. "
+        "No Overpass calls, no tile downloads, no file writes.",
+    )
     # Minification defaults to ON: the canonical use of build.py is
     # "produce ready-to-deploy artifacts," regardless of which deploy
     # mechanism (SSH/rsync via tools/build_and_deploy.sh, or any other
@@ -2772,15 +2789,23 @@ def main(argv=None):
     # alias for backwards compatibility (any older script or shell
     # history that passes it still works; the flag's presence is
     # redundant with the default but never wrong).
-    parser.add_argument("--minify", action="store_true", default=True,
-                        help="Minify app.js and style.css in the build output "
-                             "(default: enabled). Pass --no-minify for "
-                             "local-iteration debug where readable output is "
-                             "more useful than smaller output.")
-    parser.add_argument("--no-minify", dest="minify", action="store_false",
-                        help="Disable minification (overrides the default). "
-                             "Use for local-iteration debug; for deploy, "
-                             "leave the default on.")
+    parser.add_argument(
+        "--minify",
+        action="store_true",
+        default=True,
+        help="Minify app.js and style.css in the build output "
+        "(default: enabled). Pass --no-minify for "
+        "local-iteration debug where readable output is "
+        "more useful than smaller output.",
+    )
+    parser.add_argument(
+        "--no-minify",
+        dest="minify",
+        action="store_false",
+        help="Disable minification (overrides the default). "
+        "Use for local-iteration debug; for deploy, "
+        "leave the default on.",
+    )
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
@@ -2789,8 +2814,7 @@ def main(argv=None):
     # Validate the config before doing anything expensive (Overpass fetches,
     # tile generation). Errors abort the build; warnings (e.g. asset files
     # not present yet) print but allow it to continue.
-    errors, warnings = validate_config(
-        config, config_path=args.config, project_root=project_root)
+    errors, warnings = validate_config(config, config_path=args.config, project_root=project_root)
     for line in warnings:
         print(line)
     if errors:
@@ -2854,8 +2878,7 @@ def main(argv=None):
         needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
-    if (args.force or args.trails or not os.path.exists(trails_src_path)
-            or auto_refetch_reason):
+    if args.force or args.trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
         if auto_refetch_reason:
             print(f"Trails: refetching ({auto_refetch_reason})")
         trails_geojson = fetch_trails(config, trails_path, cache_dir)
@@ -2867,7 +2890,8 @@ def main(argv=None):
         _save_signature(
             trails_src_path,
             _trails_fetch_fingerprint(config)
-            + "\ntrails-content=" + (_trails_content_hash(trails_src_path) or ""),
+            + "\ntrails-content="
+            + (_trails_content_hash(trails_src_path) or ""),
         )
     else:
         print(f"Trails: reusing base {trails_src_path}")
@@ -2878,7 +2902,8 @@ def main(argv=None):
             _save_signature(
                 trails_src_path,
                 _trails_fetch_fingerprint(config)
-                + "\ntrails-content=" + (_trails_content_hash(trails_src_path) or ""),
+                + "\ntrails-content="
+                + (_trails_content_hash(trails_src_path) or ""),
             )
 
     # Record the data date from the BASE file's modification time (the moment
@@ -2888,9 +2913,9 @@ def main(argv=None):
     # more reliably. Uses trails.src.geojson, not the expanded output: the
     # latter is rewritten on every build and would report the re-enrich time
     # rather than the fetch time.
-    config["_data_date"] = datetime.fromtimestamp(
-        os.path.getmtime(trails_src_path)
-    ).strftime("%Y-%m-%d %H:%M")
+    config["_data_date"] = datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
+        "%Y-%m-%d %H:%M"
+    )
 
     # Tell the runtime whether clip_endpoints.geojson exists in this
     # build. fetch_trails only writes the file when there are clipped
@@ -2899,7 +2924,8 @@ def main(argv=None):
     # those maps. Reading the file's existence here lets the runtime
     # skip the fetch entirely.
     config["_has_clip_endpoints"] = os.path.exists(
-        os.path.join(output_dir, "clip_endpoints.geojson"))
+        os.path.join(output_dir, "clip_endpoints.geojson")
+    )
 
     # Count POI features by type so the runtime can render an
     # accurate Welcome modal Search line (e.g. "Find ... places
@@ -2944,8 +2970,7 @@ def main(argv=None):
     # as CONFIG.accentColor. resolve_accent_color also handles "auto"
     # (Pillow-based logo derivation, cached per-source-hash) and the
     # WCAG contrast warning for both light + dark sheet backgrounds.
-    config["_accent_color"] = resolve_accent_color(
-        config, project_root, cache_dir)
+    config["_accent_color"] = resolve_accent_color(config, project_root, cache_dir)
 
     # Event-mode pre-pass (no-op when event_mode is absent). Folds
     # event_mode.routes into config["custom_routes"] so they
@@ -2989,7 +3014,7 @@ def main(argv=None):
     )
     if not arrows_default_on and not arrows_suppressed:
         oneway_count = 0
-        for f in (trails_geojson.get("features") or []):
+        for f in trails_geojson.get("features") or []:
             ow = (f.get("properties") or {}).get("oneway")
             if ow in ("yes", True, "-1", "reversible"):
                 oneway_count += 1
@@ -3015,14 +3040,14 @@ def main(argv=None):
     # arrow emitter naturally only renders on the event route(s).
     # Runs AFTER enrichment so featured custom routes' features (which
     # carry the curator's intended `oneway: "yes"`) are present.
-    arrows_restricted = _apply_event_mode_to_feature_oneway(
-        config, trails_geojson)
+    arrows_restricted = _apply_event_mode_to_feature_oneway(config, trails_geojson)
 
     # Compute per-route distance/elevation stats if either gate is on.
     # Runs after enrichment so custom_routes are included in the totals.
     # compute_route_stats also handles cleanup when a previously-enabled
     # gate has been turned off (strips stale fields). Idempotent.
     from compute_route_stats import compute_and_attach as compute_route_stats
+
     stats_changed = compute_route_stats(trails_geojson, config, cache_dir)
 
     # Always (re)write the expanded trails.geojson. It is the render output,
@@ -3035,17 +3060,20 @@ def main(argv=None):
     custom_count = len(config.get("custom_routes") or [])
     bits = []
     if enriched:
-        bits.append("bucket flags"
-                    + (f" + {custom_count} custom route"
-                       f"{'s' if custom_count != 1 else ''}"
-                       if custom_count else ""))
+        bits.append(
+            "bucket flags"
+            + (
+                f" + {custom_count} custom route{'s' if custom_count != 1 else ''}"
+                if custom_count
+                else ""
+            )
+        )
     if stats_changed:
         bits.append("route stats")
     if arrows_restricted:
         bits.append("event-mode arrow restriction")
     if bits:
-        print(f"  Enriched {os.path.basename(trails_path)} "
-              f"with {' and '.join(bits)}")
+        print(f"  Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
 
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:
@@ -3092,11 +3120,13 @@ def main(argv=None):
     # `_enrich_trails_geojson` pass at the top of inject does that
     # for custom routes); POIs now follow the same convention.
     pois_path = os.path.join(output_dir, "pois.geojson")
-    if (not config.get("show_markers", True)
-            and not config.get("show_features", True)
-            and not config.get("show_parking", True)
-            and not config.get("show_trailheads", True)
-            and not config.get("show_hubs", True)):
+    if (
+        not config.get("show_markers", True)
+        and not config.get("show_features", True)
+        and not config.get("show_parking", True)
+        and not config.get("show_trailheads", True)
+        and not config.get("show_hubs", True)
+    ):
         print("POIs: Skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w") as f:
@@ -3135,8 +3165,7 @@ def main(argv=None):
     if args.skip_basemap:
         post_messages.append("Basemap: Skipped (--skip-basemap)")
     else:
-        needs_regen, reason = _pmtiles_needs_regen(
-            basemap_path, basemap_bbox, basemap_maxzoom)
+        needs_regen, reason = _pmtiles_needs_regen(basemap_path, basemap_bbox, basemap_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
                 print(f"Basemap: regenerating ({reason})")
@@ -3148,18 +3177,15 @@ def main(argv=None):
             fetch_tasks.append(("basemap", _do_basemap))
         else:
             size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-            post_messages.append(
-                f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
+            post_messages.append(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
 
     # ---- Terrain planning ----
     if not config.get("show_terrain", True):
-        post_messages.append(
-            "Terrain: Disabled in config (show_terrain: false)")
+        post_messages.append("Terrain: Disabled in config (show_terrain: false)")
     elif args.skip_terrain:
         post_messages.append("Terrain: Skipped (--skip-terrain)")
     else:
-        needs_regen, reason = _pmtiles_needs_regen(
-            terrain_path, terrain_bbox, terrain_maxzoom)
+        needs_regen, reason = _pmtiles_needs_regen(terrain_path, terrain_bbox, terrain_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
                 print(f"Terrain: regenerating ({reason})")
@@ -3171,8 +3197,7 @@ def main(argv=None):
             fetch_tasks.append(("terrain", _do_terrain))
         else:
             size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
-            post_messages.append(
-                f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+            post_messages.append(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
 
     # ---- Parallel execution ----
     if len(fetch_tasks) >= 2:
@@ -3239,9 +3264,11 @@ def main(argv=None):
             )
         else:
             icons_dir = os.path.join(output_dir, "icons")
-            has_icon = any(
-                f.endswith(".png") for f in os.listdir(icons_dir)
-            ) if os.path.isdir(icons_dir) else False
+            has_icon = (
+                any(f.endswith(".png") for f in os.listdir(icons_dir))
+                if os.path.isdir(icons_dir)
+                else False
+            )
             if not has_icon:
                 pwa_warnings.append(
                     "Web manifest exists but no icon PNGs found — "
@@ -3258,7 +3285,7 @@ def main(argv=None):
 
     print_summary(output_dir)
     print(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
-    print(f"Then open: http://localhost:8080\n")
+    print("Then open: http://localhost:8080\n")
 
 
 if __name__ == "__main__":

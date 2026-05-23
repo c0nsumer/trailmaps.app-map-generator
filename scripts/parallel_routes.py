@@ -48,7 +48,6 @@ Caveats:
 import math
 from collections import defaultdict
 
-
 # Number of micro-features per transition zone. Higher = smoother
 # fade AND tighter tangent matching at the endpoints (which is what
 # eliminates the "spike" artifact at corner junctions — see notes
@@ -231,14 +230,8 @@ def _sample_cubic_bezier(p0, p1, p2, p3, n_samples):
         omt3 = omt2 * omt
         t2 = t * t
         t3 = t2 * t
-        x = (omt3 * p0[0]
-             + 3 * omt2 * t * p1[0]
-             + 3 * omt * t2 * p2[0]
-             + t3 * p3[0])
-        y = (omt3 * p0[1]
-             + 3 * omt2 * t * p1[1]
-             + 3 * omt * t2 * p2[1]
-             + t3 * p3[1])
+        x = omt3 * p0[0] + 3 * omt2 * t * p1[0] + 3 * omt * t2 * p2[0] + t3 * p3[0]
+        y = omt3 * p0[1] + 3 * omt2 * t * p1[1] + 3 * omt * t2 * p2[1] + t3 * p3[1]
         samples.append([x, y])
     return samples
 
@@ -371,10 +364,14 @@ def _smooth_sharp_corners(coords):
 
         # Tuck endpoints — on the line from v_prev to v_curr (resp.
         # v_curr to v_next), tuck_m back from v_curr.
-        p_in = [v_curr[0] - unit_in_m[0] * tuck_m * deg_per_m_lon,
-                v_curr[1] - unit_in_m[1] * tuck_m * deg_per_m_lat]
-        p_out = [v_curr[0] + unit_out_m[0] * tuck_m * deg_per_m_lon,
-                 v_curr[1] + unit_out_m[1] * tuck_m * deg_per_m_lat]
+        p_in = [
+            v_curr[0] - unit_in_m[0] * tuck_m * deg_per_m_lon,
+            v_curr[1] - unit_in_m[1] * tuck_m * deg_per_m_lat,
+        ]
+        p_out = [
+            v_curr[0] + unit_out_m[0] * tuck_m * deg_per_m_lon,
+            v_curr[1] + unit_out_m[1] * tuck_m * deg_per_m_lat,
+        ]
 
         # Bezier control points. P0 = p_in tangent unit_in_m, P3 =
         # p_out tangent unit_out_m. Handle length 0.55 * tuck_m is
@@ -383,14 +380,17 @@ def _smooth_sharp_corners(coords):
         # enough room to round the corner without overshooting.
         handle_m = tuck_m * 0.55
         bp0 = p_in
-        bp1 = [p_in[0] + unit_in_m[0] * handle_m * deg_per_m_lon,
-               p_in[1] + unit_in_m[1] * handle_m * deg_per_m_lat]
-        bp2 = [p_out[0] - unit_out_m[0] * handle_m * deg_per_m_lon,
-               p_out[1] - unit_out_m[1] * handle_m * deg_per_m_lat]
+        bp1 = [
+            p_in[0] + unit_in_m[0] * handle_m * deg_per_m_lon,
+            p_in[1] + unit_in_m[1] * handle_m * deg_per_m_lat,
+        ]
+        bp2 = [
+            p_out[0] - unit_out_m[0] * handle_m * deg_per_m_lon,
+            p_out[1] - unit_out_m[1] * handle_m * deg_per_m_lat,
+        ]
         bp3 = p_out
 
-        arcs[i] = _sample_cubic_bezier(
-            bp0, bp1, bp2, bp3, _SMOOTH_ARC_SAMPLES + 1)
+        arcs[i] = _sample_cubic_bezier(bp0, bp1, bp2, bp3, _SMOOTH_ARC_SAMPLES + 1)
 
     # Build the new coords list. Preserve endpoints exactly; replace
     # each sharp internal vertex with its arc samples; keep other
@@ -424,8 +424,7 @@ def _smooth_corridor_features(features):
             geom["coordinates"] = smoothed
 
 
-def apply_subway_style(trails_geojson, *, route_order=None,
-                      visible_routes=None, mode_tag=None):
+def apply_subway_style(trails_geojson, *, route_order=None, visible_routes=None, mode_tag=None):
     """Single-mode subway-style smoother. Mutates trails_geojson.
 
     Pass 1 — sharp-corner smoothing: every LineString feature gets
@@ -499,8 +498,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
     # configured shared_routes with the visible set. A route_id
     # that's not visible has its features skipped entirely (the
     # rider doesn't see it, so no transitions need rendering for it).
-    visible_set = (None if visible_routes is None
-                   else {str(r) for r in visible_routes})
+    visible_set = None if visible_routes is None else {str(r) for r in visible_routes}
 
     def _effective_shared(feat):
         """Return the feature's effective shared_routes for this mode.
@@ -567,10 +565,8 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             coords = feat["geometry"]["coordinates"]
             if len(coords) < 2:
                 continue
-            node_to_endpoints.setdefault(_coord_key(coords[0]), []).append(
-                (idx, "start"))
-            node_to_endpoints.setdefault(_coord_key(coords[-1]), []).append(
-                (idx, "end"))
+            node_to_endpoints.setdefault(_coord_key(coords[0]), []).append((idx, "start"))
+            node_to_endpoints.setdefault(_coord_key(coords[-1]), []).append((idx, "end"))
 
         for node_key, endpoints in node_to_endpoints.items():
             if len(endpoints) < 2:
@@ -607,8 +603,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
 
                     coords_a = feat_a["geometry"]["coordinates"]
                     coords_b = feat_b["geometry"]["coordinates"]
-                    if not _is_continuation_pair(
-                            coords_a, end_a, coords_b, end_b):
+                    if not _is_continuation_pair(coords_a, end_a, coords_b, end_b):
                         continue
 
                     offset_a = _offset_index_for_route(rid, sig_a, route_order)
@@ -626,11 +621,25 @@ def apply_subway_style(trails_geojson, *, route_order=None,
                     t_a = _tangent_meters_into_junction(coords_a, end_a)
                     t_b = _tangent_meters_into_junction(coords_b, end_b)
                     sharpness_dot = t_a[0] * t_b[0] + t_a[1] * t_b[1]
-                    candidates.append((
-                        sharpness_dot, i, j, f_idx_a, end_a,
-                        f_idx_b, end_b, feat_a, feat_b,
-                        sig_a, sig_b, coords_a, coords_b,
-                        offset_a, offset_b))
+                    candidates.append(
+                        (
+                            sharpness_dot,
+                            i,
+                            j,
+                            f_idx_a,
+                            end_a,
+                            f_idx_b,
+                            end_b,
+                            feat_a,
+                            feat_b,
+                            sig_a,
+                            sig_b,
+                            coords_a,
+                            coords_b,
+                            offset_a,
+                            offset_b,
+                        )
+                    )
 
             if not candidates:
                 continue
@@ -639,9 +648,23 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             # negative). For ties (multiple equally-aligned pairs),
             # break with i,j to be deterministic.
             candidates.sort(key=lambda c: (c[0], c[1], c[2]))
-            (_, _, _, f_idx_a, end_a, f_idx_b, end_b,
-             feat_a, feat_b, sig_a, sig_b,
-             coords_a, coords_b, offset_a, offset_b) = candidates[0]
+            (
+                _,
+                _,
+                _,
+                f_idx_a,
+                end_a,
+                f_idx_b,
+                end_b,
+                feat_a,
+                feat_b,
+                sig_a,
+                sig_b,
+                coords_a,
+                coords_b,
+                offset_a,
+                offset_b,
+            ) = candidates[0]
 
             # Pick the "host" side for the transition zone.
             # Prefer to host on whichever side has a "start"
@@ -711,14 +734,10 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             # perpendicular sweeps from perp_A to perp_B and
             # the offset positions track both corridors at
             # both ends.
-            tangent_in = _tangent_meters_into_junction(
-                incoming_coords, incoming_end)
-            tangent_host_into = _tangent_meters_into_junction(
-                host_coords, "start")
-            tangent_host_out = (
-                -tangent_host_into[0], -tangent_host_into[1])
-            if (tangent_in == (0.0, 0.0)
-                    or tangent_host_out == (0.0, 0.0)):
+            tangent_in = _tangent_meters_into_junction(incoming_coords, incoming_end)
+            tangent_host_into = _tangent_meters_into_junction(host_coords, "start")
+            tangent_host_out = (-tangent_host_into[0], -tangent_host_into[1])
+            if tangent_in == (0.0, 0.0) or tangent_host_out == (0.0, 0.0):
                 # Degenerate corridor — no usable tangent.
                 continue
 
@@ -743,8 +762,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             # last segment, but with N=16 samples the first
             # segment only spans 1/16 of the curve, so the
             # local tangent there is still close to tangent_in.
-            dot_inout = (tangent_in[0] * tangent_host_out[0]
-                         + tangent_in[1] * tangent_host_out[1])
+            dot_inout = tangent_in[0] * tangent_host_out[0] + tangent_in[1] * tangent_host_out[1]
             dot_inout = max(-1.0, min(1.0, dot_inout))
             # Sharpness in [0, 1]: 0 = straight, 1 = 90° bend.
             # tangent_in and tangent_host_out are both
@@ -831,15 +849,15 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             # curve aligns with corridor B at its end.
             p0 = [p_junction[0], p_junction[1]]
             p3_dlon, p3_dlat = _meters_unit_to_degree_delta(
-                tangent_host_out, span_eff, p_junction[1])
-            p3 = [p_junction[0] + p3_dlon,
-                  p_junction[1] + p3_dlat]
+                tangent_host_out, span_eff, p_junction[1]
+            )
+            p3 = [p_junction[0] + p3_dlon, p_junction[1] + p3_dlat]
             handle_m = span_eff * handle_frac
-            p1_dlon, p1_dlat = _meters_unit_to_degree_delta(
-                tangent_in, handle_m, p_junction[1])
+            p1_dlon, p1_dlat = _meters_unit_to_degree_delta(tangent_in, handle_m, p_junction[1])
             p1 = [p0[0] + p1_dlon, p0[1] + p1_dlat]
             p2_dlon, p2_dlat = _meters_unit_to_degree_delta(
-                tangent_host_out, -handle_m, p_junction[1])
+                tangent_host_out, -handle_m, p_junction[1]
+            )
             p2 = [p3[0] + p2_dlon, p3[1] + p2_dlat]
 
             # The "fade" goes from opposite_offset_value (at
@@ -859,8 +877,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             # NB: use `k` not `i` in the inner loops below —
             # the outer pair-iteration uses `i` and a regular
             # `for i` would shadow it.
-            points = _sample_cubic_bezier(
-                p0, p1, p2, p3, _TRANSITION_SAMPLES + 1)
+            points = _sample_cubic_bezier(p0, p1, p2, p3, _TRANSITION_SAMPLES + 1)
 
             # Capture bezier geometry for Pass 3 (joining-route
             # fade-in). Multiple routes at the same junction share
@@ -882,9 +899,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
                 # interpolated offset.
                 t_mid = (k + 0.5) / _TRANSITION_SAMPLES
                 offset_idx = (
-                    opposite_offset_value
-                    + (host_offset_value - opposite_offset_value)
-                    * t_mid
+                    opposite_offset_value + (host_offset_value - opposite_offset_value) * t_mid
                 )
                 micro = {
                     "type": "Feature",
@@ -894,12 +909,9 @@ def apply_subway_style(trails_geojson, *, route_order=None,
                     },
                     "properties": {
                         "route_id": rid,
-                        "route_name": feat_a["properties"].get(
-                            "route_name", ""),
-                        "route_colour": feat_a["properties"].get(
-                            "route_colour", ""),
-                        "route_ref": feat_a["properties"].get(
-                            "route_ref", ""),
+                        "route_name": feat_a["properties"].get("route_name", ""),
+                        "route_colour": feat_a["properties"].get("route_colour", ""),
+                        "route_ref": feat_a["properties"].get("route_ref", ""),
                         # `shared_routes` set to a single-route
                         # list satisfies app.js's downstream
                         # consumers (rebuildFinderList etc.)
@@ -972,10 +984,8 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             coords = feat["geometry"]["coordinates"]
             if len(coords) < 2:
                 continue
-            node_to_endpoints.setdefault(_coord_key(coords[0]), []).append(
-                (idx, "start"))
-            node_to_endpoints.setdefault(_coord_key(coords[-1]), []).append(
-                (idx, "end"))
+            node_to_endpoints.setdefault(_coord_key(coords[0]), []).append((idx, "start"))
+            node_to_endpoints.setdefault(_coord_key(coords[-1]), []).append((idx, "end"))
 
         for node_key, endpoints in node_to_endpoints.items():
             if node_key not in node_to_bezier:
@@ -1002,8 +1012,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
 
             # Compute joining route's offset in the host corridor
             # (where it actually lives, downstream of the junction).
-            host_offset_value = _offset_index_for_route(
-                rid, host_sig, route_order)
+            host_offset_value = _offset_index_for_route(rid, host_sig, route_order)
             if host_offset_value == 0:
                 # Centered route in odd-count corridor — no visible
                 # offset shift even if it appeared abruptly. Skip.
@@ -1024,8 +1033,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
                 continue
             incoming_max_abs = (incoming_count - 1) / 2.0
             sign = 1.0 if host_offset_value > 0 else -1.0
-            neighbor_offset = sign * min(
-                abs(host_offset_value) - 0.5, incoming_max_abs)
+            neighbor_offset = sign * min(abs(host_offset_value) - 0.5, incoming_max_abs)
 
             # Find this route's host feature at the junction (the
             # one with START here) so we can mark it for truncation.
@@ -1038,10 +1046,7 @@ def apply_subway_style(trails_geojson, *, route_order=None,
             points = bezier["points"]
             for k in range(_TRANSITION_SAMPLES):
                 t_mid = (k + 0.5) / _TRANSITION_SAMPLES
-                offset_idx = (
-                    neighbor_offset
-                    + (host_offset_value - neighbor_offset) * t_mid
-                )
+                offset_idx = neighbor_offset + (host_offset_value - neighbor_offset) * t_mid
                 micro = {
                     "type": "Feature",
                     "geometry": {
@@ -1050,12 +1055,9 @@ def apply_subway_style(trails_geojson, *, route_order=None,
                     },
                     "properties": {
                         "route_id": rid,
-                        "route_name": template_feat["properties"].get(
-                            "route_name", ""),
-                        "route_colour": host_feat["properties"].get(
-                            "route_colour", ""),
-                        "route_ref": host_feat["properties"].get(
-                            "route_ref", ""),
+                        "route_name": template_feat["properties"].get("route_name", ""),
+                        "route_colour": host_feat["properties"].get("route_colour", ""),
+                        "route_ref": host_feat["properties"].get("route_ref", ""),
                         "shared_routes": [rid],
                         "trail_name": "",
                         "imba_difficulty": "",
@@ -1193,6 +1195,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
     # (emit pass-throughs for modes that didn't truncate), then drop
     # the original from the feature list.
     features = trails_geojson["features"]
+
     # Group host variants by their parent (route_id, original_first_coord).
     # We use route_id + the variant's geometry beyond coords[0] to
     # identify the matching original — since coords[1:] is unchanged
@@ -1242,9 +1245,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
                 "type": "Feature",
                 "geometry": {
                     "type": "LineString",
-                    "coordinates": list(
-                        (feat.get("geometry") or {}).get("coordinates") or []
-                    ),
+                    "coordinates": list((feat.get("geometry") or {}).get("coordinates") or []),
                 },
                 "properties": pt_props,
             }
@@ -1253,10 +1254,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
 
     # Build the new feature list: drop originals we replaced, keep
     # everything else, then append pass-through variants.
-    new_features = [
-        f for f in features
-        if id(f) not in originals_to_remove_ids
-    ]
+    new_features = [f for f in features if id(f) not in originals_to_remove_ids]
     new_features.extend(pass_through_variants)
     trails_geojson["features"] = new_features
 

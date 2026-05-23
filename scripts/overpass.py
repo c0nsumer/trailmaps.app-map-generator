@@ -64,11 +64,13 @@ def _server_name(url):
 
 class EmptyResponseError(Exception):
     """Raised when a server returns valid JSON but with no elements."""
+
     pass
 
 
 class StaleSnapshotError(Exception):
     """Raised when a mirror's osm_base timestamp is too far behind wall clock."""
+
     pass
 
 
@@ -82,6 +84,7 @@ class PartialResponseError(Exception):
     it as success. We raise this instead so the caller retries and never
     caches the partial result.
     """
+
     pass
 
 
@@ -96,9 +99,9 @@ def _check_snapshot_freshness(data, server):
         return
     try:
         # Overpass formats: "2026-04-19T13:46:35Z"
-        osm_base = datetime.strptime(
-            osm_base_str, "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=timezone.utc)
+        osm_base = datetime.strptime(osm_base_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
     except ValueError:
         return  # unrecognised format — don't reject on parse failure
     lag = datetime.now(timezone.utc) - osm_base
@@ -163,8 +166,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
     empty_attempts = 0
     for attempt in range(MAX_RETRIES):
         try:
-            print(f"  Querying {server}{label_suffix}... "
-                  f"(attempt {attempt + 1}/{MAX_RETRIES})")
+            print(f"  Querying {server}{label_suffix}... (attempt {attempt + 1}/{MAX_RETRIES})")
             resp = requests.post(
                 OVERPASS_API,
                 data={"data": query_str},
@@ -193,13 +195,16 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                 # and let the caller decide what to do.
                 empty_attempts += 1
                 if empty_attempts > EMPTY_RETRY_LIMIT:
-                    print(f"  warn: {server} returned 0 elements "
-                          f"{empty_attempts} times in a row.")
-                    print(f"           This usually means the query is "
-                          f"correct but no data exists — check your "
-                          f"relation IDs for typos.")
-                    print(f"           Continuing with empty data; "
-                          f"downstream may produce an empty map.")
+                    print(f"  warn: {server} returned 0 elements {empty_attempts} times in a row.")
+                    print(
+                        "           This usually means the query is "
+                        "correct but no data exists — check your "
+                        "relation IDs for typos."
+                    )
+                    print(
+                        "           Continuing with empty data; "
+                        "downstream may produce an empty map."
+                    )
                     _check_snapshot_freshness(data, server)
                     if cp:
                         with open(cp, "w") as f:
@@ -212,8 +217,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
 
             _check_snapshot_freshness(data, server)
 
-            print(f"  Response from {server} "
-                  f"({len(data.get('elements', []))} elements)")
+            print(f"  Response from {server} ({len(data.get('elements', []))} elements)")
 
             if cp:
                 with open(cp, "w") as f:
@@ -235,7 +239,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
     print(f"\n  ERROR: {server} failed after {MAX_RETRIES} attempts.")
     if last_error is not None:
         print(f"    last error: {type(last_error).__name__}: {last_error}")
-    print(f"\n  The server may be overloaded. Try again in a few minutes.")
-    print(f"  Tip: Re-run with --trails instead of --force to reuse any")
-    print(f"  cached responses from earlier successful queries.\n")
+    print("\n  The server may be overloaded. Try again in a few minutes.")
+    print("  Tip: Re-run with --trails instead of --force to reuse any")
+    print("  cached responses from earlier successful queries.\n")
     sys.exit(1)

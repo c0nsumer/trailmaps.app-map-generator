@@ -12,14 +12,12 @@ import os
 import sys
 from collections import defaultdict
 
-from overpass import query as overpass_query
-
-
 # Shared narrow-resolution loader (handles ``osm_file:`` only — the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
 from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
+from overpass import query as overpass_query
 
 
 def _expand_through_supers(relation_ids, expansions):
@@ -100,12 +98,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None):
     # gets `(relation(R);rel(r);)` so super-relations expand to their
     # children inline. Wrapping each in `()` makes them independent
     # union members of the outer `({...})`.
-    parts = [
-        ";".join(
-            f"(relation({rid});rel(r);)"
-            for rid in all_input_ids
-        ) + ";"
-    ]
+    parts = [";".join(f"(relation({rid});rel(r);)" for rid in all_input_ids) + ";"]
 
     # `out body;` instead of `out tags;` so member lists come back too.
     # Super-relation detection below needs to see type=relation members.
@@ -128,8 +121,7 @@ out body;
         if not parent:
             continue
         child_ids = [
-            m["ref"] for m in parent["members"]
-            if m["type"] == "relation" and m["ref"] in all_rels
+            m["ref"] for m in parent["members"] if m["type"] == "relation" and m["ref"] in all_rels
         ]
         if child_ids:
             expansions[parent_id] = child_ids
@@ -144,7 +136,7 @@ out body;
         out = []
         seen = set()
         for rid in ids:
-            for resolved in (expansions.get(rid) or [rid]):
+            for resolved in expansions.get(rid) or [rid]:
                 if resolved not in seen:
                     seen.add(resolved)
                     out.append(resolved)
@@ -209,10 +201,7 @@ foreach -> .rel(
             continue
 
         if element["type"] == "way" and "geometry" in element and current_rel_id is not None:
-            coords = [
-                [node["lon"], node["lat"]]
-                for node in element["geometry"]
-            ]
+            coords = [[node["lon"], node["lat"]] for node in element["geometry"]]
             if len(coords) >= 2:
                 way = {
                     "id": element["id"],
@@ -330,7 +319,8 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
         while True:
             end_node = tuple(coords[-1])
             candidates = [
-                wid for wid in node_to_ways[end_node]
+                wid
+                for wid in node_to_ways[end_node]
                 if wid not in visited and way_signatures.get(wid) == full_sig
             ]
             if not candidates:
@@ -358,7 +348,8 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
         while True:
             start_node = tuple(coords[0])
             candidates = [
-                wid for wid in node_to_ways[start_node]
+                wid
+                for wid in node_to_ways[start_node]
                 if wid not in visited and way_signatures.get(wid) == full_sig
             ]
             if not candidates:
@@ -380,14 +371,16 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
             else:
                 break
 
-        merged_segments.append({
-            "coords": coords,
-            "shared_routes": sorted(sig),
-            "trail_name": name,
-            "imba_difficulty": imba,
-            "oneway": oneway,
-            "way_ids": member_way_ids,
-        })
+        merged_segments.append(
+            {
+                "coords": coords,
+                "shared_routes": sorted(sig),
+                "trail_name": name,
+                "imba_difficulty": imba,
+                "oneway": oneway,
+                "way_ids": member_way_ids,
+            }
+        )
 
     return merged_segments
 
@@ -420,8 +413,7 @@ def clip_line_to_bbox(coords, bbox):
         dy = y2 - y1
         t0, t1 = 0.0, 1.0
 
-        for p, q in [(-dx, x1 - west), (dx, east - x1),
-                      (-dy, y1 - south), (dy, north - y1)]:
+        for p, q in [(-dx, x1 - west), (dx, east - x1), (-dy, y1 - south), (dy, north - y1)]:
             if p == 0:
                 if q < 0:
                     return None  # parallel and outside
@@ -443,10 +435,10 @@ def clip_line_to_bbox(coords, bbox):
     # Walk through the coordinate pairs and build clipped segments. Each
     # entry in `segments` is (coords, start_clipped, end_clipped).
     segments = []
-    current = []                   # accumulator coords for in-progress segment
+    current = []  # accumulator coords for in-progress segment
     current_start_clipped = False  # was current[0] clip-created?
-    last_end_clipped = False       # was current[-1] clip-created? (tracked
-                                   # so the loop-exit flush knows what to do)
+    last_end_clipped = False  # was current[-1] clip-created? (tracked
+    # so the loop-exit flush knows what to do)
 
     def flush(end_clipped):
         if len(current) >= 2:
@@ -517,10 +509,7 @@ def build_geojson(relations, all_ways, way_relations):
             continue
 
         # Build per-way relation membership lookup for this relation's ways
-        way_rel_lookup = {
-            way_id: way_relations.get(way_id, {rel_id})
-            for way_id in ways
-        }
+        way_rel_lookup = {way_id: way_relations.get(way_id, {rel_id}) for way_id in ways}
 
         merged = merge_consecutive_ways(ways, way_rel_lookup)
 
@@ -598,23 +587,22 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     # overlap is harmless: the downstream dedup handles it.
     winter_relation_ids = set(config.get("winter_relations") or [])
     summer_relation_ids = set(config.get("summer_relations") or [])
-    emergency_relation_ids = set(
-        config.get("emergency_access_relations") or []
+    emergency_relation_ids = set(config.get("emergency_access_relations") or [])
+    relation_ids = list(
+        {
+            *source_ids,
+            *winter_relation_ids,
+            *summer_relation_ids,
+            *emergency_relation_ids,
+        }
     )
-    relation_ids = list({
-        *source_ids,
-        *winter_relation_ids,
-        *summer_relation_ids,
-        *emergency_relation_ids,
-    })
     clipped_relation_ids = config.get("clipped_relations") or []
 
     osm_file = config.get("osm_file")
     if osm_file:
         print(f"Loading trails for {config['name']} from {osm_file}...")
     else:
-        print(f"Fetching trails for {config['name']} "
-              f"(relations {sorted(source_ids)})...")
+        print(f"Fetching trails for {config['name']} (relations {sorted(source_ids)})...")
 
     # Tracks any super-relation IDs that get expanded during fetch.
     # Both code paths populate this; it's persisted to trails.geojson
@@ -624,11 +612,11 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     def _log_expansions(label, expansions):
         for parent_id, child_ids in sorted(expansions.items()):
-            print(f"    {label}: super-relation {parent_id} → "
-                  f"{len(child_ids)} child route(s)")
+            print(f"    {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
 
     if osm_file:
-        from osm_parser import parse_osm_file, extract_source_relations, extract_ways
+        from osm_parser import extract_source_relations, extract_ways, parse_osm_file
+
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
@@ -637,8 +625,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         parsed = parse_osm_file(osm_file)
         print(f"  Parsed {len(parsed[0])} nodes, {len(parsed[1])} ways, {len(parsed[2])} relations")
 
-        relations, source_expansions = extract_source_relations(
-            parsed, relation_ids)
+        relations, source_expansions = extract_source_relations(parsed, relation_ids)
         super_relation_expansions.update(source_expansions)
         _log_expansions("expanded", source_expansions)
         print(f"  Found {len(relations)} relation(s):")
@@ -649,11 +636,14 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         if clipped_relation_ids:
             print(f"  Loading {len(clipped_relation_ids)} clipped relation(s)...")
             clipped_relations, clipped_expansions = extract_source_relations(
-                parsed, clipped_relation_ids)
+                parsed, clipped_relation_ids
+            )
             super_relation_expansions.update(clipped_expansions)
             _log_expansions("clipped", clipped_expansions)
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]")
+                print(
+                    f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
+                )
             relations.update(clipped_relations)
 
         # Expand winter sets through the super-relation map BEFORE
@@ -661,8 +651,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         # `winter_relations` propagates seasonal=winter to every child
         # route. Same logic applies in build.py for summer/emergency
         # bucket flags via the persisted expansion mapping.
-        winter_relation_ids = _expand_through_supers(
-            winter_relation_ids, super_relation_expansions)
+        winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
 
         for rel_id in winter_relation_ids:
             if rel_id in relations:
@@ -685,7 +674,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
         if not members and not clipped_relations:
             print(f"\n  ERROR: Relations {sorted(source_ids)} returned no usable data.")
-            print(f"  Check that the relation IDs are correct and exist:")
+            print("  Check that the relation IDs are correct and exist:")
             for rid in sorted(source_ids):
                 print(f"    https://www.openstreetmap.org/relation/{rid}")
             print()
@@ -700,7 +689,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         if clipped_relations:
             print(f"  Found {len(clipped_relations)} clipped relation(s):")
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]")
+                print(
+                    f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
+                )
             relations.update(clipped_relations)
 
         # Apply winter_relations config override (marks relations as winter
@@ -708,8 +699,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         # relations through the fetch-time expansion map so the seasonal
         # tag propagates to every child route — the parent itself is
         # gone (replaced by children in `relations`).
-        winter_relation_ids = _expand_through_supers(
-            winter_relation_ids, super_relation_expansions)
+        winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
         for rel_id in winter_relation_ids:
             if rel_id in relations:
                 relations[rel_id]["seasonal"] = "winter"
@@ -755,9 +745,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     # resolved set drives both validation here and CONFIG.directionSchedules
     # in build.py (re-derived there from the persisted metadata so the
     # cached-build path stays consistent).
-    overrides_active = set()      # relations explicitly scheduled
-    overrides_optout = set()      # relations explicitly opted out (empty list)
-    deferred_supers = []          # super entries to fan out after leaves
+    overrides_active = set()  # relations explicitly scheduled
+    overrides_optout = set()  # relations explicitly opted out (empty list)
+    deferred_supers = []  # super entries to fan out after leaves
 
     def _classify(target_rid, days):
         (overrides_active if days else overrides_optout).add(target_rid)
@@ -790,7 +780,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     unscheduled_reversible = []
     seen_way_ids = set()
-    for rel_id, ways in all_ways.items():
+    for ways in all_ways.values():
         for way_id, way in ways.items():
             if way_id in seen_way_ids:
                 continue
@@ -824,8 +814,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             "       Offending ways (way_id → parent relation IDs):",
         ]
         for way_id, parents in unscheduled_reversible[:20]:
-            lines.append(f"         https://www.openstreetmap.org/way/{way_id}"
-                         f"  →  {parents}")
+            lines.append(f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}")
         if len(unscheduled_reversible) > 20:
             lines.append(f"         ... and {len(unscheduled_reversible) - 20} more")
         sys.exit("\n".join(lines))
@@ -840,10 +829,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     clip_endpoints = []
     if clipped_relations:
         clipped_ids = set(clipped_relations.keys())
-        core_features = [f for f in geojson["features"]
-                         if f["properties"]["route_id"] not in clipped_ids]
-        clip_features = [f for f in geojson["features"]
-                         if f["properties"]["route_id"] in clipped_ids]
+        core_features = [
+            f for f in geojson["features"] if f["properties"]["route_id"] not in clipped_ids
+        ]
+        clip_features = [
+            f for f in geojson["features"] if f["properties"]["route_id"] in clipped_ids
+        ]
 
         bbox = compute_bbox_from_features(core_features)
         print(f"  Clipping {len(clip_features)} features to bbox {[round(v, 4) for v in bbox]}...")
@@ -868,27 +859,27 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
                 # endpoints. Bearing points OUTWARD (the direction the
                 # trail is heading as it leaves the map).
                 if start_clipped and len(seg_coords) >= 2:
-                    clip_endpoints.append({
-                        "type": "Feature",
-                        "geometry": {"type": "Point",
-                                     "coordinates": list(seg_coords[0])},
-                        "properties": {
-                            "route_id": route_id,
-                            "bearing": _compass_bearing(seg_coords[1],
-                                                       seg_coords[0]),
-                        },
-                    })
+                    clip_endpoints.append(
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "Point", "coordinates": list(seg_coords[0])},
+                            "properties": {
+                                "route_id": route_id,
+                                "bearing": _compass_bearing(seg_coords[1], seg_coords[0]),
+                            },
+                        }
+                    )
                 if end_clipped and len(seg_coords) >= 2:
-                    clip_endpoints.append({
-                        "type": "Feature",
-                        "geometry": {"type": "Point",
-                                     "coordinates": list(seg_coords[-1])},
-                        "properties": {
-                            "route_id": route_id,
-                            "bearing": _compass_bearing(seg_coords[-2],
-                                                       seg_coords[-1]),
-                        },
-                    })
+                    clip_endpoints.append(
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "Point", "coordinates": list(seg_coords[-1])},
+                            "properties": {
+                                "route_id": route_id,
+                                "bearing": _compass_bearing(seg_coords[-2], seg_coords[-1]),
+                            },
+                        }
+                    )
 
         # Dedup endpoints that coincide (same coord + bearing). Two clipped
         # relations sharing a boundary-crossing way produce identical points
@@ -899,8 +890,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         groups = {}
         for ep in clip_endpoints:
             lon, lat = ep["geometry"]["coordinates"]
-            key = (round(lon, 7), round(lat, 7),
-                   round(ep["properties"]["bearing"], 1))
+            key = (round(lon, 7), round(lat, 7), round(ep["properties"]["bearing"], 1))
             g = groups.get(key)
             if g is None:
                 g = {
@@ -937,8 +927,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             for g in groups.values()
         ]
 
-        print(f"  {len(clip_features)} features clipped to {len(clipped_features)} segments "
-              f"({len(clip_endpoints)} continuation arrowheads)")
+        print(
+            f"  {len(clip_features)} features clipped to {len(clipped_features)} segments "
+            f"({len(clip_endpoints)} continuation arrowheads)"
+        )
         geojson["features"] = core_features + clipped_features
 
     print(f"  Generated {len(geojson['features'])} features")
@@ -951,11 +943,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     # might expect to see won't appear, and here's why."
     if config.get("show_difficulty", True):
         imba_tagged = sum(
-            1 for f in geojson["features"]
-            if (f.get("properties") or {}).get("imba_difficulty")
+            1 for f in geojson["features"] if (f.get("properties") or {}).get("imba_difficulty")
         )
         if imba_tagged == 0:
-            print(f"  note: show_difficulty is enabled but no mtb:scale:imba tags found in data")
+            print("  note: show_difficulty is enabled but no mtb:scale:imba tags found in data")
 
     # Also embed route (relation) metadata for the viewer + the
     # super-relation expansion mapping so build.py can apply the
@@ -989,9 +980,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     # present) to draw continuation arrowheads at clip-created endpoints.
     # Stale files are removed when the current build has none, so a config
     # that drops `clipped_relations` doesn't leave orphan endpoints behind.
-    endpoints_path = os.path.join(
-        os.path.dirname(output_path) or ".", "clip_endpoints.geojson"
-    )
+    endpoints_path = os.path.join(os.path.dirname(output_path) or ".", "clip_endpoints.geojson")
     if clip_endpoints:
         endpoints_geojson = {
             "type": "FeatureCollection",
@@ -1014,7 +1003,11 @@ if __name__ == "__main__":
 
     config_path = sys.argv[1]
     config = load_config(config_path)
-    output = sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "trails.geojson")
+    output = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else os.path.join("build", config["slug"], "trails.geojson")
+    )
     cache = sys.argv[3] if len(sys.argv) > 3 else "cache"
 
     fetch_trails(config_path, output, cache)

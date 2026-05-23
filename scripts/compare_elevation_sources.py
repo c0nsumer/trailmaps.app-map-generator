@@ -74,7 +74,6 @@ Rate limiting & politeness:
 import argparse
 import hashlib
 import json
-import math
 import os
 import sys
 import time
@@ -88,12 +87,11 @@ import yaml
 # the elevation data, not the sampling.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compute_route_stats import (  # noqa: E402
-    _haversine_m,
-    _coords_for_route,
-    _subsample_route,
     MAX_SAMPLES_PER_ROUTE,
+    _coords_for_route,
+    _haversine_m,
+    _subsample_route,
 )
-
 
 # ----------------------------------------------------------------------
 # Constants
@@ -108,8 +106,7 @@ OPENTOPO_TIMEOUT = 30
 # getSamples accepts a multipoint geometry and returns elevation +
 # source resolution at each point.
 USGS_3DEP_URL = (
-    "https://elevation.nationalmap.gov/arcgis/rest/services"
-    "/3DEPElevation/ImageServer/getSamples"
+    "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples"
 )
 USGS_3DEP_BATCH = 2000  # service hard limit per request
 USGS_3DEP_TIMEOUT = 60  # service can be slow under load
@@ -129,6 +126,7 @@ _last_api_call = 0.0
 # Cache
 # ----------------------------------------------------------------------
 
+
 def _hash_coords_with_spacing(coords_with_breaks, spacing_m):
     """Cache key for fetched elevations.
 
@@ -137,19 +135,20 @@ def _hash_coords_with_spacing(coords_with_breaks, spacing_m):
     sets, so they must not collide in cache.
     """
     h = hashlib.sha1()
-    h.update(f"spacing={spacing_m}|".encode("utf-8"))
+    h.update(f"spacing={spacing_m}|".encode())
     for item in coords_with_breaks:
         if item is None:
             h.update(b"|BREAK|")
             continue
         lon, lat = item
-        h.update(f"{lon:.6f},{lat:.6f}|".encode("utf-8"))
+        h.update(f"{lon:.6f},{lat:.6f}|".encode())
     return h.hexdigest()[:16]
 
 
 def _cache_path(cache_dir, source, route_id, coord_hash):
     return os.path.join(
-        cache_dir, "comparison",
+        cache_dir,
+        "comparison",
         f"{source}_{route_id}_{coord_hash}.json",
     )
 
@@ -170,17 +169,19 @@ def _load_cached(cache_dir, source, route_id, coord_hash):
         return None
 
 
-def _save_cached(cache_dir, source, route_id, coord_hash,
-                 elevations, resolutions):
+def _save_cached(cache_dir, source, route_id, coord_hash, elevations, resolutions):
     path = _cache_path(cache_dir, source, route_id, coord_hash)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
         with open(path, "w") as fh:
-            json.dump({
-                "source": source,
-                "elevations": elevations,
-                "resolutions": resolutions,
-            }, fh)
+            json.dump(
+                {
+                    "source": source,
+                    "elevations": elevations,
+                    "resolutions": resolutions,
+                },
+                fh,
+            )
     except OSError as e:
         print(f"  warn: couldn't write cache for {source}/{route_id}: {e}")
 
@@ -188,6 +189,7 @@ def _save_cached(cache_dir, source, route_id, coord_hash,
 # ----------------------------------------------------------------------
 # Rate-limited fetch helpers
 # ----------------------------------------------------------------------
+
 
 def _wait_for_rate_limit():
     """Sleep enough to ensure ≥INTER_REQUEST_DELAY_S since the last call."""
@@ -202,6 +204,7 @@ def _wait_for_rate_limit():
 # OpenTopoData
 # ----------------------------------------------------------------------
 
+
 def _fetch_opentopo(coords_with_breaks, log_prefix=""):
     """Fetch elevations from opentopodata for valid coords.
 
@@ -211,15 +214,13 @@ def _fetch_opentopo(coords_with_breaks, log_prefix=""):
     Raises RuntimeError on unrecoverable rate-limit; bubbles up
     transport errors as requests.RequestException.
     """
-    valid_indices = [i for i, item in enumerate(coords_with_breaks)
-                     if item is not None]
+    valid_indices = [i for i, item in enumerate(coords_with_breaks) if item is not None]
     valid_coords = [coords_with_breaks[i] for i in valid_indices]
 
     elev_for_valid = []
     total_batches = (len(valid_coords) + OPENTOPO_BATCH - 1) // OPENTOPO_BATCH
-    for batch_index, i in enumerate(
-            range(0, len(valid_coords), OPENTOPO_BATCH)):
-        batch = valid_coords[i:i + OPENTOPO_BATCH]
+    for batch_index, i in enumerate(range(0, len(valid_coords), OPENTOPO_BATCH)):
+        batch = valid_coords[i : i + OPENTOPO_BATCH]
         # opentopodata wants "lat,lon|lat,lon|..."
         locations = "|".join(f"{lat},{lon}" for lon, lat in batch)
 
@@ -235,27 +236,27 @@ def _fetch_opentopo(coords_with_breaks, log_prefix=""):
             if resp.status_code == 429:
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(f"{log_prefix}opentopo batch "
-                          f"{batch_index + 1}/{total_batches} rate-limited; "
-                          f"waiting {backoff}s before retry "
-                          f"{attempt + 2}/{max_attempts}...")
+                    print(
+                        f"{log_prefix}opentopo batch "
+                        f"{batch_index + 1}/{total_batches} rate-limited; "
+                        f"waiting {backoff}s before retry "
+                        f"{attempt + 2}/{max_attempts}..."
+                    )
                     time.sleep(backoff)
                     continue
                 raise RuntimeError(
-                    f"{log_prefix}opentopodata rate-limited after "
-                    f"{max_attempts} attempts"
+                    f"{log_prefix}opentopodata rate-limited after {max_attempts} attempts"
                 )
             resp.raise_for_status()
             data = resp.json()
             if data.get("status") != "OK":
                 raise RuntimeError(
-                    f"{log_prefix}opentopodata status="
-                    f"{data.get('status')!r}: {data.get('error')}"
+                    f"{log_prefix}opentopodata status={data.get('status')!r}: {data.get('error')}"
                 )
             result_data = data
             break
 
-        for r in (result_data.get("results") or []):
+        for r in result_data.get("results") or []:
             elev = r.get("elevation")
             elev_for_valid.append(float(elev) if elev is not None else None)
 
@@ -278,6 +279,7 @@ def _fetch_opentopo(coords_with_breaks, log_prefix=""):
 # USGS 3DEP
 # ----------------------------------------------------------------------
 
+
 def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
     """Fetch elevations from USGS 3DEP getSamples.
 
@@ -291,22 +293,22 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
     Raises RuntimeError on unrecoverable failure; bubbles up transport
     errors as requests.RequestException.
     """
-    valid_indices = [i for i, item in enumerate(coords_with_breaks)
-                     if item is not None]
+    valid_indices = [i for i, item in enumerate(coords_with_breaks) if item is not None]
     valid_coords = [coords_with_breaks[i] for i in valid_indices]
 
     elev_for_valid = [None] * len(valid_coords)
     res_for_valid = [None] * len(valid_coords)
 
     total_batches = (len(valid_coords) + USGS_3DEP_BATCH - 1) // USGS_3DEP_BATCH
-    for batch_index, i in enumerate(
-            range(0, len(valid_coords), USGS_3DEP_BATCH)):
-        batch = valid_coords[i:i + USGS_3DEP_BATCH]
+    for batch_index, i in enumerate(range(0, len(valid_coords), USGS_3DEP_BATCH)):
+        batch = valid_coords[i : i + USGS_3DEP_BATCH]
         # ArcGIS multipoint geometry — note: points in [x,y] = [lon,lat]
-        geometry = json.dumps({
-            "points": [[lon, lat] for lon, lat in batch],
-            "spatialReference": {"wkid": 4326},
-        })
+        geometry = json.dumps(
+            {
+                "points": [[lon, lat] for lon, lat in batch],
+                "spatialReference": {"wkid": 4326},
+            }
+        )
 
         max_attempts = len(RETRY_BACKOFF_SECONDS) + 1
         result_data = None
@@ -327,9 +329,11 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
             except requests.RequestException:
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(f"{log_prefix}3DEP batch "
-                          f"{batch_index + 1}/{total_batches} transport error; "
-                          f"waiting {backoff}s before retry...")
+                    print(
+                        f"{log_prefix}3DEP batch "
+                        f"{batch_index + 1}/{total_batches} transport error; "
+                        f"waiting {backoff}s before retry..."
+                    )
                     time.sleep(backoff)
                     continue
                 raise
@@ -337,15 +341,16 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
             if resp.status_code in (429, 500, 502, 503, 504):
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(f"{log_prefix}3DEP batch "
-                          f"{batch_index + 1}/{total_batches} HTTP "
-                          f"{resp.status_code}; waiting {backoff}s before "
-                          f"retry {attempt + 2}/{max_attempts}...")
+                    print(
+                        f"{log_prefix}3DEP batch "
+                        f"{batch_index + 1}/{total_batches} HTTP "
+                        f"{resp.status_code}; waiting {backoff}s before "
+                        f"retry {attempt + 2}/{max_attempts}..."
+                    )
                     time.sleep(backoff)
                     continue
                 raise RuntimeError(
-                    f"{log_prefix}3DEP HTTP {resp.status_code} after "
-                    f"{max_attempts} attempts"
+                    f"{log_prefix}3DEP HTTP {resp.status_code} after {max_attempts} attempts"
                 )
             resp.raise_for_status()
 
@@ -353,13 +358,10 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
                 data = resp.json()
             except ValueError:
                 raise RuntimeError(
-                    f"{log_prefix}3DEP returned non-JSON response: "
-                    f"{resp.text[:200]}"
-                )
+                    f"{log_prefix}3DEP returned non-JSON response: {resp.text[:200]}"
+                ) from None
             if "error" in data:
-                raise RuntimeError(
-                    f"{log_prefix}3DEP error: {data['error']}"
-                )
+                raise RuntimeError(f"{log_prefix}3DEP error: {data['error']}")
             result_data = data
             break
 
@@ -367,8 +369,7 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
         # "resolution": 1}, ...]}
         # Order may not match input order; sort by locationId.
         samples = result_data.get("samples") or []
-        samples_sorted = sorted(samples,
-                                key=lambda s: int(s.get("locationId", 0)))
+        samples_sorted = sorted(samples, key=lambda s: int(s.get("locationId", 0)))
 
         # Index into the batch's slice of the global valid arrays.
         for j, s in enumerate(samples_sorted):
@@ -404,6 +405,7 @@ def _fetch_usgs_3dep(coords_with_breaks, log_prefix=""):
 # ----------------------------------------------------------------------
 # Stats pipeline (parameterized — same shape as production)
 # ----------------------------------------------------------------------
+
 
 def _smooth(elevations, window):
     """Centered moving average; preserves None values as gaps."""
@@ -459,6 +461,7 @@ def _resolution_summary(resolutions):
 # Per-route comparison
 # ----------------------------------------------------------------------
 
+
 def _route_length_m(coord_lines):
     total = 0.0
     for line in coord_lines:
@@ -467,8 +470,7 @@ def _route_length_m(coord_lines):
     return total
 
 
-def compare_route(route_id, route_info, features, params, cache_dir,
-                  sources, no_cache):
+def compare_route(route_id, route_info, features, params, cache_dir, sources, no_cache):
     """Compare opentopo + 3DEP for a single route.
 
     Returns a dict:
@@ -488,15 +490,24 @@ def compare_route(route_id, route_info, features, params, cache_dir,
     coord_lines = _coords_for_route(features, route_id)
     length_m = _route_length_m(coord_lines)
     if not coord_lines:
-        return {"route_id": route_id, "name": route_info.get("name", ""),
-                "length_m": 0.0, "samples": 0, "results": {}}
+        return {
+            "route_id": route_id,
+            "name": route_info.get("name", ""),
+            "length_m": 0.0,
+            "samples": 0,
+            "results": {},
+        }
 
-    sampled = _subsample_route(coord_lines, params["spacing"],
-                               MAX_SAMPLES_PER_ROUTE)
+    sampled = _subsample_route(coord_lines, params["spacing"], MAX_SAMPLES_PER_ROUTE)
     valid_count = sum(1 for s in sampled if s is not None)
     if valid_count < 2:
-        return {"route_id": route_id, "name": route_info.get("name", ""),
-                "length_m": length_m, "samples": valid_count, "results": {}}
+        return {
+            "route_id": route_id,
+            "name": route_info.get("name", ""),
+            "length_m": length_m,
+            "samples": valid_count,
+            "results": {},
+        }
 
     coord_hash = _hash_coords_with_spacing(sampled, params["spacing"])
     log_prefix = f"  {route_info.get('name', route_id)[:30]:32s} "
@@ -508,25 +519,21 @@ def compare_route(route_id, route_info, features, params, cache_dir,
         "3dep": _fetch_usgs_3dep,
     }
     for src in sources:
-        cached = None if no_cache else _load_cached(cache_dir, src, route_id,
-                                                   coord_hash)
+        cached = None if no_cache else _load_cached(cache_dir, src, route_id, coord_hash)
         if cached is not None:
             elevations, resolutions = cached
             cache_marker = " [cached]"
         else:
             try:
                 print(f"{log_prefix}fetching {src}...", flush=True)
-                elevations, resolutions = fetchers[src](sampled,
-                                                       log_prefix=log_prefix)
-                _save_cached(cache_dir, src, route_id, coord_hash,
-                             elevations, resolutions)
+                elevations, resolutions = fetchers[src](sampled, log_prefix=log_prefix)
+                _save_cached(cache_dir, src, route_id, coord_hash, elevations, resolutions)
                 cache_marker = ""
             except (RuntimeError, requests.RequestException) as e:
                 print(f"{log_prefix}{src} FAILED: {e}")
                 continue
 
-        gain, loss = _gain_loss(elevations, params["smoothing"],
-                                params["threshold"])
+        gain, loss = _gain_loss(elevations, params["smoothing"], params["threshold"])
         res_mix = _resolution_summary(resolutions)
         results[src] = {"gain": gain, "loss": loss, "resolutions": res_mix}
         print(f"{log_prefix}{src:8s}: ↑{gain}m ↓{loss}m{cache_marker}")
@@ -543,6 +550,7 @@ def compare_route(route_id, route_info, features, params, cache_dir,
 # ----------------------------------------------------------------------
 # Output formatting
 # ----------------------------------------------------------------------
+
 
 def _fmt_dist_mi(meters):
     if meters is None or meters <= 0:
@@ -603,9 +611,11 @@ def print_per_route_table(per_map_results, sources):
     print(("  " + "{:<10s} {:<28s} {:>9s} ").format(*headers[:3]), end="")
     col_widths = []
     if "opentopo" in sources:
-        print("{:<22s} ".format("OpenTopoData"), end=""); col_widths.append(22)
+        print("{:<22s} ".format("OpenTopoData"), end="")
+        col_widths.append(22)
     if "3dep" in sources:
-        print("{:<22s} ".format("USGS 3DEP"), end=""); col_widths.append(22)
+        print("{:<22s} ".format("USGS 3DEP"), end="")
+        col_widths.append(22)
     if has_both:
         print("{:>9s} {:>7s} ".format("Δ gain", "Δ %"), end="")
     if "3dep" in sources:
@@ -629,11 +639,11 @@ def print_per_route_table(per_map_results, sources):
             if "opentopo" in sources:
                 ot = results.get("opentopo")
                 cell = _fmt_gain_loss(ot["gain"], ot["loss"]) if ot else "(failed)"
-                print("{:<22s} ".format(cell), end="")
+                print(f"{cell:<22s} ", end="")
             if "3dep" in sources:
                 td = results.get("3dep")
                 cell = _fmt_gain_loss(td["gain"], td["loss"]) if td else "(failed)"
-                print("{:<22s} ".format(cell), end="")
+                print(f"{cell:<22s} ", end="")
 
             if has_both and "opentopo" in results and "3dep" in results:
                 ot_gain = results["opentopo"]["gain"]
@@ -642,18 +652,20 @@ def print_per_route_table(per_map_results, sources):
                 delta_ft = round(delta * 3.28084)
                 pct = (100 * delta / ot_gain) if ot_gain else 0
                 sign = "+" if delta >= 0 else ""
-                print("{:>9s} {:>7s} ".format(
-                    f"{sign}{delta_ft} ft",
-                    f"{sign}{pct:.0f}%",
-                ), end="")
+                print(
+                    "{:>9s} {:>7s} ".format(
+                        f"{sign}{delta_ft} ft",
+                        f"{sign}{pct:.0f}%",
+                    ),
+                    end="",
+                )
             elif has_both:
                 print("{:>9s} {:>7s} ".format("—", "—"), end="")
 
             if "3dep" in sources:
                 td = results.get("3dep")
                 if td:
-                    print("{:<14s}".format(_fmt_res_mix(td["resolutions"])),
-                          end="")
+                    print("{:<14s}".format(_fmt_res_mix(td["resolutions"])), end="")
                 else:
                     print("{:<14s}".format("—"), end="")
             print()
@@ -668,7 +680,7 @@ def print_aggregate(per_map_results, sources):
     print("=" * 110)
 
     all_routes = []
-    for map_slug, route_results in per_map_results.items():
+    for route_results in per_map_results.values():
         all_routes.extend(route_results)
 
     # Per-map breakdown
@@ -696,13 +708,11 @@ def print_aggregate(per_map_results, sources):
                 if ot_g > 0:
                     deltas.append(100 * (td_g - ot_g) / ot_g)
             if "opentopo" in results:
-                lc = _loop_consistency(results["opentopo"]["gain"],
-                                       results["opentopo"]["loss"])
+                lc = _loop_consistency(results["opentopo"]["gain"], results["opentopo"]["loss"])
                 if lc is not None:
                     ot_loops.append(lc)
             if "3dep" in results:
-                lc = _loop_consistency(results["3dep"]["gain"],
-                                       results["3dep"]["loss"])
+                lc = _loop_consistency(results["3dep"]["gain"], results["3dep"]["loss"])
                 if lc is not None:
                     td_loops.append(lc)
 
@@ -750,8 +760,10 @@ def print_aggregate(per_map_results, sources):
             print(f"    Outliers (|Δ| > 30%):      {len(outliers)}")
             for name, pct, ot_g, td_g in outliers[:10]:
                 sign = "+" if pct >= 0 else ""
-                print(f"      {name[:30]:32s} {sign}{pct:>5.0f}%  "
-                      f"(OT ↑{_fmt_elev_ft(ot_g)}, 3DEP ↑{_fmt_elev_ft(td_g)})")
+                print(
+                    f"      {name[:30]:32s} {sign}{pct:>5.0f}%  "
+                    f"(OT ↑{_fmt_elev_ft(ot_g)}, 3DEP ↑{_fmt_elev_ft(td_g)})"
+                )
             if len(outliers) > 10:
                 print(f"      ... ({len(outliers) - 10} more)")
 
@@ -769,7 +781,7 @@ def print_aggregate(per_map_results, sources):
                 total_pts += r.get("samples", 0)
         if total_pts > 0:
             print()
-            print(f"  3DEP resolution mix (weighted by sample count):")
+            print("  3DEP resolution mix (weighted by sample count):")
             for res in sorted(all_res):
                 pct = 100 * all_res[res] / total_pts
                 print(f"    {int(res)}m: {pct:.1f}%")
@@ -779,6 +791,7 @@ def print_aggregate(per_map_results, sources):
 # CLI
 # ----------------------------------------------------------------------
 
+
 def _load_config(path):
     with open(path) as f:
         return yaml.safe_load(f)
@@ -786,8 +799,7 @@ def _load_config(path):
 
 def _find_all_configs():
     """Return a list of all per-map config paths (excluding example)."""
-    base = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "configs")
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "configs")
     base = os.path.normpath(base)
     out = []
     for entry in sorted(os.listdir(base)):
@@ -809,30 +821,35 @@ def main():
         description="Compare opentopodata vs USGS 3DEP elevation per route.",
     )
     src_group = parser.add_mutually_exclusive_group(required=True)
-    src_group.add_argument("--config",
-                           help="Path to a single config YAML")
-    src_group.add_argument("--all", action="store_true",
-                           help="Process every config in configs/")
-    parser.add_argument("--trails",
-                        help="Override trails.geojson path "
-                             "(default: build/<slug>/trails.geojson)")
-    parser.add_argument("--spacing", type=float, default=50.0,
-                        help="Sample spacing in meters (default: 50)")
-    parser.add_argument("--smoothing", type=int, default=3,
-                        help="Smoothing window size in samples (default: 3)")
-    parser.add_argument("--threshold", type=float, default=2.0,
-                        help="Noise threshold in meters (default: 2.0)")
-    parser.add_argument("--source", choices=["opentopo", "3dep", "both"],
-                        default="both",
-                        help="Which sources to query (default: both)")
-    parser.add_argument("--no-cache", action="store_true",
-                        help="Bypass the comparison cache (force re-fetch)")
-    parser.add_argument("--cache-dir", default="cache",
-                        help="Cache root directory (default: cache)")
+    src_group.add_argument("--config", help="Path to a single config YAML")
+    src_group.add_argument("--all", action="store_true", help="Process every config in configs/")
+    parser.add_argument(
+        "--trails", help="Override trails.geojson path (default: build/<slug>/trails.geojson)"
+    )
+    parser.add_argument(
+        "--spacing", type=float, default=50.0, help="Sample spacing in meters (default: 50)"
+    )
+    parser.add_argument(
+        "--smoothing", type=int, default=3, help="Smoothing window size in samples (default: 3)"
+    )
+    parser.add_argument(
+        "--threshold", type=float, default=2.0, help="Noise threshold in meters (default: 2.0)"
+    )
+    parser.add_argument(
+        "--source",
+        choices=["opentopo", "3dep", "both"],
+        default="both",
+        help="Which sources to query (default: both)",
+    )
+    parser.add_argument(
+        "--no-cache", action="store_true", help="Bypass the comparison cache (force re-fetch)"
+    )
+    parser.add_argument(
+        "--cache-dir", default="cache", help="Cache root directory (default: cache)"
+    )
     args = parser.parse_args()
 
-    sources = (["opentopo", "3dep"] if args.source == "both"
-               else [args.source])
+    sources = ["opentopo", "3dep"] if args.source == "both" else [args.source]
     params = {
         "spacing": args.spacing,
         "smoothing": args.smoothing,
@@ -862,8 +879,7 @@ def main():
             trails_path = os.path.join("build", slug, "trails.geojson")
 
         if not os.path.isfile(trails_path):
-            print(f"\n[{slug}] SKIP — {trails_path} not found "
-                  "(build the map first)")
+            print(f"\n[{slug}] SKIP — {trails_path} not found (build the map first)")
             continue
 
         print(f"\n[{slug}] Loading {trails_path}...")
@@ -875,10 +891,17 @@ def main():
 
         results = []
         for route_id, info in routes.items():
-            results.append(compare_route(
-                str(route_id), info, features, params, args.cache_dir,
-                sources, args.no_cache,
-            ))
+            results.append(
+                compare_route(
+                    str(route_id),
+                    info,
+                    features,
+                    params,
+                    args.cache_dir,
+                    sources,
+                    args.no_cache,
+                )
+            )
         per_map_results[slug] = results
 
     if not per_map_results:

@@ -99,8 +99,9 @@ def generate_png_icons(source_img, output_dir):
     return count
 
 
-def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8,
-                           bg_color=(255, 255, 255, 255)):
+def generate_maskable_icon(
+    source_img, output_dir, size=512, safe_ratio=0.8, bg_color=(255, 255, 255, 255)
+):
     """Generate a maskable PWA icon (Android home-screen tile).
 
     Android applies an OEM-specific mask shape (circle on Pixel,
@@ -133,8 +134,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8,
     y = (size - src.height) // 2
     canvas.paste(src, (x, y), src)
 
-    out_path = os.path.join(output_dir, "icons",
-                            f"android-chrome-maskable-{size}x{size}.png")
+    out_path = os.path.join(output_dir, "icons", f"android-chrome-maskable-{size}x{size}.png")
     canvas.save(out_path, format="PNG", optimize=True)
 
 
@@ -216,7 +216,6 @@ def generate_manifest(config, output_dir):
       shortcut and Android shows the package name in the uninstall
       toast (the "Uninstalled com.android..." behaviour).
     """
-    slug = config.get("slug", "map")
     name = config.get("name", "Map")
     title = config.get("title", "Trail Map")
     manifest = {
@@ -285,7 +284,7 @@ def generate_icons(source_path, output_dir, config):
         # will fail the PWA-manifest check and warn the curator.
         print(f"  warn: Cannot read icon source {source_path}")
         print(f"           {type(e).__name__}: {e}")
-        print(f"           Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
+        print("           Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
         return False
 
     # Non-square sources used to error out, forcing the curator to
@@ -297,8 +296,10 @@ def generate_icons(source_path, output_dir, config):
     # themselves; otherwise this is "good enough" for every variant.
     if img.width != img.height:
         side = max(img.width, img.height)
-        print(f"  Icon source {img.width}x{img.height} is not square — "
-              f"padding to {side}x{side} with transparent background.")
+        print(
+            f"  Icon source {img.width}x{img.height} is not square — "
+            f"padding to {side}x{side} with transparent background."
+        )
         img = _pad_to_square(img)
 
     if img.width < 256:

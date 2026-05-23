@@ -40,12 +40,15 @@ def find_latest_protomaps_build():
         try:
             resp = requests.head(url, timeout=10, allow_redirects=True)
             if resp.status_code == 200:
-                print(f"  Found build: {filename}" + (" (today)" if days_back == 0 else f" ({days_back}d old)"))
+                print(
+                    f"  Found build: {filename}"
+                    + (" (today)" if days_back == 0 else f" ({days_back}d old)")
+                )
                 return url
         except requests.RequestException:
             continue
     print(f"  warn: No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
-    print(f"  Check https://maps.protomaps.com/builds/ for available builds.")
+    print("  Check https://maps.protomaps.com/builds/ for available builds.")
     return None
 
 
@@ -109,7 +112,8 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     bbox_str = f"{padded_bbox[0]},{padded_bbox[1]},{padded_bbox[2]},{padded_bbox[3]}"
 
     cmd = [
-        pmtiles_cli, "extract",
+        pmtiles_cli,
+        "extract",
         planet,
         output_path,
         f"--bbox={bbox_str}",
@@ -120,7 +124,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print(f"  ERROR: pmtiles extract failed:")
+        print("  ERROR: pmtiles extract failed:")
         print(f"  stdout: {result.stdout}")
         print(f"  stderr: {result.stderr}")
         sys.exit(1)
@@ -148,7 +152,11 @@ if __name__ == "__main__":
 
     config_path = sys.argv[1]
     config = load_config(config_path)
-    output = sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "basemap.pmtiles")
+    output = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else os.path.join("build", config["slug"], "basemap.pmtiles")
+    )
     planet = sys.argv[3] if len(sys.argv) > 3 else None
 
     fetch_basemap(config_path, output, planet)

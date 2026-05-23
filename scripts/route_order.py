@@ -71,10 +71,7 @@ def _natural_key(s):
     """
     s = str(s)
     parts = re.split(r"(\d+)", s)
-    return tuple(
-        (0, int(p)) if p.isdigit() else (1, p)
-        for p in parts if p
-    )
+    return tuple((0, int(p)) if p.isdigit() else (1, p) for p in parts if p)
 
 
 def _coord_key(coord, precision=7):
@@ -248,8 +245,7 @@ def local_search(initial_order, adjacencies, max_iter=500):
     return order, best
 
 
-def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42,
-                        previous_order=None):
+def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previous_order=None):
     """Multi-restart local search. Deterministic given inputs + seed.
 
     Restart 0 seeds from ``previous_order`` (if supplied; routes new
@@ -311,9 +307,7 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42,
             rng.shuffle(start)
         order, s = local_search(start, adjacencies)
         # Strict-less-than first; lex tiebreak on equal scores.
-        if s < best_s or (
-                s == best_s and (best_order is None
-                                 or tuple(order) < tuple(best_order))):
+        if s < best_s or (s == best_s and (best_order is None or tuple(order) < tuple(best_order))):
             best_s = s
             best_order = order
 
@@ -346,15 +340,12 @@ def enumerate_modes(routes_metadata):
     Mode_key naming is stable — runtime app.js builds the same keys
     from seasonMode + emergencyOn to look up the active routeOrder.
     """
+
     def _flag(info, key):
         return bool((info or {}).get(key))
 
-    summer = frozenset(
-        str(rid) for rid, info in routes_metadata.items() if _flag(info, "summer")
-    )
-    winter = frozenset(
-        str(rid) for rid, info in routes_metadata.items() if _flag(info, "winter")
-    )
+    summer = frozenset(str(rid) for rid, info in routes_metadata.items() if _flag(info, "summer"))
+    winter = frozenset(str(rid) for rid, info in routes_metadata.items() if _flag(info, "winter"))
     emergency = frozenset(
         str(rid) for rid, info in routes_metadata.items() if _flag(info, "emergency")
     )
@@ -371,8 +362,9 @@ def enumerate_modes(routes_metadata):
     return modes
 
 
-def compute_route_orders(routes_metadata, features, *, previous_orders=None,
-                         restarts=30, seed=42, verbose=False):
+def compute_route_orders(
+    routes_metadata, features, *, previous_orders=None, restarts=30, seed=42, verbose=False
+):
     """Compute one routeOrder per distinct visible mode.
 
     Modes with identical visible-route subsets share a single
@@ -428,8 +420,11 @@ def compute_route_orders(routes_metadata, features, *, previous_orders=None,
                 break
 
         order, flips, seps = compute_route_order(
-            list(subset), adjacencies,
-            restarts=restarts, seed=seed, previous_order=prev,
+            list(subset),
+            adjacencies,
+            restarts=restarts,
+            seed=seed,
+            previous_order=prev,
         )
 
         for mode_key in mode_keys:

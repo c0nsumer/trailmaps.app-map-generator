@@ -26,10 +26,10 @@ from route_order import (  # noqa: E402
     score,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _adj(sig_a, sig_b, *shared):
     """Build a single adjacency tuple."""
@@ -68,6 +68,7 @@ def _make_feature(coords, shared, route_id=None):
 # Sanity / helper tests
 # ---------------------------------------------------------------------------
 
+
 def test_natural_key_numeric_aware():
     """Numeric runs sort numerically, not lexically."""
     keys = ["1", "2", "10", "100"]
@@ -95,9 +96,14 @@ def test_natural_key_mixed_does_not_raise_in_compute_route_order():
     """End-to-end: compute_route_order with mixed-type ids returns
     cleanly (no TypeError from internal sorts or shuffles)."""
     routes = ["12345678", "event_stage_1", "98765432", "intro"]
-    adjs = [_adj(["12345678", "event_stage_1"],
-                 ["12345678", "event_stage_1", "intro"],
-                 "12345678", "event_stage_1")]
+    adjs = [
+        _adj(
+            ["12345678", "event_stage_1"],
+            ["12345678", "event_stage_1", "intro"],
+            "12345678",
+            "event_stage_1",
+        )
+    ]
     order, flips, _ = compute_route_order(routes, adjs)
     assert set(order) == set(routes)
     assert flips >= 0
@@ -115,6 +121,7 @@ def test_coord_key_rounds_float_wobble():
 # ---------------------------------------------------------------------------
 # score() correctness
 # ---------------------------------------------------------------------------
+
 
 def test_score_zero_for_no_flips():
     """Identical signatures → no flips → score 0."""
@@ -167,8 +174,8 @@ def test_score_flips_dominate_separations():
     # an order with 0 flips but some separations: the first wins on
     # the primary objective, so its score is HIGHER.
     adjs = [_adj(["A", "B"], ["A", "B", "C", "D"], "A", "B")]
-    flip_order = ["A", "B", "C", "D"]      # 1 flip, 0 separations
-    no_flip_order = ["C", "B", "A", "D"]   # 0 flips
+    flip_order = ["A", "B", "C", "D"]  # 1 flip, 0 separations
+    no_flip_order = ["C", "B", "A", "D"]  # 0 flips
     assert score(flip_order, adjs) > score(no_flip_order, adjs)
     assert score(flip_order, adjs) >= 1000
 
@@ -177,10 +184,10 @@ def test_score_flips_dominate_separations():
 # local_search() correctness
 # ---------------------------------------------------------------------------
 
+
 def test_local_search_improves_from_bad_start():
     """Starting from a known-bad order, local search reaches a better
     local minimum."""
-    routes = ["A", "B", "C", "D"]
     adjs = [_adj(["A", "B"], ["A", "B", "C", "D"], "A", "B")]
     # Natural sort has 1 flip. A better order exists with 0 flips.
     bad_order = ["A", "B", "C", "D"]
@@ -192,6 +199,7 @@ def test_local_search_improves_from_bad_start():
 # ---------------------------------------------------------------------------
 # compute_route_order() — top-level driver
 # ---------------------------------------------------------------------------
+
 
 def test_linear_chain_zero_flips():
     """[A] → [A,B] → [A,B,C] chain: no flips possible."""
@@ -295,6 +303,7 @@ def test_empty_no_op():
 # enumerate_modes()
 # ---------------------------------------------------------------------------
 
+
 def test_enumerate_modes_summer_only():
     routes_meta = {
         "A": {"summer": True, "winter": False, "emergency": False},
@@ -312,9 +321,7 @@ def test_enumerate_modes_mixed_seasons_with_emergency():
         "C": {"summer": False, "winter": False, "emergency": True},
     }
     modes = enumerate_modes(routes_meta)
-    assert set(modes.keys()) == {
-        "summer", "summer_emergency", "winter", "winter_emergency"
-    }
+    assert set(modes.keys()) == {"summer", "summer_emergency", "winter", "winter_emergency"}
     assert modes["summer"] == frozenset({"A"})
     assert modes["summer_emergency"] == frozenset({"A", "C"})
     assert modes["winter"] == frozenset({"B"})
@@ -336,6 +343,7 @@ def test_enumerate_modes_summer_winter_overlap():
 # ---------------------------------------------------------------------------
 # build_corridor_adjacencies() — mode filtering
 # ---------------------------------------------------------------------------
+
 
 def test_adjacency_filters_invisible_routes():
     """Routes filtered out of `visible_routes` don't appear in the
@@ -365,6 +373,7 @@ def test_adjacency_handles_empty_visible_set():
 # ---------------------------------------------------------------------------
 # compute_route_orders() — per-mode driver
 # ---------------------------------------------------------------------------
+
 
 def test_compute_route_orders_single_mode():
     """All-summer map: just one mode, one order."""
@@ -400,11 +409,16 @@ def test_compute_route_orders_dedups_identical_subsets():
 # Real-world regression: RAMBA
 # ---------------------------------------------------------------------------
 
+
 def test_ramba_regression():
     """RAMBA optimization stays at ≤2 sign flips across the union
     adjacency (defensive ceiling — current empirical is 1)."""
     p = os.path.join(
-        os.path.dirname(__file__), "..", "..", "build", "ramba",
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "build",
+        "ramba",
         "trails.geojson",
     )
     p = os.path.abspath(p)
@@ -412,6 +426,7 @@ def test_ramba_regression():
         # Build artifacts not present — skip in CI; useful only when
         # running locally with a built map.
         import pytest
+
         pytest.skip(f"RAMBA build artifacts not at {p}")
     with open(p) as f:
         g = json.load(f)
@@ -430,6 +445,7 @@ def test_ramba_regression():
 
 if __name__ == "__main__":
     import traceback
+
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
     for fn in tests:

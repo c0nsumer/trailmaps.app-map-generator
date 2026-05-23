@@ -12,15 +12,13 @@ import json
 import os
 import sys
 
-from geodesy import haversine_m
-from overpass import query as overpass_query
-
-
 # Shared narrow-resolution loader (handles ``osm_file:`` only — the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
 from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
+from geodesy import haversine_m
+from overpass import query as overpass_query
 
 
 def fetch_pois_from_osm(bbox, cache_dir=None):
@@ -113,15 +111,22 @@ def _dedup_osm_pois(features):
         else:
             out.append(f)
     if collapsed:
-        print(f"  Collapsed {collapsed} duplicate OSM POI(s) within "
-              f"{DEDUP_M:.0f}m (typical pattern: amenity tagged on both "
-              f"a building way and an entrance node).")
+        print(
+            f"  Collapsed {collapsed} duplicate OSM POI(s) within "
+            f"{DEDUP_M:.0f}m (typical pattern: amenity tagged on both "
+            f"a building way and an entrance node)."
+        )
     return out
 
 
-def build_pois_geojson(osm_data, config_parking, config_trailheads,
-                       config_hubs=None, config_event_pois=None,
-                       config=None):
+def build_pois_geojson(
+    osm_data,
+    config_parking,
+    config_trailheads,
+    config_hubs=None,
+    config_event_pois=None,
+    config=None,
+):
     """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
 
     Guideposts and emergency access points are merged into a single
@@ -142,13 +147,13 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
     compatible default of None means "show everything," matching the
     historical behaviour for any caller not yet passing config."""
     cfg = config or {}
-    show_markers        = cfg.get("show_markers",        True)
-    show_features       = cfg.get("show_features",       True)
-    show_toilets        = cfg.get("show_toilets",        True)
+    show_markers = cfg.get("show_markers", True)
+    show_features = cfg.get("show_features", True)
+    show_toilets = cfg.get("show_toilets", True)
     show_drinking_water = cfg.get("show_drinking_water", True)
-    show_parking        = cfg.get("show_parking",        True)
-    show_trailheads     = cfg.get("show_trailheads",     True)
-    show_hubs           = cfg.get("show_hubs",           True)
+    show_parking = cfg.get("show_parking", True)
+    show_trailheads = cfg.get("show_trailheads", True)
+    show_hubs = cfg.get("show_hubs", True)
 
     features = []
 
@@ -164,65 +169,72 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
 
         is_emergency = tags.get("highway") == "emergency_access_point"
         is_guidepost = (
-            tags.get("tourism") == "information"
-            and tags.get("information") == "guidepost"
+            tags.get("tourism") == "information" and tags.get("information") == "guidepost"
         )
 
         if is_emergency or is_guidepost:
             if not show_markers:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "poi_type": "trail_marker",
-                    "name": tags.get("name", ""),
-                    "ref": tags.get("ref", ""),
-                    "ele": tags.get("ele", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "poi_type": "trail_marker",
+                        "name": tags.get("name", ""),
+                        "ref": tags.get("ref", ""),
+                        "ele": tags.get("ele", ""),
+                    },
+                }
+            )
         elif tags.get("tourism") == "attraction":
             if not show_features:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "poi_type": "feature",
-                    "name": tags.get("name", ""),
-                    "description": tags.get("description", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "poi_type": "feature",
+                        "name": tags.get("name", ""),
+                        "description": tags.get("description", ""),
+                    },
+                }
+            )
         elif tags.get("amenity") == "toilets":
             if not show_toilets:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "poi_type": "toilet",
-                    "name": tags.get("name", ""),
-                    # OSM `access` tag (yes/no/permissive/private) helps
-                    # riders know whether they can actually use it.
-                    "access": tags.get("access", ""),
-                    # OSM `fee` tag (yes/no) — same reason.
-                    "fee": tags.get("fee", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "poi_type": "toilet",
+                        "name": tags.get("name", ""),
+                        # OSM `access` tag (yes/no/permissive/private) helps
+                        # riders know whether they can actually use it.
+                        "access": tags.get("access", ""),
+                        # OSM `fee` tag (yes/no) — same reason.
+                        "fee": tags.get("fee", ""),
+                    },
+                }
+            )
         elif tags.get("amenity") == "drinking_water":
             if not show_drinking_water:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "properties": {
-                    "poi_type": "drinking_water",
-                    "name": tags.get("name", ""),
-                    # OSM `seasonal` tag (yes/no/summer/winter) tells
-                    # riders whether the fountain is reliably running.
-                    "seasonal": tags.get("seasonal", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "poi_type": "drinking_water",
+                        "name": tags.get("name", ""),
+                        # OSM `seasonal` tag (yes/no/summer/winter) tells
+                        # riders whether the fountain is reliably running.
+                        "seasonal": tags.get("seasonal", ""),
+                    },
+                }
+            )
 
     # Collapse OSM-side duplicates of the same type within ~10m of
     # each other. OSM commonly tags the same amenity twice (once as
@@ -240,29 +252,33 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
     if show_parking:
         for parking in config_parking:
             plon, plat = parking["coordinates"]
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [plon, plat]},
-                "properties": {
-                    "poi_type": "parking",
-                    "name": parking.get("name", "Parking"),
-                    "directions_url": parking.get("directions_url", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [plon, plat]},
+                    "properties": {
+                        "poi_type": "parking",
+                        "name": parking.get("name", "Parking"),
+                        "directions_url": parking.get("directions_url", ""),
+                    },
+                }
+            )
 
     # Trailheads from YAML config
     if show_trailheads:
         for trailhead in config_trailheads:
             tlon, tlat = trailhead["coordinates"]
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [tlon, tlat]},
-                "properties": {
-                    "poi_type": "trailhead",
-                    "name": trailhead.get("name", "Trailhead"),
-                    "directions_url": trailhead.get("directions_url", ""),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [tlon, tlat]},
+                    "properties": {
+                        "poi_type": "trailhead",
+                        "name": trailhead.get("name", "Trailhead"),
+                        "directions_url": trailhead.get("directions_url", ""),
+                    },
+                }
+            )
 
     # Trail hubs from YAML config — named on-trail intersections riders
     # use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct
@@ -270,32 +286,36 @@ def build_pois_geojson(osm_data, config_parking, config_trailheads,
     # runtime renders them with the name inline (no popup, no directions
     # link) so the marker IS the signal at a glance.
     if show_hubs:
-        for hub in (config_hubs or []):
+        for hub in config_hubs or []:
             hlon, hlat = hub["coordinates"]
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [hlon, hlat]},
-                "properties": {
-                    "poi_type": "hub",
-                    "name": hub.get("name", "Hub"),
-                },
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [hlon, hlat]},
+                    "properties": {
+                        "poi_type": "hub",
+                        "name": hub.get("name", "Hub"),
+                    },
+                }
+            )
 
     # Event POIs from event_mode.pois (always-on at runtime; no toggle).
     # Used for race-day fixtures: start / finish, aid stations, support
     # vehicles, etc. Distinct from OSM POIs in that they never get
     # proximity-filtered (they're race fixtures, not bbox-incidental).
-    for ep in (config_event_pois or []):
+    for ep in config_event_pois or []:
         elon, elat = ep["coordinates"]
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [elon, elat]},
-            "properties": {
-                "poi_type": "event",
-                "name": ep.get("name", "Event"),
-                "description": ep.get("description", ""),
-            },
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [elon, elat]},
+                "properties": {
+                    "poi_type": "event",
+                    "name": ep.get("name", "Event"),
+                    "description": ep.get("description", ""),
+                },
+            }
+        )
 
     return {"type": "FeatureCollection", "features": features}
 
@@ -320,7 +340,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     print(f"  Bbox: {bbox}")
 
     if osm_file:
-        from osm_parser import parse_osm_file, extract_guideposts
+        from osm_parser import extract_guideposts, parse_osm_file
+
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
@@ -332,7 +353,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     # Count by type — guideposts + emergency access points are merged
     # into a single "markers" bucket.
     marker_count = sum(
-        1 for e in osm_data.get("elements", [])
+        1
+        for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("highway") == "emergency_access_point"
         or (
             e.get("tags", {}).get("tourism") == "information"
@@ -340,17 +362,18 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         )
     )
     feature_count = sum(
-        1 for e in osm_data.get("elements", [])
+        1
+        for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("tourism") == "attraction"
         and e.get("tags", {}).get("highway") != "emergency_access_point"
         and e.get("tags", {}).get("information") != "guidepost"
     )
     toilet_count = sum(
-        1 for e in osm_data.get("elements", [])
-        if e.get("tags", {}).get("amenity") == "toilets"
+        1 for e in osm_data.get("elements", []) if e.get("tags", {}).get("amenity") == "toilets"
     )
     water_count = sum(
-        1 for e in osm_data.get("elements", [])
+        1
+        for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("amenity") == "drinking_water"
     )
     print(f"  Found {marker_count} trail markers (guideposts + emergency access points) in OSM")
@@ -365,24 +388,32 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
 
     # Warn when show_* is enabled but no data exists for that POI type
     if config.get("show_markers", True) and marker_count == 0:
-        print(f"  note: show_markers is enabled but no guideposts or emergency access points found in data")
+        print(
+            "  note: show_markers is enabled but no guideposts or emergency access points found in data"
+        )
     if config.get("show_features", True) and feature_count == 0:
-        print(f"  note: show_features is enabled but no tourism=attraction nodes found in data")
+        print("  note: show_features is enabled but no tourism=attraction nodes found in data")
     if config.get("show_toilets", True) and toilet_count == 0:
-        print(f"  note: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
+        print("  note: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
     if config.get("show_drinking_water", True) and water_count == 0:
-        print(f"  note: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data")
+        print(
+            "  note: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data"
+        )
     if config.get("show_parking", True) and len(config_parking) == 0:
-        print(f"  note: show_parking is enabled but no parking areas defined in config")
+        print("  note: show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
-        print(f"  note: show_trailheads is enabled but no trailheads defined in config")
+        print("  note: show_trailheads is enabled but no trailheads defined in config")
     if config.get("show_hubs", True) and len(config_hubs) == 0:
-        print(f"  note: show_hubs is enabled but no hubs defined in config")
+        print("  note: show_hubs is enabled but no hubs defined in config")
 
-    geojson = build_pois_geojson(osm_data, config_parking, config_trailheads,
-                                  config_hubs=config_hubs,
-                                  config_event_pois=config_event_pois,
-                                  config=config)
+    geojson = build_pois_geojson(
+        osm_data,
+        config_parking,
+        config_trailheads,
+        config_hubs=config_hubs,
+        config_event_pois=config_event_pois,
+        config=config,
+    )
     print(f"  Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -401,7 +432,9 @@ if __name__ == "__main__":
 
     config_path = sys.argv[1]
     config = load_config(config_path)
-    output = sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "pois.geojson")
+    output = (
+        sys.argv[2] if len(sys.argv) > 2 else os.path.join("build", config["slug"], "pois.geojson")
+    )
     cache = sys.argv[3] if len(sys.argv) > 3 else "cache"
 
     fetch_pois(config_path, output, cache)

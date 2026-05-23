@@ -1,0 +1,38 @@
+# Ruff configuration for the Map Generator engine.
+#
+# Standalone (not in pyproject.toml) so lint/format settings stay
+# orthogonal to any future packaging metadata. Run:
+#   ruff check scripts/ tools/ map_generator/
+#   ruff format scripts/ tools/ map_generator/
+
+# requirements.txt targets Python 3.9–3.14; pin the floor so pyupgrade
+# (UP) never rewrites to syntax that breaks 3.9.
+target-version = "py39"
+line-length = 100
+
+extend-exclude = [
+    "build",
+    "cache",
+    ".venv",
+    ".claude",
+    "assets",
+    # Untracked, experimental — paired with the accent-per-mode plan and
+    # still being iterated on. Lint it once it stabilizes.
+    "tools/preview_accents.py",
+]
+
+[lint]
+# High-signal, low-noise rule set: pyflakes errors, import sorting,
+# safe modernizations, and common bug patterns. Intentionally omits
+# docstring/annotation/quote-style nags that would churn a working
+# codebase without improving correctness.
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501", # line too long — many deliberate long URLs / f-strings
+]
+
+[lint.per-file-ignores]
+# build.py intentionally runs `sys.path.insert(0, SCRIPTS_DIR)` before its
+# sibling-module imports so both `python scripts/build.py` and
+# `python -m map_generator` resolve them. That's a deliberate late import.
+"scripts/build.py" = ["E402"]

@@ -73,7 +73,6 @@ import os
 import time
 
 import requests
-
 from geodesy import haversine_m as _haversine_m
 
 
@@ -145,11 +144,10 @@ def compute_distances(trails_geojson):
 # falling through 10m and 30m). Free, no API key, no daily quota,
 # supports up to 2000 points per request via getSamples.
 USGS_3DEP_URL = (
-    "https://elevation.nationalmap.gov/arcgis/rest/services"
-    "/3DEPElevation/ImageServer/getSamples"
+    "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples"
 )
-USGS_3DEP_BATCH = 2000          # service hard limit per request
-USGS_3DEP_TIMEOUT = 60          # service can be slow under load
+USGS_3DEP_BATCH = 2000  # service hard limit per request
+USGS_3DEP_TIMEOUT = 60  # service can be slow under load
 
 # Sampling spacing tuned to the (sampling × threshold) coupling. The
 # noise threshold is per-adjacent-sample-delta; sampling spacing
@@ -299,9 +297,10 @@ def _subsample_route(coord_lines, target_interval_m, max_samples):
         if len(line) < 2:
             seg_lens.append(0.0)
             continue
-        L = sum(_haversine_m(line[i][0], line[i][1],
-                             line[i + 1][0], line[i + 1][1])
-                for i in range(len(line) - 1))
+        L = sum(
+            _haversine_m(line[i][0], line[i][1], line[i + 1][0], line[i + 1][1])
+            for i in range(len(line) - 1)
+        )
         seg_lens.append(L)
     total_len = sum(seg_lens)
     if total_len <= 0:
@@ -319,7 +318,7 @@ def _subsample_route(coord_lines, target_interval_m, max_samples):
             per_seg_cap.append(cap)
 
     out = []
-    for i, (line, cap) in enumerate(zip(coord_lines, per_seg_cap)):
+    for line, cap in zip(coord_lines, per_seg_cap):
         if cap == 0:
             continue
         sampled = _subsample_segment(line, target_interval_m, cap)
@@ -352,21 +351,23 @@ def _hash_coords(coords_with_breaks):
     until the next --force rebuild.
     """
     h = hashlib.sha1()
-    h.update(f"si={SAMPLE_INTERVAL_M},mx={MAX_SAMPLES_PER_ROUTE},"
-             f"sw={ELEVATION_SMOOTH_WINDOW}||".encode("utf-8"))
+    h.update(
+        f"si={SAMPLE_INTERVAL_M},mx={MAX_SAMPLES_PER_ROUTE},sw={ELEVATION_SMOOTH_WINDOW}||".encode()
+    )
     for item in coords_with_breaks:
         if item is None:
             h.update(b"|BREAK|")
             continue
         lon, lat = item
         # 6 decimals = ~11 cm precision, well below the DEM's resolution
-        h.update(f"{lon:.6f},{lat:.6f}|".encode("utf-8"))
+        h.update(f"{lon:.6f},{lat:.6f}|".encode())
     return h.hexdigest()[:16]
 
 
 def _elev_cache_path(cache_dir, route_id, coord_hash):
     return os.path.join(
-        cache_dir, "route_stats",
+        cache_dir,
+        "route_stats",
         f"elev_{route_id}_{coord_hash}.json",
     )
 
@@ -386,23 +387,23 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
     (after exhausting retries); raises RuntimeError on persistent
     HTTP error so the caller can stop hammering the API.
     """
-    valid_indices = [i for i, item in enumerate(coords_with_breaks)
-                     if item is not None]
+    valid_indices = [i for i, item in enumerate(coords_with_breaks) if item is not None]
     valid_coords = [coords_with_breaks[i] for i in valid_indices]
 
     global _last_api_call
     elev_for_valid = [None] * len(valid_coords)
     total_batches = (len(valid_coords) + USGS_3DEP_BATCH - 1) // USGS_3DEP_BATCH
 
-    for batch_index, i in enumerate(
-            range(0, len(valid_coords), USGS_3DEP_BATCH)):
-        batch = valid_coords[i:i + USGS_3DEP_BATCH]
+    for batch_index, i in enumerate(range(0, len(valid_coords), USGS_3DEP_BATCH)):
+        batch = valid_coords[i : i + USGS_3DEP_BATCH]
         # ArcGIS multipoint geometry — points in [x, y] = [lon, lat]
         # order, EPSG:4326 (WGS84).
-        geometry = json.dumps({
-            "points": [[lon, lat] for lon, lat in batch],
-            "spatialReference": {"wkid": 4326},
-        })
+        geometry = json.dumps(
+            {
+                "points": [[lon, lat] for lon, lat in batch],
+                "spatialReference": {"wkid": 4326},
+            }
+        )
 
         # Per-batch retry loop with exponential-ish backoff on transient
         # failures (5xx / network errors). 3DEP throws occasional 502s
@@ -432,10 +433,12 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             except requests.RequestException:
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(f"{log_prefix}batch "
-                          f"{batch_index + 1}/{total_batches} transport "
-                          f"error; waiting {backoff}s before retry "
-                          f"{attempt + 2}/{max_attempts}...")
+                    print(
+                        f"{log_prefix}batch "
+                        f"{batch_index + 1}/{total_batches} transport "
+                        f"error; waiting {backoff}s before retry "
+                        f"{attempt + 2}/{max_attempts}..."
+                    )
                     time.sleep(backoff)
                     continue
                 raise
@@ -443,10 +446,12 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             if resp.status_code in (429, 500, 502, 503, 504):
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(f"{log_prefix}batch "
-                          f"{batch_index + 1}/{total_batches} HTTP "
-                          f"{resp.status_code}; waiting {backoff}s before "
-                          f"retry {attempt + 2}/{max_attempts}...")
+                    print(
+                        f"{log_prefix}batch "
+                        f"{batch_index + 1}/{total_batches} HTTP "
+                        f"{resp.status_code}; waiting {backoff}s before "
+                        f"retry {attempt + 2}/{max_attempts}..."
+                    )
                     time.sleep(backoff)
                     continue
                 raise RuntimeError(
@@ -460,13 +465,10 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
                 data = resp.json()
             except ValueError:
                 raise RuntimeError(
-                    f"{log_prefix}3DEP returned non-JSON response: "
-                    f"{resp.text[:200]}"
-                )
+                    f"{log_prefix}3DEP returned non-JSON response: {resp.text[:200]}"
+                ) from None
             if "error" in data:
-                raise RuntimeError(
-                    f"{log_prefix}3DEP error: {data['error']}"
-                )
+                raise RuntimeError(f"{log_prefix}3DEP error: {data['error']}")
             result_data = data
             break
 
@@ -475,8 +477,7 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
         # order; sort by locationId before splicing back in. ``value``
         # is a STRING (or "NoData" for out-of-coverage points).
         samples = result_data.get("samples") or []
-        samples_sorted = sorted(samples,
-                                key=lambda s: int(s.get("locationId", 0)))
+        samples_sorted = sorted(samples, key=lambda s: int(s.get("locationId", 0)))
 
         for j, s in enumerate(samples_sorted):
             global_idx = i + j
@@ -600,8 +601,7 @@ def compute_elevations(trails_geojson, cache_dir):
         coord_lines = _coords_for_route(features, rid_str)
         if not coord_lines:
             continue
-        sampled = _subsample_route(coord_lines, SAMPLE_INTERVAL_M,
-                                   MAX_SAMPLES_PER_ROUTE)
+        sampled = _subsample_route(coord_lines, SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE)
         if len(sampled) < 2:
             continue
 
@@ -614,9 +614,11 @@ def compute_elevations(trails_geojson, cache_dir):
                 # Require BOTH fields for a cache hit. Old-format
                 # entries (gain only) get treated as cache miss and
                 # refetched.
-                if (isinstance(cached, dict)
-                        and "elevation_gain_m" in cached
-                        and "elevation_loss_m" in cached):
+                if (
+                    isinstance(cached, dict)
+                    and "elevation_gain_m" in cached
+                    and "elevation_loss_m" in cached
+                ):
                     out[rid_str] = (
                         int(cached["elevation_gain_m"]),
                         int(cached["elevation_loss_m"]),
@@ -630,21 +632,21 @@ def compute_elevations(trails_geojson, cache_dir):
             continue
 
         try:
-            elevations = _fetch_elevations_batched(
-                sampled, log_prefix=f"  route {rid_str}: "
-            )
+            elevations = _fetch_elevations_batched(sampled, log_prefix=f"  route {rid_str}: ")
             gain, loss = _gain_loss_from_samples(elevations)
             out[rid_str] = (gain, loss)
             try:
                 with open(cache_path, "w") as fh:
-                    json.dump({
-                        "elevation_gain_m": gain,
-                        "elevation_loss_m": loss,
-                        "samples": len(sampled),
-                    }, fh)
+                    json.dump(
+                        {
+                            "elevation_gain_m": gain,
+                            "elevation_loss_m": loss,
+                            "samples": len(sampled),
+                        },
+                        fh,
+                    )
             except OSError as e:
-                print(f"  warn: couldn't write elevation cache for "
-                      f"route {rid_str}: {e}")
+                print(f"  warn: couldn't write elevation cache for route {rid_str}: {e}")
         except RuntimeError as e:
             # Persistent API failure — stop hitting the API for the
             # rest of this build.
@@ -662,6 +664,7 @@ def compute_elevations(trails_geojson, cache_dir):
 # ----------------------------------------------------------------------
 # Public entry point
 # ----------------------------------------------------------------------
+
 
 def compute_and_attach(trails_geojson, config, cache_dir):
     """Compute enabled stats and attach them to trails_geojson in place.
@@ -687,9 +690,7 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     # to clean up.
     if not (want_distance or want_elevation):
         has_stale = any(
-            "distance_m" in info
-            or "elevation_gain_m" in info
-            or "elevation_loss_m" in info
+            "distance_m" in info or "elevation_gain_m" in info or "elevation_loss_m" in info
             for info in routes.values()
         )
         if not has_stale:
@@ -712,8 +713,7 @@ def compute_and_attach(trails_geojson, config, cache_dir):
                 changed = True
 
     if want_elevation:
-        print("  computing per-route elevation gain + loss "
-              "(via USGS 3DEP)...")
+        print("  computing per-route elevation gain + loss (via USGS 3DEP)...")
         elevations = compute_elevations(trails_geojson, cache_dir)
         # Strip stale entries on routes whose computation failed this
         # run so the runtime doesn't keep showing yesterday's

@@ -17,7 +17,6 @@ import mmap
 import os
 import shutil
 
-
 # Font faces always needed by the Protomaps basemap style.
 BASEMAP_FACES = {
     "Noto Sans Regular",
@@ -29,9 +28,9 @@ BASEMAP_FACES = {
 # A face is included only when characters from its blocks appear in the data.
 SCRIPT_FONT_BLOCKS = {
     "Noto Sans Devanagari Regular v1": [
-        (0x0900, 0x097F),   # Devanagari
-        (0xA8E0, 0xA8FF),   # Devanagari Extended
-        (0x1CD0, 0x1CFF),   # Vedic Extensions
+        (0x0900, 0x097F),  # Devanagari
+        (0xA8E0, 0xA8FF),  # Devanagari Extended
+        (0x1CD0, 0x1CFF),  # Vedic Extensions
     ],
     # Add more script-specific faces here as they are added to assets/fonts/
 }
@@ -65,8 +64,9 @@ def collect_text_from_pmtiles(path):
         with open(path, "rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
             try:
+
                 def get_bytes(offset, length):
-                    return mm[offset:offset + length]
+                    return mm[offset : offset + length]
 
                 count = 0
                 for _zxy, data in pmreader.all_tiles(get_bytes):
@@ -130,8 +130,10 @@ def determine_needed_faces(chars, available_faces):
                     break
         else:
             # Unknown face not in basemap or script list — skip with warning
-            print(f"  warn: Unknown font face '{face}' — skipping "
-                  f"(add to SCRIPT_FONT_BLOCKS in font_trimmer.py if needed)")
+            print(
+                f"  warn: Unknown font face '{face}' — skipping "
+                f"(add to SCRIPT_FONT_BLOCKS in font_trimmer.py if needed)"
+            )
 
     return needed
 
@@ -144,7 +146,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     """
     if not os.path.exists(fonts_src) or not os.listdir(fonts_src):
         print(f"  warn: Fonts not found at {fonts_src}")
-        print(f"  Download from: https://github.com/protomaps/basemaps-assets/releases")
+        print("  Download from: https://github.com/protomaps/basemaps-assets/releases")
         return
 
     fonts_dst = os.path.join(output_dir, "fonts")
@@ -165,9 +167,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     all_chars.update(basemap_chars)
 
     for geojson_name in ["trails.geojson", "pois.geojson"]:
-        all_chars.update(collect_text_from_geojson(
-            os.path.join(output_dir, geojson_name)
-        ))
+        all_chars.update(collect_text_from_geojson(os.path.join(output_dir, geojson_name)))
 
     if not all_chars:
         # No text found (unlikely) — basemap was probably skipped
@@ -180,8 +180,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     needed_ranges = compute_needed_ranges(all_chars)
 
     available_faces = [
-        d for d in os.listdir(fonts_src)
-        if os.path.isdir(os.path.join(fonts_src, d))
+        d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
     ]
     needed_faces = determine_needed_faces(all_chars, available_faces)
 
@@ -219,31 +218,35 @@ def copy_trimmed_fonts(output_dir, fonts_src):
             face_src = os.path.join(fonts_src, face)
             for pbf in os.listdir(face_src):
                 if pbf.endswith(".pbf"):
-                    total_original += os.path.getsize(
-                        os.path.join(face_src, pbf)
-                    )
+                    total_original += os.path.getsize(os.path.join(face_src, pbf))
 
     skipped_faces = set(available_faces) - needed_faces
     saved_mb = (total_original - total_copied) / (1024 * 1024)
-    print(f"  Fonts: {total_copied / (1024*1024):.1f} MB "
-          f"(trimmed {saved_mb:.1f} MB, "
-          f"{len(needed_faces)}/{len(available_faces)} faces, "
-          f"{len(needed_ranges)}/256 ranges)")
+    print(
+        f"  Fonts: {total_copied / (1024 * 1024):.1f} MB "
+        f"(trimmed {saved_mb:.1f} MB, "
+        f"{len(needed_faces)}/{len(available_faces)} faces, "
+        f"{len(needed_ranges)}/256 ranges)"
+    )
     if skipped_faces:
         print(f"  Skipped faces: {', '.join(sorted(skipped_faces))}")
 
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <output_dir> [fonts_src]")
-        print(f"  Dry-run: shows which fonts/ranges would be kept")
+        print("  Dry-run: shows which fonts/ranges would be kept")
         sys.exit(1)
 
     output_dir = sys.argv[1]
-    fonts_src = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "assets", "fonts"
+    fonts_src = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts"
+        )
     )
 
     print(f"Scanning: {output_dir}")
@@ -266,8 +269,7 @@ if __name__ == "__main__":
     print(f"PBF ranges needed: {len(needed_ranges)}/256")
 
     available_faces = [
-        d for d in os.listdir(fonts_src)
-        if os.path.isdir(os.path.join(fonts_src, d))
+        d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
     ]
     needed_faces = determine_needed_faces(all_chars, available_faces)
     print(f"Font faces needed: {len(needed_faces)}/{len(available_faces)}")
@@ -290,7 +292,9 @@ if __name__ == "__main__":
             if face in needed_faces and pbf in range_filenames:
                 total_kept += size
 
-    print(f"\nOriginal: {total_original / (1024*1024):.1f} MB")
-    print(f"Trimmed:  {total_kept / (1024*1024):.1f} MB")
-    print(f"Savings:  {(total_original - total_kept) / (1024*1024):.1f} MB "
-          f"({100 * (1 - total_kept / total_original):.0f}%)")
+    print(f"\nOriginal: {total_original / (1024 * 1024):.1f} MB")
+    print(f"Trimmed:  {total_kept / (1024 * 1024):.1f} MB")
+    print(
+        f"Savings:  {(total_original - total_kept) / (1024 * 1024):.1f} MB "
+        f"({100 * (1 - total_kept / total_original):.0f}%)"
+    )
