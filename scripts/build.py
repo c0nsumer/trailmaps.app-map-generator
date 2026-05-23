@@ -329,8 +329,7 @@ def _minify_assets(output_dir):
             console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
             console.warn(
-                f"{lib} not installed — {fname} left unminified. "
-                f"Run: .venv/bin/pip install {lib}"
+                f"{lib} not installed — {fname} left unminified. Run: .venv/bin/pip install {lib}"
             )
         except (OSError, UnicodeDecodeError) as e:
             console.warn(f"failed to minify {fname} ({e}) — left unminified")
