@@ -3005,7 +3005,15 @@ body.fabs-labeled .fab-label {
     }
     .options-overlay-panel {
         flex: 0 1 auto;
-        max-height: min(80dvh, 680px);
+        /* Cap on viewport height only — no fixed px ceiling. flex
+         * 0 1 auto already sizes the card to its content, so a
+         * short toggle list stays compact; a toggle-heavy map (DTE
+         * et al.) grows to fill the available height and only the
+         * body scrolls when content would actually exceed the
+         * viewport. A px cap here clipped tall lists early, forcing
+         * an inner scroll even when the viewport had room. 90dvh
+         * leaves a margin so the dim backdrop still frames the card. */
+        max-height: 90dvh;
         /* Drop safe-area padding — panel doesn't touch the edges
          * so notches don't intersect it. */
         padding-top: 0;
