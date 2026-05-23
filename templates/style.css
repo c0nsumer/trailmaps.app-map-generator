@@ -1270,17 +1270,18 @@ body {
     justify-content: center;
 }
 
-/* Welcome modal CTA — primary action button at the bottom of the
-   first-visit modal. Reuses the toast primary-action color so the
-   "tap me to confirm" affordance is consistent across the app. */
+/* Welcome modal CTA: primary action button at the bottom of the
+   first-visit modal. Uses the per-map accent (var(--accent), set on
+   :root from CONFIG.accentColor) so it tracks accent_color overrides
+   including "auto", matching the rest of the accent-aware UI. */
 .welcome-modal-cta {
     display: block;
     width: 100%;
     margin-top: 16px;
     padding: 10px 16px;
-    background: #33b5e5;
+    background: var(--accent);
     color: #fff;
-    border: 1px solid #33b5e5;
+    border: 1px solid var(--accent);
     border-radius: 8px;
     font: inherit;
     font-size: 14px;
@@ -1291,8 +1292,8 @@ body {
 
 .welcome-modal-cta:hover,
 .welcome-modal-cta:focus-visible {
-    background: #1ea5d8;
-    border-color: #1ea5d8;
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
     outline: none;
 }
 
