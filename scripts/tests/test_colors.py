@@ -13,11 +13,13 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from colors import (  # noqa: E402
+    _LIGHT_TARGET_CONTRAST,
     _best_text_color,
     _contrast_ratio,
     _darken_for_contrast,
     _hex_to_rgb,
     _lighten_for_contrast,
+    _palette_from_base,
     _relative_luminance,
     _rgb_to_hex,
     resolve_accent_palette,
@@ -81,6 +83,34 @@ def test_best_text_color_flips_with_accent_lightness():
     # Deep accent → white text; light accent → near-black text.
     assert _best_text_color((20, 40, 90)) == "#FFFFFF"
     assert _best_text_color((150, 200, 240)) == "#14140F"
+
+
+def test_vividness_deepens_auto_light_shade():
+    # Task 7: the "auto" light shade is deepened past the 4.5 AA floor so
+    # it reads vivid, not muddy. A green raw that clears 4.5 early still
+    # gets pushed to the vividness target.
+    p = _palette_from_base((72, 152, 32), darken_light=True)
+    assert _contrast_ratio(_hex_to_rgb(p["light"]), WHITE) >= _LIGHT_TARGET_CONTRAST
+
+
+def test_vividness_skips_verbatim_light_shade():
+    # Explicit hex / framework default (darken_light=False) are verbatim —
+    # vividness must NOT deepen them.
+    p = _palette_from_base((72, 152, 32), darken_light=False)
+    assert p["light"] == "#489820"
+
+
+def test_darken_sat_boost_keeps_saturation():
+    # With a sat boost the deepened colour's saturation is >= the base's
+    # (vivid, not greyed out), and it still clears the target.
+    import colorsys
+
+    base = (72, 152, 32)
+    _, _, s0 = colorsys.rgb_to_hls(*(x / 255 for x in base))
+    out = _darken_for_contrast(base, target_contrast=5.5, against=WHITE, sat_boost=0.015)
+    _, _, s1 = colorsys.rgb_to_hls(*(x / 255 for x in out))
+    assert s1 >= s0
+    assert _contrast_ratio(out, WHITE) >= 5.5
 
 
 def test_resolve_palette_unset_uses_framework_default():
