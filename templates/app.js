@@ -3001,7 +3001,7 @@ function buildAboutModalContent() {
     // .about-modal-version CSS, so the relationship reads as
     // metadata about the framework generation, not as standalone items.
     credit("",
-        "https://trailmaps.app",
+        "https://github.com/c0nsumer/trailmaps.app-map-generator",
         "trailmaps.app Map Generator",
         "");
 
