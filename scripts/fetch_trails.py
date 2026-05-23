@@ -12,6 +12,8 @@ import os
 import sys
 from collections import defaultdict
 
+import console
+
 # Shared narrow-resolution loader (handles ``osm_file:`` only — the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
@@ -505,7 +507,7 @@ def build_geojson(relations, all_ways, way_relations):
     for rel_id, rel_info in sorted(relations.items(), key=lambda x: x[1]["name"]):
         ways = all_ways.get(rel_id, {})
         if not ways:
-            print(f"  warn: No ways found for relation {rel_id} ({rel_info['name']})")
+            console.warn(f"No ways found for relation {rel_id} ({rel_info['name']})")
             continue
 
         # Build per-way relation membership lookup for this relation's ways
@@ -600,9 +602,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     osm_file = config.get("osm_file")
     if osm_file:
-        print(f"Loading trails for {config['name']} from {osm_file}...")
+        console.step(f"Loading trails for {config['name']} from {osm_file}...")
     else:
-        print(f"Fetching trails for {config['name']} (relations {sorted(source_ids)})...")
+        console.step(f"Fetching trails for {config['name']} (relations {sorted(source_ids)})...")
 
     # Tracks any super-relation IDs that get expanded during fetch.
     # Both code paths populate this; it's persisted to trails.geojson
@@ -612,7 +614,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     def _log_expansions(label, expansions):
         for parent_id, child_ids in sorted(expansions.items()):
-            print(f"    {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
+            console.info(f"  {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
 
     if osm_file:
         from osm_parser import extract_source_relations, extract_ways, parse_osm_file
@@ -621,28 +623,30 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
 
-        print("Stage A: Parsing .osm file...")
+        console.step("Stage A: Parsing .osm file...")
         parsed = parse_osm_file(osm_file)
-        print(f"  Parsed {len(parsed[0])} nodes, {len(parsed[1])} ways, {len(parsed[2])} relations")
+        console.info(
+            f"Parsed {len(parsed[0])} nodes, {len(parsed[1])} ways, {len(parsed[2])} relations"
+        )
 
         relations, source_expansions = extract_source_relations(parsed, relation_ids)
         super_relation_expansions.update(source_expansions)
         _log_expansions("expanded", source_expansions)
-        print(f"  Found {len(relations)} relation(s):")
+        console.info(f"Found {len(relations)} relation(s):")
         for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
-            print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
+            console.info(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
         clipped_relations = {}
         if clipped_relation_ids:
-            print(f"  Loading {len(clipped_relation_ids)} clipped relation(s)...")
+            console.info(f"Loading {len(clipped_relation_ids)} clipped relation(s)...")
             clipped_relations, clipped_expansions = extract_source_relations(
                 parsed, clipped_relation_ids
             )
             super_relation_expansions.update(clipped_expansions)
             _log_expansions("clipped", clipped_expansions)
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(
-                    f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
+                console.info(
+                    f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
                 )
             relations.update(clipped_relations)
 
@@ -657,40 +661,40 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             if rel_id in relations:
                 relations[rel_id]["seasonal"] = "winter"
 
-        print(f"Stage B: Extracting ways for {len(relations)} relations...")
+        console.step(f"Stage B: Extracting ways for {len(relations)} relations...")
         all_ways = extract_ways(parsed, list(relations.keys()))
         for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
             way_count = len(all_ways.get(rel_id, {}))
-            print(f"  {info['name']}: {way_count} ways")
+            console.info(f"{info['name']}: {way_count} ways")
             if way_count == 0:
-                print(f"    warn: No ways found for {info['name']} ({rel_id})")
+                console.info(f"  warn: No ways found for {info['name']} ({rel_id})")
     else:
         # Stage A: Fetch all relation metadata in a single query
-        print("Stage A: Fetching relation metadata...")
+        console.step("Stage A: Fetching relation metadata...")
         members, clipped_relations, super_relation_expansions = fetch_all_relations(
             relation_ids, clipped_relation_ids, cache_dir
         )
         _log_expansions("expanded", super_relation_expansions)
 
         if not members and not clipped_relations:
-            print(f"\n  ERROR: Relations {sorted(source_ids)} returned no usable data.")
-            print("  Check that the relation IDs are correct and exist:")
+            console.step(f"\n  ERROR: Relations {sorted(source_ids)} returned no usable data.")
+            console.info("Check that the relation IDs are correct and exist:")
             for rid in sorted(source_ids):
-                print(f"    https://www.openstreetmap.org/relation/{rid}")
-            print()
+                console.info(f"  https://www.openstreetmap.org/relation/{rid}")
+            console.blank()
             sys.exit(1)
 
-        print(f"  Found {len(members)} relation(s):")
+        console.info(f"Found {len(members)} relation(s):")
         for rel_id, info in sorted(members.items(), key=lambda x: x[1]["name"]):
-            print(f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
+            console.info(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
         relations = dict(members)
 
         if clipped_relations:
-            print(f"  Found {len(clipped_relations)} clipped relation(s):")
+            console.info(f"Found {len(clipped_relations)} clipped relation(s):")
             for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                print(
-                    f"    {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
+                console.info(
+                    f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
                 )
             relations.update(clipped_relations)
 
@@ -705,18 +709,18 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
                 relations[rel_id]["seasonal"] = "winter"
 
         # Stage B: Fetch ways for all relations in a single bulk query
-        print(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
+        console.step(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
         all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir)
         for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
             way_count = len(all_ways.get(rel_id, {}))
-            print(f"  {info['name']}: {way_count} ways")
+            console.info(f"{info['name']}: {way_count} ways")
             if way_count == 0:
-                print(f"    warn: No ways found for {info['name']} ({rel_id})")
+                console.info(f"  warn: No ways found for {info['name']} ({rel_id})")
 
     # Build way-to-relations mapping
     way_relations = build_way_to_relations_map(relations, all_ways)
     shared_count = sum(1 for wids in way_relations.values() if len(wids) > 1)
-    print(f"  {shared_count} ways are shared by multiple relations")
+    console.info(f"{shared_count} ways are shared by multiple relations")
 
     # Validate oneway=reversible ways. These are trails that change direction
     # by schedule (the canonical OSM tag for that case) and have no inherent
@@ -820,7 +824,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         sys.exit("\n".join(lines))
 
     # Stage C: Merge ways and build GeoJSON
-    print("Stage C: Merging ways and building GeoJSON...")
+    console.step("Stage C: Merging ways and building GeoJSON...")
     geojson = build_geojson(relations, all_ways, way_relations)
 
     # Stage D: Clip features for clipped_relations to the core trail bbox.
@@ -837,7 +841,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         ]
 
         bbox = compute_bbox_from_features(core_features)
-        print(f"  Clipping {len(clip_features)} features to bbox {[round(v, 4) for v in bbox]}...")
+        console.info(
+            f"Clipping {len(clip_features)} features to bbox {[round(v, 4) for v in bbox]}..."
+        )
 
         clipped_features = []
         for feature in clip_features:
@@ -927,13 +933,13 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             for g in groups.values()
         ]
 
-        print(
-            f"  {len(clip_features)} features clipped to {len(clipped_features)} segments "
+        console.info(
+            f"{len(clip_features)} features clipped to {len(clipped_features)} segments "
             f"({len(clip_endpoints)} continuation arrowheads)"
         )
         geojson["features"] = core_features + clipped_features
 
-    print(f"  Generated {len(geojson['features'])} features")
+    console.info(f"Generated {len(geojson['features'])} features")
 
     # Warn when show_difficulty is enabled but no way carries an
     # mtb:scale:imba tag — same posture as the POI fetch's
@@ -946,7 +952,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             1 for f in geojson["features"] if (f.get("properties") or {}).get("imba_difficulty")
         )
         if imba_tagged == 0:
-            print("  note: show_difficulty is enabled but no mtb:scale:imba tags found in data")
+            console.note("show_difficulty is enabled but no mtb:scale:imba tags found in data")
 
     # Also embed route (relation) metadata for the viewer + the
     # super-relation expansion mapping so build.py can apply the
@@ -974,7 +980,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         json.dump(geojson, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(output_path) / 1024
-    print(f"  Wrote {output_path} ({size_kb:.1f} KB)")
+    console.info(f"Wrote {output_path} ({size_kb:.1f} KB)")
 
     # Write clip_endpoints.geojson sibling — the renderer reads it (when
     # present) to draw continuation arrowheads at clip-created endpoints.
@@ -988,17 +994,17 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         }
         with open(endpoints_path, "w") as f:
             json.dump(endpoints_geojson, f, separators=(",", ":"))
-        print(f"  Wrote {endpoints_path} ({len(clip_endpoints)} points)")
+        console.info(f"Wrote {endpoints_path} ({len(clip_endpoints)} points)")
     elif os.path.exists(endpoints_path):
         os.remove(endpoints_path)
-        print(f"  Removed stale {endpoints_path}")
+        console.info(f"Removed stale {endpoints_path}")
 
     return geojson
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <config.yaml> [output.geojson] [cache_dir]")
+        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.geojson] [cache_dir]")
         sys.exit(1)
 
     config_path = sys.argv[1]

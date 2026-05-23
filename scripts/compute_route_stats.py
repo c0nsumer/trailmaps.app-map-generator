@@ -72,6 +72,7 @@ import json
 import os
 import time
 
+import console
 import requests
 from geodesy import haversine_m as _haversine_m
 
@@ -433,7 +434,7 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             except requests.RequestException:
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(
+                    console.warn(
                         f"{log_prefix}batch "
                         f"{batch_index + 1}/{total_batches} transport "
                         f"error; waiting {backoff}s before retry "
@@ -446,7 +447,7 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             if resp.status_code in (429, 500, 502, 503, 504):
                 if attempt < max_attempts - 1:
                     backoff = RETRY_BACKOFF_SECONDS[attempt]
-                    print(
+                    console.warn(
                         f"{log_prefix}batch "
                         f"{batch_index + 1}/{total_batches} HTTP "
                         f"{resp.status_code}; waiting {backoff}s before "
@@ -632,7 +633,7 @@ def compute_elevations(trails_geojson, cache_dir):
             continue
 
         try:
-            elevations = _fetch_elevations_batched(sampled, log_prefix=f"  route {rid_str}: ")
+            elevations = _fetch_elevations_batched(sampled, log_prefix=f"route {rid_str}: ")
             gain, loss = _gain_loss_from_samples(elevations)
             out[rid_str] = (gain, loss)
             try:
@@ -646,17 +647,17 @@ def compute_elevations(trails_geojson, cache_dir):
                         fh,
                     )
             except OSError as e:
-                print(f"  warn: couldn't write elevation cache for route {rid_str}: {e}")
+                console.warn(f"couldn't write elevation cache for route {rid_str}: {e}")
         except RuntimeError as e:
             # Persistent API failure — stop hitting the API for the
             # rest of this build.
-            print(f"  warn: {e}")
+            console.warn(f"{e}")
             api_failed = True
         except requests.RequestException as e:
             # Transport error after retries — log but keep going, the
             # next route might succeed (a per-batch transient error
             # could have been the cause).
-            print(f"  warn: route {rid_str} elevation fetch failed: {e}")
+            console.warn(f"route {rid_str} elevation fetch failed: {e}")
 
     return out
 
@@ -699,7 +700,7 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     changed = False
 
     if want_distance:
-        print("  computing per-route distance...")
+        console.info("computing per-route distance...")
         distances = compute_distances(trails_geojson)
         for rid, dist in distances.items():
             if rid in routes and routes[rid].get("distance_m") != dist:
@@ -713,7 +714,7 @@ def compute_and_attach(trails_geojson, config, cache_dir):
                 changed = True
 
     if want_elevation:
-        print("  computing per-route elevation gain + loss (via USGS 3DEP)...")
+        console.info("computing per-route elevation gain + loss (via USGS 3DEP)...")
         elevations = compute_elevations(trails_geojson, cache_dir)
         # Strip stale entries on routes whose computation failed this
         # run so the runtime doesn't keep showing yesterday's

@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 
+import console
 import yaml
 
 # Mapterhorn (Protomaps terrain) — pre-built terrain RGB PMTiles
@@ -55,8 +56,8 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     """
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
-        print("ERROR: pmtiles CLI not found.")
-        print("Install: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
+        console.step("ERROR: pmtiles CLI not found.")
+        console.step("Install: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
         sys.exit(1)
 
     # Pad bbox for terrain (need surrounding context for hillshade edge tiles)
@@ -75,21 +76,21 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
         f"--maxzoom={maxzoom}",
     ]
 
-    print(f"  Running: {' '.join(cmd)}")
+    console.info(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print("  ERROR: pmtiles extract failed:")
-        print(f"  stdout: {result.stdout}")
-        print(f"  stderr: {result.stderr}")
+        console.error("pmtiles extract failed:")
+        console.info(f"stdout: {result.stdout}")
+        console.info(f"stderr: {result.stderr}")
         return False
 
     if result.stdout:
-        print(f"  {result.stdout.strip()}")
+        console.info(f"{result.stdout.strip()}")
     if result.stderr:
         for line in result.stderr.strip().split("\n"):
             if line.strip():
-                print(f"  {line.strip()}")
+                console.info(f"{line.strip()}")
 
     return os.path.exists(output_path)
 
@@ -105,8 +106,8 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
     try:
         import elevation as elev
     except ImportError:
-        print("  ERROR: 'elevation' package not installed.")
-        print("  Install: pip install elevation rasterio rio-rgbify rio-pmtiles")
+        console.error("'elevation' package not installed.")
+        console.info("Install: pip install elevation rasterio rio-rgbify rio-pmtiles")
         return False
 
     cache_dir = os.path.join(os.path.dirname(output_path) or ".", ".terrain_cache")
@@ -121,16 +122,16 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
     padded = [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad]
 
     # Step 1: Download SRTM data
-    print("  Downloading SRTM elevation data...")
+    console.info("Downloading SRTM elevation data...")
     bounds = (padded[0], padded[1], padded[2], padded[3])
     try:
         elev.clip(bounds=bounds, output=dem_path, product="SRTM3")
     except Exception as e:
-        print(f"  ERROR downloading SRTM: {e}")
+        console.info(f"ERROR downloading SRTM: {e}")
         return False
 
     # Step 2: Reproject to Web Mercator
-    print("  Reprojecting to Web Mercator...")
+    console.info("Reprojecting to Web Mercator...")
     result = subprocess.run(
         [
             "gdalwarp",
@@ -146,11 +147,11 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         text=True,
     )
     if result.returncode != 0:
-        print(f"  ERROR: gdalwarp failed: {result.stderr}")
+        console.error(f"gdalwarp failed: {result.stderr}")
         return False
 
     # Step 3: Encode as Terrain RGB
-    print("  Encoding as Terrain RGB...")
+    console.info("Encoding as Terrain RGB...")
     result = subprocess.run(
         [
             "rio",
@@ -166,11 +167,11 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         text=True,
     )
     if result.returncode != 0:
-        print(f"  ERROR: rio rgbify failed: {result.stderr}")
+        console.error(f"rio rgbify failed: {result.stderr}")
         return False
 
     # Step 4: Package as PMTiles
-    print("  Packaging as PMTiles...")
+    console.info("Packaging as PMTiles...")
     result = subprocess.run(
         [
             "rio",
@@ -188,7 +189,7 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         text=True,
     )
     if result.returncode != 0:
-        print(f"  ERROR: rio pmtiles failed: {result.stderr}")
+        console.error(f"rio pmtiles failed: {result.stderr}")
         return False
 
     # Cleanup cache
@@ -204,34 +205,34 @@ def fetch_terrain(config_or_path, output_path):
     bbox = config.get("pan_bbox") or config["bbox"]
     maxzoom = config.get("terrain_maxzoom", 12)
 
-    print(f"Generating terrain tiles for {config['name']}...")
-    print(f"  Bbox: {bbox}")
-    print(f"  Max zoom: {maxzoom}")
+    console.step(f"Generating terrain tiles for {config['name']}...")
+    console.info(f"Bbox: {bbox}")
+    console.info(f"Max zoom: {maxzoom}")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     # Try Mapterhorn first (simplest, no GDAL needed)
-    print("  Attempting Mapterhorn extract (pre-built terrain tiles)...")
+    console.info("Attempting Mapterhorn extract (pre-built terrain tiles)...")
     if extract_from_mapterhorn(bbox, output_path, maxzoom):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        print(f"  Wrote {output_path} ({size_mb:.1f} MB)")
+        console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
         return True
 
     # Fall back to SRTM pipeline
-    print("  Mapterhorn extract failed, trying SRTM pipeline...")
+    console.info("Mapterhorn extract failed, trying SRTM pipeline...")
     if build_from_srtm(bbox, output_path, maxzoom):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        print(f"  Wrote {output_path} ({size_mb:.1f} MB)")
+        console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
         return True
 
-    print("  warn: Could not generate terrain tiles.")
-    print("  The map will work without terrain — hillshade will be disabled.")
+    console.warn("Could not generate terrain tiles.")
+    console.info("The map will work without terrain — hillshade will be disabled.")
     return False
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles]")
+        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles]")
         sys.exit(1)
 
     config_path = sys.argv[1]

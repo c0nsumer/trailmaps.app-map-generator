@@ -19,6 +19,8 @@ import shutil
 import subprocess
 import tempfile
 
+import console
+
 try:
     from PIL import Image
 except ImportError:
@@ -160,8 +162,8 @@ def generate_safari_pinned_tab(source_img, output_dir):
     Returns True if generated, False if potrace is unavailable.
     """
     if not shutil.which("potrace"):
-        print("  note: potrace not found, skipping safari-pinned-tab.svg")
-        print("        Install: brew install potrace (macOS) or apt install potrace (Linux)")
+        console.note("potrace not found, skipping safari-pinned-tab.svg")
+        console.info("      Install: brew install potrace (macOS) or apt install potrace (Linux)")
         return False
 
     svg_path = os.path.join(output_dir, "icons", "safari-pinned-tab.svg")
@@ -181,7 +183,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
         )
         return True
     except subprocess.CalledProcessError as e:
-        print(f"  warn: potrace failed: {e.stderr.decode().strip()}")
+        console.warn(f"potrace failed: {e.stderr.decode().strip()}")
         return False
     finally:
         os.unlink(tmp_path)
@@ -266,12 +268,12 @@ def generate_icons(source_path, output_dir, config):
     Returns True if icons were generated, False if Pillow is unavailable.
     """
     if Image is None:
-        print("  warn: Pillow not installed — skipping icon generation")
-        print("           Install: pip install Pillow")
+        console.warn("Pillow not installed — skipping icon generation")
+        console.info("         Install: pip install Pillow")
         return False
 
     if not os.path.isfile(source_path):
-        print(f"  warn: Icon source not found: {source_path}")
+        console.warn(f"Icon source not found: {source_path}")
         return False
 
     try:
@@ -282,9 +284,9 @@ def generate_icons(source_path, output_dir, config):
         # decode errors. Catch broadly: any failure here means we
         # can't generate icons from this source. Caller (build.py)
         # will fail the PWA-manifest check and warn the curator.
-        print(f"  warn: Cannot read icon source {source_path}")
-        print(f"           {type(e).__name__}: {e}")
-        print("           Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
+        console.warn(f"Cannot read icon source {source_path}")
+        console.info(f"         {type(e).__name__}: {e}")
+        console.info("         Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
         return False
 
     # Non-square sources used to error out, forcing the curator to
@@ -296,14 +298,14 @@ def generate_icons(source_path, output_dir, config):
     # themselves; otherwise this is "good enough" for every variant.
     if img.width != img.height:
         side = max(img.width, img.height)
-        print(
-            f"  Icon source {img.width}x{img.height} is not square — "
+        console.info(
+            f"Icon source {img.width}x{img.height} is not square — "
             f"padding to {side}x{side} with transparent background."
         )
         img = _pad_to_square(img)
 
     if img.width < 256:
-        print(f"  warn: Icon source is {img.width}x{img.height}, recommend at least 256x256")
+        console.warn(f"Icon source is {img.width}x{img.height}, recommend at least 256x256")
 
     # Ensure RGBA for consistent processing
     if img.mode not in ("RGBA", "RGB"):
@@ -319,7 +321,7 @@ def generate_icons(source_path, output_dir, config):
     parts = [f"{count} PNGs", "favicon.ico", "manifest"]
     if has_svg:
         parts.append("pinned-tab SVG")
-    print(f"  Generated icons: {', '.join(parts)}")
+    console.info(f"Generated icons: {', '.join(parts)}")
     return True
 
 
@@ -327,7 +329,7 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <source_image> <output_dir> [title] [short_name]")
+        console.step(f"Usage: {sys.argv[0]} <source_image> <output_dir> [title] [short_name]")
         sys.exit(1)
 
     source = sys.argv[1]

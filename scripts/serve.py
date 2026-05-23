@@ -14,6 +14,8 @@ import argparse
 import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+import console
+
 
 class RangeRequestHandler(SimpleHTTPRequestHandler):
     """HTTP handler with Range request support for PMTiles."""
@@ -86,12 +88,12 @@ def main():
 
     os.chdir(args.directory)
     server = HTTPServer(("", args.port), RangeRequestHandler)
-    print(f"Serving {os.path.abspath('.')} at http://localhost:{args.port}")
-    print("Press Ctrl+C to stop")
+    console.step(f"Serving {os.path.abspath('.')} at http://localhost:{args.port}")
+    console.step("Press Ctrl+C to stop")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        console.step("\nStopped.")
 
 
 if __name__ == "__main__":

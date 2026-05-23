@@ -20,6 +20,7 @@ PNG from growing on every rerun.
 import json
 import os
 
+import console
 from PIL import Image
 
 SPRITE_NAME = "clip-arrow"
@@ -129,7 +130,7 @@ def inject_clip_arrow(sprites_dir, sdf_1x_path, sdf_2x_path):
             skipped += 1
 
     if injected or skipped:
-        msg = f"  Injected clip-arrow into {injected} atlas(es)"
+        msg = f"Injected clip-arrow into {injected} atlas(es)"
         if skipped:
             msg += f" ({skipped} already had it)"
-        print(msg)
+        console.info(msg)

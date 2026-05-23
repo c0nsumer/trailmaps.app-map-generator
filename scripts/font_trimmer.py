@@ -17,6 +17,8 @@ import mmap
 import os
 import shutil
 
+import console
+
 # Font faces always needed by the Protomaps basemap style.
 BASEMAP_FACES = {
     "Noto Sans Regular",
@@ -84,11 +86,11 @@ def collect_text_from_pmtiles(path):
                                 if isinstance(v, str):
                                     chars.update(v)
                     count += 1
-                print(f"  Scanned {count} basemap tiles")
+                console.info(f"Scanned {count} basemap tiles")
             finally:
                 mm.close()
     except (FileNotFoundError, OSError) as e:
-        print(f"  warn: Could not read basemap for font scan: {e}")
+        console.warn(f"Could not read basemap for font scan: {e}")
     return chars
 
 
@@ -130,8 +132,8 @@ def determine_needed_faces(chars, available_faces):
                     break
         else:
             # Unknown face not in basemap or script list — skip with warning
-            print(
-                f"  warn: Unknown font face '{face}' — skipping "
+            console.warn(
+                f"Unknown font face '{face}' — skipping "
                 f"(add to SCRIPT_FONT_BLOCKS in font_trimmer.py if needed)"
             )
 
@@ -145,8 +147,8 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     ranges are actually used, then copies only matching PBF files.
     """
     if not os.path.exists(fonts_src) or not os.listdir(fonts_src):
-        print(f"  warn: Fonts not found at {fonts_src}")
-        print("  Download from: https://github.com/protomaps/basemaps-assets/releases")
+        console.warn(f"Fonts not found at {fonts_src}")
+        console.info("Download from: https://github.com/protomaps/basemaps-assets/releases")
         return
 
     fonts_dst = os.path.join(output_dir, "fonts")
@@ -154,14 +156,14 @@ def copy_trimmed_fonts(output_dir, fonts_src):
         shutil.rmtree(fonts_dst)
 
     # Collect all text from map data
-    print("  Scanning map data for font trimming...")
+    console.info("Scanning map data for font trimming...")
     all_chars = set()
 
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_chars = collect_text_from_pmtiles(basemap_path)
     if basemap_chars is None:
         # PMTiles libraries not available — fall back to full copy
-        print("  warn: pmtiles/mapbox-vector-tile not installed — copying all fonts")
+        console.warn("pmtiles/mapbox-vector-tile not installed — copying all fonts")
         shutil.copytree(fonts_src, fonts_dst)
         return
     all_chars.update(basemap_chars)
@@ -172,7 +174,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     if not all_chars:
         # No text found (unlikely) — basemap was probably skipped
         if not os.path.exists(basemap_path):
-            print("  warn: No basemap found — copying all fonts")
+            console.warn("No basemap found — copying all fonts")
             shutil.copytree(fonts_src, fonts_dst)
             return
 
@@ -204,7 +206,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
                 total_copied += os.path.getsize(src_path)
                 copied += 1
 
-        print(f"  Font: {face} — {copied}/{len(all_pbfs)} ranges")
+        console.info(f"Font: {face} — {copied}/{len(all_pbfs)} ranges")
 
     # Also copy non-font files (like OFL.txt license)
     for item in os.listdir(fonts_src):
@@ -222,22 +224,22 @@ def copy_trimmed_fonts(output_dir, fonts_src):
 
     skipped_faces = set(available_faces) - needed_faces
     saved_mb = (total_original - total_copied) / (1024 * 1024)
-    print(
-        f"  Fonts: {total_copied / (1024 * 1024):.1f} MB "
+    console.info(
+        f"Fonts: {total_copied / (1024 * 1024):.1f} MB "
         f"(trimmed {saved_mb:.1f} MB, "
         f"{len(needed_faces)}/{len(available_faces)} faces, "
         f"{len(needed_ranges)}/256 ranges)"
     )
     if skipped_faces:
-        print(f"  Skipped faces: {', '.join(sorted(skipped_faces))}")
+        console.info(f"Skipped faces: {', '.join(sorted(skipped_faces))}")
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <output_dir> [fonts_src]")
-        print("  Dry-run: shows which fonts/ranges would be kept")
+        console.step(f"Usage: {sys.argv[0]} <output_dir> [fonts_src]")
+        console.info("Dry-run: shows which fonts/ranges would be kept")
         sys.exit(1)
 
     output_dir = sys.argv[1]
@@ -249,9 +251,9 @@ if __name__ == "__main__":
         )
     )
 
-    print(f"Scanning: {output_dir}")
-    print(f"Fonts source: {fonts_src}")
-    print()
+    console.step(f"Scanning: {output_dir}")
+    console.step(f"Fonts source: {fonts_src}")
+    console.blank()
 
     # Collect text
     all_chars = set()
@@ -263,20 +265,20 @@ if __name__ == "__main__":
     for name in ["trails.geojson", "pois.geojson"]:
         all_chars.update(collect_text_from_geojson(os.path.join(output_dir, name)))
 
-    print(f"\nUnique characters: {len(all_chars)}")
+    console.step(f"\nUnique characters: {len(all_chars)}")
 
     needed_ranges = compute_needed_ranges(all_chars)
-    print(f"PBF ranges needed: {len(needed_ranges)}/256")
+    console.step(f"PBF ranges needed: {len(needed_ranges)}/256")
 
     available_faces = [
         d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
     ]
     needed_faces = determine_needed_faces(all_chars, available_faces)
-    print(f"Font faces needed: {len(needed_faces)}/{len(available_faces)}")
-    print(f"  Included: {', '.join(sorted(needed_faces))}")
+    console.step(f"Font faces needed: {len(needed_faces)}/{len(available_faces)}")
+    console.info(f"Included: {', '.join(sorted(needed_faces))}")
     skipped = set(available_faces) - needed_faces
     if skipped:
-        print(f"  Skipped: {', '.join(sorted(skipped))}")
+        console.info(f"Skipped: {', '.join(sorted(skipped))}")
 
     # Estimate size savings
     range_filenames = {f"{s}-{e}.pbf" for s, e in needed_ranges}
@@ -292,9 +294,9 @@ if __name__ == "__main__":
             if face in needed_faces and pbf in range_filenames:
                 total_kept += size
 
-    print(f"\nOriginal: {total_original / (1024 * 1024):.1f} MB")
-    print(f"Trimmed:  {total_kept / (1024 * 1024):.1f} MB")
-    print(
+    console.step(f"\nOriginal: {total_original / (1024 * 1024):.1f} MB")
+    console.step(f"Trimmed:  {total_kept / (1024 * 1024):.1f} MB")
+    console.step(
         f"Savings:  {(total_original - total_kept) / (1024 * 1024):.1f} MB "
         f"({100 * (1 - total_kept / total_original):.0f}%)"
     )

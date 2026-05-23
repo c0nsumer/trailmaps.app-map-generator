@@ -22,6 +22,7 @@ import os
 import re
 import sys
 
+import console
 import yaml
 
 # ----------------------------------------------------------------------
@@ -1640,7 +1641,7 @@ def main():
     for path in args:
         errors, warnings = validate_config_file(path)
         status = "FAIL" if errors else "OK"
-        print(f"{status}: {path}")
+        console.step(f"{status}: {path}")
         for line in errors:
             print(line)
         for line in warnings:

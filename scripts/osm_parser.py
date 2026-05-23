@@ -14,6 +14,8 @@ Usage as standalone:
 
 import xml.etree.ElementTree as ET
 
+import console
+
 
 def parse_osm_file(osm_path):
     """Parse a .osm XML file into nodes, ways, and relations.
@@ -118,7 +120,7 @@ def extract_source_relations(parsed, relation_ids):
     for rel_id in relation_ids:
         rel = relations.get(rel_id)
         if not rel:
-            print(f"  warn: Relation {rel_id} not found in .osm file")
+            console.warn(f"Relation {rel_id} not found in .osm file")
             continue
         # A super-relation has at least one type=relation member that
         # also exists in the parsed set. (Members pointing at relations
@@ -275,35 +277,35 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <file.osm> <relation_id> [<relation_id> ...]")
-        print("  Dry-run: shows what would be extracted from the .osm file")
-        print("  Each <relation_id> may be a leaf route relation OR a super-")
-        print("  relation (auto-expanded into its child routes one level deep).")
+        console.step(f"Usage: {sys.argv[0]} <file.osm> <relation_id> [<relation_id> ...]")
+        console.info("Dry-run: shows what would be extracted from the .osm file")
+        console.info("Each <relation_id> may be a leaf route relation OR a super-")
+        console.info("relation (auto-expanded into its child routes one level deep).")
         sys.exit(1)
 
     osm_path = sys.argv[1]
     relation_ids = [int(x) for x in sys.argv[2:]]
 
-    print(f"Parsing: {osm_path}")
+    console.step(f"Parsing: {osm_path}")
     parsed = parse_osm_file(osm_path)
     nodes, ways, relations = parsed
-    print(f"  Nodes: {len(nodes)}")
-    print(f"  Ways: {len(ways)}")
-    print(f"  Relations: {len(relations)}")
+    console.info(f"Nodes: {len(nodes)}")
+    console.info(f"Ways: {len(ways)}")
+    console.info(f"Relations: {len(relations)}")
 
-    print(f"\nExtracting relations from {relation_ids}:")
+    console.step(f"\nExtracting relations from {relation_ids}:")
     rels, expansions = extract_source_relations(parsed, relation_ids)
     if expansions:
         for parent_id, child_ids in sorted(expansions.items()):
-            print(f"  super-relation {parent_id} → {len(child_ids)} child route(s)")
+            console.info(f"super-relation {parent_id} → {len(child_ids)} child route(s)")
     if not rels:
-        print(f"  ERROR: No relations resolved from {relation_ids} in {osm_path}")
+        console.error(f"No relations resolved from {relation_ids} in {osm_path}")
         sys.exit(1)
     for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
-        print(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
+        console.info(f"{info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
 
-    print(f"\nExtracting ways for {len(rels)} relations:")
+    console.step(f"\nExtracting ways for {len(rels)} relations:")
     all_ways = extract_ways(parsed, list(rels.keys()))
     for rel_id, info in sorted(rels.items(), key=lambda x: x[1]["name"]):
         way_count = len(all_ways.get(rel_id, {}))
-        print(f"  {info['name']}: {way_count} ways")
+        console.info(f"{info['name']}: {way_count} ways")

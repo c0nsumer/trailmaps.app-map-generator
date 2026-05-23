@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import console
 import requests
 
 # Single canonical Overpass endpoint. The bare `overpass-api.de` host
@@ -153,10 +154,10 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             try:
                 _check_snapshot_freshness(cached, "cache")
             except StaleSnapshotError as e:
-                print(f"  Discarding stale cache ({date_str}): {e}")
+                console.info(f"Discarding stale cache ({date_str}): {e}")
                 os.remove(cp)
             else:
-                print(f"  Using cached response ({date_str}, {age_str}): {cp}")
+                console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
                 return cached
     else:
         cp = None
@@ -166,7 +167,9 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
     empty_attempts = 0
     for attempt in range(MAX_RETRIES):
         try:
-            print(f"  Querying {server}{label_suffix}... (attempt {attempt + 1}/{MAX_RETRIES})")
+            console.info(
+                f"Querying {server}{label_suffix}... (attempt {attempt + 1}/{MAX_RETRIES})"
+            )
             resp = requests.post(
                 OVERPASS_API,
                 data={"data": query_str},
@@ -195,16 +198,13 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                 # and let the caller decide what to do.
                 empty_attempts += 1
                 if empty_attempts > EMPTY_RETRY_LIMIT:
-                    print(f"  warn: {server} returned 0 elements {empty_attempts} times in a row.")
-                    print(
-                        "           This usually means the query is "
+                    console.warn(f"{server} returned 0 elements {empty_attempts} times in a row.")
+                    console.info(
+                        "This usually means the query is "
                         "correct but no data exists — check your "
                         "relation IDs for typos."
                     )
-                    print(
-                        "           Continuing with empty data; "
-                        "downstream may produce an empty map."
-                    )
+                    console.info("Continuing with empty data; downstream may produce an empty map.")
                     _check_snapshot_freshness(data, server)
                     if cp:
                         with open(cp, "w") as f:
@@ -217,7 +217,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
 
             _check_snapshot_freshness(data, server)
 
-            print(f"  Response from {server} ({len(data.get('elements', []))} elements)")
+            console.info(f"Response from {server} ({len(data.get('elements', []))} elements)")
 
             if cp:
                 with open(cp, "w") as f:
@@ -226,20 +226,20 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             return data
         except (EmptyResponseError, StaleSnapshotError, PartialResponseError) as e:
             last_error = e
-            print(f"    {server}: {e}")
+            console.info(f"  {server}: {e}")
         except (requests.RequestException, ValueError) as e:
             last_error = e
-            print(f"    {server}: {type(e).__name__}: {e}")
+            console.info(f"  {server}: {type(e).__name__}: {e}")
 
         if attempt < MAX_RETRIES - 1:
             delay = RETRY_BACKOFF[attempt]
-            print(f"  Retrying in {delay}s...")
+            console.info(f"Retrying in {delay}s...")
             time.sleep(delay)
 
-    print(f"\n  ERROR: {server} failed after {MAX_RETRIES} attempts.")
+    console.step(f"\n  ERROR: {server} failed after {MAX_RETRIES} attempts.")
     if last_error is not None:
-        print(f"    last error: {type(last_error).__name__}: {last_error}")
-    print("\n  The server may be overloaded. Try again in a few minutes.")
-    print("  Tip: Re-run with --trails instead of --force to reuse any")
-    print("  cached responses from earlier successful queries.\n")
+        console.info(f"  last error: {type(last_error).__name__}: {last_error}")
+    console.step("\n  The server may be overloaded. Try again in a few minutes.")
+    console.info("Tip: Re-run with --trails instead of --force to reuse any")
+    console.info("cached responses from earlier successful queries.\n")
     sys.exit(1)

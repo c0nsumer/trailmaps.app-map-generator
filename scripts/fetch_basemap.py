@@ -12,6 +12,7 @@ import subprocess
 import sys
 from datetime import date, timedelta
 
+import console
 import requests
 import yaml
 
@@ -32,7 +33,7 @@ def find_latest_protomaps_build():
     HEAD requests until an available build is found.
     """
     tomorrow = date.today() + timedelta(days=1)
-    print("  Finding latest Protomaps build...")
+    console.info("Finding latest Protomaps build...")
     for days_back in range(MAX_SEARCH_DAYS):
         check_date = tomorrow - timedelta(days=days_back)
         filename = check_date.strftime("%Y%m%d") + ".pmtiles"
@@ -40,15 +41,15 @@ def find_latest_protomaps_build():
         try:
             resp = requests.head(url, timeout=10, allow_redirects=True)
             if resp.status_code == 200:
-                print(
-                    f"  Found build: {filename}"
+                console.info(
+                    f"Found build: {filename}"
                     + (" (today)" if days_back == 0 else f" ({days_back}d old)")
                 )
                 return url
         except requests.RequestException:
             continue
-    print(f"  warn: No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
-    print("  Check https://maps.protomaps.com/builds/ for available builds.")
+    console.warn(f"No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
+    console.info("Check https://maps.protomaps.com/builds/ for available builds.")
     return None
 
 
@@ -92,19 +93,21 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     if not planet:
         planet = find_latest_protomaps_build()
         if not planet:
-            print("  ERROR: Could not find an available Protomaps basemap build.")
+            console.error("Could not find an available Protomaps basemap build.")
             sys.exit(1)
 
-    print(f"Extracting basemap for {config['name']}...")
-    print(f"  Bbox: {padded_bbox} (padded from {bbox})")
-    print(f"  Max zoom: {maxzoom}")
-    print(f"  Source: {planet}")
+    console.step(f"Extracting basemap for {config['name']}...")
+    console.info(f"Bbox: {padded_bbox} (padded from {bbox})")
+    console.info(f"Max zoom: {maxzoom}")
+    console.info(f"Source: {planet}")
 
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
-        print("ERROR: pmtiles CLI not found.")
-        print("Install it with: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
-        print("Or download from: https://github.com/protomaps/go-pmtiles/releases")
+        console.step("ERROR: pmtiles CLI not found.")
+        console.step(
+            "Install it with: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest"
+        )
+        console.step("Or download from: https://github.com/protomaps/go-pmtiles/releases")
         sys.exit(1)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -120,34 +123,34 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
         f"--maxzoom={maxzoom}",
     ]
 
-    print(f"  Running: {' '.join(cmd)}")
+    console.info(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
-        print("  ERROR: pmtiles extract failed:")
-        print(f"  stdout: {result.stdout}")
-        print(f"  stderr: {result.stderr}")
+        console.error("pmtiles extract failed:")
+        console.info(f"stdout: {result.stdout}")
+        console.info(f"stderr: {result.stderr}")
         sys.exit(1)
 
     if result.stdout:
-        print(f"  {result.stdout.strip()}")
+        console.info(f"{result.stdout.strip()}")
     if result.stderr:
         # pmtiles outputs progress to stderr
         for line in result.stderr.strip().split("\n"):
             if line.strip():
-                print(f"  {line.strip()}")
+                console.info(f"{line.strip()}")
 
     if os.path.exists(output_path):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        print(f"  Wrote {output_path} ({size_mb:.1f} MB)")
+        console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
     else:
-        print(f"  ERROR: Output file not created: {output_path}")
+        console.error(f"Output file not created: {output_path}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles] [planet_url]")
+        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.pmtiles] [planet_url]")
         sys.exit(1)
 
     config_path = sys.argv[1]

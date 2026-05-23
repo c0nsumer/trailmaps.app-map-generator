@@ -51,6 +51,8 @@ import random
 import re
 from collections import defaultdict
 
+import console
+
 
 def _natural_key(s):
     """Numeric-aware natural-sort matching app.js ``ROUTE_ID_COMPARE``.
@@ -432,8 +434,8 @@ def compute_route_orders(
             stats[mode_key] = (flips, seps)
 
         if verbose:
-            print(
-                f"  routeOrder[{'/'.join(sorted(mode_keys))}]: "
+            console.info(
+                f"routeOrder[{'/'.join(sorted(mode_keys))}]: "
                 f"{flips} flip(s), {seps} separation(s) "
                 f"over {len(adjacencies)} adjacencies"
             )

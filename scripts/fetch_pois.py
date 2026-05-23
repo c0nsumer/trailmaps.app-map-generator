@@ -12,6 +12,8 @@ import json
 import os
 import sys
 
+import console
+
 # Shared narrow-resolution loader (handles ``osm_file:`` only — the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
@@ -111,8 +113,8 @@ def _dedup_osm_pois(features):
         else:
             out.append(f)
     if collapsed:
-        print(
-            f"  Collapsed {collapsed} duplicate OSM POI(s) within "
+        console.info(
+            f"Collapsed {collapsed} duplicate OSM POI(s) within "
             f"{DEDUP_M:.0f}m (typical pattern: amenity tagged on both "
             f"a building way and an entrance node)."
         )
@@ -334,10 +336,10 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     osm_file = config.get("osm_file")
 
     if osm_file:
-        print(f"Loading POIs for {config['name']} from {osm_file}...")
+        console.step(f"Loading POIs for {config['name']} from {osm_file}...")
     else:
-        print(f"Fetching POIs for {config['name']}...")
-    print(f"  Bbox: {bbox}")
+        console.step(f"Fetching POIs for {config['name']}...")
+    console.info(f"Bbox: {bbox}")
 
     if osm_file:
         from osm_parser import extract_guideposts, parse_osm_file
@@ -376,35 +378,37 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("amenity") == "drinking_water"
     )
-    print(f"  Found {marker_count} trail markers (guideposts + emergency access points) in OSM")
-    print(f"  Found {feature_count} features (tourism=attraction) in OSM")
-    print(f"  Found {toilet_count} toilets (amenity=toilets) in OSM")
-    print(f"  Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
-    print(f"  Config defines {len(config_parking)} parking areas")
-    print(f"  Config defines {len(config_trailheads)} trailheads")
-    print(f"  Config defines {len(config_hubs)} trail hubs")
+    console.info(
+        f"Found {marker_count} trail markers (guideposts + emergency access points) in OSM"
+    )
+    console.info(f"Found {feature_count} features (tourism=attraction) in OSM")
+    console.info(f"Found {toilet_count} toilets (amenity=toilets) in OSM")
+    console.info(f"Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
+    console.info(f"Config defines {len(config_parking)} parking areas")
+    console.info(f"Config defines {len(config_trailheads)} trailheads")
+    console.info(f"Config defines {len(config_hubs)} trail hubs")
     if config_event_pois:
-        print(f"  event_mode defines {len(config_event_pois)} event POI(s)")
+        console.info(f"event_mode defines {len(config_event_pois)} event POI(s)")
 
     # Warn when show_* is enabled but no data exists for that POI type
     if config.get("show_markers", True) and marker_count == 0:
-        print(
-            "  note: show_markers is enabled but no guideposts or emergency access points found in data"
+        console.note(
+            "show_markers is enabled but no guideposts or emergency access points found in data"
         )
     if config.get("show_features", True) and feature_count == 0:
-        print("  note: show_features is enabled but no tourism=attraction nodes found in data")
+        console.note("show_features is enabled but no tourism=attraction nodes found in data")
     if config.get("show_toilets", True) and toilet_count == 0:
-        print("  note: show_toilets is enabled but no amenity=toilets nodes or ways found in data")
+        console.note("show_toilets is enabled but no amenity=toilets nodes or ways found in data")
     if config.get("show_drinking_water", True) and water_count == 0:
-        print(
-            "  note: show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data"
+        console.note(
+            "show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data"
         )
     if config.get("show_parking", True) and len(config_parking) == 0:
-        print("  note: show_parking is enabled but no parking areas defined in config")
+        console.note("show_parking is enabled but no parking areas defined in config")
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
-        print("  note: show_trailheads is enabled but no trailheads defined in config")
+        console.note("show_trailheads is enabled but no trailheads defined in config")
     if config.get("show_hubs", True) and len(config_hubs) == 0:
-        print("  note: show_hubs is enabled but no hubs defined in config")
+        console.note("show_hubs is enabled but no hubs defined in config")
 
     geojson = build_pois_geojson(
         osm_data,
@@ -414,20 +418,20 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         config_event_pois=config_event_pois,
         config=config,
     )
-    print(f"  Generated {len(geojson['features'])} POI features")
+    console.info(f"Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(geojson, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(output_path) / 1024
-    print(f"  Wrote {output_path} ({size_kb:.1f} KB)")
+    console.info(f"Wrote {output_path} ({size_kb:.1f} KB)")
     return geojson
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <config.yaml> [output.geojson] [cache_dir]")
+        console.step(f"Usage: {sys.argv[0]} <config.yaml> [output.geojson] [cache_dir]")
         sys.exit(1)
 
     config_path = sys.argv[1]

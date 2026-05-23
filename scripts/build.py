@@ -28,6 +28,7 @@ import yaml
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS_DIR)
 
+import console
 from fetch_basemap import fetch_basemap
 from fetch_pois import fetch_pois
 from fetch_terrain import fetch_terrain
@@ -100,14 +101,14 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(source_path, encoding="utf-8") as f:
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        print(f"  warn: Could not read SVG ({e}) — copying verbatim")
+        console.warn(f"Could not read SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
     svg_open = re.search(r"<svg\b[^>]*>", text)
     if not svg_open:
         shutil.copy2(source_path, output_path)
-        print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         return (None, None)
 
     tag = svg_open.group(0)
@@ -149,7 +150,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
 
     if has_definite or not viewbox_m:
         shutil.copy2(source_path, output_path)
-        print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         if has_definite:
             return (_parse_pixel(width_m.group(1)), _parse_pixel(height_m.group(1)))
         return (None, None)
@@ -157,14 +158,14 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
     parts = viewbox_m.group(1).split()
     if len(parts) != 4:
         shutil.copy2(source_path, output_path)
-        print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         return (None, None)
     try:
         vb_w = float(parts[2])
         vb_h = float(parts[3])
     except ValueError:
         shutil.copy2(source_path, output_path)
-        print(f"  Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         return (None, None)
 
     # Format pixel values without a trailing ".0" when integer-valued.
@@ -189,12 +190,12 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(new_text)
     except OSError as e:
-        print(f"  warn: Could not write SVG ({e}) — copying verbatim")
+        console.warn(f"Could not write SVG ({e}) — copying verbatim")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
-    print(
-        f"  Wrote logo.svg ({new_w}×{new_h} from viewBox, "
+    console.info(
+        f"Wrote logo.svg ({new_w}×{new_h} from viewBox, "
         f"{os.path.getsize(output_path)} bytes, vector)"
     )
     return (int(round(vb_w)), int(round(vb_h)))
@@ -230,7 +231,7 @@ def process_logo(source_path, output_path):
     try:
         from PIL import Image
     except ImportError:
-        print(f"  warn: Pillow not installed — copying logo verbatim to {output_path}")
+        console.warn(f"Pillow not installed — copying logo verbatim to {output_path}")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
@@ -270,19 +271,19 @@ def process_logo(source_path, output_path):
 
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size
-        print(f"  Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
+        console.info(f"Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
         return (out_w, out_h)
     except Exception as e:
-        print(f"  warn: Failed to process logo ({e}) — copying source verbatim")
+        console.warn(f"Failed to process logo ({e}) — copying source verbatim")
         try:
             shutil.copy2(source_path, output_path)
         except Exception as e2:
-            print(f"  ERROR: Could not write logo: {e2}")
+            console.error(f"Could not write logo: {e2}")
         return (None, None)
 
 
 def _minify_assets(output_dir):
-    """Minify app.js + style.css in-place. Returns a list of status lines.
+    """Minify app.js + style.css in-place, logging progress via console.
 
     Used by main() when --minify is set. Conservative pure-python
     minifiers (rjsmin / rcssmin): they preserve string literals
@@ -300,7 +301,6 @@ def _minify_assets(output_dir):
     stays in place, so the deploy still ships a working (just larger)
     artifact.
     """
-    results = []
     targets = [
         ("app.js", "rjsmin"),
         ("style.css", "rcssmin"),
@@ -308,7 +308,7 @@ def _minify_assets(output_dir):
     for fname, lib in targets:
         path = os.path.join(output_dir, fname)
         if not os.path.exists(path):
-            results.append(f"  {fname}: not present, skipping")
+            console.info(f"{fname}: not present, skipping")
             continue
         try:
             before = os.path.getsize(path)
@@ -326,15 +326,14 @@ def _minify_assets(output_dir):
                 f.write(minified)
             after = os.path.getsize(path)
             pct = (1 - after / before) * 100 if before else 0
-            results.append(f"  {fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
+            console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
-            results.append(
-                f"  warn: {lib} not installed — {fname} left unminified. "
+            console.warn(
+                f"{lib} not installed — {fname} left unminified. "
                 f"Run: .venv/bin/pip install {lib}"
             )
         except (OSError, UnicodeDecodeError) as e:
-            results.append(f"  warn: failed to minify {fname} ({e}) — left unminified")
-    return results
+            console.warn(f"failed to minify {fname} ({e}) — left unminified")
 
 
 def _relative_luminance(rgb):
@@ -410,12 +409,12 @@ def derive_accent(image_path):
     try:
         from PIL import Image
     except ImportError:
-        print("  warn: Pillow not installed — cannot derive accent_color")
+        console.warn("Pillow not installed — cannot derive accent_color")
         return None
     try:
         img = Image.open(image_path).convert("RGBA")
     except Exception as exc:
-        print(f"  warn: could not open {image_path} for accent derivation: {exc}")
+        console.warn(f"could not open {image_path} for accent derivation: {exc}")
         return None
     img.thumbnail((100, 100))
     # Iterate raw RGBA bytes — Image.getdata() is deprecated in
@@ -492,8 +491,8 @@ def resolve_accent_color(config, project_root, cache_dir):
             continue
         candidates.append(abs_path)
     if not candidates:
-        print(
-            "  warn: accent_color: 'auto' requires a raster logo or icon "
+        console.warn(
+            "accent_color: 'auto' requires a raster logo or icon "
             "(PNG/WebP/JPG); none found. Falling back to framework default."
         )
         return None
@@ -519,8 +518,8 @@ def resolve_accent_color(config, project_root, cache_dir):
 
     rgb = derive_accent(source)
     if rgb is None:
-        print(
-            f"  warn: accent_color: 'auto' could not pick a colour from "
+        console.warn(
+            f"accent_color: 'auto' could not pick a colour from "
             f"{os.path.basename(source)} (logo may be greyscale or fully "
             "neutral). Falling back to framework default."
         )
@@ -534,7 +533,7 @@ def resolve_accent_color(config, project_root, cache_dir):
             json.dump({"hex": result, "source": os.path.basename(source)}, f)
     except OSError:
         pass
-    print(f"  accent_color: derived {result} from {os.path.basename(source)}")
+    console.info(f"accent_color: derived {result} from {os.path.basename(source)}")
     _warn_low_contrast_accent(result)
     return result
 
@@ -558,8 +557,8 @@ def _warn_low_contrast_accent(hex_color):
     dark_ratio = _contrast_ratio(rgb, dark_bg)
     THRESHOLD = 4.5  # WCAG AA for normal text
     if light_ratio < THRESHOLD or dark_ratio < THRESHOLD:
-        print(
-            f"  warn: accent_color {hex_color} contrast vs light bg = "
+        console.warn(
+            f"accent_color {hex_color} contrast vs light bg = "
             f"{light_ratio:.2f}, vs dark bg = {dark_ratio:.2f} (target "
             f">= {THRESHOLD:.1f}). Active pills / focus rings / links may "
             "be hard to read on one or both schemes."
@@ -582,7 +581,7 @@ def download_vendor_libs(output_dir, cache_dir):
         dst = os.path.join(vendor_dst, filename)
 
         if not os.path.exists(cached):
-            print(f"  Downloading {filename}...")
+            console.info(f"Downloading {filename}...")
             resp = requests.get(url, timeout=30)
             resp.raise_for_status()
             with open(cached, "wb") as f:
@@ -592,8 +591,8 @@ def download_vendor_libs(output_dir, cache_dir):
         shutil.copy2(cached, dst)
 
     if downloaded:
-        print(f"  Downloaded {downloaded} vendor libraries")
-    print(f"  Bundled {len(VENDOR_LIBS)} vendor libraries")
+        console.info(f"Downloaded {downloaded} vendor libraries")
+    console.info(f"Bundled {len(VENDOR_LIBS)} vendor libraries")
 
 
 def generate_service_worker(config, output_dir):
@@ -606,7 +605,7 @@ def generate_service_worker(config, output_dir):
     sw_template = os.path.join(project_root, "templates", "sw.js")
 
     if not os.path.exists(sw_template):
-        print(f"  warn: Service worker template not found: {sw_template}")
+        console.warn(f"Service worker template not found: {sw_template}")
         return
 
     with open(sw_template) as f:
@@ -699,7 +698,7 @@ def generate_service_worker(config, output_dir):
     with open(sw_path, "w") as f:
         f.write(sw_content)
 
-    print(f"  Generated service worker ({len(precache_urls)} files, cache {cache_version})")
+    console.info(f"Generated service worker ({len(precache_urls)} files, cache {cache_version})")
 
 
 def load_config(config_path):
@@ -868,7 +867,7 @@ def _save_signature(output_path, signature):
         with open(_signature_path(output_path), "w") as f:
             f.write(signature + "\n")
     except OSError as e:
-        print(f"  warn: could not write {_signature_path(output_path)}: {e}")
+        console.warn(f"could not write {_signature_path(output_path)}: {e}")
 
 
 def _trails_fetch_fingerprint(config):
@@ -1193,8 +1192,8 @@ def _apply_event_mode_to_feature_oneway(config, trails_geojson):
         stripped += 1
 
     if stripped:
-        print(
-            f"  Event mode: stripped `oneway` from {stripped} non-featured "
+        console.info(
+            f"Event mode: stripped `oneway` from {stripped} non-featured "
             f"feature(s) so arrows render on the featured route(s) only."
         )
     return stripped > 0
@@ -1583,8 +1582,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         trails_geojson.setdefault("metadata", {})["routeOrders"] = route_orders
         for mode_key, order in sorted(route_orders.items()):
             flips, seps = route_order_stats[mode_key]
-            print(
-                f"  Route order [{mode_key}]: "
+            console.info(
+                f"Route order [{mode_key}]: "
                 f"{flips} sign flip(s), {seps} separation(s) "
                 f"(routes: {len(order)})"
             )
@@ -1592,9 +1591,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         modes = {k: frozenset(v) for k, v in _route_modes_from_orders(routes_metadata).items()}
         added = apply_subway_style_modes(trails_geojson, route_orders, modes)
         if added:
-            print(
-                f"  Subway style: emitted {added} mode-tagged feature(s) "
-                f"across {len(modes)} mode(s)"
+            console.info(
+                f"Subway style: emitted {added} mode-tagged feature(s) across {len(modes)} mode(s)"
             )
             changed = True
     else:
@@ -1602,7 +1600,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
         trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
         added = apply_subway_style(trails_geojson)
         if added:
-            print(f"  Subway style: emitted {added} junction transition micro-feature(s)")
+            console.info(f"Subway style: emitted {added} junction transition micro-feature(s)")
             changed = True
 
     return changed
@@ -2253,7 +2251,7 @@ def copy_templates(config, output_dir, trails_geojson):
     for filename in ["index.html", "app.js", "style.css"]:
         src = os.path.join(templates_dir, filename)
         if not os.path.exists(src):
-            print(f"  warn: Template not found: {src}")
+            console.warn(f"Template not found: {src}")
             continue
 
         with open(src) as f:
@@ -2446,7 +2444,7 @@ def copy_templates(config, output_dir, trails_geojson):
         dst = os.path.join(output_dir, filename)
         with open(dst, "w") as f:
             f.write(content)
-        print(f"  Copied {filename}")
+        console.info(f"Copied {filename}")
 
 
 def copy_assets(config, output_dir):
@@ -2464,12 +2462,12 @@ def copy_assets(config, output_dir):
         if os.path.isfile(candidate):
             logo_src = candidate
         else:
-            print(f"  warn: Logo not found: {candidate}")
+            console.warn(f"Logo not found: {candidate}")
     elif icon_path:
         candidate = os.path.join(project_root, icon_path)
         if os.path.isfile(candidate):
             logo_src = candidate
-            print("  No logo configured — using icon as logo")
+            console.info("No logo configured — using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)
@@ -2490,13 +2488,13 @@ def copy_assets(config, output_dir):
     if icon_path and icon_path != config.get("icon", ""):
         # The fallback fired — the resolved source is the logo, not
         # an explicit icon: setting. Log it so the curator knows.
-        print("  No icon configured — using logo as icon source")
+        console.info("No icon configured — using logo as icon source")
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
         # Manifest is generated inside generate_icons
     elif icons_dir_legacy:
-        print("  DEPRECATION: 'icons_dir' is deprecated, use 'icon' instead")
+        console.warn("'icons_dir' is deprecated, use 'icon' instead")
         icons_src = os.path.join(project_root, icons_dir_legacy)
         icons_dst = os.path.join(output_dir, "icons")
         if os.path.exists(icons_src):
@@ -2516,13 +2514,13 @@ def copy_assets(config, output_dir):
                 if os.path.exists(src):
                     shutil.copy2(src, os.path.join(icons_dst, fname))
                     copied += 1
-            print(f"  Copied {copied} icon files")
+            console.info(f"Copied {copied} icon files")
             # Always generate manifest dynamically (replaces static copy)
             generate_manifest(config, output_dir)
         else:
-            print(f"  warn: Icons directory not found: {icons_src}")
+            console.warn(f"Icons directory not found: {icons_src}")
     else:
-        print("  No icon configured — skipping icon generation")
+        console.info("No icon configured — skipping icon generation")
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
@@ -2547,24 +2545,24 @@ def copy_assets(config, output_dir):
                 shutil.rmtree(sprites_dst)
             os.makedirs(sprites_dst, exist_ok=True)
             shutil.copytree(ver_src, ver_dst)
-            print(f"  Copied sprites ({sprite_version})")
+            console.info(f"Copied sprites ({sprite_version})")
             sprites_injected_dirs.append(ver_dst)
         else:
-            print(f"  warn: Sprites {sprite_version} not found at {ver_src}")
-            print("  Download from: https://github.com/protomaps/basemaps-assets")
+            console.warn(f"Sprites {sprite_version} not found at {ver_src}")
+            console.info("Download from: https://github.com/protomaps/basemaps-assets")
     elif os.path.exists(sprites_src) and os.listdir(sprites_src):
         if os.path.exists(sprites_dst):
             shutil.rmtree(sprites_dst)
         shutil.copytree(sprites_src, sprites_dst)
-        print("  Copied sprites (all versions)")
+        console.info("Copied sprites (all versions)")
         # Inject into every version directory found.
         for entry in sorted(os.listdir(sprites_dst)):
             sub = os.path.join(sprites_dst, entry)
             if os.path.isdir(sub):
                 sprites_injected_dirs.append(sub)
     else:
-        print(f"  warn: Sprites not found at {sprites_src}")
-        print("  Download from: https://github.com/protomaps/basemaps-assets")
+        console.warn(f"Sprites not found at {sprites_src}")
+        console.info("Download from: https://github.com/protomaps/basemaps-assets")
 
     # Inject the SDF clip-continuation arrowhead into each copied atlas so
     # the renderer can tint it per-route via icon-color. Idempotent — a no-op
@@ -2575,8 +2573,8 @@ def copy_assets(config, output_dir):
         for sprite_dir in sprites_injected_dirs:
             inject_clip_arrow(sprite_dir, sdf_1x, sdf_2x)
     else:
-        print(
-            "  warn: clip-arrow SDF assets missing — continuation "
+        console.warn(
+            "clip-arrow SDF assets missing — continuation "
             "arrowheads will not render. Run "
             "`python assets/extras/generate_clip_arrow.py` to regenerate."
         )
@@ -2584,9 +2582,9 @@ def copy_assets(config, output_dir):
 
 def print_summary(output_dir):
     """Print a summary of the build output."""
-    print("\n" + "=" * 60)
-    print("BUILD SUMMARY")
-    print("=" * 60)
+    console.step("\n" + "=" * 60)
+    console.step("BUILD SUMMARY")
+    console.step("=" * 60)
     total = 0
     fonts_size = 0
     fonts_count = 0
@@ -2603,19 +2601,19 @@ def print_summary(output_dir):
                 continue
             rel = os.path.relpath(path, output_dir)
             if size > 1024 * 1024:
-                print(f"  {rel:40s} {size / (1024 * 1024):8.1f} MB")
+                console.info(f"{rel:40s} {size / (1024 * 1024):8.1f} MB")
             else:
-                print(f"  {rel:40s} {size / 1024:8.1f} KB")
+                console.info(f"{rel:40s} {size / 1024:8.1f} KB")
 
     if fonts_count > 0:
         label = f"fonts/ ({fonts_count} PBF files)"
         if fonts_size > 1024 * 1024:
-            print(f"  {label:40s} {fonts_size / (1024 * 1024):8.1f} MB")
+            console.info(f"{label:40s} {fonts_size / (1024 * 1024):8.1f} MB")
         else:
-            print(f"  {label:40s} {fonts_size / 1024:8.1f} KB")
+            console.info(f"{label:40s} {fonts_size / 1024:8.1f} KB")
 
-    print(f"  {'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
-    print("=" * 60)
+    console.info(f"{'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
+    console.step("=" * 60)
 
 
 def _print_dry_run_summary(config, args, output_dir, cache_dir):
@@ -2626,11 +2624,11 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     config errors and previewing the build's external footprint
     without committing to a long run.
     """
-    print(f"Dry run for: {config['title']}")
-    print(f"  slug:        {config['slug']}")
-    print(f"  output_dir:  {output_dir}")
-    print(f"  cache_dir:   {cache_dir}")
-    print()
+    console.step(f"Dry run for: {config['title']}")
+    console.info(f"slug:        {config['slug']}")
+    console.info(f"output_dir:  {output_dir}")
+    console.info(f"cache_dir:   {cache_dir}")
+    console.blank()
 
     # load_config resolves logo/icon/osm_file/custom_routes[].geometry
     # to absolute paths. For display we want the bare filename (matches
@@ -2644,12 +2642,12 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         )
 
     # ---- OSM data source ----
-    print("OSM data source:")
+    console.step("OSM data source:")
     if config.get("osm_file"):
-        print(f"  Local OSM file: {_display_path(config['osm_file'])}")
+        console.info(f"Local OSM file: {_display_path(config['osm_file'])}")
     else:
-        print("  Overpass API")
-        print(f"    relations: {config.get('relations') or []}")
+        console.info("Overpass API")
+        console.info(f"  relations: {config.get('relations') or []}")
         for key in (
             "clipped_relations",
             "winter_relations",
@@ -2658,20 +2656,20 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         ):
             ids = config.get(key) or []
             if ids:
-                print(f"    {key}: {ids}")
+                console.info(f"  {key}: {ids}")
         custom = config.get("custom_routes") or []
         if custom:
-            print(f"    custom_routes ({len(custom)}):")
+            console.info(f"  custom_routes ({len(custom)}):")
             for entry in custom:
                 geom = entry.get("geometry") or ""
                 if not geom:
-                    print(f"      - id={entry.get('id')}: NO GEOMETRY PATH")
+                    console.info(f"    - id={entry.get('id')}: NO GEOMETRY PATH")
                     continue
-                print(f"      - id={entry.get('id')} geometry={_display_path(geom)}")
-    print()
+                console.info(f"    - id={entry.get('id')} geometry={_display_path(geom)}")
+    console.blank()
 
     # ---- POI fetching ----
-    print("POI fetching (gated by show_* keys):")
+    console.step("POI fetching (gated by show_* keys):")
     for key, default in (
         ("show_markers", True),
         ("show_features", True),
@@ -2682,70 +2680,70 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         ("show_drinking_water", True),
     ):
         on = bool(config.get(key, default))
-        print(f"  {key}: {'YES' if on else 'no'}")
+        console.info(f"{key}: {'YES' if on else 'no'}")
     if config.get("show_trailheads", True):
         th = config.get("trailheads") or []
         if th:
-            print(f"    trailheads from config: {len(th)} point(s)")
+            console.info(f"  trailheads from config: {len(th)} point(s)")
     if config.get("show_parking", True):
         pk = config.get("parking") or []
         if pk:
-            print(f"    parking from config: {len(pk)} point(s)")
+            console.info(f"  parking from config: {len(pk)} point(s)")
     if config.get("show_hubs", True):
         hb = config.get("hubs") or []
         if hb:
-            print(f"    hubs from config: {len(hb)} point(s)")
-    print()
+            console.info(f"  hubs from config: {len(hb)} point(s)")
+    console.blank()
 
     # ---- Tile generation ----
-    print("Tile generation:")
+    console.step("Tile generation:")
     if args.skip_basemap:
-        print("  basemap: SKIPPED (--skip-basemap)")
+        console.info("basemap: SKIPPED (--skip-basemap)")
     else:
         bm_zoom = config.get("basemap_maxzoom", 15)
-        print(f"  basemap: pan_bbox extracted to maxzoom {bm_zoom}")
+        console.info(f"basemap: pan_bbox extracted to maxzoom {bm_zoom}")
     if args.skip_terrain or not config.get("show_terrain", True):
         reason = "--skip-terrain" if args.skip_terrain else "show_terrain: false"
-        print(f"  terrain: SKIPPED ({reason})")
+        console.info(f"terrain: SKIPPED ({reason})")
     else:
         tr_zoom = config.get("terrain_maxzoom", 12)
-        print(f"  terrain: pan_bbox extracted to maxzoom {tr_zoom}")
-    print()
+        console.info(f"terrain: pan_bbox extracted to maxzoom {tr_zoom}")
+    console.blank()
 
     # ---- Route stats ----
     want_dist = bool(config.get("show_route_distance"))
     want_elev = bool(config.get("show_route_elevation"))
     if want_dist or want_elev:
-        print("Per-route stats:")
+        console.step("Per-route stats:")
         if want_dist:
-            print("  distance: computed (haversine, no API)")
+            console.info("distance: computed (haversine, no API)")
         if want_elev:
-            print(
-                "  elevation gain + loss: USGS 3DEP getSamples "
+            console.info(
+                "elevation gain + loss: USGS 3DEP getSamples "
                 "(network calls, ~1 per route at 5m sampling)"
             )
-        print()
+        console.blank()
 
     # ---- Branding assets ----
-    print("Branding assets:")
+    console.step("Branding assets:")
     for key in ("logo", "icon"):
         path = config.get(key) or ""
         if not path:
-            print(f"  {key}: (none)")
+            console.info(f"{key}: (none)")
         else:
-            print(f"  {key}: {_display_path(path)}")
-    print()
+            console.info(f"{key}: {_display_path(path)}")
+    console.blank()
 
     # ---- PWA / sharing ----
-    print("Runtime features:")
-    print(f"  pwa: {bool(config.get('pwa', True))}")
-    print(f"  pwa_install_prompt: {bool(config.get('pwa_install_prompt', True))}")
-    print(f"  share_button: {bool(config.get('share_button', True))}")
-    print(f"  url_hash: {bool(config.get('url_hash', False))}")
-    print(f"  distance_units: {config.get('distance_units', 'mi')}")
-    print()
+    console.step("Runtime features:")
+    console.info(f"pwa: {bool(config.get('pwa', True))}")
+    console.info(f"pwa_install_prompt: {bool(config.get('pwa_install_prompt', True))}")
+    console.info(f"share_button: {bool(config.get('share_button', True))}")
+    console.info(f"url_hash: {bool(config.get('url_hash', False))}")
+    console.info(f"distance_units: {config.get('distance_units', 'mi')}")
+    console.blank()
 
-    print("Dry run complete — no files written, no network calls made.")
+    console.step("Dry run complete — no files written, no network calls made.")
 
 
 def main(argv=None):
@@ -2806,7 +2804,20 @@ def main(argv=None):
         "Use for local-iteration debug; for deploy, "
         "leave the default on.",
     )
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress progress output; show only notes, warnings, and errors.",
+    )
+    verbosity.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show extra per-item detail.",
+    )
     args = parser.parse_args(argv)
+
+    console.set_verbosity(quiet=args.quiet, verbose=args.verbose)
 
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -2818,7 +2829,7 @@ def main(argv=None):
     for line in warnings:
         print(line)
     if errors:
-        print(f"\nConfig validation failed for {args.config}:")
+        console.step(f"\nConfig validation failed for {args.config}:")
         for line in errors:
             print(line)
         sys.exit(1)
@@ -2854,11 +2865,11 @@ def main(argv=None):
     # --force clears the Overpass response cache so data is re-fetched from OSM
     if args.force and os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
-        print(f"Cleared Overpass cache: {cache_dir}")
+        console.step(f"Cleared Overpass cache: {cache_dir}")
 
-    print(f"Building map: {config['title']}")
-    print(f"Output: {output_dir}")
-    print()
+    console.step(f"Building map: {config['title']}")
+    console.step(f"Output: {output_dir}")
+    console.blank()
 
     # Step 1: Fetch trails
     trails_path = os.path.join(output_dir, "trails.geojson")
@@ -2880,7 +2891,7 @@ def main(argv=None):
             auto_refetch_reason = reason
     if args.force or args.trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
         if auto_refetch_reason:
-            print(f"Trails: refetching ({auto_refetch_reason})")
+            console.step(f"Trails: refetching ({auto_refetch_reason})")
         trails_geojson = fetch_trails(config, trails_path, cache_dir)
         # Snapshot the canonical base BEFORE enrichment expands it in place,
         # so the next build re-expands from clean geometry instead of
@@ -2894,7 +2905,7 @@ def main(argv=None):
             + (_trails_content_hash(trails_src_path) or ""),
         )
     else:
-        print(f"Trails: reusing base {trails_src_path}")
+        console.step(f"Trails: reusing base {trails_src_path}")
         with open(trails_src_path) as f:
             trails_geojson = json.load(f)
         # Backfill the sidecar for a base written before content-guarding.
@@ -2948,7 +2959,7 @@ def main(argv=None):
                     continue
                 poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"  warn: could not count pois.geojson: {exc}")
+            console.warn(f"could not count pois.geojson: {exc}")
     # Curator-supplied YAML lists (gated by their show_* flags so
     # we don't credit hidden ones).
     if config.get("show_parking", True):
@@ -2986,7 +2997,7 @@ def main(argv=None):
         em_routes_count = len(em.get("routes") or [])
         em_featured_count = len(em.get("featured") or [])
         bg_summary = _event_mode_background_style(config)
-        print(
+        console.step(
             f"Event mode: featuring {em_routes_count} inline route(s) "
             f"+ {em_featured_count} reference(s); background "
             f"{bg_summary['color']} dashed {bg_summary['pattern']}."
@@ -3019,8 +3030,8 @@ def main(argv=None):
             if ow in ("yes", True, "-1", "reversible"):
                 oneway_count += 1
         if oneway_count > 0:
-            print(
-                f"  warn: Map has {oneway_count} one-way trail segment(s) "
+            console.warn(
+                f"Map has {oneway_count} one-way trail segment(s) "
                 "but direction_arrows is not in default_visible. Riders "
                 "won't see directional indicators on first visit — "
                 "consider adding 'direction_arrows' to default_visible "
@@ -3073,12 +3084,12 @@ def main(argv=None):
     if arrows_restricted:
         bits.append("event-mode arrow restriction")
     if bits:
-        print(f"  Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
+        console.info(f"Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
 
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
-        print(f"  Computed bbox from trails: {config['bbox']}")
+        console.info(f"Computed bbox from trails: {config['bbox']}")
 
     # Compute center from bbox if not specified in config
     if "center" not in config:
@@ -3087,7 +3098,7 @@ def main(argv=None):
             round((bbox[0] + bbox[2]) / 2, 4),
             round((bbox[1] + bbox[3]) / 2, 4),
         ]
-        print(f"  Computed center from bbox: {config['center']}")
+        console.info(f"Computed center from bbox: {config['center']}")
 
     # Compute pan_bbox: the looser envelope that drives maxBounds at
     # runtime and the basemap/terrain PMTiles extraction footprint. The
@@ -3100,10 +3111,10 @@ def main(argv=None):
         pan_padding = config.get("pan_padding", 0.5)
         config["pan_bbox"] = expand_bbox_for_pan(config["bbox"], pan_padding)
         if pan_padding > 0:
-            print(f"  Pan envelope (pad {pan_padding}): {config['pan_bbox']}")
+            console.info(f"Pan envelope (pad {pan_padding}): {config['pan_bbox']}")
     else:
-        print(f"  Pan envelope (explicit): {config['pan_bbox']}")
-    print()
+        console.info(f"Pan envelope (explicit): {config['pan_bbox']}")
+    console.blank()
 
     # Step 2: Fetch POIs (skip when every POI category is disabled).
     # Otherwise ALWAYS re-run fetch_pois — even on a no-flag rebuild —
@@ -3127,13 +3138,13 @@ def main(argv=None):
         and not config.get("show_trailheads", True)
         and not config.get("show_hubs", True)
     ):
-        print("POIs: Skipped (all POI layers disabled)")
+        console.step("POIs: Skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
         fetch_pois(config, pois_path, cache_dir)
-    print()
+    console.blank()
 
     # Steps 3+4: Fetch basemap + terrain in parallel.
     #
@@ -3168,7 +3179,7 @@ def main(argv=None):
         needs_regen, reason = _pmtiles_needs_regen(basemap_path, basemap_bbox, basemap_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
-                print(f"Basemap: regenerating ({reason})")
+                console.step(f"Basemap: regenerating ({reason})")
 
             def _do_basemap():
                 fetch_basemap(config, basemap_path)
@@ -3188,7 +3199,7 @@ def main(argv=None):
         needs_regen, reason = _pmtiles_needs_regen(terrain_path, terrain_bbox, terrain_maxzoom)
         if args.force or needs_regen:
             if not args.force and reason:
-                print(f"Terrain: regenerating ({reason})")
+                console.step(f"Terrain: regenerating ({reason})")
 
             def _do_terrain():
                 if fetch_terrain(config, terrain_path):
@@ -3216,8 +3227,8 @@ def main(argv=None):
             fn()
 
     for line in post_messages:
-        print(line)
-    print()
+        console.step(line)
+    console.blank()
 
     # Step 5: Copy templates and assets. Order matters: copy_assets
     # runs first because it stashes processed-logo dimensions on
@@ -3225,10 +3236,10 @@ def main(argv=None):
     # substituting the brand-img <img> width/height/fetchpriority
     # attributes. Swapping the order leaves brand_dims as None and
     # the brand-img tag emits without dimension hints (CLS regression).
-    print("Assembling output...")
+    console.step("Assembling output...")
     copy_assets(config, output_dir)
     copy_templates(config, output_dir, trails_geojson)
-    print()
+    console.blank()
 
     # Step 5.5: Minify app.js + style.css when --minify is set. Runs
     # AFTER copy_templates (which writes the files we minify) and
@@ -3237,20 +3248,18 @@ def main(argv=None):
     # bytes the rider downloads). Vendor libs (download_vendor_libs
     # below) are NOT touched — we serve whatever upstream ships.
     if args.minify:
-        print("Minifying assets...")
-        minify_results = _minify_assets(output_dir)
-        for line in minify_results:
-            print(line)
-        print()
+        console.step("Minifying assets...")
+        _minify_assets(output_dir)
+        console.blank()
 
     # Step 6: Bundle vendor libraries (CDN deps served locally for offline)
-    print("Bundling vendor libraries...")
+    console.step("Bundling vendor libraries...")
     download_vendor_libs(output_dir, cache_dir)
-    print()
+    console.blank()
 
     # Step 7: Generate service worker (MUST be last — needs complete file list)
     if config.get("pwa", True):
-        print("Generating PWA assets...")
+        console.step("Generating PWA assets...")
         generate_service_worker(config, output_dir)
 
         # Check for missing pieces that will prevent the PWA from being installable
@@ -3275,17 +3284,17 @@ def main(argv=None):
                     "the browser needs at least one icon to show an install prompt"
                 )
         if pwa_warnings:
-            print()
-            print("  PWA WARNINGS — the app will not be installable until fixed:")
+            console.blank()
+            console.info("PWA WARNINGS — the app will not be installable until fixed:")
             for w in pwa_warnings:
-                print(f"    • {w}")
-            print()
+                console.info(f"  • {w}")
+            console.blank()
     else:
-        print("PWA disabled — skipping service worker generation")
+        console.step("PWA disabled — skipping service worker generation")
 
     print_summary(output_dir)
-    print(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
-    print("Then open: http://localhost:8080\n")
+    console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
+    console.step("Then open: http://localhost:8080\n")
 
 
 if __name__ == "__main__":
