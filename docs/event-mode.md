@@ -163,7 +163,7 @@ For each route that flows through the build:
   the runtime renders it muted.
 
 A featured OSM super-relation expands to its children: each child gets its
-normal colour. The parent itself is dropped (super- relations have no ways of
+normal colour. The parent itself is dropped (super-relations have no ways of
 their own; the children carry the visual).
 
 ## Background style application
@@ -177,7 +177,7 @@ regardless of source:
 - Top-level `custom_routes` not listed in `event_mode.featured`.
 
 If a curator wants to keep one specific route visible at full prominence even
-though it's not the event route (e.g. an emergency- access loop kept distinct
+though it's not the event route (e.g. an emergency-access loop kept distinct
 for safety marshals, or a demo loop next to the race course), they have two
 options:
 
@@ -292,7 +292,7 @@ Event POIs differ from regular POIs in four ways:
    unmistakable as "race fixture, not OSM POI."
 4. **Always-visible name label.** A small white pill below each chip shows the
    POI's `name`. Other POI categories rely on the tap-to-popup interaction; for
-   race-day fixtures, the label-on- sight reading is more important than visual
+   race-day fixtures, the label-on-sight reading is more important than visual
    quietness.
 
 Event POIs are indexed in the search overlay alongside other places, so a rider
@@ -433,9 +433,10 @@ event maps only need to set one of the two). See
 configuration guide.
 
 The optional `accent_color: auto` runs a build-time Pillow analysis of the logo
-to pick the most common saturated colour and apply it to the UI accent (active
-toggle pills, focus rings, FAB pressed state, etc.). This lets the whole UI feel
-branded for the event without manually picking a hex value.
+to derive the UI accent palette (a vivid light-mode shade plus a lightened
+dark-mode shade, each with its own text colour) from the logo's dominant
+saturated colour. This lets the whole UI feel branded for the event without
+manually picking a hex value.
 
 ## Welcome modal
 
@@ -463,7 +464,7 @@ and hides the control from the Options overlay (the rider can't flip it). On top
 of that lock, only featured routes get a label layer at all, so the only on-map
 trail label that ever appears is the event route's name.
 
-Background routes get no labels. Trail-name labels (the "decor- trail-name"
+Background routes get no labels. Trail-name labels (the "decor-trail-name"
 decoration layer that normally renders one label per named trail when labelMode
 is "trails") is also suppressed in event mode for the same reason: the event
 route is the focus, not the underlying trail network.
@@ -509,7 +510,5 @@ These are independent of event mode; they apply to any map.
   for the dash-pattern primitives that `background_style` uses.
 - [`configuration.md#logo-and-icon-assets`](configuration.md#logo-and-icon-assets)
   for branding asset specs.
-- [`examples.md`](examples.md) for real-world configs (curator- filled
-  examples).
 - [`configs/reference/reference.yaml`](../configs/reference/reference.yaml)
   for the canonical annotated YAML reference.

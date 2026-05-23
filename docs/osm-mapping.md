@@ -1,7 +1,7 @@
 # Mapping and tagging trails in OpenStreetMap
 
 This framework reads its trail data straight from
-[OpenStreetMap](https://www.openstreetmap.org/) via Overpass — the better the
+[OpenStreetMap](https://www.openstreetmap.org/) via Overpass: the better the
 OSM data is, the better the rendered map is. This document describes the tags
 this renderer reads and offers general advice on mapping trail systems well.
 
@@ -13,17 +13,17 @@ to this map framework. Adding tags purely to manipulate how this (or any)
 renderer draws something is an anti-pattern that degrades the OSM dataset for
 every other consumer:
 
-- [OSM Wiki — Tagging for the renderer](https://wiki.openstreetmap.org/wiki/Tagging_for_the_renderer)
+- [OSM Wiki: Tagging for the renderer](https://wiki.openstreetmap.org/wiki/Tagging_for_the_renderer)
 
 If something doesn't show up the way you'd like, the right fix is almost always
 one of:
 
-1. The OSM data is wrong or incomplete — fix it correctly.
-2. The OSM data is fine but the renderer doesn't read that tag — file an issue
+1. The OSM data is wrong or incomplete, so fix it correctly.
+2. The OSM data is fine but the renderer doesn't read that tag, so file an issue
    (or a PR) on this framework, not a workaround in OSM.
 
 The tags listed here are the ones this renderer happens to consume. They are all
-standard, widely-used OSM tags — there are no custom keys, no `trailmaps:*`
+standard, widely-used OSM tags: there are no custom keys, no `trailmaps:*`
 namespace, nothing specific to this project. Mapping a trail system using these
 conventions also makes the data useful in OsmAnd, OpenAndroMaps, Trailforks,
 Komoot, and every other OSM consumer.
@@ -33,7 +33,7 @@ Komoot, and every other OSM consumer.
 The framework expects each trail system (or each named route within a system) to
 be a **relation** of
 [`type=route`](https://wiki.openstreetmap.org/wiki/Relation:route). A
-super-relation grouping multiple route relations is also supported — the
+super-relation grouping multiple route relations is also supported: the
 renderer expands it one level deep at fetch time.
 
 ### Required on the relation
@@ -41,16 +41,16 @@ renderer expands it one level deep at fetch time.
 | Tag | Value | Notes |
 |---|---|---|
 | [`type`](https://wiki.openstreetmap.org/wiki/Key:type) | [`route`](https://wiki.openstreetmap.org/wiki/Relation:route) | Identifies the relation as a route relation. |
-| [`route`](https://wiki.openstreetmap.org/wiki/Key:route) | [`mtb`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dmtb) / [`bicycle`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dbicycle) / [`hiking`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dhiking) / [`foot`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dfoot) / [`ski`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dski) / [`snowmobile`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dsnowmobile) / etc. | The activity type. The framework doesn't filter on this — any `type=route` relation works — but it's standard OSM and helps other consumers. |
+| [`route`](https://wiki.openstreetmap.org/wiki/Key:route) | [`mtb`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dmtb) / [`bicycle`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dbicycle) / [`hiking`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dhiking) / [`foot`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dfoot) / [`ski`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dski) / [`snowmobile`](https://wiki.openstreetmap.org/wiki/Tag:route%3Dsnowmobile) / etc. | The activity type. The framework doesn't filter on this (any `type=route` relation works), but it's standard OSM and helps other consumers. |
 
 ### Recommended on the relation
 
 | Tag | Used by | What this renderer does with it |
 |---|---|---|
-| [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | name | Route's display name — appears in the search/finder, in tap popups, and as a label on the map when labels are set to "routes." Falls back to `Route <id>` if missing. |
+| [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | name | Route's display name, shown in the search/finder, in tap popups, and as a label on the map when labels are set to "routes." Falls back to `Route <id>` if missing. |
 | [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) | short code | Short reference / number for the route. Surfaced in the finder secondarily; doesn't drive any geometry. |
 | [`colour`](https://wiki.openstreetmap.org/wiki/Key:colour) | line colour | A CSS-compatible colour string (`#RRGGBB`, named colours like `red`, `rgb(...)`, etc.). Falls back to the per-map `default_trail_color` (typically `#808080`) when unset. The hex form is preferred; named colours render but vary slightly between consumers. |
-| [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (e.g. `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere — set it. |
+| [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (e.g. `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere, so set it. |
 | [`seasonal`](https://wiki.openstreetmap.org/wiki/Key:seasonal) | passthrough | Free-text seasonality info; passed through into route metadata. |
 
 ### Relation members
@@ -71,7 +71,7 @@ thing.
 A trail system that's organised as several named loops or sub-routes under one
 umbrella is best mapped as a **super-relation**: a `type=route` relation whose
 members are the individual sub-route relations (each itself `type=route` with
-its own ways). This is standard OSM — the same convention used by long-distance
+its own ways). This is standard OSM, the same convention used by long-distance
 hiking networks, regional bike networks, etc.
 
 A super-relation lets the curator point this framework's `relations:` config key
@@ -83,7 +83,7 @@ the framework fetches a super-relation, it **expands one level deep**:
 - Each child sub-route becomes a route the rider can highlight, search, and
   toggle individually.
 - Tags on the super-relation (`name`, `colour`, etc.) are **not** inherited by
-  children — each child needs its own tags. This is important: a child without a
+  children: each child needs its own tags. This is important: a child without a
   `name` falls back to `Route <id>`, and a child without a `colour` falls back
   to the per-map `default_trail_color`.
 
@@ -127,7 +127,7 @@ colour and name, and ways tagged at the way level.
 
 ## Trail-segment (way) tags
 
-These go on the individual ways that the route relation references — not on the
+These go on the individual ways that the route relation references, not on the
 relation itself.
 
 ### Mountain-bike difficulty
@@ -149,11 +149,11 @@ The IMBA-rating scale, condensed:
 
 Tag the actual difficulty of the segment, not what you wish were on the map. A
 segment without a rating renders as the default trail colour (so it's still
-visible — just unflagged).
+visible, just unflagged).
 
 The rider-facing **Difficulty** toggle in Options surfaces automatically
 whenever at least one way in the map carries an `mtb:scale:imba` value. Maps
-with no IMBA tagging anywhere don't show the toggle at all — the build pipeline
+with no IMBA tagging anywhere don't show the toggle at all: the build pipeline
 scans `trails.geojson` and skips the control when there's nothing to display.
 
 ### Direction (one-way trails)
@@ -161,7 +161,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 | Tag | Value | What this renderer does with it |
 |---|---|---|
 | [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail and drives the share/finder direction-aware behaviour. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
-| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa) — same standard OSM convention used everywhere. |
+| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa), the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
 
@@ -170,7 +170,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 | [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | string | Way-level trail name ("Pipe Dreams," "Old Camp Ridge"). Surfaced in the search/finder under "Trails" and in tap popups. When a trail name is the same as the parent route's name, the renderer dedupes; when they differ, both are shown. |
 
 A trail system where each named singletrack is a separate way (or set of
-contiguous ways) with a `name=` tag gives the richest experience — riders can
+contiguous ways) with a `name=` tag gives the richest experience: riders can
 search for individual trails by name. If only the parent route has a name and
 the member ways are unnamed, the search still works at route granularity.
 
@@ -207,7 +207,7 @@ config gate is on.
 | [`amenity=toilets`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets) | toilets | Renders the toilet marker. `name`, [`access`](https://wiki.openstreetmap.org/wiki/Key:access), [`fee`](https://wiki.openstreetmap.org/wiki/Key:fee), and [`opening_hours`](https://wiki.openstreetmap.org/wiki/Key:opening_hours) show in the popup when present. |
 | [`amenity=drinking_water`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water) | drinking water | Renders the water marker. `name` and `seasonal` show in the popup when present. |
 
-Parking and trailheads aren't fetched from OSM by default — the framework
+Parking and trailheads aren't fetched from OSM by default: the framework
 expects them to be supplied per-map in the YAML (`trailheads:` / `parking:`
 blocks) because curators usually have specific points they want to surface. If
 they exist as
@@ -227,13 +227,13 @@ in OSM, you can still reference them by their lat/lon in the YAML.
 - **Don't merge across junctions.** Even if two segments share a name, if they
   meet at a junction with a third trail, they should be separate ways meeting at
   the junction node. Routing tools and trail-network analysers depend on this.
-- **Verify on the ground when you can.** Trail systems evolve fast — rerouted
+- **Verify on the ground when you can.** Trail systems evolve fast: rerouted
   sections, new builds, decommissioned trails. Local mapping beats armchair
   tracing for accuracy.
 - **Get the colour right at the relation level.** When the renderer uses
   `color_by: relation` (the default), the relation's `colour=` tag is what
   riders see for that route. A relation without `colour=` renders in the per-map
-  default (usually grey) — fine as a fallback but lifeless on a complex map.
+  default (usually grey), fine as a fallback but lifeless on a complex map.
 
 ## Example: a minimal MTB route
 

@@ -55,10 +55,9 @@ non-exclusive Summer / Winter / Emergency buckets (see
 
 ## Bbox or pan_padding changes don't update the basemap
 
-The basemap and terrain PMTiles are cached by output path.
-Bbox-related sidecars now invalidate them automatically (Week 1
-fix), but if you're running an older build pipeline or hit an edge
-case:
+The basemap and terrain PMTiles are cached by output path, and bbox
+changes normally invalidate them automatically. If a stale tile set
+persists:
 
 - Run with `--force` to clear all caches and re-extract from
   scratch.
@@ -78,14 +77,14 @@ service worker isn't catching it. Two likely causes:
   fetching the whole archive on every tile read. The runtime
   detects this on first cold load and prints
   `[mtb-map] HTTP Range requests not honored...` to the browser
-  console (DevTools to Console) with diagnostic detail. After the
+  console (DevTools > Console) with diagnostic detail. After the
   service worker caches the full file, the warning stops firing
   (that's correct behavior, but every new visitor still pays the
   slow first-load cost). Verify manually with:
   `curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles`.
   Should return `206 Partial Content` and `Content-Range`.
-- **Service worker not caching `.pmtiles`**: open DevTools to
-  Application to Cache Storage to `trail-map-<version>` and confirm
+- **Service worker not caching `.pmtiles`**: open
+  DevTools > Application > Cache Storage > `trail-map-<version>` and confirm
   `basemap.pmtiles` and `terrain.pmtiles` are listed. If not, the
   precache list missed them: rebuild and verify the build log
   mentions both files.
@@ -121,8 +120,8 @@ If the location indicator triangle points to where you *aren't*:
 
 - The browser may be returning a cached or inaccurate position. Tap
   Locate to disable, then re-enable to force a fresh GPS read.
-- macOS Location Services may be off for the browser. System
-  Settings to Privacy & Security to Location Services to enable for
+- macOS Location Services may be off for the browser. Open System
+  Settings > Privacy & Security > Location Services and enable it for
   your browser.
 - Inside a building? GPS accuracy degrades to plus or minus 100m or
   worse indoors. The indicator is still doing its job; the
@@ -134,10 +133,10 @@ The service worker decides when to check for updates. If you've
 just deployed and refreshed but no toast appears:
 
 - The browser may have already activated the new SW silently. Check
-  DevTools to Application to Service workers. If the active SW
+  DevTools > Application > Service workers. If the active SW
   shows a recent install date matching your deploy, you're already
   on the new version.
-- DevTools to Application to Service workers, check "Update on
+- In DevTools > Application > Service workers, check "Update on
   reload" to force a refetch on every page load. Useful while
   iterating; turn it off in normal browsing.
 - The toast detection only fires when there's a *prior* SW (i.e.

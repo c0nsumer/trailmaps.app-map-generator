@@ -8,10 +8,9 @@ they may not match what your GPS or another app says.
 ## Contents
 
 - [Source: USGS 3DEP](#source-usgs-3dep)
-- [Computation pipeline](#computation-pipeline)
-- [Why we show both gain AND loss](#why-we-show-both-gain-and-loss)
+- [How it's computed](#how-its-computed)
+- [Why both gain and loss](#why-both-gain-and-loss)
 - [Caveats: when the numbers may be wrong](#caveats-when-the-numbers-may-be-wrong)
-- [Why we replaced SRTM30m](#why-we-replaced-srtm30m)
 - [Diagnostic tool](#diagnostic-tool)
 
 ## Source: USGS 3DEP
@@ -22,57 +21,33 @@ Elevation Program (3DEP)**, specifically the public
 `elevation.nationalmap.gov`. 3DEP is a multi-resolution DEM mosaic that serves
 whichever underlying raster is highest-resolution at each query point:
 
-- **1m lidar-derived bare-earth**: covers most of the US, including all the
-  counties where this framework's primary maps live (Marquette, Antrim,
-  Livingston, Washtenaw, Oakland, etc.). Bare-earth means vegetation has been
-  removed by lidar processing: the elevations are ground level, not canopy top.
+- **1m lidar-derived bare-earth**: covers most of the US. Bare-earth means
+  vegetation has been removed by lidar processing, so the elevations are ground
+  level, not canopy top.
 - **10m (1/3 arc-second)**: fallback in areas without lidar.
 - **30m (1 arc-second)**: final fallback. Rare in the contiguous US.
 
 The endpoint is free, requires no API key, has no documented daily quota, and
 supports up to 2000 sample points per request. The only practical failure mode
-is occasional HTTP 502 under service load (handled by automatic
-retry-with-backoff: 60s, 90s, 120s).
+is occasional HTTP 502 under service load, handled by automatic retry.
 
 **The framework is US-only for elevation.** A point outside US 3DEP coverage
 returns `NoData`, and that route's `elevation_*_m` fields are omitted from
 `trails.geojson`. The runtime renders such routes without elevation stats.
 
-## Computation pipeline
+## How it's computed
 
-For each route in the map's `trails.geojson`:
+For each route, the framework samples 3DEP elevation about every 25 m along the
+route, smooths the profile to remove lidar noise, discards sub-metre changes as
+noise, then sums the rises as `gain` and the drops as `loss` (rounded to whole
+metres). The sampling spacing and the noise threshold are tuned together so that
+anything a rider would call "climbing" is counted while sensor noise and
+rolling-terrain jitter are not.
 
-1. **Concatenate** all OSM ways belonging to that route (matched by `route_id`,
-   deduplicated to avoid double-counting shared geometry).
-2. **Subsample** at ~25m horizontal spacing along the route, with segment-aware
-   breaks: discontinuities between OSM ways (which aren't ordered into a
-   rideable traversal) are explicitly marked so deltas don't get computed across
-   them.
-3. **Query 3DEP** in batches of at most 2000 points; the response includes the
-   elevation value and the source resolution at each point.
-4. **Smooth** the elevation profile with a 3-point centered moving average (75m
-   window at 25m spacing) to flatten residual lidar noise.
-5. **Difference** consecutive smoothed samples to get per-segment elevation
-   deltas.
-6. **Threshold** any delta with magnitude < 1m as noise and drop it. This
-   matches lidar's actual vertical accuracy (~0.3 to 0.5m noise SD).
-7. **Sum** the surviving positive deltas as `gain` and the absolute values of
-   negative deltas as `loss`. Round both to integer meters.
-
-The (spacing x threshold) pair is **coupled**: at 25m sampling and a 1m
-threshold, every grade at 4% or more is detected (1m vertical change per sample
-point at 4% x 25m). Sampling denser than 25m without proportionally lowering the
-threshold rejects real climbing signal: a long gentle 3% climb would have
-per-sample deltas below threshold and sum to zero gain. Lowering the threshold
-below ~0.5m lets lidar noise back in. The chosen pair detects everything a rider
-would describe as "climbing" while filtering out noise and rolling-terrain
-micro-fluctuations.
-
-The result is stored as `elevation_gain_m` and `elevation_loss_m` on each route,
-and surfaces in the runtime in user-selected units (feet for
+The result is stored per route and shown in the rider's chosen units (feet for
 `distance_units: mi`, metres for `distance_units: km`).
 
-## Why we show both gain AND loss
+## Why both gain and loss
 
 OSM doesn't tell us which direction a route is intended to be ridden. Our
 segment walk gives us an arbitrary feature-order direction that's rarely the

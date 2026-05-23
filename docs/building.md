@@ -126,17 +126,17 @@ python scripts/serve.py build/example
 This is the fastest way to test changes without a production deploy.
 The server honours Range requests properly so PMTiles work end-to-end.
 
-## SSH/rsync convenience wrapper: build_and_deploy.sh
+## Convenience wrapper: build_and_deploy.sh
 
 `tools/build_and_deploy.sh` is a convenience wrapper for the common
 SSH/rsync deploy workflow: it validates every config first, then
 builds via `scripts/build.py`, then `rsync`s each map to a remote
-host. It's one way to deploy — not the only one. If you deploy via
+host. It is one way to deploy, not the only one. If you deploy via
 a different mechanism (S3, Netlify, GitHub Pages, manual upload),
 run `python scripts/build.py <config>` directly and ship the
-resulting `build/<slug>/` tree. The output is production-quality
-(minified `app.js` / `style.css`, content-hashed service worker,
-trimmed font set, etc.) by default — no flag needed. See
+resulting `build/<slug>/` tree. The output is production-quality by
+default (minified `app.js` / `style.css`, content-hashed service
+worker, trimmed font set), with no flag needed. See
 [`deployment.md`](deployment.md) for recipes targeting other
 static hosts.
 
@@ -168,10 +168,10 @@ environment variable. Set it in your shell rc once:
 export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
 ```
 
-Daily invocations then Just Work. Override per-run with `--dest
-<ssh-path>`. If neither the env var nor `--dest` is set, the
-script errors out with a clear hint rather than silently shipping
-to a wrong (or empty) target.
+Day-to-day runs then need no extra flags. Override per run with
+`--dest <ssh-path>`. If neither the env var nor `--dest` is set, the
+script errors out with a clear hint rather than shipping to a wrong
+or empty target.
 
 See [`tools/README.md`](../tools/README.md) for the full option table.
 
@@ -405,8 +405,11 @@ configs/
     osm.osm             Optional: offline OSM snapshot
     *.geojson           Optional: custom-route geometries (one per custom_routes entry)
   example/
-    reference-minimal.yaml  Canonical-order skeleton; copy this to start a new map
-    reference.yaml          Verbose annotated reference (same key order)
+    example.yaml        A worked example map (build it as a smoke test)
+    example_logo.png    Example logo and icon assets
+  reference/
+    reference-minimal.yaml  Bare template; copy this to start a new map
+    reference.yaml          Annotated reference, same key order
 
 scripts/
   build.py            Build orchestrator

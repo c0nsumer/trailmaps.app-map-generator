@@ -23,7 +23,7 @@ sufficient.
 
 `scripts/build.py` produces production-quality output by default
 (minified `app.js` / `style.css`, content-hashed service worker,
-trimmed font set, etc.) — no flag needed:
+trimmed font set), with no flag needed:
 
 ```bash
 python scripts/build.py configs/<slug>/<slug>.yaml
@@ -57,7 +57,7 @@ the resulting `build/<slug>/` tree with whichever tool fits your
 host. The output is the same regardless of how you transport it.
 
 ```bash
-# Build once (production-quality by default — no flag needed)
+# Build once (production-quality by default, no flag needed)
 python scripts/build.py configs/<slug>/<slug>.yaml
 
 # Then ship. Pick one:
@@ -74,8 +74,8 @@ npx gh-pages -d build/<slug>
 # Cloudflare Pages (wrangler CLI)
 wrangler pages deploy build/<slug>
 
-# Any old-school SFTP / FTP / WebDAV / manual host
-# — point your tool at build/<slug>/ as the source directory
+# Any SFTP / FTP / WebDAV / manual host:
+# point your tool at build/<slug>/ as the source directory
 ```
 
 Every static host that serves HTTP Range requests properly will
@@ -99,25 +99,16 @@ mytrailmaps.com {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     }
 
-    # Entry point + service worker: always revalidate so users pick up new
-    # builds promptly. `/` and `/index.html` are listed separately because
-    # Caddy's `path` matcher is exact-match: a request to the bare root has
-    # URI path `/` (file_server resolves it to index.html only internally),
-    # and an explicit /index.html link bypasses that. Without an explicit
-    # Cache-Control on HTML, browsers fall back to heuristic caching (~10%
-    # of the file's age), which is unpredictable and almost always wrong
-    # for a PWA's entry point. Browsers already cap sw.js at 24h per spec,
-    # but explicit no-cache keeps behavior consistent across browsers and
-    # ensures every load checks for a new service worker.
+    # Revalidate the entry point and service worker on every load so new
+    # builds are picked up promptly. (Both `/` and `/index.html` are listed
+    # because Caddy's path matcher is exact.)
 
     @nocache path / /index.html /sw.js
     header @nocache Cache-Control "no-cache"
 
-    # Cache static assets for 1 day: long enough for a trail ride, short
-    # enough that rebuilds propagate quickly. app.js and style.css change
-    # every build but keep the same filename (no content hash), so a user
-    # on a stale cache won't see new code until the cache entry expires or
-    # the service worker swaps assets.
+    # Cache static assets for a day: long enough for a ride, short enough that
+    # rebuilds propagate. app.js and style.css keep stable filenames, so a
+    # stale cache clears when the entry expires or the service worker swaps it.
 
     @immutable path *.pmtiles *.pbf *.js *.css *.png *.webp *.ico *.svg *.json
 
@@ -145,26 +136,18 @@ on `index.html` and `sw.js`, and a sane TTL on everything else.
 
 ## Service worker update cadence
 
-Deploying a new build ticks `CACHE_VERSION` (a content-based hash of every
-output file), so any code, data, or asset change cuts a new service worker. How
-fast riders see it without reloading the page:
+Deploying a new build changes `CACHE_VERSION` (a hash of every output file), so
+any code, data, or asset change produces a new service worker. Riders pick it up
+two ways:
 
-- **On any page load or refresh** within the map's scope, the browser fetches
-  `sw.js`, byte-compares it, and installs a new SW into the "waiting" state if
-  it differs. The page detects this via `updatefound` and shows an "Updated map
-  available" toast with a Reload button.
-- **Without a refresh**, the browser performs its own automatic update check
-  **~every 24 hours**. Per the SW spec, modern browsers cap `sw.js` at a 24h
-  staleness threshold regardless of `Cache-Control`, then bypass HTTP cache for
-  that fetch: a stale `max-age=86400` response from the origin can't keep the
-  old SW pinned past a day. The check fires when the SW handles a fetch event
-  after the threshold has elapsed; if a new SW is found, the same "Updated map
-  available" toast appears live on the open page.
-- **The framework does not call `registration.update()` on a timer.** Update
-  cadence is entirely the browser's default behaviour. Riders who keep a tab
-  open across days will typically see the toast within a day of any deploy, on
-  the next request the SW handles. Riders who close + re-open the map see the
-  toast almost immediately on the next launch.
+- **On a page load or refresh**, the browser re-fetches `sw.js`, and if it
+  differs, installs the new worker and shows an "Updated map available" toast
+  with a Reload button.
+- **Without a refresh**, the browser runs its own update check about every 24
+  hours (a service-worker behaviour, not something the framework schedules), so
+  a left-open tab generally sees the toast within a day of a deploy.
+
+A rider who closes and re-opens the map gets the new build on the next launch.
 
 ## PWA and offline support
 

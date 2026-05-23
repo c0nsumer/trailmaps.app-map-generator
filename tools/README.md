@@ -11,7 +11,7 @@ processes all YAML configs in `configs/` (excluding the
 
 This is *one* way to deploy, not the only one. The build pipeline
 itself (`scripts/build.py`) produces production-quality output by
-default — if you deploy via S3, Netlify, GitHub Pages, Cloudflare
+default. If you deploy via S3, Netlify, GitHub Pages, Cloudflare
 Pages, or manual upload, call `python scripts/build.py <config>`
 directly and ship the resulting `build/<slug>/` tree with whichever
 tool fits your host. See [`docs/deployment.md#deploying-by-other-means`](../docs/deployment.md#deploying-by-other-means)
@@ -111,7 +111,7 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 - Production keys with no corresponding template line are appended at
   the end under a `# --- Keys not in template ---` header. Catches drift
   in either direction (key the template forgot, or key the curator
-  added that the template doesn't model — usually a sign that the
+  added that the template doesn't model, usually a sign the
   template needs updating too).
 - Inline comments in the production file (e.g. `accent_color: auto  #
   logo is B/W`) are NOT preserved. The template's structure wins for
@@ -119,16 +119,9 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 
 ### Output formatting
 
-A custom YAML dumper handles three PyYAML quirks:
-
-- Multi-line strings get `|` block-literal style (default would
-  single-quote with embedded `\n` escapes, ugly + lossy on trailing
-  whitespace).
-- Dicts are always block-style (default flows single-key dicts like
-  `relation_colors: {1234: '#fff'}`).
-- Lists go inline when all-scalar (`coordinates: [lon, lat]`,
-  `pattern: [1, 1]`); block-style otherwise (`trailheads:\n- name:
-  ...`). Matches the template's house style.
+The output adopts the template's house style: block-literal `|` for multi-line
+strings, block-style dicts, and inline lists for all-scalar arrays
+(`coordinates: [lon, lat]`, `pattern: [1, 1]`).
 
 ### Verification
 
@@ -136,4 +129,4 @@ The cleaned output parses to an identical Python dict as the original
 (verifiable with `python -c "import yaml; print(yaml.safe_load(open('a'))
 == yaml.safe_load(open('b')))"`), passes `validate_config.py`, and
 builds successfully via `build.py`. Any value drift means the cleaner
-mishandled something — file an issue.
+mishandled something; file an issue.

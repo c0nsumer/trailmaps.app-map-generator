@@ -9,7 +9,7 @@ trail data from OSM, extracts regional basemap and terrain tiles, bundles every
 dependency locally, and emits a complete static site you can deploy anywhere. No
 external tile services or API keys are needed at runtime.
 
-This is the framework that generates mostof the maps at
+This is the framework that generates most of the maps at
 [trailmaps.app](https://trailmaps.app).
 
 ## Screenshot
@@ -25,15 +25,13 @@ Oaks Map as of 2026-May-12*
   after the first visit, including PMTiles range requests served from cache.
 - Self-hosted basemap tiles (Protomaps), optional terrain hillshade
   (Mapterhorn), and optional custom raster basemaps.
-- Three main control buttons: Locate, Reser View, Options, and Search:
-  - Locate: Show user's location on map using GNSS sensors.
-  - Reset View: Reset to the original view.
-  - Options: Turn on/off and configure labels, dark mode, season, etc. Install
-    PWA, access About.
-  - Search: Search for things on the map, such as POIs, parking/toilets, trail
-    and route names, etc.
-- Optional: Per-route distance and USGS 3DEP elevation gain / loss (US only,
-  optional).
+- Four on-map controls: Locate, Reset View, Options, and Search:
+  - Locate: show the user's position from the device GNSS sensors.
+  - Reset View: return to the map's initial framing.
+  - Options: toggle labels, colour scheme, season, and POI layers; install the
+    PWA; open About.
+  - Search: find POIs, parking, toilets, trails, and routes on the map.
+- Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
 - Trail markers, trailheads, parking, features, toilets, drinking water as
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.
@@ -145,9 +143,8 @@ is useful to copy to start a new map.
 | [`docs/configuration.md`](docs/configuration.md) | Full YAML config reference. Every key, every accepted value, and deep dives on route buckets, custom routes, direction schedules, dash patterns, the About / Welcome modals, base layers, logo / icon assets, and privacy posture. |
 | [`docs/building.md`](docs/building.md) | Build pipeline: prerequisites, CLI flags, the `build_and_deploy.sh` and `clean_config.py` helpers, the data cache, local `.osm` file support, vendor bundling, font trimming, and the project layout. |
 | [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behaviour by platform, PMTiles Range requests, Open Graph share previews. |
-| [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation deep dive: data source, computation pipeline, why we show both gain and loss, caveats, and why the numbers won't match Strava. |
+| [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation: the data source, why both gain and loss are shown, accuracy caveats, and why the numbers won't match Strava or a GPS. |
 | [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
-| [`docs/examples.md`](docs/examples.md) | Real-world configs from production trail systems. (Many sections are placeholders pending curator notes.) |
 | [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common build and runtime issues, and known cosmetic upstream warnings. |
 
@@ -158,16 +155,19 @@ server-side tracking, and no third-party scripts. The map renders from your own
 static server, and all visitor interactions stay in the browser.
 
 The app uses `localStorage` to persist purely-functional UI preferences across
-visits:
+visits, each key prefixed with the map's slug (for example,
+`<slug>.mtb.colorScheme`):
 
 - `mtb.seasonMode`: "summer" or "winter"
-- `mtb.emergencyOn`: boolean
-- `mtb.poi.<kind>`: one boolean per POI category (parking, trailheads, features,
-  markers, toilets, drinking_water)
+- `mtb.emergencyOn`: boolean (Emergency overlay)
+- `mtb.poi.<kind>`: one boolean per POI category (parking, trailheads, hubs,
+  features, markers, toilets, drinking_water)
 - `mtb.labels`: "routes", "trails", or "none"
 - `mtb.difficulty`: boolean (IMBA difficulty symbols)
+- `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.colorScheme`: "light", "dark", or "auto"
-- `mtb.welcomed:<slug>`: boolean (welcome modal dismissal)
+- `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
+- `mtb.welcomed`: boolean (welcome modal dismissal)
 
 Nothing else is stored. No identifiers, no geolocation traces, no analytics
 payloads.
@@ -177,7 +177,7 @@ payloads.
 Built and maintained by **Steve Vigneau**
 ([steve@nuxx.net](mailto:steve@nuxx.net) / [nuxx.net](https://nuxx.net)).
 
-And yes, this was developed using Anthrophic's Claude.
+And yes, this was developed using Anthropic's Claude.
 
 ## Credits
 
