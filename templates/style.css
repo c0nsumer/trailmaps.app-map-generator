@@ -10,8 +10,9 @@
  * inline bootstrap script in <head> BEFORE this stylesheet loads, so
  * first paint already has the right scheme — no FOUC.
  *
- * Per-map accent colour (--accent) survives both schemes — it's
- * branding, not a theme concern.
+ * Per-map accent: the build derives a light-mode and a dark-mode shade
+ * from one base; --accent / --on-accent are mapped per scheme (see the
+ * accent block in :root) so a single accent reads correctly in both.
  *
  * On-map elements that need per-scheme tweaking (trail labels,
  * arrows, marker shadow) live in their respective sections with a
@@ -57,15 +58,28 @@
      * chip's filled colour does the heavy lifting and the hairline
      * just provides a "this is a chip" edge. */
     --swatch-outline: rgba(0, 0, 0, 0.08);
-    --accent: #2980b9;
-    /* Derived from --accent so a per-map override (set on :root by
-     * JS from CONFIG.accentColor) cascades automatically — the
-     * runtime only has to set --accent and link colour + the darker
-     * pressed/hover variant follow. color-mix(in srgb, X 75%, black)
-     * darkens X by 25%, matching the historical relationship between
-     * #2980b9 and #1f6391. Browser support for color-mix() is
-     * universal in evergreen browsers as of 2023. */
+    /* Per-map accent palette. The build derives four base values from
+     * one source colour (logo pick / explicit hex / framework default)
+     * and app.js sets them on :root at boot (see setPoiColorVars).
+     * --accent / --on-accent are then MAPPED from the active pair per
+     * scheme, because a single accent can't serve both: a deep shade
+     * carries white text in light mode but is too dark to read on the
+     * dark sheet, so dark mode swaps to a lightened shade with dark
+     * on-accent text (see the [data-color-scheme="dark"] block). The
+     * literals below are the framework default (#1d6fa5) and its
+     * derived dark shade — used only for the pre-JS first paint and for
+     * maps that configure no accent_color. */
+    --accent-light: #1d6fa5;
+    --accent-dark: #258cd0;
+    --on-accent-light: #ffffff;
+    --on-accent-dark: #14140f;
+    --accent: var(--accent-light);
+    --on-accent: var(--on-accent-light);
     --link-color: var(--accent);
+    /* Pressed/hover emphasis. Light mode deepens toward black;
+     * color-mix(in srgb, X 75%, black) darkens X by 25%. The dark
+     * scheme flips this to brighten toward white (mixing an already-
+     * light accent toward black reads backwards). */
     --accent-strong: color-mix(in srgb, var(--accent) 75%, black);
     --emergency-color: #c0392b;
     --highlight-amber: #ffb700;
@@ -109,8 +123,10 @@
  * LS preference / curator default / OS prefers-color-scheme.
  *
  * Variables not listed here keep their light-theme values — that's how the
- * accent colour, marker design tokens (size/border/radius), and POI
- * brand colours all survive both schemes.
+ * marker design tokens (size/border/radius) and POI brand colours
+ * survive both schemes. The accent is the exception: it IS overridden
+ * below (remapped to its dark shade), since one accent can't serve both
+ * schemes — see the :root accent block.
  */
 [data-color-scheme="dark"] {
     --sheet-bg: rgba(28, 28, 30, 0.98);
@@ -139,6 +155,14 @@
      * edge in dark mode (the dark-line variant from the light scheme
      * disappears against the dark sheet). */
     --swatch-outline: rgba(255, 255, 255, 0.18);
+    /* Accent: swap to the lightened dark-mode shade + its on-accent
+     * text, and flip --accent-strong to brighten (toward white) since
+     * the dark shade is already light. The base vars (--accent-light /
+     * --accent-dark / --on-accent-*) are set by app.js and inherited
+     * from :root; only the active mapping changes here. */
+    --accent: var(--accent-dark);
+    --on-accent: var(--on-accent-dark);
+    --accent-strong: color-mix(in srgb, var(--accent) 75%, white);
 
     /* On-map POI markers need a stronger shadow against dark
      * basemap tiles — drop shadow alone fades into the dark map.
@@ -509,7 +533,7 @@ body {
     padding: 3px 10px;
     border-radius: 999px;
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 
 /* ----- Segmented-pill (Labels: Routes / Trails / None) ------------
@@ -565,7 +589,7 @@ body {
 
 .opt-segmented-pill .opt-segmented-btn[aria-checked="true"] {
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 
 .opt-segmented-pill .opt-segmented-btn:focus-visible {
@@ -1280,7 +1304,7 @@ body {
     margin-top: 16px;
     padding: 10px 16px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     border: 1px solid var(--accent);
     border-radius: 8px;
     font: inherit;
@@ -2468,12 +2492,12 @@ body.fabs-labeled .fab-label {
 }
 
 /* Pressed state — when the corresponding overlay is open. Solid
- * accent fill + white icon so it's obvious which button triggered
+ * accent fill + on-accent icon so it's obvious which button triggered
  * the visible overlay. */
 .fab[aria-pressed="true"]:not(#toggle-locate) {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2741,7 +2765,7 @@ body.fabs-labeled .fab-label {
 
 .search-filter-chip[aria-selected="true"] {
     background: var(--accent);
-    color: white;
+    color: var(--on-accent);
 }
 
 .search-overlay-results {

@@ -1,10 +1,10 @@
 """Colour math and accent-colour derivation for the build pipeline.
 
 Pure WCAG helpers (relative luminance, contrast ratio, hex<->rgb, HSL
-darkening) plus the logo-derived accent resolution. Extracted from build.py
-so the colour logic is independently testable and the orchestrator stays
-lean. ``resolve_accent_color`` is the only entry point the build needs; the
-rest are internal helpers.
+darken/lighten) plus the logo-derived accent resolution. Extracted from
+build.py so the colour logic is independently testable and the
+orchestrator stays lean. ``resolve_accent_palette`` is the only entry
+point the build needs; the rest are internal helpers.
 """
 
 import hashlib
@@ -125,36 +125,153 @@ def derive_accent(image_path):
     return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
-def resolve_accent_color(config, project_root, cache_dir):
-    """Resolve `accent_color` config to a final hex string for runtime.
+# Framework default accent — used verbatim as the light shade when no
+# accent_color is configured, and as the base for the derived dark
+# shade. Keep in sync with --accent-light in templates/style.css :root.
+FRAMEWORK_DEFAULT_ACCENT = "#1D6FA5"
 
-    Returns one of:
-      - None: use framework default (#2980b9)
-      - "#RRGGBB" string: explicit accent colour to inject into CONFIG
+# On-accent text tokens: white, or a near-black (softer than pure #000,
+# matching the iOS/Material "on-primary" convention) for light accents.
+_ON_ACCENT_LIGHT = "#FFFFFF"
+_ON_ACCENT_DARK = "#14140F"
 
-    Handles three input forms:
-      - omitted: returns None
-      - explicit hex: returned verbatim (uppercased)
-      - "auto": derive from logo or icon, cache, auto-darken if low
-        contrast against white text. Falls back to None with a
-        warning if neither raster source exists or no candidate
-        colour qualifies.
+# Dark-mode sheet background (#1c1c1e) — the surface the dark-mode accent
+# shade must read against. Matches --sheet-bg in style.css's dark block.
+_DARK_SHEET_BG = (28, 28, 30)
 
-    Also prints a build-time warning if the resolved colour has
-    poor contrast against either light (#ffffff) or dark (#1c1c1e)
-    backgrounds — both schemes need to read cleanly since dark mode
-    is on the roadmap.
+
+def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
+    """Lighten an RGB triple in HSL-space until it hits target_contrast
+    against `against` (the dark sheet bg by default — the assumption is
+    the accent reading as a link / fill on the dark sheet). Mirror of
+    _darken_for_contrast for the dark-mode accent shade.
+
+    Walks lightness UP in small steps; eases saturation down once the
+    colour is already light so a maxed-out hue lands pastel rather than
+    neon. Bails after a fixed number of iterations to avoid pathological
+    inputs spinning forever.
+    """
+    import colorsys
+
+    r, g, b = (c / 255.0 for c in rgb)
+    h, lightness, s = colorsys.rgb_to_hls(r, g, b)
+    for _ in range(40):
+        rgb = tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, lightness, s))
+        if _contrast_ratio(rgb, against) >= target_contrast:
+            return rgb
+        lightness += 0.025
+        # Past ~0.7 lightness, ease saturation down so very light accents
+        # don't read fluorescent.
+        if lightness > 0.7:
+            s = max(0.0, s - 0.02)
+        if lightness >= 1.0:
+            lightness = 1.0
+            break
+    return tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, lightness, s))
+
+
+def _best_text_color(accent_rgb):
+    """Return the on-accent text colour (#fff or the near-black token)
+    with the higher WCAG contrast against the given accent fill. Deep
+    accents → white; light accents → near-black, the way Material/iOS
+    flip on-primary in dark themes."""
+    white = (255, 255, 255)
+    near_black = _hex_to_rgb(_ON_ACCENT_DARK)
+    if _contrast_ratio(accent_rgb, white) >= _contrast_ratio(accent_rgb, near_black):
+        return _ON_ACCENT_LIGHT
+    return _ON_ACCENT_DARK
+
+
+def _palette_from_base(base_rgb, darken_light):
+    """Derive the 4-value accent palette from a single base (r, g, b).
+
+    - light shade: the base verbatim, OR darkened to AA vs white text
+      when `darken_light` (the "auto" pixel-pick path — keeps white-on-
+      accent pills legible). Explicit hex / framework default are NOT
+      darkened, so light mode stays exactly as configured.
+    - dark shade: the base LIGHTENED until it reads AA against the dark
+      sheet. Derived from the same base (not the darkened light shade)
+      so the two lightness adjustments don't compound.
+    - on-accent: #fff or near-black per shade, whichever contrasts more.
+
+    Returns {"light", "dark", "onLight", "onDark"} as hex strings.
+    """
+    if darken_light:
+        light_rgb = _darken_for_contrast(base_rgb, target_contrast=4.5, against=(255, 255, 255))
+    else:
+        light_rgb = base_rgb
+    dark_rgb = _lighten_for_contrast(base_rgb, target_contrast=4.5, against=_DARK_SHEET_BG)
+    return {
+        "light": _rgb_to_hex(light_rgb),
+        "dark": _rgb_to_hex(dark_rgb),
+        "onLight": _best_text_color(light_rgb),
+        "onDark": _best_text_color(dark_rgb),
+    }
+
+
+def resolve_accent_palette(config, project_root, cache_dir):
+    """Resolve `accent_color` config into a 4-value palette for runtime.
+
+    Returns a dict of hex strings:
+        {"light": ..., "dark": ..., "onLight": ..., "onDark": ...}
+
+    The accent serves two roles that conflict in dark mode — white-text
+    pills want a DARK accent, while links / focus rings on the dark
+    sheet want a LIGHT accent. So we derive a deep light-mode shade and
+    a lightened dark-mode shade from one base, plus the best on-accent
+    text colour for each; style.css maps the active pair by
+    [data-color-scheme]. Always returns a palette (never None): the
+    unset / failed-derivation cases fall back to the framework default.
+
+    Base selection:
+      - omitted → framework default #1d6fa5, used verbatim for light.
+      - explicit hex → the hex, used verbatim for light (preserves
+        curator intent exactly; only the dark shade is derived).
+      - "auto" → logo/icon-derived pixel pick (cached as the RAW pick),
+        darkened for the light shade so white text stays AA-legible.
+    """
+    base_rgb, darken_light, is_default = _resolve_accent_base(config, project_root, cache_dir)
+    palette = _palette_from_base(base_rgb, darken_light)
+    # Only nag about contrast for an accent the curator actually chose
+    # (explicit hex / successful auto-derive). The framework-default
+    # fallback is ours to get right, not something to warn about on
+    # every default-accent build.
+    if not is_default:
+        _warn_low_contrast_palette(palette)
+    return palette
+
+
+def _resolve_accent_base(config, project_root, cache_dir):
+    """Resolve config → (base_rgb, darken_light, is_default).
+
+    base_rgb is the (r, g, b) the palette is derived from; darken_light
+    says whether the LIGHT shade should be darkened for white-text
+    legibility (True only for the "auto" pixel-pick — explicit hex and
+    the framework default are trusted verbatim so light mode is
+    unchanged); is_default flags the framework-default fallback (unset,
+    or "auto" that couldn't produce a colour) so the caller can skip the
+    low-contrast warning for a colour the curator didn't pick.
     """
     raw = config.get("accent_color")
     if raw is None:
-        return None
+        return _hex_to_rgb(FRAMEWORK_DEFAULT_ACCENT), False, True
     if raw != "auto":
         # Explicit hex: validator already checked the format.
-        result = raw.upper()
-        _warn_low_contrast_accent(result)
-        return result
+        return _hex_to_rgb(raw.upper()), False, False
+    pick = _derive_accent_cached(config, project_root, cache_dir)
+    if pick is None:
+        return _hex_to_rgb(FRAMEWORK_DEFAULT_ACCENT), False, True
+    return pick, True, False
 
-    # "auto" path — derive from logo, falling back to icon.
+
+def _derive_accent_cached(config, project_root, cache_dir):
+    """Run derive_accent on the logo (falling back to icon), cached by
+    source content hash. Returns the RAW (r, g, b) pixel pick —
+    pre-contrast-adjustment — so the palette can be recomputed cheaply
+    on every build without re-walking the image, and so palette-math
+    changes never need a cache-version bump. Returns None (with a
+    warning) when no raster source exists or no colour qualifies.
+    """
     logo_p = config.get("logo") or ""
     icon_p = config.get("icon") or ""
     candidates = []
@@ -177,7 +294,8 @@ def resolve_accent_color(config, project_root, cache_dir):
 
     source = candidates[0]
 
-    # Cache by content hash so re-builds skip the Pillow walk.
+    # Cache by content hash so re-builds skip the Pillow walk. We store
+    # the RAW pick (not a finished shade) — see the docstring.
     accent_cache_dir = os.path.join(cache_dir, "derive_accent")
     os.makedirs(accent_cache_dir, exist_ok=True)
     with open(source, "rb") as f:
@@ -187,10 +305,11 @@ def resolve_accent_color(config, project_root, cache_dir):
         try:
             with open(cache_path) as f:
                 cached = json.load(f)
-            result = cached.get("hex")
-            if result:
-                _warn_low_contrast_accent(result)
-                return result
+            raw_pick = cached.get("raw")
+            # Old-format entries stored a darkened "hex" and no "raw" —
+            # treat those as a miss and re-derive (one-time migration).
+            if isinstance(raw_pick, list) and len(raw_pick) == 3:
+                return tuple(raw_pick)
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -202,42 +321,45 @@ def resolve_accent_color(config, project_root, cache_dir):
             "neutral). Falling back to framework default."
         )
         return None
-
-    # Auto-darken so white text on the accent stays readable (WCAG AA).
-    rgb = _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255))
-    result = _rgb_to_hex(rgb)
     try:
         with open(cache_path, "w") as f:
-            json.dump({"hex": result, "source": os.path.basename(source)}, f)
+            json.dump({"raw": list(rgb), "source": os.path.basename(source)}, f)
     except OSError:
         pass
-    console.info(f"accent_color: derived {result} from {os.path.basename(source)}")
-    _warn_low_contrast_accent(result)
-    return result
+    console.info(
+        f"accent_color: derived raw {_rgb_to_hex(rgb)} from {os.path.basename(source)}"
+    )
+    return tuple(rgb)
 
 
-def _warn_low_contrast_accent(hex_color):
-    """Print a build-time warning if the accent has poor contrast
-    against either the light-mode or dark-mode sheet background.
+def _warn_low_contrast_palette(palette):
+    """Print a build-time warning if either derived accent shade fails
+    WCAG AA against its OWN background: the light shade vs the white
+    sheet, the dark shade vs the dark sheet (#1c1c1e).
 
-    Both schemes need to read cleanly because the accent is used
-    for active toggle pills, focus rings, link colour, etc. — all
-    surfaces that overlay the sheet background and need to stand
-    out in either mode.
+    Each shade only ever renders in its own scheme, so — unlike the old
+    single-colour check — we no longer test one value against both
+    backgrounds. The on-accent text colour is picked for max contrast by
+    construction, so only the foreground-on-sheet role (links / focus
+    rings) needs a warning.
     """
-    try:
-        rgb = _hex_to_rgb(hex_color)
-    except (ValueError, IndexError):
-        return
-    light_bg = (255, 255, 255)
-    dark_bg = (28, 28, 30)  # matches --sheet-bg in dark mode
-    light_ratio = _contrast_ratio(rgb, light_bg)
-    dark_ratio = _contrast_ratio(rgb, dark_bg)
     THRESHOLD = 4.5  # WCAG AA for normal text
-    if light_ratio < THRESHOLD or dark_ratio < THRESHOLD:
+    try:
+        light_rgb = _hex_to_rgb(palette["light"])
+        dark_rgb = _hex_to_rgb(palette["dark"])
+    except (ValueError, IndexError, KeyError):
+        return
+    light_ratio = _contrast_ratio(light_rgb, (255, 255, 255))
+    dark_ratio = _contrast_ratio(dark_rgb, _DARK_SHEET_BG)
+    problems = []
+    if light_ratio < THRESHOLD:
+        problems.append(f"light shade {palette['light']} vs white sheet = {light_ratio:.2f}")
+    if dark_ratio < THRESHOLD:
+        problems.append(f"dark shade {palette['dark']} vs dark sheet = {dark_ratio:.2f}")
+    if problems:
         console.warn(
-            f"accent_color {hex_color} contrast vs light bg = "
-            f"{light_ratio:.2f}, vs dark bg = {dark_ratio:.2f} (target "
-            f">= {THRESHOLD:.1f}). Active pills / focus rings / links may "
-            "be hard to read on one or both schemes."
+            "accent_color: "
+            + "; ".join(problems)
+            + f" (target >= {THRESHOLD:.1f}). Links / focus rings may be "
+            "hard to read in that scheme."
         )

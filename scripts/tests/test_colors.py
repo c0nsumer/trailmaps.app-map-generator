@@ -13,16 +13,19 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from colors import (  # noqa: E402
+    _best_text_color,
     _contrast_ratio,
     _darken_for_contrast,
     _hex_to_rgb,
+    _lighten_for_contrast,
     _relative_luminance,
     _rgb_to_hex,
-    resolve_accent_color,
+    resolve_accent_palette,
 )
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+DARK_BG = (28, 28, 30)  # --sheet-bg in dark mode (#1c1c1e)
 
 
 def test_hex_rgb_roundtrip():
@@ -65,17 +68,41 @@ def test_darken_keeps_dark_color_passing():
     assert _contrast_ratio(out, WHITE) >= 4.5
 
 
-def test_resolve_accent_none_when_unset():
-    assert resolve_accent_color({}, "/tmp", "/tmp") is None
+def test_lighten_reaches_target_against_dark():
+    # A dark colour that fails AA against the dark sheet gets lightened
+    # until it passes. #005088 is the worst real-world offender (2.03).
+    dark = (0, 80, 136)
+    assert _contrast_ratio(dark, DARK_BG) < 4.5  # precondition: starts failing
+    out = _lighten_for_contrast(dark, target_contrast=4.5, against=DARK_BG)
+    assert _contrast_ratio(out, DARK_BG) >= 4.5
 
 
-def test_resolve_accent_explicit_hex_uppercased():
-    assert resolve_accent_color({"accent_color": "#2980b9"}, "/tmp", "/tmp") == "#2980B9"
+def test_best_text_color_flips_with_accent_lightness():
+    # Deep accent → white text; light accent → near-black text.
+    assert _best_text_color((20, 40, 90)) == "#FFFFFF"
+    assert _best_text_color((150, 200, 240)) == "#14140F"
 
 
-def test_resolve_accent_auto_without_raster_is_none():
-    # "auto" with no logo/icon files present → None (framework default).
-    assert resolve_accent_color({"accent_color": "auto"}, "/tmp", "/tmp") is None
+def test_resolve_palette_unset_uses_framework_default():
+    # No accent_color → framework-default palette (never None), with the
+    # default used verbatim for the light shade.
+    p = resolve_accent_palette({}, "/tmp", "/tmp")
+    assert set(p) == {"light", "dark", "onLight", "onDark"}
+    assert p["light"] == "#1D6FA5"
+
+
+def test_resolve_palette_explicit_hex_light_verbatim():
+    # Explicit hex is the LIGHT shade verbatim (light mode unchanged);
+    # only the dark shade is derived, and it clears AA vs the dark sheet.
+    p = resolve_accent_palette({"accent_color": "#005088"}, "/tmp", "/tmp")
+    assert p["light"] == "#005088"
+    assert _contrast_ratio(_hex_to_rgb(p["dark"]), DARK_BG) >= 4.5
+
+
+def test_resolve_palette_auto_without_raster_falls_back():
+    # "auto" with no raster source → framework-default palette, not None.
+    p = resolve_accent_palette({"accent_color": "auto"}, "/tmp", "/tmp")
+    assert p["light"] == "#1D6FA5"
 
 
 if __name__ == "__main__":

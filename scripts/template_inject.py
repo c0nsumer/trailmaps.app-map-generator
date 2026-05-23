@@ -577,12 +577,20 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["forcedVisible"] = list(raw_forced_visible)
     else:
         config_obj["forcedVisible"] = []
-    # Accent colour: resolved at build time (see _accent_color
-    # stash). None means "use framework default" (the runtime CSS
-    # var falls back to #2980b9). A hex string is set on :root by
-    # the runtime so the rest of the chrome picks it up via
-    # var(--accent).
-    config_obj["accentColor"] = config.get("_accent_color")
+    # Accent palette: resolved at build time (see _accent_palette
+    # stash in build.py). The build always produces a 4-value palette —
+    # a deep light-mode shade + a lightened dark-mode shade, each with
+    # its best on-accent text colour — from the logo pick / explicit
+    # hex / framework default. app.js sets the four BASE vars on :root
+    # and style.css maps --accent / --on-accent per [data-color-scheme],
+    # so the accent reads correctly in both schemes. accentColor (= the
+    # light shade) stays emitted for back-compat / external readers.
+    accent_palette = config.get("_accent_palette") or {}
+    config_obj["accentLight"] = accent_palette.get("light")
+    config_obj["accentDark"] = accent_palette.get("dark")
+    config_obj["onAccentLight"] = accent_palette.get("onLight")
+    config_obj["onAccentDark"] = accent_palette.get("onDark")
+    config_obj["accentColor"] = accent_palette.get("light")
 
     # Per-type POI counts (computed from pois.geojson at build
     # time — see _poi_counts stash). Drives the dynamic Welcome

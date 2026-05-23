@@ -38,12 +38,18 @@
     // Event POIs (always-on markers from event_mode.pois)
     if (CONFIG.eventPoiColor)        root.style.setProperty("--event-poi-color",       CONFIG.eventPoiColor);
     // Per-map UI accent (active toggle pills, focus rings, link colour,
-    // FAB pressed state, etc.). When omitted, the CSS var falls back
-    // to the framework default (#2980b9). When CONFIG.accentColor is
-    // a hex string (either explicit YAML or build-time-derived from
-    // the logo via accent_color: "auto"), set --accent on :root and
-    // every consumer picks it up automatically via var(--accent).
-    if (CONFIG.accentColor)          root.style.setProperty("--accent",                CONFIG.accentColor);
+    // FAB pressed state, etc.). The build derives a 4-value palette — a
+    // deep light-mode shade + a lightened dark-mode shade, each with its
+    // best on-accent text colour — so the accent reads correctly in
+    // BOTH schemes. We set the four BASE vars here (not --accent
+    // directly); style.css maps --accent / --on-accent from them per
+    // [data-color-scheme], so the scheme toggle switches the accent for
+    // free with no re-injection. Setting --accent inline would pin it
+    // and defeat that mapping (inline style beats the stylesheet rule).
+    if (CONFIG.accentLight)   root.style.setProperty("--accent-light",     CONFIG.accentLight);
+    if (CONFIG.accentDark)    root.style.setProperty("--accent-dark",      CONFIG.accentDark);
+    if (CONFIG.onAccentLight) root.style.setProperty("--on-accent-light",  CONFIG.onAccentLight);
+    if (CONFIG.onAccentDark)  root.style.setProperty("--on-accent-dark",   CONFIG.onAccentDark);
 })();
 
 // ============================================================

@@ -37,7 +37,7 @@ from cache_signatures import (
     _trails_fetch_fingerprint,
     _trails_needs_refetch,
 )
-from colors import resolve_accent_color
+from colors import resolve_accent_palette
 from enrichment import _enrich_trails_geojson
 from event_mode import (
     _apply_event_mode_to_custom_routes,
@@ -787,12 +787,14 @@ def main(argv=None):
             poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
     config["_poi_counts"] = poi_counts
 
-    # Accent colour: stash the resolved hex (or None for "use
-    # framework default") so inject_config_into_template can emit it
-    # as CONFIG.accentColor. resolve_accent_color also handles "auto"
-    # (Pillow-based logo derivation, cached per-source-hash) and the
-    # WCAG contrast warning for both light + dark sheet backgrounds.
-    config["_accent_color"] = resolve_accent_color(config, project_root, cache_dir)
+    # Accent palette: stash the resolved 4-value palette (light + dark
+    # shades, each with its on-accent text colour) so
+    # inject_config_into_template can emit them as the CONFIG.accent*
+    # vars. resolve_accent_palette handles "auto" (Pillow-based logo
+    # derivation, cached per-source-hash as the raw pick), explicit hex,
+    # and the unset framework default uniformly, and emits per-shade
+    # WCAG contrast warnings. Always returns a palette (never None).
+    config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
 
     # Event-mode pre-pass (no-op when event_mode is absent). Folds
     # event_mode.routes into config["custom_routes"] so they
