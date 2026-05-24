@@ -925,9 +925,12 @@ const OVERVIEW_ARROW_SPACING_M   = 500;
 const OVERVIEW_DIAMOND_SPACING_M = 500;
 
 // Overview point labels (a single loop/trail name at a representative
-// point) cover the zooms where the curve-following line labels can't
-// fit. The layer maxzoom hands back to the line labels at this zoom.
-const POINT_LABEL_MAX_ZOOM = DECOR_MZ_PER_WAY;
+// point) must survive the initial fit-bounds zoom on every platform.
+// Wide desktop fits land ~14.4-15.3, and maxBounds floors the zoom-out
+// above 14 (so a smaller fit or zooming out can't reach a lower band) —
+// the cutoff itself must clear that. Intentionally above DECOR_MZ_PER_WAY
+// (14), not aliased to it. Curve-following line labels take over past this.
+const POINT_LABEL_MAX_ZOOM = 16;
 // Set false to drop the trails-mode point label (keep routes-mode only)
 // if per-trail overview labels prove too cluttered.
 const POINT_LABELS_IN_TRAILS_MODE = true;
