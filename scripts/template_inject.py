@@ -121,6 +121,7 @@ CONFIG_SPEC = [
     ("color_by", "colorBy", "relation"),
     ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
+    ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # When true (the default), highlighting a route or trail dims
     # everything else on the map (basemap tint + non-highlighted
     # labels/arrows/difficulty hidden + POI markers faded) so the

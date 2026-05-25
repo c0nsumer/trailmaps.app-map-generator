@@ -43,6 +43,7 @@ clipped_relations:
 # show_direction_arrows: true
 # suppress_basemap_path_labels: false
 # suppress_basemap_pois: false
+# suppress_basemap_oneway_arrows: false
 # show_route_distance: false
 # show_route_elevation: false
 # poi_proximity_m: 50

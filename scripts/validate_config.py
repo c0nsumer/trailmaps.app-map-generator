@@ -114,6 +114,7 @@ KNOWN_KEYS = {
     "show_direction_arrows": bool,
     "suppress_basemap_path_labels": bool,
     "suppress_basemap_pois": bool,
+    "suppress_basemap_oneway_arrows": bool,
     "map_dim_on_highlight": bool,
     "url_hash": bool,
     "poi_proximity_m": (int, float),

@@ -142,6 +142,9 @@ relations:
 # Hide POI and place=locality labels from the Protomaps basemap.
 # suppress_basemap_pois: false
 
+# Hide the Protomaps basemap's oneway direction arrows (roads + paths).
+# suppress_basemap_oneway_arrows: false
+
 # Compute per-route distance at build time; show it in the Finder + chip.
 # show_route_distance: false
 

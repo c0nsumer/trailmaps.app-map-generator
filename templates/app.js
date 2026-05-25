@@ -2526,6 +2526,7 @@ async function init() {
         promoteBasemapLabels();
         suppressBasemapPathLabels();
         suppressBasemapPois();
+        suppressBasemapOnewayArrows();
         // Apply share-link highlight, if any. Done here (after both
         // trails and route/trail indexes are built) so we can resolve
         // route IDs / trail names against real data. Best-effort —
@@ -7743,6 +7744,20 @@ function suppressBasemapPois() {
     }
 }
 
+function suppressBasemapOnewayArrows() {
+    if (!CONFIG.suppressBasemapOnewayArrows) return;
+    // The Protomaps basemap's "roads_oneway" layer stamps a direction
+    // arrow along anything tagged oneway=yes in the roads source-layer —
+    // oneway roads AND oneway paths/trails alike. On a trail map those
+    // compete with the framework's own one-way trail arrows, so let
+    // curators drop them. The layer filters on oneway only (no
+    // road-vs-path split), so this clears every basemap oneway arrow,
+    // not just the ones on paths.
+    if (map.getLayer("roads_oneway")) {
+        map.setLayoutProperty("roads_oneway", "visibility", "none");
+    }
+}
+
 // ============================================================
 // Basemap rebuild — only when user picks a different basemap from the
 // (optional) base_layers selector. Light theme only; no theme rebuilds.
@@ -7802,6 +7817,7 @@ function rebuildBasemapLayers() {
     promoteBasemapLabels();
     suppressBasemapPathLabels();
     suppressBasemapPois();
+    suppressBasemapOnewayArrows();
 
     // Re-register difficulty/arrow icons if lost during style rebuild.
     // The decoration layers themselves come back via the serialised
