@@ -224,7 +224,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `direction_schedule` | No | `{}` | When and how arrows flip 180° (day-of-week / date-parity). One hierarchical key: top-level `reverse_days:` is the system-wide schedule applied to every route; nested `per_route:` is a dict of per-relation overrides keyed by OSM relation ID. **Required** (system-wide or per-route) for any way tagged `oneway=reversible` to render. See [Direction schedules](#direction-schedules) for the full schema and examples. |
+| `direction_schedule` | No | `{}` | When and how arrows flip 180° (day-of-week / date-parity). One hierarchical key: top-level `reverse_days:` is the system-wide schedule applied to every route; nested `per_route:` is a dict of per-relation overrides keyed by OSM relation ID. **Required** (system-wide or per-route) for any way tagged `oneway=reversible` to render. See [Direction schedules](#direction-schedules-day-of-week--date-parity-reversal) for the full schema and examples. |
 
 ### Display
 
