@@ -160,18 +160,32 @@ def generate_service_worker(config, output_dir):
     with open(sw_template) as f:
         sw_content = f.read()
 
-    # Walk the build tree twice: once to collect EVERY file (for the
-    # CACHE_VERSION hash — see comment below on why), then filter
-    # that down to PRECACHE_URLS by dropping all but the essential
-    # glyph PBFs. The trim keeps PRECACHE_URLS at ~30 entries for a
-    # typical map instead of ~537 (full glyph parade), which removed
-    # the parallel-glyph storm that competed with MapLibre's
-    # foreground rendering on first visit. Glyph ranges outside
-    # 0-255 flow through the SW's cache-on-fetch handler — whatever
-    # the rider's view actually needs gets pulled from the network
-    # on first use and cached for offline as a side effect of normal
-    # use. See sw.js install/fetch handlers for the runtime half of
-    # this design.
+    # Walk the build tree once to collect every DEPLOYED file (for the
+    # CACHE_VERSION hash — see comment below on why), then filter that
+    # down to PRECACHE_URLS by dropping all but the essential glyph
+    # PBFs. The trim keeps PRECACHE_URLS at ~30 entries for a typical
+    # map instead of ~537 (full glyph parade), which removed the
+    # parallel-glyph storm that competed with MapLibre's foreground
+    # rendering on first visit. Glyph ranges outside 0-255 flow through
+    # the SW's cache-on-fetch handler — whatever the rider's view
+    # actually needs gets pulled from the network on first use and
+    # cached for offline as a side effect of normal use. See sw.js
+    # install/fetch handlers for the runtime half of this design.
+    #
+    # Build-only cache artifacts (trails.src.geojson and every .sig
+    # sidecar) are dropped up front, before they reach either the hash
+    # or the precache list. The runtime never fetches them — app.js
+    # reads trails.geojson and the .pmtiles directly — and
+    # build_and_deploy.sh excludes them from the server tree. Leaving
+    # them in PRECACHE_URLS made the SW background-fetch each one on
+    # every install, logging a 404 per file against the (correctly)
+    # absent artifact; leaving them in the hash would needlessly bust
+    # every rider's cache when a base-cache fingerprint changed without
+    # any rider-visible output changing. Keep this predicate in sync
+    # with the rsync --exclude list in tools/build_and_deploy.sh.
+    def _is_build_only_artifact(rel_url):
+        return rel_url.endswith(".sig") or rel_url.endswith(".src.geojson")
+
     def _is_precachable_glyph(rel_url):
         # rel_url uses forward slashes (normalized below). Non-glyph
         # files always precache. For glyphs (fonts/*/N-M.pbf) only
@@ -180,7 +194,7 @@ def generate_service_worker(config, output_dir):
             return True
         return rel_url.endswith("/0-255.pbf")
 
-    all_files = []  # every file in output_dir, for the hash
+    all_files = []  # every deployed file in output_dir, for the hash
     for root, _dirs, files in os.walk(output_dir):
         for fname in sorted(files):
             if fname == "sw.js":
@@ -190,6 +204,10 @@ def generate_service_worker(config, output_dir):
             # Normalize Windows separators for URL use + the glyph
             # filter check (which expects forward slashes).
             rel_url = rel.replace(os.sep, "/")
+            # Drop build-only cache artifacts before they reach either
+            # the hash or the precache list (see comment above).
+            if _is_build_only_artifact(rel_url):
+                continue
             all_files.append(rel_url)
 
     precache_urls = ["./"]
@@ -201,8 +219,8 @@ def generate_service_worker(config, output_dir):
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)
 
-    # Compute cache version from actual file CONTENTS of EVERY file
-    # in the build (not just the precache subset). The earlier
+    # Compute cache version from actual file CONTENTS of every
+    # deployed file in the build (not just the precache subset). The earlier
     # "filenames + data_date" approach missed the most common case:
     # editing app.js / style.css / index.html without touching trails
     # or POIs left the cache version unchanged, so the service worker

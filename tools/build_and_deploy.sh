@@ -318,10 +318,18 @@ for name in "${configs[@]}"; do
             failed+=("$name")
             continue
         fi
+        # Build-only cache artifacts (trails.src.geojson + every .sig
+        # sidecar) are never fetched at runtime, so they don't belong on
+        # the server. Exclude them from the transfer; --delete-excluded
+        # also purges any that earlier deploys left behind, so the
+        # server tree carries only runtime files. Keep these patterns in
+        # sync with _is_build_only_artifact() in scripts/build.py.
         if $DRY_RUN; then
-            echo "[dry-run] rsync -avz --delete ${build_dir}/ ${DEPLOY_DEST}/${slug}/"
+            echo "[dry-run] rsync -avz --delete --delete-excluded --exclude='*.sig' --exclude='*.src.geojson' ${build_dir}/ ${DEPLOY_DEST}/${slug}/"
         else
-            rsync -avz --delete "${build_dir}/" "${DEPLOY_DEST}/${slug}/"
+            rsync -avz --delete --delete-excluded \
+                --exclude='*.sig' --exclude='*.src.geojson' \
+                "${build_dir}/" "${DEPLOY_DEST}/${slug}/"
         fi
         echo ""
     fi
