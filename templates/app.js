@@ -7867,6 +7867,16 @@ function rebuildBasemapLayers() {
 if (CONFIG.pwa && "serviceWorker" in navigator) {
     let _hasShownUpdateToast = false;
 
+    // Was this page navigation already controlled by a service worker?
+    // Sampled by index.html's inline script BEFORE register() — false on a
+    // first/uncontrolled visit, true on a return visit. We gate the update
+    // toast on this instead of a live navigator.serviceWorker.controller read
+    // because sw.js's clients.claim() sets controller mid-first-load, and the
+    // controllerchange/statechange ordering it races with is browser-specific
+    // (Firefox lands controllerchange first, wrongly tripping the live check on
+    // a first install; Chrome/Safari don't). This sampled flag is race-free.
+    const wasControlled = !!window.__swControlledAtLoad;
+
     function showSwUpdateToast(reg) {
         // Suppress within the current page load only. A future page
         // load that finds a waiting SW will show the toast again —
@@ -7934,7 +7944,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     function watchForSwUpdate(reg) {
         // Case A: a waiting SW is already present at page load
         // (deploy happened while a different tab was open).
-        if (reg.waiting && navigator.serviceWorker.controller) {
+        if (reg.waiting && wasControlled) {
             showSwUpdateToast(reg);
         }
         // Case B: a new SW is discovered during this session.
@@ -7942,12 +7952,14 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
             const installing = reg.installing;
             if (!installing) return;
             installing.addEventListener("statechange", () => {
-                // "installed" + an existing controller means this is
-                // an UPDATE (not a first install). First installs
-                // shouldn't show the reload toast — there's nothing
-                // to reload from.
-                if (installing.state === "installed"
-                        && navigator.serviceWorker.controller) {
+                // "installed" + the page was already SW-controlled at
+                // load means this is an UPDATE (not a first install).
+                // First installs shouldn't show the reload toast —
+                // there's nothing to reload from. wasControlled is
+                // sampled before clients.claim() can fire, so unlike a
+                // live controller read it can't be tripped by claim on
+                // a first install (the Firefox-only false toast).
+                if (installing.state === "installed" && wasControlled) {
                     showSwUpdateToast(reg);
                 }
             });

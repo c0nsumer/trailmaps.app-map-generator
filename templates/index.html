@@ -603,6 +603,17 @@
     <!-- SW start -->
     <script>
     if ('serviceWorker' in navigator) {
+        // Sample BEFORE register(): false on a first/uncontrolled visit (no SW
+        // controlled this navigation), true when an existing active SW already
+        // controls the page. app.js gates the "Updated map available" toast on
+        // this flag instead of a live navigator.serviceWorker.controller read.
+        // Why: sw.js's clients.claim() flips controller mid-first-load, and in
+        // Firefox that controllerchange lands BEFORE the new worker's "installed"
+        // event — so a live read at the install guard wrongly sees a controller
+        // and fires the toast on a first install (confirmed: Firefox toasts,
+        // Chrome/Safari don't, purely from that event ordering). Sampling here,
+        // before register() can trigger install/activate/claim, is race-free.
+        window.__swControlledAtLoad = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.register('sw.js');
     }
     </script>
