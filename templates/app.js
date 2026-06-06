@@ -96,6 +96,15 @@ const MAP_PAINT_TOKENS = {
         // white on a dark basemap reads as clouds, not terrain.
         hillshadeShadow:    "#3d3d3d",
         hillshadeHighlight: "#ffffff",
+        // Basemap-contrasting edge colours — every trail/route edge
+        // treatment (casing, clip-arrow halo, highlight outline) contrasts
+        // the basemap the same way: dark on the light basemap, light on the
+        // dark basemap. Re-applied on scheme toggle by applyMapPaintForScheme.
+        // (Casing 0.6 alpha; its line-opacity 0.5 → ~0.3 effective. Arrow
+        // halo 0.85. Outline opaque.)
+        trailCasing:      "rgba(0,0,0,0.6)",
+        arrowHalo:        "rgba(0,0,0,0.85)",
+        highlightOutline: "#000000",
     },
     dark: {
         labelText:  "#f0f0f0",
@@ -108,6 +117,9 @@ const MAP_PAINT_TOKENS = {
         // that plain #ffffff produces.
         hillshadeShadow:    "#000000",
         hillshadeHighlight: "rgba(255, 255, 255, 0.15)",
+        trailCasing:      "rgba(255,255,255,0.6)",
+        arrowHalo:        "rgba(255,255,255,0.85)",
+        highlightOutline: "#ffffff",
     },
 };
 
@@ -128,17 +140,35 @@ function applyMapPaintForScheme(scheme) {
             map.setPaintProperty(ptLayer, "text-halo-color", t.labelHalo);
         }
     }
-    // Per-route name labels (one layer per route, id="trail-label-<routeId>",
-    // added by addLineLabelLayers around line 3316). These render the route
-    // name when labelMode === "routes" and need the same per-scheme paint
-    // flip as decor-route-name; without it they stay frozen at the
-    // hardcoded light-mode values, producing the "some labels dark-inner
-    // light-outer, some the reverse" inconsistency in dark mode.
+    // Per-route overlay layers that carry a scheme-dependent colour and
+    // survive a scheme toggle verbatim (setStyle({diff:true}) preserves
+    // overlays), so their colour is re-applied here rather than only at
+    // build time:
+    //   trail-label-<id>  — name text + halo
+    //   trail-casing-<id> — basemap-contrasting outline halo
+    //   clip-arrow-<id>   — continuation-arrow halo (basemap-contrasting)
+    // Without the label flip they'd freeze at light-mode values (the "some
+    // labels dark-inner light-outer" bug); without the casing/halo flip the
+    // edges would freeze at the build-time scheme.
+    const arrowHalo = clipArrowHaloExpr();
     if (map.getStyle && map.getStyle()) {
         for (const layer of map.getStyle().layers) {
-            if (!layer.id.startsWith("trail-label-")) continue;
-            map.setPaintProperty(layer.id, "text-color", t.labelText);
-            map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
+            if (layer.id.startsWith("trail-label-")) {
+                map.setPaintProperty(layer.id, "text-color", t.labelText);
+                map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
+            } else if (layer.id.startsWith("trail-casing-")) {
+                map.setPaintProperty(layer.id, "line-color", t.trailCasing);
+            } else if (layer.id.startsWith("clip-arrow-")) {
+                map.setPaintProperty(layer.id, "icon-halo-color", arrowHalo);
+            }
+        }
+    }
+    // Highlight silhouettes (route + trail) — the single scheme-contrasting
+    // outline beneath the coloured/yellow stroke. Constant per scheme, so
+    // owned here instead of being recoloured per selection.
+    for (const id of ["route-highlight-outline", "trail-highlight-outline"]) {
+        if (map.getLayer(id)) {
+            map.setPaintProperty(id, "line-color", t.highlightOutline);
         }
     }
     if (map.getLayer("decor-arrow")) {
@@ -3215,37 +3245,6 @@ async function addTerrainLayers() {
     }, beforeLayer);
 }
 
-// ============================================================
-// Helper: perceived luminance of any CSS color (0–1)
-// ============================================================
-// Resolve the color through a canvas 2D context first, so NAMED colors
-// (OSM `colour=white` and friends, which arrive verbatim) normalize to
-// rgb. The old hex-only parse turned every named color into NaN, and
-// `NaN > threshold` is false — silently flipping casing/halo decisions to
-// the wrong direction (white routes lost their dark casing entirely).
-let _luminanceCtx = null;
-function colorLuminance(color) {
-    if (!_luminanceCtx) {
-        _luminanceCtx = document.createElement("canvas").getContext("2d");
-    }
-    // Seed with a sentinel so an unparseable color is deterministic and
-    // doesn't inherit the previous call's value.
-    _luminanceCtx.fillStyle = "#000000";
-    _luminanceCtx.fillStyle = color;
-    const norm = _luminanceCtx.fillStyle;   // "#rrggbb" or "rgba(r, g, b, a)"
-    let r, g, b;
-    if (norm[0] === "#") {
-        const hex = norm.slice(1);
-        r = parseInt(hex.substring(0, 2), 16);
-        g = parseInt(hex.substring(2, 4), 16);
-        b = parseInt(hex.substring(4, 6), 16);
-    } else {
-        [r, g, b] = norm.slice(norm.indexOf("(") + 1, norm.indexOf(")"))
-            .split(",").map((s) => parseFloat(s));
-    }
-    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-}
-
 // Resolve the colour a route appears as on the map, in priority order:
 //   1. dashed_relations[id].colors[0] — explicit dash colours beat anything
 //   2. routeInfo.colour — from OSM `colour` tag or relation_colors override
@@ -3259,51 +3258,39 @@ function effectiveRouteColor(routeInfo) {
     return CONFIG.defaultTrailColor;
 }
 
-// Shared threshold for "is this route's color light or dark?" — used
-// by every layer that picks a contrasting outline (casing on the
-// trail line, halo on the clip-arrow symbol, default-color fallback
-// in difficulty-mode casings). 0.5 is the natural midpoint of
-// perceived luminance via the standard 0.299·R + 0.587·G + 0.114·B
-// formula. Keeping all bidirectional decisions on the same threshold
-// means a route's casing and its clip-arrow's halo always go the
-// same direction (both dark or both light), so a dark-colored trail
-// gets a visible casing AND a visible arrow halo on any basemap.
-const CONTRAST_LUM_THRESHOLD = 0.5;
-
-// Bidirectional casing colour from a fill hex. Light fills get a
-// translucent-dark casing (definition against light basemap); dark
-// fills get a translucent-light casing (visibility on dark basemap
-// or against the fill's own dark colour). Both at 0.6 alpha; the
-// trail-casing layer further multiplies by line-opacity 0.5, so the
-// effective rendered alpha is ~0.3 either direction.
-//
-// Shared by casingColor() (relation-mode) and difficultyCasingExpr()
-// (color_by: trail) so the two modes stay aligned — same threshold,
-// same alpha, same direction logic. Prior to unification, difficulty
-// mode used hand-tuned per-rating overrides that drifted from
-// relation mode in alpha and direction (latent skinny-trail bug for
-// dark IMBA fills).
-function casingFromFill(hex) {
-    return colorLuminance(hex) > CONTRAST_LUM_THRESHOLD
-        ? "rgba(0,0,0,0.6)"            // dark casing for light fills
-        : "rgba(255,255,255,0.6)";     // light casing for dark fills
+// Trail casing (outline halo) colour. A casing's job is to separate the
+// trail from the BASEMAP, so its contrast follows the basemap — which
+// tracks the colour scheme (light basemap → dark casing; dark basemap →
+// light casing) — not the trail's own fill. Keying off the fill (the
+// prior casingFromFill approach) gave dark fills a translucent-light
+// casing that vanished on the light basemap, so blue/black trails read
+// skinny (and, symmetrically, light trails would in dark mode). Both
+// relation mode and color_by:trail share this one value, so every trail
+// gets the same visible halo regardless of difficulty/route colour. The
+// colours live in MAP_PAINT_TOKENS so applyMapPaintForScheme() can
+// re-apply them on a scheme toggle.
+function trailCasingColor() {
+    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+    return t.trailCasing;
 }
 
-function casingColor(routeInfo) {
-    return casingFromFill(effectiveRouteColor(routeInfo));
-}
-
-// Bidirectional halo color for route-colored symbols (clip arrows
-// today; future symbols can reuse). Light routes get a dark halo so
-// the symbol stays visible against light basemap; dark routes get a
-// light halo so the symbol doesn't blend into similar dark
-// surroundings (or into the route's own dark fill). Same threshold
-// as casingColor so both decisions stay aligned.
-function contrastingHaloColor(routeInfo) {
-    const lum = colorLuminance(effectiveRouteColor(routeInfo));
-    return lum > CONTRAST_LUM_THRESHOLD
-        ? "rgba(0,0,0,0.85)"
-        : "rgba(255,255,255,0.85)";
+// icon-halo-color for clip-arrow continuation arrowheads. The halo's
+// job is to lift the arrow off the basemap, so — like the trail casing
+// and the highlight outline — it contrasts the BASEMAP via the colour
+// scheme: dark halo on the light basemap, light on the dark basemap.
+// Single-route arrows (drawn in the route's own colour) take that
+// scheme halo; shared multi-route endpoints keep a fixed light halo
+// because their arrow is filled black (sharedArrowColor) and needs a
+// light edge on either basemap. Re-applied on scheme toggle by
+// applyMapPaintForScheme().
+function clipArrowHaloExpr() {
+    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+    return [
+        "case",
+        [">=", ["get", "visible_count"], 2],
+        "rgba(255,255,255,0.85)",
+        t.arrowHalo,
+    ];
 }
 
 // Per-layer icon-color for clip-arrow layers at SHARED endpoints
@@ -3334,24 +3321,6 @@ function difficultyColorExpr() {
         "4", IMBA_RATINGS[4].color,
         "5", IMBA_RATINGS[5].color,
         CONFIG.defaultTrailColor,
-    ];
-}
-
-// Casing-colour expression for difficulty mode (color_by: trail).
-// Each rating's casing is derived from its fill via casingFromFill(),
-// the same helper that drives casingColor() in relation mode — so
-// both modes share threshold, alpha, and direction logic. Unrated
-// trails fall back to the casing for CONFIG.defaultTrailColor.
-function difficultyCasingExpr() {
-    return [
-        "match", ["get", "imba_difficulty"],
-        "0", casingFromFill(IMBA_RATINGS[0].color),
-        "1", casingFromFill(IMBA_RATINGS[1].color),
-        "2", casingFromFill(IMBA_RATINGS[2].color),
-        "3", casingFromFill(IMBA_RATINGS[3].color),
-        "4", casingFromFill(IMBA_RATINGS[4].color),
-        "5", casingFromFill(IMBA_RATINGS[5].color),
-        casingFromFill(CONFIG.defaultTrailColor),
     ];
 }
 
@@ -3724,8 +3693,8 @@ async function loadTrails() {
     //
     // Casing halo posture:
     //   - Solid routes always get the outline halo (1-1.5 px beyond
-    //     the fill on each side, ~50% opacity, derived darker shade
-    //     via casingColor()).
+    //     the fill on each side, ~50% opacity, basemap-contrasting
+    //     shade via trailCasingColor()).
     //   - Two-colour dashed routes (`colors: [A, B]`) get the halo
     //     too. The second colour renders as a solid underlay (see
     //     fill2 below) that fills the dash gaps, so a solid casing
@@ -3749,9 +3718,7 @@ async function loadTrails() {
         const hasUnderlay = !!(dashColors && dashColors.length >= 2);
         const casingVisible = !dashed || hasUnderlay;
 
-        const casingCol = byDifficulty
-            ? difficultyCasingExpr()
-            : casingColor(routeInfo);
+        const casingCol = trailCasingColor();
 
         map.addLayer({
             id: `trail-casing-${routeId}`,
@@ -3884,25 +3851,19 @@ async function loadTrails() {
             // Per-endpoint color logic, paired:
             //   visible_count >= 2 (multi-route convergence) →
             //     fill black (composited alpha via sharedArrowColor)
-            //     with a light halo so the dark arrow stays readable
-            //     against dark basemap backgrounds.
+            //     with a fixed light halo so the dark arrow stays
+            //     readable on either basemap.
             //   single route →
-            //     fill with the route's actual color, halo bidirectional
-            //     (contrastingHaloColor) so light-colored routes get a
-            //     dark outline and dark-colored routes get a light one.
-            //     Mirrors the trail line casings' contrast logic.
+            //     fill with the route's actual color; halo contrasts the
+            //     basemap via the scheme (see clipArrowHaloExpr), matching
+            //     the trail casing and highlight outline.
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
                 sharedArrowColor(),
                 effectiveRouteColor(routeInfo),
             ];
-            const haloCol = [
-                "case",
-                [">=", ["get", "visible_count"], 2],
-                "rgba(255,255,255,0.85)",   // light halo on dark shared fill
-                contrastingHaloColor(routeInfo),
-            ];
+            const haloCol = clipArrowHaloExpr();
             map.addLayer({
                 id: `clip-arrow-${routeId}`,
                 type: "symbol",
@@ -3974,11 +3935,12 @@ async function loadTrails() {
     // route's NATIVE colour (was amber) — with native colour, the white
     // core blurred into light-coloured routes (yellow, cream) and its
     // zoom-dependent width meant the inner-stripe effect was visible
-    // only at high zoom. The remaining black-outline + colour-stroke
-    // pair gets the structural emphasis from sheer thickness (~2× the
-    // unhighlighted fill width) plus the always-on black silhouette
-    // against any basemap; the spotlight dim (mapDimOnHighlight) does
-    // the rest of the visibility work by receding everything else.
+    // only at high zoom. The remaining outline + colour-stroke pair
+    // gets the structural emphasis from sheer thickness (~2× the
+    // unhighlighted fill width) plus the always-on scheme-contrasting
+    // silhouette (black on the light basemap, white on the dark);
+    // the spotlight dim (mapDimOnHighlight) does the rest of the
+    // visibility work by receding everything else.
     const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
     const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
 
@@ -4035,7 +3997,8 @@ async function loadTrails() {
         layout: { "line-cap": "round", "line-join": "round" },
     });
     // Two-layer trail highlight (bottom → top):
-    //   outline:  thick black (silhouette)
+    //   outline:  thick scheme-contrasting silhouette (black on light
+    //             basemap, white on dark — see applyMapPaintForScheme)
     //   stroke:   highlighter yellow (#FFEC00) — see highlightTrail().
     //             Trails span multiple routes so they have no native
     //             colour; the highlighter yellow is the framework's
@@ -4641,7 +4604,7 @@ function updateTrailDisplay() {
 // against light-coloured routes after the route-native-colour switch)
 // have been removed. The current pair gets the "highlighted" read
 // from sheer thickness vs. the unhighlighted fill plus the always-on
-// black silhouette; the spotlight dim does the rest.
+// scheme-contrasting silhouette; the spotlight dim does the rest.
 const ROUTE_HIGHLIGHT_LAYERS = [
     "route-highlight-outline",
     "route-highlight-stroke",
@@ -4728,25 +4691,12 @@ function highlightRoute(routeId) {
     // colour, OSM's `colour` tag); the highlight inherits that
     // identity by colouring the stroke with effectiveRouteColor().
     // Structural emphasis comes from the layered architecture: a
-    // thick black outline beneath, the route-coloured stroke at ~2x
-    // the unhighlighted fill width, and the spotlight dim receding
+    // thick scheme-contrasting outline beneath (black on the light
+    // basemap, white on dark), the route-coloured stroke at ~2x the
+    // unhighlighted fill width, and the spotlight dim receding
     // every other layer. Together they unmistakably signal "this
     // route is selected" without recolouring the route itself.
     const color = effectiveRouteColor(info);
-    // Outline picks dark vs light by the route's luminance, mirroring
-    // the bidirectional logic in casingColor / contrastingHaloColor —
-    // so the highlighted ribbon's edge tracks the unhighlighted
-    // casing's edge for the same route. Without this, a dark-coloured
-    // route like Iron Ore Heritage Trail (`#65442D`) had a translucent
-    // LIGHT casing in normal display but a SOLID BLACK outline once
-    // highlighted, making the edge look darker on selection — the
-    // opposite of what "highlighted" should communicate. Solid
-    // (non-translucent) so the outline still silhouettes against any
-    // basemap; just the colour direction follows the same threshold
-    // as the rest of the route's edge styling.
-    const outlineColor = colorLuminance(color) > CONTRAST_LUM_THRESHOLD
-        ? "#000000"
-        : "#ffffff";
     const routeFilter = ["==", ["get", "route_id"], routeId];
     // Set paint BEFORE flipping the filter. setFilter activates the
     // layer (or switches it to a new route's geometry); whatever
@@ -4756,15 +4706,12 @@ function highlightRoute(routeId) {
     // highlight) or the previous route's colour (when switching
     // between routes) before the new colour landed. Setting paint
     // first means the filter activation already finds the right
-    // colour in place. Same applies to the outline below.
+    // colour in place. (The outline isn't set here — it's a constant
+    // scheme-contrasting silhouette owned by applyMapPaintForScheme.)
     for (const layerId of ROUTE_TINTED_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setPaintProperty(layerId, "line-color", color);
         }
-    }
-    if (map.getLayer("route-highlight-outline")) {
-        map.setPaintProperty("route-highlight-outline",
-            "line-color", outlineColor);
     }
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
