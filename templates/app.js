@@ -4836,6 +4836,10 @@ function applyDimState() {
 function highlightRoute(routeId) {
     const info = CONFIG.routes[routeId];
     if (!info) return;
+    // Single-highlight invariant across kinds: drop any POI highlight
+    // (rings, force-mounted markers, open popup) before lighting a
+    // route. The route/trail filters clear each other inline below.
+    clearPoiHighlight();
     highlight = { kind: "route", key: routeId };
 
     // Highlight the route in its OWN colour, not a non-native accent
@@ -4897,6 +4901,9 @@ function highlightRoute(routeId) {
 }
 
 function highlightTrail(trailName) {
+    // Drop any POI highlight before lighting a trail (single-highlight
+    // invariant across kinds); route filters clear inline below.
+    clearPoiHighlight();
     highlight = { kind: "trail", key: trailName };
 
     // Trails span multiple routes — no single native colour to
@@ -5303,6 +5310,17 @@ function setPoiHighlightData(pois) {
 function highlightPoiSet(pois, label) {
     if (!pois || !pois.length) return;
 
+    // Close any popup left open on the *previous* highlighted POIs
+    // before the set is overwritten — otherwise a stale info card from
+    // the prior search lingers beside the new one (the chip only ever
+    // shows the latest). Must run before _highlightedPois is reassigned.
+    closeHighlightedPoiPopups();
+    // Drop any route/trail highlight so the POI rings don't sit on top
+    // of a stale ribbon, then resync the spotlight dim / dimmed labels /
+    // narrowed decorations that key off `highlight` (POIs never dim).
+    clearRouteTrailHighlight();
+    applyDimState();
+
     _highlightedPois = pois.slice();
     setPoiHighlightData(_highlightedPois);
 
@@ -5356,8 +5374,24 @@ function highlightPoiSet(pois, label) {
     });
 }
 
+// Close any popup left open on the currently-highlighted POIs. Only
+// single-POI highlights open a popup (highlightPoi); groups don't, so
+// for those this loop finds nothing open. Reuses findPoiMarker rather
+// than tracking popup state separately. Call BEFORE _highlightedPois is
+// cleared or reassigned, while the markers are still resolvable.
+function closeHighlightedPoiPopups() {
+    for (const p of _highlightedPois) {
+        const m = findPoiMarker(p);
+        const popup = m && typeof m.getPopup === "function" && m.getPopup();
+        if (popup && popup.isOpen()) popup.remove();
+    }
+}
+
 function clearPoiHighlight() {
     if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
+    // A stale info card from the prior search must not outlive its
+    // highlight — close it before we drop the set.
+    closeHighlightedPoiPopups();
     _highlightedPois = [];
     const src = map.getSource(POI_HIGHLIGHT_SOURCE);
     if (src) {
@@ -5371,7 +5405,12 @@ function clearPoiHighlight() {
     hideHighlightChip();
 }
 
-function clearHighlight() {
+// Clear only the route/trail line highlight (its layer filters + the
+// `highlight` state var). Split out from clearHighlight() so the POI
+// path can drop a stale route/trail highlight without tearing down and
+// re-mounting POI markers — highlightPoiSet keeps its own forced-type
+// reconcile for flicker-free POI→POI switches.
+function clearRouteTrailHighlight() {
     highlight = null;
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
@@ -5383,6 +5422,10 @@ function clearHighlight() {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
         }
     }
+}
+
+function clearHighlight() {
+    clearRouteTrailHighlight();
     // POI rings + chip — clearPoiHighlight is a no-op if nothing's
     // currently highlighted, and it tears down the chip itself, so
     // calling it here unifies the chip's clear path for both
