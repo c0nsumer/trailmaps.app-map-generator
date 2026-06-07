@@ -1917,8 +1917,8 @@ let _initialViewTarget = null;
 // Called once, after trails + indexes are loaded. The view portion
 // (zoom / center) of the share link is already in effect via map
 // construction options. Best-effort: silently no-ops if the
-// referenced route or trail no longer exists in the data (so a stale
-// link doesn't render an error).
+// referenced route, trail, or POI no longer exists in the data (so a
+// stale link doesn't render an error).
 function applyPendingShareHighlight() {
     const h = _pendingShareHighlight;
     _pendingShareHighlight = null;
@@ -1937,6 +1937,12 @@ function applyPendingShareHighlight() {
         if (trailIndex.some((t) => t.name === h.key)) {
             highlightTrail(h.key);
         }
+    } else if (h.kind === "poi") {
+        // h.key is a Finder row descriptor (poi:/group:/category:).
+        // highlightPoiByRef resolves it against the live POI index and
+        // re-creates the single / group / category highlight, or no-ops
+        // if nothing matches.
+        highlightPoiByRef(h.key);
     }
 }
 
@@ -1955,6 +1961,12 @@ function buildShareUrl() {
         path += `/r/${encodeURIComponent(highlight.key)}`;
     } else if (highlight && highlight.kind === "trail" && highlight.key) {
         path += `/t/${encodeURIComponent(highlight.key)}`;
+    } else if (_poiHighlightRef) {
+        // POI highlight (single, name-group, or category). The ref is the
+        // Finder row's uid; mutually exclusive with `highlight` by the
+        // single-highlight invariant. consumeShareHash + highlightPoiByRef
+        // re-expand it against live data on the receiving side.
+        path += `/p/${encodeURIComponent(_poiHighlightRef)}`;
     }
     const url = new URL(window.location.href);
     url.hash = path;
@@ -1974,6 +1986,17 @@ function buildShareTitle() {
     }
     if (highlight && highlight.kind === "trail" && highlight.key) {
         return `${baseTitle} — ${highlight.key}`;
+    }
+    if (_poiHighlightRef && _highlightedPois.length) {
+        const n = _highlightedPois.length;
+        if (n === 1) return `${baseTitle} — ${_highlightedPois[0].name}`;
+        const parsed = _parsePoiRef(_poiHighlightRef);
+        const groupName = parsed
+            ? (parsed.mode === "category"
+                ? (POI_TYPE_FALLBACK_NAME[parsed.type] || parsed.type)
+                : parsed.name)
+            : "";
+        if (groupName) return `${baseTitle} — ${groupName} (× ${n})`;
     }
     return baseTitle;
 }
@@ -2042,8 +2065,8 @@ function setupShareButton() {
     btn.addEventListener("click", shareCurrentView);
 }
 
-// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>]" hash and
-// return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
+// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/p/<poiRef>]"
+// hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
 // null if no share hash is present / parseable. Side effect: strips
 // the hash from the URL via history.replaceState so that
 //   (a) the share-link doesn't persist in the address bar,
@@ -2074,6 +2097,7 @@ function consumeShareHash() {
         const key = decodeURIComponent(keyEnc);
         if (kindCode === "r") highlight = { kind: "route", key };
         else if (kindCode === "t") highlight = { kind: "trail", key };
+        else if (kindCode === "p") highlight = { kind: "poi", key };
     }
     // Strip the hash regardless of url_hash setting; MapLibre will
     // start writing fresh hash if urlHash is true.
@@ -4950,6 +4974,10 @@ function highlightPoi(p) {
 
     const label = p.name || (POI_TYPE_META_LABEL[p.type] || "Place");
     highlightPoiSet([p], label);
+    // Record the share descriptor. highlightPoiSet routes through
+    // clearRouteTrailHighlight (not clearPoiHighlight), so it never
+    // clobbers this; set it after for clarity. See _poiHighlightRef.
+    _poiHighlightRef = p.uid || null;
 
     // Defer popup until the flyTo finishes so the popup positions
     // correctly relative to its new screen position.
@@ -4986,6 +5014,74 @@ function highlightPoiGroup(group) {
     // need to also flag the row as "All".
     const label = `${group.name} (× ${group.count})`;
     highlightPoiSet(group.members, label);
+    // Record the share descriptor (the group's `group:`/`category:` uid).
+    _poiHighlightRef = group.uid || null;
+}
+
+// Parse a POI share descriptor (the Finder row uid carried in a share
+// link's `/p/<ref>` segment) into its shape. Returns one of:
+//   { mode: "single",   uid }          — a single POI, matched by uid
+//   { mode: "group",    type, name }   — all POIs of a (type, name)
+//   { mode: "category", type }         — all POIs of a type
+// or null if the ref is malformed. The `group:` form splits on the FIRST
+// colon after the prefix only, so a POI name containing ":" survives.
+function _parsePoiRef(ref) {
+    if (typeof ref !== "string" || !ref) return null;
+    if (ref.startsWith("poi:")) {
+        return { mode: "single", uid: ref };
+    }
+    if (ref.startsWith("group:")) {
+        const rest = ref.slice("group:".length);
+        const sep = rest.indexOf(":");
+        if (sep < 0) return null;
+        return { mode: "group", type: rest.slice(0, sep), name: rest.slice(sep + 1) };
+    }
+    if (ref.startsWith("category:")) {
+        const type = ref.slice("category:".length);
+        if (!type) return null;
+        return { mode: "category", type };
+    }
+    return null;
+}
+
+// Re-create a POI highlight from a share descriptor, resolving it
+// against the LIVE poiIndex (so a rebuilt map highlights its current
+// members). Best-effort: silently no-ops if nothing matches — a stale
+// link to a since-removed POI just restores the view without a ring.
+// Mirrors the route/trail stale-link handling in applyPendingShareHighlight.
+function highlightPoiByRef(ref) {
+    const parsed = _parsePoiRef(ref);
+    if (!parsed) return;
+    if (parsed.mode === "single") {
+        const entry = poiIndex.find((p) => p.uid === parsed.uid);
+        if (entry) highlightPoi(entry);
+        return;
+    }
+    let members;
+    let name;
+    if (parsed.mode === "group") {
+        members = poiIndex.filter((p) => p.type === parsed.type && p.name === parsed.name);
+        name = parsed.name;
+    } else { // category
+        members = poiIndex.filter((p) => p.type === parsed.type);
+        name = POI_TYPE_FALLBACK_NAME[parsed.type] || parsed.type;
+    }
+    if (!members.length) return;
+    if (members.length === 1) {
+        // The set collapsed to one (data changed since the link was made,
+        // or the category now has a lone member) — highlight it as a
+        // single so the rider still gets the popup + a clean uid ref.
+        highlightPoi(members[0]);
+        return;
+    }
+    highlightPoiGroup({
+        isGroup: true,
+        uid: ref,
+        type: parsed.type,
+        name,
+        count: members.length,
+        members,
+    });
 }
 
 // Find the on-map maplibregl.Marker that corresponds to a poiIndex
@@ -5038,6 +5134,15 @@ function findPoiMarker(p) {
 // re-entrancy issue.
 
 let _highlightedPois = [];                       // module-scope state
+// Serializable descriptor of the *current* POI highlight, mirroring the
+// Finder row the rider tapped: a single POI's `poi:<type>:<lng>,<lat>`
+// uid, a name-group's `group:<type>:<name>` uid, or a category row's
+// `category:<type>` uid. buildShareUrl() serializes this so a POI
+// highlight round-trips through a share link the way a route/trail does
+// via `highlight`. Set by highlightPoi / highlightPoiGroup, nulled by
+// clearPoiHighlight. The single-highlight invariant (see commit history)
+// keeps this and `highlight` mutually exclusive: at most one is non-null.
+let _poiHighlightRef = null;
 const POI_HIGHLIGHT_SOURCE = "poi-highlight-source";
 const POI_HIGHLIGHT_OUTER  = "poi-highlight-outer";
 const POI_HIGHLIGHT_INNER  = "poi-highlight-inner";
@@ -5388,6 +5493,10 @@ function closeHighlightedPoiPopups() {
 }
 
 function clearPoiHighlight() {
+    // Drop the share descriptor unconditionally — clearing the POI
+    // highlight always invalidates it, and the early-return below only
+    // skips marker teardown when nothing's mounted (ref already null then).
+    _poiHighlightRef = null;
     if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
     // A stale info card from the prior search must not outlive its
     // highlight — close it before we drop the set.
