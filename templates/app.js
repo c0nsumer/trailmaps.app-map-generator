@@ -954,6 +954,13 @@ const DECOR_MZ_D200    = 16;  // every 200 m (close-in)
 const OVERVIEW_ARROW_SPACING_M   = 500;
 const OVERVIEW_DIAMOND_SPACING_M = 500;
 
+// Along-chain cadence (metres) for the detail arrow tiers. Unlike the old
+// per-way sweeps, the phase is carried across way boundaries (see
+// placeArrowTierAlongChains) so arrows stay evenly spaced where a route
+// changes trail name or difficulty. Eye-tunable.
+const ARROW_CADENCE_MID   = 400;  // mid tier   (zoom >= DECOR_MZ_PER_WAY)
+const ARROW_CADENCE_CLOSE = 200;  // close tier (zoom >= DECOR_MZ_D200)
+
 // Overview point labels (a single loop/trail name at a representative
 // point) must survive the initial fit-bounds zoom on every platform.
 // Wide desktop fits land ~14.4-15.3, and maxBounds floors the zoom-out
@@ -1075,6 +1082,174 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
     }
 }
 
+// Order a connected one-way run's ways into maximal head-to-tail chains.
+// A chain is a simple path: it breaks at branch nodes (degree >= 3) and
+// run endpoints, so the detail arrow tiers can space arrows with one
+// continuous arc cursor across way boundaries (no per-segment phase
+// reset — that reset is what made arrows bunch where a route changes
+// trail name or difficulty). Coordinates are never flipped — bearings
+// must keep encoding one-way travel direction — so each entry's `forward`
+// flag only tells the parameteriser which way the cursor runs that way.
+function buildChains(run) {
+    const ways = run.ways;
+    const hk = new Map();   // way -> head endpoint key
+    const tk = new Map();   // way -> tail endpoint key
+    const adj = new Map();  // endpoint key -> [{ way, end }]
+    for (const w of ways) {
+        const c = w.coords;
+        const h = endpointKey(c[0][0], c[0][1]);
+        const t = endpointKey(c[c.length - 1][0], c[c.length - 1][1]);
+        hk.set(w, h);
+        tk.set(w, t);
+        for (const [k, end] of [[h, "head"], [t, "tail"]]) {
+            let b = adj.get(k);
+            if (!b) { b = []; adj.set(k, b); }
+            b.push({ way: w, end });
+        }
+    }
+    const degree = (k) => (adj.get(k) || []).length;
+    const used = new Set();
+    // Walk a maximal simple chain, entering `startWay` through `entryKey`
+    // and continuing only through degree-2 nodes.
+    const walkFrom = (startWay, entryKey) => {
+        const chain = [];
+        let w = startWay;
+        let entry = entryKey;
+        while (w && !used.has(w)) {
+            used.add(w);
+            const forward = (entry === hk.get(w));
+            chain.push({ way: w, forward });
+            const exit = forward ? tk.get(w) : hk.get(w);
+            if (degree(exit) !== 2) break;          // branch or dead end
+            let next = null;
+            for (const cand of adj.get(exit)) {
+                if (cand.way !== w && !used.has(cand.way)) {
+                    next = cand.way;
+                    break;
+                }
+            }
+            if (!next) break;                        // cycle closed onto a used way
+            entry = exit;
+            w = next;
+        }
+        return chain;
+    };
+    const chains = [];
+    // Open chains start at degree-1 endpoints.
+    for (const [k, bucket] of adj) {
+        if (bucket.length === 1 && !used.has(bucket[0].way)) {
+            chains.push(walkFrom(bucket[0].way, k));
+        }
+    }
+    // Each unused arm of a branch node (degree >= 3) seeds its own chain.
+    for (const [k, bucket] of adj) {
+        if (bucket.length >= 3) {
+            for (const cand of bucket) {
+                if (!used.has(cand.way)) chains.push(walkFrom(cand.way, k));
+            }
+        }
+    }
+    // Remaining ways form pure (all-degree-2) cycles.
+    for (const w of ways) {
+        if (!used.has(w)) chains.push(walkFrom(w, hk.get(w)));
+    }
+    return chains;
+}
+
+// Flatten a chain into a continuous arc parameterisation: one entry per
+// source segment, in cursor order, tagged with the owning way and the
+// segment's own arcStart. `fwd` = the cursor runs this segment head->tail.
+function chainParam(chain) {
+    const entries = [];
+    let cursor = 0;
+    for (const { way, forward } of chain) {
+        const segs = way.segments;
+        if (forward) {
+            for (let i = 0; i < segs.length; i++) {
+                const s = segs[i];
+                entries.push({ owner: way, chainStart: cursor,
+                    lengthM: s.lengthM, fwd: true, segArcStart: s.arcStart });
+                cursor += s.lengthM;
+            }
+        } else {
+            for (let i = segs.length - 1; i >= 0; i--) {
+                const s = segs[i];
+                entries.push({ owner: way, chainStart: cursor,
+                    lengthM: s.lengthM, fwd: false, segArcStart: s.arcStart });
+                cursor += s.lengthM;
+            }
+        }
+    }
+    return { entries, chainLength: cursor };
+}
+
+// Resolve a chain-arc distance to a map point + owning way. Bearing comes
+// from the owner's own segment (head->tail = the one-way travel
+// direction), regardless of which way the cursor ran the chain.
+function sampleChain(entries, a) {
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (a <= e.chainStart + e.lengthM) {
+            const t = e.lengthM === 0 ? 0 : (a - e.chainStart) / e.lengthM;
+            const ownerArc = e.fwd
+                ? e.segArcStart + t * e.lengthM
+                : e.segArcStart + (1 - t) * e.lengthM;
+            const pt = pointAtArcLength(e.owner.segments,
+                e.owner.totalLength, ownerArc);
+            return pt ? { pt, owner: e.owner } : null;
+        }
+    }
+    return null;
+}
+
+// Place direction arrows at an even `cadenceM` ground spacing along each
+// one-way chain, phase carried across way boundaries so spacing stays
+// consistent where a route changes trail name or difficulty. Shares the
+// `placed` collision index (so arrows dodge POIs, diamonds, and each
+// other) and registers every placement; call coarse tiers before fine so
+// finer tiers nest into the gaps. Guarantees at least one arrow per chain.
+// Arrow-specific (rotation / reverse-day); add an extraPropsFn to reuse
+// the chain machinery for other icon kinds.
+function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
+                                   placed) {
+    const R = DECOR_RADIUS_M.arrow;
+    const reverseSet = reverseRoutesToday;
+    for (const chain of chains) {
+        const { entries, chainLength } = chainParam(chain);
+        if (chainLength === 0) continue;
+        const emit = (a) => {
+            const s = sampleChain(entries, a);
+            if (!s) return false;
+            if (placedCollides(s.pt.lng, s.pt.lat, R, placed)) return false;
+            const reverse = reverseSet.has(s.owner.routeId)
+                || s.owner.sharedRoutes.some((id) => reverseSet.has(id));
+            decorations.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [s.pt.lng, s.pt.lat] },
+                properties: {
+                    kind: KIND.ARROW,
+                    min_zoom: minZoom,
+                    rotation: arrowRotateForBearing(s.pt.bearing, reverse),
+                    trail_name: s.owner.trailName,
+                    shared_routes: s.owner.sharedRoutes,
+                },
+            });
+            placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R });
+            return true;
+        };
+        let placedAny = false;
+        for (let a = cadenceM / 2; a < chainLength; a += cadenceM) {
+            if (emit(a)) placedAny = true;
+        }
+        if (!placedAny) {
+            // Short or fully-contested chain: still mark direction once.
+            for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) {
+                if (emit(chainLength * f)) break;
+            }
+        }
+    }
+}
+
 // Build the full decoration FeatureCollection for the current visible
 // route set. Order matters:
 //   Pass 1   — line labels (symbol-placement: line; text follows the
@@ -1190,15 +1365,21 @@ function computeDecorations() {
             shared_routes: w.sharedRoutes,
         }));
 
-    // ---- Pass 2: per-way mandatory decor — 2 diamonds + 2 arrows per
-    //      applicable way so even short trails get clear markings. ----
+    // Order the one-way runs into head-to-tail chains once, so the detail
+    // arrow tiers below space arrows with a single continuous arc cursor
+    // across way boundaries (no per-segment phase reset).
+    const arrowChains = arrowsAllowed
+        ? computeConnectedRuns(ways,
+            (w) => w.oneway === "yes" || w.oneway === "reversible",
+            () => "").flatMap(buildChains)
+        : [];
+
+    // ---- Pass 2: per-way mandatory diamonds — 2 per applicable way so
+    //      even short trails get clear difficulty markings. (Arrows are
+    //      handled by the continuous chain tiers, after the diamonds.) ----
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = arrowsAllowed
-            && (way.oneway === "yes" || way.oneway === "reversible");
-        const reverse = reverseSet.has(way.routeId)
-            || way.sharedRoutes.some((id) => reverseSet.has(id));
 
         if (hasDiamond) {
             // Two anchors: ~quarter and ~three-quarter, each with
@@ -1216,32 +1397,21 @@ function computeDecorations() {
                     }));
             }
         }
-        if (hasArrow) {
-            const anchors = [
-                [L * 0.50, L * 0.40, L * 0.60, L * 0.45],
-                [L * 0.85, L * 0.80, L * 0.90, L * 0.75],
-            ];
-            for (const cand of anchors) {
-                tryPlaceDecoration(way, cand, KIND.ARROW, DECOR_MZ_PER_WAY,
-                    decorations, placed, (pt) => ({
-                        rotation: arrowRotateForBearing(pt.bearing, reverse),
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                    }));
-            }
-        }
+    }
+    // Mid arrow tier: even ~400 m cadence along each one-way chain. Placed
+    // after the diamonds so difficulty icons keep priority and arrows fill
+    // the space around them.
+    if (arrowsAllowed) {
+        placeArrowTierAlongChains(arrowChains, ARROW_CADENCE_MID,
+            DECOR_MZ_PER_WAY, decorations, placed);
     }
 
-    // ---- Pass 3: tier-1 (zoom>=13) — diamonds every 400m, arrows
-    //      phase-shifted by 200m. The tier-0 anchors at L*0.25/0.75
-    //      establish the pattern; this sweep fills the gaps. ----
+    // ---- Pass 3: diamonds every 400 m (DECOR_MZ_D400). The Pass 2
+    //      anchors at L*0.25/0.75 establish the pattern; this fills the
+    //      gaps. Arrows use the continuous chain tiers, not per-way. ----
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = arrowsAllowed
-            && (way.oneway === "yes" || way.oneway === "reversible");
-        const reverse = reverseSet.has(way.routeId)
-            || way.sharedRoutes.some((id) => reverseSet.has(id));
 
         if (hasDiamond) {
             for (let arc = 400; arc < L; arc += 400) {
@@ -1253,29 +1423,14 @@ function computeDecorations() {
                     }));
             }
         }
-        if (hasArrow) {
-            for (let arc = 200; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], KIND.ARROW, DECOR_MZ_D400,
-                    decorations, placed, (pt) => ({
-                        rotation: arrowRotateForBearing(pt.bearing, reverse),
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                    }));
-            }
-        }
     }
 
-    // ---- Pass 4: tier-2 (zoom>=15) — fill in at half the tier-1
-    //      spacing so close-in views get a denser pattern. Most arcs
-    //      coincide with tier-1 placements and get rejected by the
-    //      collision check; the remaining ones land in the gaps. ----
+    // ---- Pass 4: diamonds every 200 m so close-in views get a denser
+    //      pattern. Most arcs coincide with Pass 3 placements and get
+    //      rejected by the collision check; the rest land in the gaps. ----
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-        const hasArrow = arrowsAllowed
-            && (way.oneway === "yes" || way.oneway === "reversible");
-        const reverse = reverseSet.has(way.routeId)
-            || way.sharedRoutes.some((id) => reverseSet.has(id));
 
         if (hasDiamond) {
             for (let arc = 200; arc < L; arc += 200) {
@@ -1287,16 +1442,13 @@ function computeDecorations() {
                     }));
             }
         }
-        if (hasArrow) {
-            for (let arc = 100; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], KIND.ARROW, DECOR_MZ_D200,
-                    decorations, placed, (pt) => ({
-                        rotation: arrowRotateForBearing(pt.bearing, reverse),
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                    }));
-            }
-        }
+    }
+    // Close arrow tier: even ~200 m cadence along each one-way chain for
+    // dense close-in coverage. Arrows coincident with the mid tier get
+    // dropped by the collision check; the rest fill the gaps.
+    if (arrowsAllowed) {
+        placeArrowTierAlongChains(arrowChains, ARROW_CADENCE_CLOSE,
+            DECOR_MZ_D200, decorations, placed);
     }
 
     // ---- Pass 5: overview point labels — one loop name per visible
