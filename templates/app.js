@@ -8425,11 +8425,15 @@ function updateLocationIndicator() {
         return;
     }
 
-    // Hide the indicator when the user is inside the visible-and-
-    // unobstructed rectangle. Same threshold as the clamp below, so
-    // the show/hide and clamp behaviors stay aligned.
-    if (point.x >= xLeft && point.x <= xRight &&
-        point.y >= yTop && point.y <= yBottom) {
+    // Hide the indicator when the dot is actually visible on the
+    // canvas. This uses the TRUE canvas bounds (0..w, 0..h), NOT the
+    // inset rectangle the clamp uses below: a dot sitting inside the
+    // edge margin or under the top FAB reserve is still visible to the
+    // rider, so drawing a pointer on top of it is wrong. Matches the
+    // off-screen definition already used by maybeShowOffScreenToast and
+    // the post-pan check in attachOffScreenIndicatorHandler.
+    if (point.x >= 0 && point.x <= w &&
+        point.y >= 0 && point.y <= h) {
         if (el) el.classList.add("hidden");
         return;
     }
@@ -8464,8 +8468,22 @@ function updateLocationIndicator() {
 
     const degrees = (angle * 180 / Math.PI) + 90;
 
-    const center = map.getCenter();
-    const dist = haversineDistance([center.lng, center.lat], userLocation);
+    // Distance the dot sits BEYOND the screen edge — "how far off-
+    // screen" — not its distance from the map center. Walk the same
+    // centre→dot ray out to where it crosses the TRUE viewport edge
+    // (0..w, 0..h), unproject that pixel, and measure the ground
+    // distance from there to the dot. So a dot just past the edge
+    // reads ~0 and grows as it moves further away, independent of the
+    // current zoom. (The arrow above is clamped to the inset rectangle
+    // for FAB clearance; the distance uses the true edge so the band
+    // between them isn't counted as off-screen.)
+    let tEdge = Infinity;
+    if (cosA > eps)  tEdge = Math.min(tEdge, (w - cx) / cosA);
+    if (cosA < -eps) tEdge = Math.min(tEdge, (0 - cx) / cosA);
+    if (sinA > eps)  tEdge = Math.min(tEdge, (h - cy) / sinA);
+    if (sinA < -eps) tEdge = Math.min(tEdge, (0 - cy) / sinA);
+    const edge = map.unproject([cx + cosA * tEdge, cy + sinA * tEdge]);
+    const dist = haversineDistance([edge.lng, edge.lat], userLocation);
 
     // mdi:arrow-up-bold (Apache 2.0, Pictogrammers) — a chunky
     // shafted arrow that reads as a directional pointer rather
