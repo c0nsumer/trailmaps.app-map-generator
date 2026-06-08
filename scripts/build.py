@@ -61,6 +61,47 @@ VENDOR_LIBS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Coordinate precision for the rendered trails.geojson
+# ---------------------------------------------------------------------------
+# 6 decimal places is ~11 cm at these latitudes — far finer than the
+# underlying OSM geometry's real accuracy or anything visible on screen,
+# yet it strips the trailing float noise (the subway-style parallel-offset
+# math emits up to 15 dp) that both bloats the file and, being high-entropy,
+# resists gzip. Rounding the render output roughly halves the GZIPPED size
+# of trails.geojson — the largest text asset every visitor fetches and
+# JSON-parses on load. Only the expanded render output is rounded;
+# trails.src.geojson keeps full precision so the next build re-expands from
+# clean geometry.
+COORD_PRECISION = 6
+
+
+def _round_coords(node, ndigits):
+    """Recursively round every float in a nested coordinate array, in place.
+
+    Geometry-type agnostic: rounds floats wherever they appear, so it
+    handles Point through MultiPolygon (and GeometryCollection members)
+    without special-casing each type.
+    """
+    for i, v in enumerate(node):
+        if isinstance(v, float):
+            node[i] = round(v, ndigits)
+        elif isinstance(v, list):
+            _round_coords(v, ndigits)
+
+
+def _round_geojson_precision(geojson, ndigits=COORD_PRECISION):
+    """Round all feature-geometry coordinates to ndigits, in place."""
+    for feat in geojson.get("features", []):
+        geom = feat.get("geometry") or {}
+        if geom.get("coordinates") is not None:
+            _round_coords(geom["coordinates"], ndigits)
+        for sub in geom.get("geometries") or []:  # GeometryCollection
+            if sub.get("coordinates") is not None:
+                _round_coords(sub["coordinates"], ndigits)
+    return geojson
+
+
 def _minify_assets(output_dir):
     """Minify app.js + style.css in-place, logging progress via console.
 
@@ -181,10 +222,8 @@ def generate_service_worker(config, output_dir):
     # every install, logging a 404 per file against the (correctly)
     # absent artifact; leaving them in the hash would needlessly bust
     # every rider's cache when a base-cache fingerprint changed without
-    # any rider-visible output changing. Keep this predicate in sync
-    # with the rsync --exclude list in tools/build_and_deploy.sh.
-    def _is_build_only_artifact(rel_url):
-        return rel_url.endswith(".sig") or rel_url.endswith(".src.geojson")
+    # any rider-visible output changing. (_is_build_only_artifact is a
+    # module-level helper so the precompress pass skips the same files.)
 
     def _is_precachable_glyph(rel_url):
         # rel_url uses forward slashes (normalized below). Non-glyph
@@ -198,6 +237,14 @@ def generate_service_worker(config, output_dir):
     for root, _dirs, files in os.walk(output_dir):
         for fname in sorted(files):
             if fname == "sw.js":
+                continue
+            # Skip precompression sidecars: the runtime always requests the
+            # original URL and the server negotiates the encoded variant, so
+            # sidecars must never enter the precache list or the cache hash
+            # (the original's bytes are already hashed). precompress_assets
+            # runs last, but a rebuild over a prior build's output would
+            # otherwise see stale sidecars here.
+            if fname.endswith((".gz", ".zst", ".br")):
                 continue
             path = os.path.join(root, fname)
             rel = os.path.relpath(path, output_dir)
@@ -266,6 +313,113 @@ def generate_service_worker(config, output_dir):
         f.write(sw_content)
 
     console.info(f"Generated service worker ({len(precache_urls)} files, cache {cache_version})")
+
+
+# ---------------------------------------------------------------------------
+# Build-time precompression (.gz / .zst sidecars)
+# ---------------------------------------------------------------------------
+# Compressible static assets are gzip- and zstd-compressed once at build
+# time. A precompressed-aware static server (Caddy `precompressed`, nginx
+# `gzip_static`/`brotli_static`, …) then ships the compressed bytes with
+# zero request-time CPU — and at higher levels than on-the-fly encoding
+# would risk for latency. The sidecars are a portable convention: a server
+# without precompressed support simply ignores them and serves the
+# original, so the build output stays host-agnostic. The runtime never
+# requests a sidecar by name; the server negotiates it via Accept-Encoding.
+#
+# Skipped: already-compressed media (png/webp/ico) where gzip only adds
+# bytes, and .pmtiles, which MUST stay uncompressed so HTTP Range slicing
+# (PMTiles' whole point) keeps working.
+PRECOMPRESS_EXTENSIONS = (
+    ".pbf",
+    ".geojson",
+    ".json",
+    ".js",
+    ".css",
+    ".svg",
+    ".webmanifest",
+    ".html",
+    ".txt",
+)
+# Below ~1 KB the sidecar + extra Accept-Encoding negotiation isn't worth it.
+PRECOMPRESS_MIN_BYTES = 1024
+
+
+def _is_build_only_artifact(rel_path):
+    """True for files generated only for the build's own bookkeeping that must
+    never reach the server: signature sidecars (.sig) and the pre-enrichment
+    geometry base (.src.geojson). Dropped from the SW hash/precache AND skipped
+    by precompression — otherwise a `.src.geojson.gz` would slip past the rsync
+    `*.src.geojson` exclude. Keep in sync with the --exclude list in
+    tools/build_and_deploy.sh.
+    """
+    return rel_path.endswith(".sig") or rel_path.endswith(".src.geojson")
+
+
+def precompress_assets(output_dir):
+    """Write .gz + .zst sidecars for compressible assets in output_dir.
+
+    MUST run after generate_service_worker: the SW hashes and precaches the
+    ORIGINAL files, and the sidecars must not exist when that file list is
+    built (the runtime requests e.g. ``0-255.pbf``, never ``0-255.pbf.gz``).
+    Stale sidecars from a previous build are cleared first so a file that is
+    no longer emitted (e.g. a glyph range dropped by font trimming) can't
+    leave an orphan behind.
+    """
+    import gzip as _gzip
+
+    try:
+        from compression import zstd as _zstd  # Python 3.14+ stdlib
+    except ImportError:
+        _zstd = None
+
+    # Clear prior sidecars for deterministic output.
+    for root, _dirs, files in os.walk(output_dir):
+        for fname in files:
+            if fname.endswith((".gz", ".zst", ".br")):
+                os.remove(os.path.join(root, fname))
+
+    count = orig_total = comp_total = 0
+    for root, _dirs, files in os.walk(output_dir):
+        for fname in files:
+            # Don't compress build-only artifacts — they aren't deployed,
+            # and their .gz/.zst wouldn't match the rsync excludes.
+            if _is_build_only_artifact(fname):
+                continue
+            if not fname.lower().endswith(PRECOMPRESS_EXTENSIONS):
+                continue
+            path = os.path.join(root, fname)
+            try:
+                with open(path, "rb") as f:
+                    raw = f.read()
+            except OSError:
+                continue
+            if len(raw) < PRECOMPRESS_MIN_BYTES:
+                continue
+            # Only keep a sidecar if it actually saves bytes (guards the rare
+            # incompressible case so we never ship a larger "compressed" file).
+            gz = _gzip.compress(raw, 9)
+            if len(gz) < len(raw):
+                with open(path + ".gz", "wb") as f:
+                    f.write(gz)
+            if _zstd is not None:
+                zz = _zstd.compress(raw, level=19)
+                if len(zz) < len(raw):
+                    with open(path + ".zst", "wb") as f:
+                        f.write(zz)
+            count += 1
+            orig_total += len(raw)
+            comp_total += len(gz)
+
+    if count:
+        console.info(
+            f"Precompressed {count} assets "
+            f"({'gzip + zstd' if _zstd is not None else 'gzip'}): "
+            f"{orig_total / 1024:.0f} KB -> {comp_total / 1024:.0f} KB gzip "
+            f"(-{100 * (1 - comp_total / orig_total):.0f}%)"
+        )
+    if _zstd is None:
+        console.warn("compression.zstd unavailable — wrote gzip sidecars only")
 
 
 def load_config(config_path):
@@ -633,6 +787,27 @@ def main(argv=None):
         "Use for local-iteration debug; for deploy, "
         "leave the default on.",
     )
+    # Precompression defaults to ON for the same reason as minify: the
+    # canonical use of build.py is "produce ready-to-deploy artifacts."
+    # The .gz/.zst sidecars are inert on a server that doesn't serve them
+    # (and on serve.py), so default-on is safe; --no-precompress skips the
+    # extra compression time for fast local iteration.
+    parser.add_argument(
+        "--precompress",
+        action="store_true",
+        default=True,
+        help="Write .gz/.zst sidecars for compressible assets so a "
+        "precompressed-aware server (Caddy `precompressed`, nginx "
+        "`gzip_static`) serves them with no request-time CPU "
+        "(default: enabled). Pass --no-precompress to skip.",
+    )
+    parser.add_argument(
+        "--no-precompress",
+        dest="precompress",
+        action="store_false",
+        help="Disable sidecar precompression (overrides the default). "
+        "Use for fast local-iteration builds.",
+    )
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument(
         "--quiet",
@@ -897,6 +1072,13 @@ def main(argv=None):
     # build's enrichment regardless of which passes reported a change. (The
     # reuse fingerprint + content-guard live on trails.src.geojson, written
     # at fetch time above; the expanded output is never reused as a cache.)
+    #
+    # Trim coordinate precision on the render output only (see
+    # COORD_PRECISION) — roughly halves the gzipped transfer size and speeds
+    # up the client-side JSON.parse. Done in place right before serialization;
+    # the only later reader (compute_bbox_from_trails) is unaffected by ~cm
+    # rounding since it re-rounds the derived bbox to 4 dp anyway.
+    _round_geojson_precision(trails_geojson)
     with open(trails_path, "w") as f:
         json.dump(trails_geojson, f, separators=(",", ":"))
     custom_count = len(config.get("custom_routes") or [])
@@ -1122,6 +1304,13 @@ def main(argv=None):
             console.blank()
     else:
         console.step("PWA disabled — skipping service worker generation")
+
+    # Step 8: Precompress static assets (MUST be after the service worker —
+    # see precompress_assets). Skipped with --no-precompress.
+    if args.precompress:
+        console.step("Precompressing static assets...")
+        precompress_assets(output_dir)
+        console.blank()
 
     print_summary(output_dir)
     console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
