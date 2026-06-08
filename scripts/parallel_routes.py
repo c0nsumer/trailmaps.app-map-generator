@@ -142,11 +142,12 @@ def _natural_key(s):
     return tuple(parts)
 
 
-def _offset_index_for_route(route_id, shared_routes, route_order=None):
+def _offset_index_for_route(route_id, shared_routes, route_order=None, baselines=None):
     """Mirror app.js's `computeOffsetsAndFilter()` math at build time.
 
-    Sorts the shared-routes list and returns the centered offset
-    index for ``route_id``.
+    Returns ``position + baseline(corridor)`` when ``baselines`` is
+    provided (the stable-lane model — see corridor_baselines.py), else
+    the legacy centered offset ``position - (n-1)/2``.
 
     ``route_order`` (optional list of route IDs from
     route_order.compute_route_orders): when provided, sort by index
@@ -154,6 +155,12 @@ def _offset_index_for_route(route_id, shared_routes, route_order=None):
     builds to keep offsets consistent with the runtime's mode-keyed
     ordering. Routes not in route_order fall back to natural-sort
     tiebreak appended at the end.
+
+    ``baselines`` (optional dict {corridor_key: baseline} for the active
+    mode, from corridor_baselines.compute_corridor_baselines): the
+    corridor key is the rank-sorted route ids joined by '|', identical to
+    the runtime key, so build-time stub offsets and runtime corridor
+    offsets agree.
     """
     if not shared_routes:
         return 0
@@ -173,6 +180,10 @@ def _offset_index_for_route(route_id, shared_routes, route_order=None):
     if rid not in sorted_ids:
         return 0
     position = sorted_ids.index(rid)
+    if baselines is not None:
+        key = "|".join(sorted_ids)
+        if key in baselines:
+            return position + baselines[key]
     return position - (visible_count - 1) / 2
 
 
@@ -424,7 +435,9 @@ def _smooth_corridor_features(features):
             geom["coordinates"] = smoothed
 
 
-def apply_subway_style(trails_geojson, *, route_order=None, visible_routes=None, mode_tag=None):
+def apply_subway_style(
+    trails_geojson, *, route_order=None, visible_routes=None, mode_tag=None, baselines=None
+):
     """Single-mode subway-style smoother. Mutates trails_geojson.
 
     Pass 1 — sharp-corner smoothing: every LineString feature gets
@@ -606,8 +619,8 @@ def apply_subway_style(trails_geojson, *, route_order=None, visible_routes=None,
                     if not _is_continuation_pair(coords_a, end_a, coords_b, end_b):
                         continue
 
-                    offset_a = _offset_index_for_route(rid, sig_a, route_order)
-                    offset_b = _offset_index_for_route(rid, sig_b, route_order)
+                    offset_a = _offset_index_for_route(rid, sig_a, route_order, baselines)
+                    offset_b = _offset_index_for_route(rid, sig_b, route_order, baselines)
                     if offset_a == offset_b:
                         continue
 
@@ -1012,7 +1025,7 @@ def apply_subway_style(trails_geojson, *, route_order=None, visible_routes=None,
 
             # Compute joining route's offset in the host corridor
             # (where it actually lives, downstream of the junction).
-            host_offset_value = _offset_index_for_route(rid, host_sig, route_order)
+            host_offset_value = _offset_index_for_route(rid, host_sig, route_order, baselines)
             if host_offset_value == 0:
                 # Centered route in odd-count corridor — no visible
                 # offset shift even if it appeared abruptly. Skip.
@@ -1130,7 +1143,7 @@ def apply_subway_style(trails_geojson, *, route_order=None, visible_routes=None,
     return len(new_micro_features)
 
 
-def apply_subway_style_modes(trails_geojson, route_orders, modes):
+def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None):
     """Multi-mode subway-style driver.
 
     For each visible mode, runs ``apply_subway_style`` with the mode's
@@ -1159,12 +1172,17 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
         route_order.compute_route_orders.
     modes : dict {mode_key: frozenset of route_ids} from
         route_order.enumerate_modes.
+    baselines : dict {mode_key: {corridor_key: baseline}} or None from
+        corridor_baselines.compute_corridor_baselines. When provided,
+        stub offsets are baked under the stable-lane model; when None,
+        the legacy centered offset is used.
 
     Returns
     -------
     int : total stub features emitted across all modes (does not
     include host variants).
     """
+    baselines = baselines or {}
     if not route_orders or not modes:
         # Degenerate — no modes to process. Fall back to single-mode.
         return apply_subway_style(trails_geojson)
@@ -1182,6 +1200,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes):
             route_order=route_order,
             visible_routes=visible,
             mode_tag=mode_key,
+            baselines=baselines.get(mode_key),
         )
         # `emitted` includes BOTH stubs and host variants for this mode.
         # We can't separate them cheaply here; the caller asking for a

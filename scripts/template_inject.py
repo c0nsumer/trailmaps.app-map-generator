@@ -543,6 +543,16 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["routeOrders"] = (
         (trails_geojson.get("metadata") or {}).get("routeOrders") or {} if trails_geojson else {}
     )
+    # Stable-lane corridor baselines per mode: {mode: {corridor_key:
+    # baseline}}. computeOffsetsAndFilter / computeLabelData add the
+    # baseline to a route's in-corridor position so routes hold a lane
+    # instead of re-centering ("breathing") when neighbors join/leave.
+    # Missing → app.js falls back to the legacy centered offset.
+    config_obj["corridorBaselines"] = (
+        (trails_geojson.get("metadata") or {}).get("corridorBaselines") or {}
+        if trails_geojson
+        else {}
+    )
     config_obj["about"] = config.get("about") or None
     # Welcome modal config: pass through unchanged. Three forms
     # accepted: omitted (None → framework default), false (modal

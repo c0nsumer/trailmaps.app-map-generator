@@ -314,11 +314,13 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     # number of corridor-junction sign flips. Each visible mode
     # (summer / winter / + emergency) gets its own routeOrder, since
     # the effective adjacency graph differs per mode.
+    from corridor_baselines import compute_corridor_baselines
     from parallel_routes import apply_subway_style, apply_subway_style_modes
     from route_order import compute_route_orders
 
     routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
     previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
+    previous_baselines = (trails_geojson.get("metadata") or {}).get("corridorBaselines")
 
     route_orders, route_order_stats = compute_route_orders(
         routes_metadata,
@@ -337,9 +339,29 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
                 f"{flips} sign flip(s), {seps} separation(s) "
                 f"(routes: {len(order)})"
             )
+        # Stable-lane corridor baselines (per mode). Replaces per-corridor
+        # centering with a minimal-movement offset so routes hold their
+        # lane instead of "breathing" sideways when neighbors join/leave.
+        # Computed on the same canonical (pre-stub) features and route
+        # order as above; consumed by both stub baking (below) and the
+        # runtime offset math (CONFIG.corridorBaselines).
+        baselines, baseline_stats = compute_corridor_baselines(
+            routes_metadata,
+            trails_geojson["features"],
+            route_orders,
+            previous_baselines=previous_baselines,
+        )
+        trails_geojson.setdefault("metadata", {})["corridorBaselines"] = baselines
+        for mode_key in sorted(baselines):
+            mv, dr, tr = baseline_stats[mode_key]
+            console.info(
+                f"Corridor baselines [{mode_key}]: "
+                f"{tr} real transition(s), {mv:.1f} lane(s) movement, "
+                f"{dr:.2f} max drift"
+            )
         # Mode-aware subway-style: emits per-mode stubs + variants.
         modes = {k: frozenset(v) for k, v in _route_modes_from_orders(routes_metadata).items()}
-        added = apply_subway_style_modes(trails_geojson, route_orders, modes)
+        added = apply_subway_style_modes(trails_geojson, route_orders, modes, baselines)
         if added:
             console.info(
                 f"Subway style: emitted {added} mode-tagged feature(s) across {len(modes)} mode(s)"
@@ -348,6 +370,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
     else:
         # No modes detected — fall back to legacy single-mode behavior.
         trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
+        trails_geojson.setdefault("metadata", {}).pop("corridorBaselines", None)
         added = apply_subway_style(trails_geojson)
         if added:
             console.info(f"Subway style: emitted {added} junction transition micro-feature(s)")

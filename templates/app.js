@@ -4531,6 +4531,27 @@ function modeAwareGlobalRank() {
     return rank;
 }
 
+// Stable-lane offset for a route sitting at `position` within
+// `visibleShared` (already rank-sorted). Adds the corridor's baseline
+// (CONFIG.corridorBaselines[mode], computed at build time by
+// corridor_baselines.py) so each route holds a stable lane instead of
+// re-centering ("breathing") sideways whenever a neighbor joins or
+// leaves the corridor. Falls back to the legacy centered offset
+// (position - (n-1)/2) when no baseline exists for the corridor — e.g.
+// custom routes added after the build, or maps with no modes. The
+// corridor key is the rank-sorted ids joined by '|', identical to the
+// build-time key, so stub offsets and corridor offsets line up exactly.
+function laneOffset(position, visibleShared) {
+    const n = visibleShared.length;
+    if (n <= 1 || position < 0) return 0;
+    const baselines = (CONFIG.corridorBaselines || {})[currentModeKey()];
+    if (baselines) {
+        const b = baselines[visibleShared.join("|")];
+        if (b !== undefined) return position + b;
+    }
+    return position - (n - 1) / 2;
+}
+
 // Mode-tag filter: a feature renders if it has no `mode` property
 // (mode-independent — most features) OR its `mode` matches the
 // current mode. Stubs and host variants emitted by mode-aware
@@ -4567,13 +4588,8 @@ function computeOffsetsAndFilter() {
         const visibleShared = shared
             .filter((id) => visibleRoutes.has(id))
             .sort((a, b) => globalRank.get(a) - globalRank.get(b));
-        const visibleCount = visibleShared.length;
         const position = visibleShared.indexOf(routeId);
-
-        let offsetIndex = 0;
-        if (visibleCount > 1 && position >= 0) {
-            offsetIndex = position - (visibleCount - 1) / 2;
-        }
+        const offsetIndex = laneOffset(position, visibleShared);
 
         let geometry = f.geometry;
         // Apply Chaikin corner-cutting to ALL non-stub line features.
@@ -4619,11 +4635,7 @@ function computeLabelData() {
                 .sort((a, b) => globalRank.get(a) - globalRank.get(b));
             const visibleCount = visibleShared.length;
             const position = visibleShared.indexOf(routeId);
-
-            let offsetIndex = 0;
-            if (visibleCount > 1 && position >= 0) {
-                offsetIndex = position - (visibleCount - 1) / 2;
-            }
+            const offsetIndex = laneOffset(position, visibleShared);
 
             let geometry = f.geometry;
             if (geometry.type === "LineString" && offsetIndex !== 0) {
