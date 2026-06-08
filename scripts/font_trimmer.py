@@ -38,6 +38,27 @@ SCRIPT_FONT_BLOCKS = {
     # Add more script-specific faces here as they are added to assets/fonts/
 }
 
+# Basemap label layers render only a small set of name fields (see the
+# `o()` text-field builder in vendor/basemaps.js): the localized name for
+# the configured language, the generic `name`, and the secondary
+# `name2`/`name3` slots. The app pins lang="en" (app.js), so these are the
+# only fields whose glyphs can ever be requested at runtime. Scanning ONLY
+# these — instead of every tile property — stops untranslated `name:ko` /
+# `name:ja` / `pgf:name:hi` fields (present in planet-extract basemaps for
+# i18n but never rendered here) from dragging in whole CJK / Hangul /
+# Devanagari glyph ranges, and the Devanagari face, that no client ever
+# fetches. For a typical English map this is the single biggest deploy-size
+# lever (~6.6 MB -> ~1.8 MB of glyphs). If the app's basemap `lang` ever
+# changes from "en", add the matching `name:<lang>` entries here.
+RENDERED_NAME_FIELDS = {
+    "name",
+    "name:en",
+    "name2",
+    "name2:en",
+    "name3",
+    "name3:en",
+}
+
 
 def collect_text_from_geojson(path):
     """Extract all string property values from a GeoJSON file."""
@@ -54,8 +75,14 @@ def collect_text_from_geojson(path):
     return chars
 
 
-def collect_text_from_pmtiles(path):
-    """Extract all string property values from a PMTiles vector tile archive."""
+def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
+    """Extract rendered-label text from a PMTiles vector tile archive.
+
+    Only the name fields the style actually renders (``rendered_fields``)
+    are scanned; other localized `name:*` / `pgf:*` tile properties exist
+    for i18n but are never painted, so counting them would keep glyph
+    ranges no client ever fetches. See RENDERED_NAME_FIELDS.
+    """
     try:
         import mapbox_vector_tile
         import pmtiles.reader as pmreader
@@ -83,7 +110,9 @@ def collect_text_from_pmtiles(path):
                         continue
                     for layer in decoded.values():
                         for feat in layer.get("features", []):
-                            for v in feat.get("properties", {}).values():
+                            props = feat.get("properties", {})
+                            for k in rendered_fields:
+                                v = props.get(k)
                                 if isinstance(v, str):
                                     chars.update(v)
                     count += 1
