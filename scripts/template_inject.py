@@ -678,7 +678,7 @@ def copy_templates(config, output_dir, trails_geojson):
             console.warn(f"Template not found: {src}")
             continue
 
-        with open(src) as f:
+        with open(src, encoding="utf-8") as f:
             content = f.read()
 
         # Inject config into JS files
@@ -866,7 +866,7 @@ def copy_templates(config, output_dir, trails_geojson):
                 )
 
         dst = os.path.join(output_dir, filename)
-        with open(dst, "w") as f:
+        with open(dst, "w", encoding="utf-8") as f:
             f.write(content)
         console.info(f"Copied {filename}")
 
@@ -956,7 +956,7 @@ def copy_assets(config, output_dir):
     app_js_path = os.path.join(output_dir, "app.js")
     sprite_version = None
     if os.path.exists(app_js_path):
-        with open(app_js_path) as f:
+        with open(app_js_path, encoding="utf-8") as f:
             m = re.search(r"sprites/(v\d+)/", f.read())
             if m:
                 sprite_version = m.group(1)

@@ -13,6 +13,12 @@ keeps working in parallel.
 import os
 import sys
 
+if sys.version_info < (3, 11):
+    sys.exit(
+        f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
+        "See README.md / docs/building.md."
+    )
+
 SUBCOMMANDS = ("build",)
 
 

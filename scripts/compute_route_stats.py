@@ -610,7 +610,7 @@ def compute_elevations(trails_geojson, cache_dir):
         cache_path = _elev_cache_path(cache_dir, rid_str, coord_hash)
         if os.path.isfile(cache_path):
             try:
-                with open(cache_path) as fh:
+                with open(cache_path, encoding="utf-8") as fh:
                     cached = json.load(fh)
                 # Require BOTH fields for a cache hit. Old-format
                 # entries (gain only) get treated as cache miss and
@@ -637,7 +637,7 @@ def compute_elevations(trails_geojson, cache_dir):
             gain, loss = _gain_loss_from_samples(elevations)
             out[rid_str] = (gain, loss)
             try:
-                with open(cache_path, "w") as fh:
+                with open(cache_path, "w", encoding="utf-8") as fh:
                     json.dump(
                         {
                             "elevation_gain_m": gain,

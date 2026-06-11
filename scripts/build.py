@@ -20,6 +20,12 @@ import shutil
 import sys
 from datetime import datetime
 
+if sys.version_info < (3, 11):
+    sys.exit(
+        f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
+        "See README.md / docs/building.md."
+    )
+
 import requests
 import yaml
 
@@ -198,7 +204,7 @@ def generate_service_worker(config, output_dir):
         console.warn(f"Service worker template not found: {sw_template}")
         return
 
-    with open(sw_template) as f:
+    with open(sw_template, encoding="utf-8") as f:
         sw_content = f.read()
 
     # Walk the build tree once to collect every DEPLOYED file (for the
@@ -309,7 +315,7 @@ def generate_service_worker(config, output_dir):
     sw_content = sw_content.replace("/*__SW_CONFIG__*/", f"const SW_CONFIG = {sw_config_json};")
 
     sw_path = os.path.join(output_dir, "sw.js")
-    with open(sw_path, "w") as f:
+    with open(sw_path, "w", encoding="utf-8") as f:
         f.write(sw_content)
 
     console.info(f"Generated service worker ({len(precache_urls)} files, cache {cache_version})")
@@ -437,7 +443,7 @@ def load_config(config_path):
     ``base_layers[].url``, etc.) stay in their original form — they're
     either repo-relative or external URLs.
     """
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
 
     config_dir = os.path.dirname(os.path.abspath(config_path))
@@ -910,7 +916,7 @@ def main(argv=None):
         )
     else:
         console.step(f"Trails: reusing base {trails_src_path}")
-        with open(trails_src_path) as f:
+        with open(trails_src_path, encoding="utf-8") as f:
             trails_geojson = json.load(f)
         # Backfill the sidecar for a base written before content-guarding.
         if _load_signature(trails_src_path) is None:
@@ -955,7 +961,7 @@ def main(argv=None):
     poi_counts = {}
     if os.path.exists(pois_path):
         try:
-            with open(pois_path) as f:
+            with open(pois_path, encoding="utf-8") as f:
                 pois_data = json.load(f)
             for feat in pois_data.get("features", []):
                 ptype = (feat.get("properties") or {}).get("poi_type")
@@ -1079,7 +1085,7 @@ def main(argv=None):
     # the only later reader (compute_bbox_from_trails) is unaffected by ~cm
     # rounding since it re-rounds the derived bbox to 4 dp anyway.
     _round_geojson_precision(trails_geojson)
-    with open(trails_path, "w") as f:
+    with open(trails_path, "w", encoding="utf-8") as f:
         json.dump(trails_geojson, f, separators=(",", ":"))
     custom_count = len(config.get("custom_routes") or [])
     bits = []
@@ -1153,7 +1159,7 @@ def main(argv=None):
     ):
         console.step("POIs: Skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
-        with open(pois_path, "w") as f:
+        with open(pois_path, "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
         fetch_pois(config, pois_path, cache_dir)

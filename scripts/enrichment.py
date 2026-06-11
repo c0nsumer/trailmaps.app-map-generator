@@ -170,7 +170,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
 
         # Load and validate geometry.
         try:
-            with open(cgeom_abs) as f:
+            with open(cgeom_abs, encoding="utf-8") as f:
                 gj = json.load(f)
         except (OSError, ValueError) as e:
             sys.exit(f"ERROR: custom_routes[{cid!r}].geometry: cannot read {cgeom_abs!r}: {e}")

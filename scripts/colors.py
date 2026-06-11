@@ -324,7 +324,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
     cache_path = os.path.join(accent_cache_dir, f"{src_hash}.json")
     if os.path.exists(cache_path):
         try:
-            with open(cache_path) as f:
+            with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
             raw_pick = cached.get("raw")
             # Old-format entries stored a darkened "hex" and no "raw" —
@@ -343,7 +343,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
         )
         return None
     try:
-        with open(cache_path, "w") as f:
+        with open(cache_path, "w", encoding="utf-8") as f:
             json.dump({"raw": list(rgb), "source": os.path.basename(source)}, f)
     except OSError:
         pass

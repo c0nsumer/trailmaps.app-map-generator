@@ -478,7 +478,7 @@ def test_ramba_regression():
         import pytest
 
         pytest.skip(f"RAMBA build artifacts not at {p}")
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         g = json.load(f)
     features = g["features"]
     routes_meta = g["metadata"]["routes"]

@@ -22,7 +22,7 @@ hosting the output, see [`deployment.md`](deployment.md).
 
 ## Prerequisites
 
-- Python 3.9 or newer (tested through 3.14) with
+- Python 3.11 or newer (tested through 3.14) with
   `pip install -r requirements.txt`. Versions are pinned for
   reproducible builds; see the file header for upgrade notes.
 - [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI:

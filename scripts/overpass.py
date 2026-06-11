@@ -149,7 +149,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             else:
                 hours = age.seconds // 3600
                 age_str = f"{hours}h ago" if hours > 0 else "just now"
-            with open(cp) as f:
+            with open(cp, encoding="utf-8") as f:
                 cached = json.load(f)
             try:
                 _check_snapshot_freshness(cached, "cache")
@@ -207,7 +207,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                     console.info("Continuing with empty data; downstream may produce an empty map.")
                     _check_snapshot_freshness(data, server)
                     if cp:
-                        with open(cp, "w") as f:
+                        with open(cp, "w", encoding="utf-8") as f:
                             json.dump(data, f)
                     return data
                 raise EmptyResponseError(
@@ -220,7 +220,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             console.info(f"Response from {server} ({len(data.get('elements', []))} elements)")
 
             if cp:
-                with open(cp, "w") as f:
+                with open(cp, "w", encoding="utf-8") as f:
                     json.dump(data, f)
 
             return data

@@ -158,7 +158,7 @@ def _load_cached(cache_dir, source, route_id, coord_hash):
     if not os.path.isfile(path):
         return None
     try:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         elevations = data.get("elevations")
         resolutions = data.get("resolutions")
@@ -173,7 +173,7 @@ def _save_cached(cache_dir, source, route_id, coord_hash, elevations, resolution
     path = _cache_path(cache_dir, source, route_id, coord_hash)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
-        with open(path, "w") as fh:
+        with open(path, "w", encoding="utf-8") as fh:
             json.dump(
                 {
                     "source": source,
@@ -793,7 +793,7 @@ def print_aggregate(per_map_results, sources):
 
 
 def _load_config(path):
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -883,7 +883,7 @@ def main():
             continue
 
         print(f"\n[{slug}] Loading {trails_path}...")
-        with open(trails_path) as f:
+        with open(trails_path, encoding="utf-8") as f:
             trails = json.load(f)
         routes = (trails.get("metadata") or {}).get("routes") or {}
         features = trails.get("features") or []

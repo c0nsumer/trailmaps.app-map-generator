@@ -1569,7 +1569,7 @@ def validate_config(config, *, config_path=None, project_root=None):
 def validate_config_file(path):
     """Load + validate a single YAML file. Returns (errors, warnings)."""
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
     except yaml.YAMLError as e:
         return ([f"  [error] root: YAML parse error: {e}"], [])

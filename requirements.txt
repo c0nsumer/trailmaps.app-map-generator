@@ -1,6 +1,6 @@
 # mtb-map-framework Python dependencies — pinned for reproducible builds.
 #
-# Tested with Python 3.9-3.14. The only direct deps are the first five
+# Requires Python 3.11+ (tested through 3.14). The only direct deps are the first five
 # below; everything else is a pinned transitive (captured via
 # `pip freeze`) so a fresh `pip install -r requirements.txt` six months
 # from now produces the same dependency graph and the same build output
@@ -15,9 +15,8 @@
 #   - pmtiles CLI (Go binary) — for basemap/terrain PMTiles extraction.
 #     Install via Homebrew: `brew install pmtiles` (macOS), or build from
 #     https://github.com/protomaps/go-pmtiles releases.
-#   - libjpeg / libtiff (system libs Pillow links against) — usually
-#     present by default on macOS; on Debian/Ubuntu run
-#     `apt install libjpeg-dev libtiff5-dev zlib1g-dev`.
+#   (Pillow ships manylinux/macOS wheels that bundle libjpeg/zlib, so no
+#    system image libraries need to be installed for `pip install`.)
 
 # Direct dependencies
 requests==2.33.1

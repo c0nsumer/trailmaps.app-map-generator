@@ -64,7 +64,7 @@ def collect_text_from_geojson(path):
     """Extract all string property values from a GeoJSON file."""
     chars = set()
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         for feat in data.get("features", []):
             for v in feat.get("properties", {}).values():

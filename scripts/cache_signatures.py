@@ -26,7 +26,7 @@ def _load_signature(output_path):
     if not os.path.exists(sig_path):
         return None
     try:
-        with open(sig_path) as f:
+        with open(sig_path, encoding="utf-8") as f:
             return f.read().strip()
     except OSError:
         return None
@@ -34,7 +34,7 @@ def _load_signature(output_path):
 
 def _save_signature(output_path, signature):
     try:
-        with open(_signature_path(output_path), "w") as f:
+        with open(_signature_path(output_path), "w", encoding="utf-8") as f:
             f.write(signature + "\n")
     except OSError as e:
         console.warn(f"could not write {_signature_path(output_path)}: {e}")

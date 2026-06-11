@@ -48,7 +48,7 @@ def _inject_one(atlas_png_path, atlas_json_path, sdf_img, pixel_ratio):
     Returns True if a change was made, False if the atlas already had the
     icon (idempotent no-op).
     """
-    with open(atlas_json_path) as f:
+    with open(atlas_json_path, encoding="utf-8") as f:
         meta = json.load(f)
 
     if SPRITE_NAME in meta:
@@ -83,7 +83,7 @@ def _inject_one(atlas_png_path, atlas_json_path, sdf_img, pixel_ratio):
         "pixelRatio": pixel_ratio,
         "sdf": True,
     }
-    with open(atlas_json_path, "w") as f:
+    with open(atlas_json_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, separators=(",", ":"))
 
     return True

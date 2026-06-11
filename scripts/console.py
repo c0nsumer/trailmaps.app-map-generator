@@ -25,6 +25,19 @@ one-line change here rather than a sweep across every caller — which is the
 whole reason this indirection exists.
 """
 
+import sys
+
+# Trail/POI names carry accents and typographic dashes/arrows (—, →). Under a
+# non-UTF-8 locale (bare debian:11 images, cron, LANG=C) stdout defaults to
+# ASCII and printing those raises UnicodeEncodeError. Force UTF-8 stdio once,
+# at first import — idempotent, and a no-op when stdout is already UTF-8 or has
+# been replaced by something without .reconfigure (e.g. pytest capture).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 QUIET = 0
 NORMAL = 1
 VERBOSE = 2

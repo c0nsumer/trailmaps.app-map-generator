@@ -209,9 +209,9 @@ def format_key(key, value):
 
 
 def clean_config(template_path, production_path, output_path):
-    with open(template_path) as f:
+    with open(template_path, encoding="utf-8") as f:
         template_lines = f.read().splitlines()
-    with open(production_path) as f:
+    with open(production_path, encoding="utf-8") as f:
         production = yaml.safe_load(f) or {}
 
     output_lines = []
@@ -236,7 +236,7 @@ def clean_config(template_path, production_path, output_path):
         for k in extra:
             output_lines.extend(format_key(k, production[k]))
 
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(output_lines) + "\n")
 
     return seen_keys, extra

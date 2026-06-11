@@ -50,7 +50,7 @@ Oaks Map as of 2026-May-12*
   (BSD; built from OpenStreetMap data).
 - [Overpass API](https://overpass-api.de/) for fetching OSM trail relations at
   build time.
-- Python 3.9+ for the build pipeline.
+- Python 3.11 or newer (tested through 3.14) for the build pipeline.
 
 ## Quick start
 

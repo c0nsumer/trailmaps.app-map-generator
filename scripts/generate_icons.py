@@ -259,7 +259,7 @@ def generate_manifest(config, output_dir):
     icons_dir = os.path.join(output_dir, "icons")
     os.makedirs(icons_dir, exist_ok=True)
     manifest_path = os.path.join(icons_dir, "site.webmanifest")
-    with open(manifest_path, "w") as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
 

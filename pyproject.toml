@@ -1,0 +1,10 @@
+# Minimal project metadata. The build pipeline is run from a checkout via
+# `pip install -r requirements.txt` + `python -m map_generator build ...`,
+# not installed as a distribution — so this file exists mainly to declare the
+# Python floor to pip and tooling. Dependencies remain pinned in
+# requirements.txt for reproducible builds.
+[project]
+name = "map-generator"
+description = "Static MTB trail-map generator (MapLibre + PMTiles)"
+requires-python = ">=3.11"
+dynamic = ["version"]

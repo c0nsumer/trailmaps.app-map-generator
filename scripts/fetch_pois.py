@@ -421,7 +421,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
     console.info(f"Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(geojson, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(output_path) / 1024

@@ -29,7 +29,7 @@ def load_config_for_fetch(config_path):
     entry-points) — build.py keeps its own richer load_config that
     resolves every per-map asset path.
     """
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     osm_file = config.get("osm_file")
     if osm_file and isinstance(osm_file, str) and not os.path.isabs(osm_file):

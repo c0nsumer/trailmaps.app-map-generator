@@ -977,7 +977,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
     # Write output
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(geojson, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(output_path) / 1024
@@ -993,7 +993,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             "type": "FeatureCollection",
             "features": clip_endpoints,
         }
-        with open(endpoints_path, "w") as f:
+        with open(endpoints_path, "w", encoding="utf-8") as f:
             json.dump(endpoints_geojson, f, separators=(",", ":"))
         console.info(f"Wrote {endpoints_path} ({len(clip_endpoints)} points)")
     elif os.path.exists(endpoints_path):
