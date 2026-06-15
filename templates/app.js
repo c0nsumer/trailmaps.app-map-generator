@@ -7837,16 +7837,20 @@ function setupInteractions() {
     //      around e.point \u2014 12 CSS px \u2248 Material's 48 dp tap target
     //      on a 2\u00D7 display \u2014 so taps near a line still register.
     //
-    //   2. Union routes across all trail-casing layers in one pass.
-    //      A way that's shared across N OSM routes lives in N layers;
-    //      custom_routes (including inline event_mode.routes) bake in
-    //      as parallel features overlaying the same geometry, each
-    //      with its own route_id + shared_routes list. A single
-    //      buffered queryRenderedFeatures across every trail-casing
-    //      layer gives us every overlapping feature in one shot, and
-    //      _collectAllRoutesAt unions them. The previous per-layer
-    //      pattern needed `_lastTrailClickEvent` dedupe state to
-    //      collapse N-fired-events into one popup; that's gone now.
+    //   2. Resolve to the single tapped trail, then union that trail's
+    //      routes in one pass. A way shared across N OSM routes renders
+    //      as N offset lanes (one per trail-casing layer), and
+    //      custom_routes (including inline event_mode.routes) bake in as
+    //      parallel features on the same way, each with its own
+    //      route_id + shared_routes list. A single buffered
+    //      queryRenderedFeatures across every trail-casing layer gives
+    //      us all overlapping features in one shot, but the buffer also
+    //      crosses *unrelated* trails at junctions — so
+    //      _collectAllRoutesAt first picks the feature nearest the tap,
+    //      then unions routes only across features sharing that trail's
+    //      name (its lanes + overlays). The previous per-layer pattern
+    //      needed `_lastTrailClickEvent` dedupe state to collapse
+    //      N-fired-events into one popup; that's gone now.
     //
     // The per-layer mouseenter/mouseleave handlers remain in
     // attachTrailHoverHandlers because cursor feedback IS layer-scoped
@@ -7889,24 +7893,77 @@ function setupInteractions() {
     const _trailCasingLayerIds = Object.keys(CONFIG.routes)
         .map((rid) => `trail-casing-${rid}`);
 
-    function _collectAllRoutesAt(geometry) {
-        // Returns { routeIds: string[], trailName: string }.
+    // Nearest point on segment A->B to P, in lng/lat. Returns
+    // { dist (metres), point [lng,lat] }. Mirrors
+    // pointToSegmentDistance but also yields the projected point so we
+    // can anchor the popup ON the trail.
+    function _segNearest(px, py, ax, ay, bx, by) {
+        const cosLat = Math.cos(((py + ay + by) / 3) * Math.PI / 180);
+        const dx = (bx - ax) * cosLat;
+        const dy = by - ay;
+        const lenSq = dx * dx + dy * dy;
+        let t = 0;
+        if (lenSq > 0) {
+            t = Math.max(0, Math.min(1,
+                ((px - ax) * cosLat * dx + (py - ay) * dy) / lenSq));
+        }
+        const cx = ax + t * (bx - ax);
+        const cy = ay + t * (by - ay);
+        const ex = (cx - px) * cosLat;
+        const ey = cy - py;
+        return { dist: Math.sqrt(ex * ex + ey * ey) * 111320, point: [cx, cy] };
+    }
+
+    function _collectAllRoutesAt(geometry, tapLngLat) {
+        // Returns { routeIds: string[], trailName: string, anchor }.
         // routeIds: deduplicated, in stable order (custom routes first,
         // then OSM by appearance).
-        // trailName: any feature's trail_name (consistent across the
-        // shared way regardless of which layer's feature we read).
+        // trailName: the name of the trail nearest the tap.
+        // anchor: [lng,lat] on that trail, for popup placement.
+        //
         // `geometry` is whatever queryRenderedFeatures accepts: a
         // single Point for hover-style precise lookups, or a
         // [[x1,y1],[x2,y2]] bounding box for buffered tap lookups.
+        // `tapLngLat` is the actual tap location ({lng,lat}); a buffered
+        // box can cross MANY different trails (each route renders as an
+        // offset lane, so a junction packs lanes from unrelated ways
+        // into a few px), so we resolve to the SINGLE trail whose
+        // rendered line passes closest to the tap and union routes only
+        // within that trail. Unioning across every feature in the box
+        // (the old behaviour) wrongly attributed unrelated trails'
+        // route memberships to whichever trail's name came first.
         const feats = map.queryRenderedFeatures(geometry, {
             layers: _trailCasingLayerIds.filter((id) => map.getLayer(id)),
         });
+        if (!feats.length) return { routeIds: [], trailName: "", anchor: null };
+
+        // Find the candidate feature nearest the tap.
+        let best = null; // { feat, dist, point }
+        if (tapLngLat) {
+            const tx = tapLngLat.lng, ty = tapLngLat.lat;
+            for (const f of feats) {
+                const g = f.geometry || {};
+                const lines = g.type === "LineString" ? [g.coordinates]
+                    : g.type === "MultiLineString" ? g.coordinates : [];
+                for (const line of lines) {
+                    for (let i = 0; i < line.length - 1; i++) {
+                        const n = _segNearest(tx, ty,
+                            line[i][0], line[i][1], line[i + 1][0], line[i + 1][1]);
+                        if (!best || n.dist < best.dist) {
+                            best = { feat: f, dist: n.dist, point: n.point };
+                        }
+                    }
+                }
+            }
+        }
+        if (!best) best = { feat: feats[0], dist: 0, point: null };
+
+        const targetName = (best.feat.properties || {}).trail_name || "";
+        const anchor = best.point;
+
         const seen = new Set();
         const routeIds = [];
-        let trailName = "";
-        for (const f of feats) {
-            const props = f.properties || {};
-            if (!trailName && props.trail_name) trailName = props.trail_name;
+        const addRoutes = (props) => {
             const rid = props.route_id;
             if (rid != null) {
                 const k = String(rid);
@@ -7922,8 +7979,25 @@ function setupInteractions() {
                     if (!seen.has(k)) { seen.add(k); routeIds.push(k); }
                 }
             }
+        };
+
+        // Named trails group by name — the offset lanes of one way, and
+        // any custom-route overlay baked onto the same way, all share
+        // the OSM name, so unioning across them recovers the full route
+        // membership of that one trail. An unnamed way can't be grouped
+        // safely (distinct unnamed ways would merge), so it reports only
+        // the nearest feature's own routes.
+        if (targetName) {
+            for (const f of feats) {
+                if ((f.properties || {}).trail_name === targetName) {
+                    addRoutes(f.properties || {});
+                }
+            }
+        } else {
+            addRoutes(best.feat.properties || {});
         }
-        return { routeIds, trailName };
+
+        return { routeIds, trailName: targetName, anchor };
     }
 
     function attachTrailHoverHandlers(layerId) {
@@ -7955,7 +8029,7 @@ function setupInteractions() {
             [e.point.x - r, e.point.y - r],
             [e.point.x + r, e.point.y + r],
         ];
-        const { routeIds, trailName } = _collectAllRoutesAt(box);
+        const { routeIds, trailName, anchor } = _collectAllRoutesAt(box, e.lngLat);
         if (!routeIds.length) return;
 
         const matchedRoutes = routeIds
@@ -7995,7 +8069,7 @@ function setupInteractions() {
             closeButton: false,
             focusAfterOpen: false,
         })
-            .setLngLat(e.lngLat)
+            .setLngLat(anchor || e.lngLat)
             .setHTML(html)
             .addTo(map);
     });
