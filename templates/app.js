@@ -961,13 +961,26 @@ const OVERVIEW_DIAMOND_SPACING_M = 500;
 const ARROW_CADENCE_MID   = 400;  // mid tier   (zoom >= DECOR_MZ_PER_WAY)
 const ARROW_CADENCE_CLOSE = 200;  // close tier (zoom >= DECOR_MZ_D200)
 
-// Overview point labels (a single loop/trail name at a representative
-// point) must survive the initial fit-bounds zoom on every platform.
-// Wide desktop fits land ~14.4-15.3, and maxBounds floors the zoom-out
-// above 14 (so a smaller fit or zooming out can't reach a lower band) —
-// the cutoff itself must clear that. Intentionally above DECOR_MZ_PER_WAY
-// (14), not aliased to it. Curve-following line labels take over past this.
-const POINT_LABEL_MAX_ZOOM = 16;
+// Zoom at which the curve-following on-path labels become ELIGIBLE (their
+// minzoom). Set to 14 (field-tuned, 16 -> 15 -> 14) so on-path labels can
+// appear as early as the geometry allows. This now aliases DECOR_MZ_PER_WAY
+// (14), so on-path labels and the per-way decoration tier begin together.
+// Below it, line labels are suppressed so they can't fire half-formed while
+// the centroid overview style is still the intended look.
+const POINT_LABEL_MAX_ZOOM = 14;
+
+// Crossover floor shared by the on-path line layers' minzoom. NOT a hard
+// cut any more: the centroid point labels have NO maxzoom and stay eligible
+// at every zoom, so the handoff is COLLISION-DRIVEN, not zoom-driven. At/above
+// this zoom the on-path line label is allowed to place; because the centroid
+// label is pinned on-path (longest-way midpoint) it shares the collision index
+// with the line label and is dropped wherever the line label actually draws.
+// The win: the handoff happens at the geometry-dependent zoom where on-path
+// text really fits (early on straight routes, later on twisty switchbacked
+// ones) instead of a fixed zoom that left a dead band on twisty maps. Clamped
+// one stop under the map's own maxZoom so a low-maxZoom regional map that
+// never reaches 15 still gets an on-path band rather than centroid-only.
+const LABEL_CROSSOVER_ZOOM = Math.min(POINT_LABEL_MAX_ZOOM, CONFIG.maxZoom - 1);
 // Set false to drop the trails-mode point label (keep routes-mode only)
 // if per-trail overview labels prove too cluttered.
 const POINT_LABELS_IN_TRAILS_MODE = true;
@@ -1473,9 +1486,15 @@ function computeDecorations() {
     for (const [rid, agg] of routeAgg) {
         const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
         if (!name || agg.n === 0) continue;
+        // Pin the overview label to the route's longest way (on the path),
+        // consistent with the trail point labels below; fall back to the
+        // vertex centroid only if the arc-length midpoint won't resolve.
+        const lw = agg.longest;
+        const lmid = pointAtArcLength(lw.segments, lw.totalLength, lw.totalLength * 0.5);
+        const lcoords = lmid ? [lmid.lng, lmid.lat] : [agg.sx / agg.n, agg.sy / agg.n];
         decorations.push({
             type: "Feature",
-            geometry: { type: "Point", coordinates: [agg.sx / agg.n, agg.sy / agg.n] },
+            geometry: { type: "Point", coordinates: lcoords },
             properties: {
                 kind: KIND.ROUTE_LABEL_PT,
                 min_zoom: 0,
@@ -1548,6 +1567,7 @@ function addDecorationLayers() {
         id: "decor-trail-name",
         type: "symbol",
         source: "trail-decorations",
+        minzoom: LABEL_CROSSOVER_ZOOM,
         filter: ["all",
             ["==", ["get", "kind"], KIND.TRAIL_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
@@ -1575,6 +1595,7 @@ function addDecorationLayers() {
         id: "decor-route-name",
         type: "symbol",
         source: "trail-decorations",
+        minzoom: LABEL_CROSSOVER_ZOOM,
         filter: ["all",
             ["==", ["get", "kind"], KIND.ROUTE_NAME],
             ["<=", ["get", "min_zoom"], ["zoom"]],
@@ -1665,15 +1686,20 @@ function addDecorationLayers() {
     });
 
     // Overview point labels — a single loop/trail name at a representative
-    // point, shown only below POINT_LABEL_MAX_ZOOM where the curve-
-    // following line labels can't fit. maxzoom hands back to those line
-    // labels as the rider zooms in. symbol-sort-key (negative length)
-    // makes the longest names win MapLibre's overlap drop.
+    // point. NO maxzoom: the centroid label is the guaranteed fallback and
+    // stays eligible through the whole zoom range. Above LABEL_CROSSOVER_ZOOM
+    // the curve-following line label (same name, co-located on the longest
+    // way's midpoint since the on-path pin) takes over by WINNING the shared
+    // collision index wherever it can actually place — which is geometry-
+    // dependent, not a fixed zoom: straight routes hand off at the crossover,
+    // twisty switchbacked trails (where line text can't fit a 45° run until
+    // much deeper in) keep the centroid label until then instead of leaving a
+    // dead band with no label at all. symbol-sort-key (negative length) makes
+    // the longest names win MapLibre's overlap drop among themselves.
     map.addLayer({
         id: "decor-route-name-pt",
         type: "symbol",
         source: "trail-decorations",
-        maxzoom: POINT_LABEL_MAX_ZOOM,
         filter: ["all",
             ["==", ["get", "kind"], KIND.ROUTE_LABEL_PT],
             ["<=", ["get", "min_zoom"], ["zoom"]],
@@ -1682,7 +1708,10 @@ function addDecorationLayers() {
             "symbol-placement": "point",
             "text-field": ["get", "text"],
             "text-font": ["Noto Sans Regular"],
-            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13],
+            // Track the line label's growth (10->14:13, 18:16) so where the
+            // centroid persists into the on-path band it doesn't read frozen-
+            // small next to its neighbours.
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13, 18, 15],
             "text-padding": 4,
             "symbol-sort-key": ["get", "symbol_sort_key"],
             "visibility": labelMode === "routes" ? "visible" : "none",
@@ -1697,7 +1726,6 @@ function addDecorationLayers() {
         id: "decor-trail-name-pt",
         type: "symbol",
         source: "trail-decorations",
-        maxzoom: POINT_LABEL_MAX_ZOOM,
         filter: ["all",
             ["==", ["get", "kind"], KIND.TRAIL_LABEL_PT],
             ["<=", ["get", "min_zoom"], ["zoom"]],
@@ -1706,7 +1734,8 @@ function addDecorationLayers() {
             "symbol-placement": "point",
             "text-field": ["get", "text"],
             "text-font": ["Noto Sans Regular"],
-            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13],
+            // See decor-route-name-pt above — match the line label's growth.
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13, 18, 15],
             "text-padding": 4,
             "symbol-sort-key": ["get", "symbol_sort_key"],
             "visibility": labelMode === "trails" ? "visible" : "none",
@@ -4242,6 +4271,7 @@ async function loadTrails() {
             id: `trail-label-${routeId}`,
             type: "symbol",
             source: "trails-labels",
+            minzoom: LABEL_CROSSOVER_ZOOM,
             filter: ["==", ["get", "route_id"], routeId],
             layout: {
                 "symbol-placement": "line",
