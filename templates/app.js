@@ -2628,9 +2628,19 @@ async function init() {
                 // fitBounds-zoom; arm the hint toast so the user
                 // knows to tap the indicator if their dot is off-
                 // screen.
+                //
+                // Keep follow-me OFF here so NO geolocate-source ease
+                // moves the camera on initial enable — not the first
+                // fitBounds-zoom (cancelled below) and not the next
+                // per-fix easeTo either. Otherwise the second GPS fix
+                // would auto-center a few seconds after the indicator
+                // + toast appeared, contradicting the "we're not
+                // moving you, tap the ▲ to center" promise. Follow-me
+                // is opted into explicitly via the indicator-click and
+                // BACKGROUND → ACTIVE re-engage paths.
                 _firstGeolocateMoveAfterTrigger = true;
                 _showToastOnNextFix = true;
-                _followUserOnGeolocate = true;
+                _followUserOnGeolocate = false;
             }
             // else: ACTIVE / WAITING / *_ERROR → trigger() goes to
             //   IDLE. mirrorLocateState handles userLocation cleanup
