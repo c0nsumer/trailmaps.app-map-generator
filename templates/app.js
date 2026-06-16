@@ -967,8 +967,8 @@ const ARROW_CADENCE_CLOSE = 200;  // close tier (zoom >= DECOR_MZ_D200)
 // at the same zoom as the dense per-way arrows and — because everything is
 // compressed together on screen at that zoom — drew straight over them.
 // Holding on-path labels to 16 lets the map spread out first, so the text
-// lands in the gaps between arrows, and keeps the open-space overview label
-// as the shown label across more of the zoom range.
+// lands in the gaps between arrows, and keeps the single overview point
+// label as the shown label across more of the zoom range.
 const POINT_LABEL_MAX_ZOOM = 16;
 
 // On-path line layers' minzoom. Clamped one stop under the map's own maxZoom
@@ -976,14 +976,15 @@ const POINT_LABEL_MAX_ZOOM = 16;
 // band rather than overview-only.
 const LABEL_CROSSOVER_ZOOM = Math.min(POINT_LABEL_MAX_ZOOM, CONFIG.maxZoom - 1);
 
-// Overview point labels (the open-space centroid name) stay eligible until
-// one stop INTO the on-path band, then hand off via this maxzoom. The
-// one-zoom overlap with LABEL_CROSSOVER_ZOOM is intentional: on twisty
-// switchbacked trails the on-path line label can't fit a 45° run right at
-// the crossover, so the overview label persists through the overlap instead
-// of leaving a dead band with no label at all. On straight trails the line
-// label places immediately and the (off-path) overview label drops out one
-// zoom later — a brief, single-zoom co-existence, not a permanent double.
+// Overview point labels (the single on-path name per route/trail) stay
+// eligible until one stop INTO the on-path band, then hand off via this
+// maxzoom. The one-zoom overlap with LABEL_CROSSOVER_ZOOM is intentional: on
+// twisty switchbacked trails the curve-following line label can't fit a 45°
+// run right at the crossover, so the overview label persists through the
+// overlap instead of leaving a dead band with no label at all. On straight
+// trails the line label places immediately and the overview point label
+// drops out one zoom later — a brief, single-zoom co-existence, not a
+// permanent double.
 const OVERVIEW_LABEL_MAX_ZOOM = LABEL_CROSSOVER_ZOOM + 1;
 // Set false to drop the trails-mode point label (keep routes-mode only)
 // if per-trail overview labels prove too cluttered.
@@ -1267,6 +1268,25 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
     }
 }
 
+// Pick a point ON `way` to anchor an overview label, preferring a stretch
+// clear of already-placed obstacles (POIs / markers). Tries the arc-length
+// midpoint first, then points either side, and returns the first with
+// clearance; falls back to the midpoint if none are clear (the label still
+// renders and MapLibre resolves any residual overlap at draw time). Returns
+// null only for a degenerate, segment-less way.
+function chooseOnPathLabelPoint(way, placed, radiusM) {
+    const fracs = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74];
+    let fallback = null;
+    for (const fr of fracs) {
+        const pt = pointAtArcLength(way.segments, way.totalLength,
+            way.totalLength * fr);
+        if (!pt) continue;
+        if (!fallback) fallback = pt;
+        if (!placedCollides(pt.lng, pt.lat, radiusM, placed)) return pt;
+    }
+    return fallback;
+}
+
 // Build the full decoration FeatureCollection for the current visible
 // route set. Order matters:
 //   Pass 1   — line labels (symbol-placement: line; text follows the
@@ -1274,12 +1294,14 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
 //   Pass 1.5 — run-tier overview markers: arrows and diamonds spaced
 //              along each connected run, placed first so detail-tier
 //              markers can't double up on them
+//   Pass 1.7 — overview point labels (one loop/trail name pinned on the
+//              trail; placed AFTER the run-tier markers so those keep
+//              priority, reserves its footprint so the per-way/sweep tiers
+//              below deconflict around it; maxzoom hands to line labels)
 //   Pass 2   — per-way mandatory icons (2 diamonds + 2 arrows per
 //              applicable way) so even short trails get markings
 //   Pass 3   — 400 m icon sweep
 //   Pass 4   — 200 m icon sweep (fills the 400 m gaps)
-//   Pass 5   — overview point labels (one loop/trail name at a
-//              representative point; maxzoom hands back to line labels)
 // Arrows and diamonds share the DECOR_MZ_* zoom tiers above. Each
 // icon-tier's candidates are deconflicted against everything already
 // placed, including obstacle markers gathered up front.
@@ -1382,6 +1404,76 @@ function computeDecorations() {
             shared_routes: w.sharedRoutes,
         }));
 
+    // ---- Pass 1.7: overview point labels — one name per visible route, and
+    //      (trails mode) per named trail, pinned ON the trail at a low-clutter
+    //      point on its longest way. Placed AFTER the run-tier overview
+    //      markers above so those sparse, zoomed-out arrows/diamonds keep
+    //      priority and aren't starved, but BEFORE the per-way and sweep
+    //      tiers below, whose markers it reserves a footprint against so they
+    //      don't drop on the label text at runtime. Only the modes the map
+    //      actually supports are emitted: a routes-only map doesn't reserve
+    //      trail-label discs (labels that could never show, yet would thin the
+    //      marker field). The point-label layers carry a maxzoom that hands
+    //      these back to the curve-following line labels up close;
+    //      symbol_sort_key (negative length) lets the longest names win
+    //      MapLibre's collision drop among themselves. ----
+    const emitOverviewLabel = (text, way, extraProps) => {
+        // Reserve a modest clear disc around the label so the per-way / sweep
+        // marker passes don't drop an icon on the text. Kept small (scaled by
+        // name length) so it nudges the dense tiers aside without punching
+        // holes in the marker field — the run-tier markers above are already
+        // placed and untouched. Meters: the on-screen clearance it buys grows
+        // with zoom, biting hardest at z15-16 where the tiers are densest.
+        const r = Math.min(120, 45 + text.length * 6);
+        const pt = chooseOnPathLabelPoint(way, placed, r);
+        if (!pt) return;
+        decorations.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
+            properties: Object.assign({
+                min_zoom: 0,
+                text: text,
+                symbol_sort_key: -Math.round(way.totalLength),
+                shared_routes: way.sharedRoutes,
+            }, extraProps),
+        });
+        placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
+    };
+    if (CONFIG.showRoutes !== false) {
+        const routeAgg = new Map();   // routeId -> { n, longest }
+        for (const way of ways) {
+            const rids = (way.sharedRoutes && way.sharedRoutes.length)
+                ? way.sharedRoutes : [way.routeId];
+            for (const rid of rids) {
+                if (!visibleRoutes.has(rid)) continue;
+                let agg = routeAgg.get(rid);
+                if (!agg) { agg = { n: 0, longest: way }; routeAgg.set(rid, agg); }
+                agg.n++;
+                if (way.totalLength > agg.longest.totalLength) agg.longest = way;
+            }
+        }
+        for (const [rid, agg] of routeAgg) {
+            const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
+            if (!name || agg.n === 0) continue;
+            emitOverviewLabel(name, agg.longest,
+                { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid });
+        }
+    }
+    if (POINT_LABELS_IN_TRAILS_MODE && CONFIG.showTrails !== false) {
+        const trailLongest = new Map();   // trailName -> longest way
+        for (const way of ways) {
+            if (!way.trailName) continue;
+            const cur = trailLongest.get(way.trailName);
+            if (!cur || way.totalLength > cur.totalLength) {
+                trailLongest.set(way.trailName, way);
+            }
+        }
+        for (const [tname, way] of trailLongest) {
+            emitOverviewLabel(tname, way,
+                { kind: KIND.TRAIL_LABEL_PT, trail_name: tname });
+        }
+    }
+
     // Order the one-way runs into head-to-tail chains once, so the detail
     // arrow tiers below space arrows with a single continuous arc cursor
     // across way boundaries (no per-segment phase reset).
@@ -1466,84 +1558,6 @@ function computeDecorations() {
     if (arrowsAllowed) {
         placeArrowTierAlongChains(arrowChains, ARROW_CADENCE_CLOSE,
             DECOR_MZ_D200, decorations, placed);
-    }
-
-    // ---- Pass 5: overview point labels — one loop name per visible
-    //      route (at its centroid, which sits clear of the on-trail
-    //      arrows/diamonds) and, in trails mode, one trail name per trail
-    //      (at its longest way's midpoint). A layer maxzoom hands back to
-    //      the curve-following line labels as the rider zooms in. The
-    //      symbol_sort_key (negative length) lets the longest, most
-    //      significant names win MapLibre's collision drop. ----
-    const routeAgg = new Map();   // routeId -> { sx, sy, n, longest }
-    for (const way of ways) {
-        const rids = (way.sharedRoutes && way.sharedRoutes.length)
-            ? way.sharedRoutes : [way.routeId];
-        for (const rid of rids) {
-            if (!visibleRoutes.has(rid)) continue;
-            let agg = routeAgg.get(rid);
-            if (!agg) { agg = { sx: 0, sy: 0, n: 0, longest: way }; routeAgg.set(rid, agg); }
-            for (const c of way.coords) { agg.sx += c[0]; agg.sy += c[1]; agg.n++; }
-            if (way.totalLength > agg.longest.totalLength) agg.longest = way;
-        }
-    }
-    for (const [rid, agg] of routeAgg) {
-        const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
-        if (!name || agg.n === 0) continue;
-        // Position the overview label at the route's vertex centroid — open
-        // space, clear of the on-trail arrows/diamonds, so it reliably wins
-        // MapLibre's collision at overview zoom. The on-path line label
-        // (minzoom LABEL_CROSSOVER_ZOOM) takes over up close; this point
-        // label hands off via OVERVIEW_LABEL_MAX_ZOOM on its layer.
-        const lcoords = [agg.sx / agg.n, agg.sy / agg.n];
-        decorations.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: lcoords },
-            properties: {
-                kind: KIND.ROUTE_LABEL_PT,
-                min_zoom: 0,
-                text: name,
-                symbol_sort_key: -Math.round(agg.longest.totalLength),
-                solo_route_id: rid,
-                shared_routes: agg.longest.sharedRoutes,
-            },
-        });
-    }
-    if (POINT_LABELS_IN_TRAILS_MODE) {
-        // Mirror the routes-mode aggregate above: accumulate a vertex
-        // centroid per trail name (open space, clear of the on-trail
-        // arrows/diamonds) and track the longest way for the sort key /
-        // shared_routes. Trails-mode overview labels previously pinned to
-        // the longest way's on-path midpoint with no centroid at all, so on
-        // dense small maps they lost MapLibre's collision to the on-path
-        // decorations and vanished with nothing to fall back to.
-        const trailAgg = new Map();   // trailName -> { sx, sy, n, longest }
-        for (const way of ways) {
-            if (!way.trailName) continue;
-            let agg = trailAgg.get(way.trailName);
-            if (!agg) {
-                agg = { sx: 0, sy: 0, n: 0, longest: way };
-                trailAgg.set(way.trailName, agg);
-            }
-            for (const c of way.coords) { agg.sx += c[0]; agg.sy += c[1]; agg.n++; }
-            if (way.totalLength > agg.longest.totalLength) agg.longest = way;
-        }
-        for (const [tname, agg] of trailAgg) {
-            if (agg.n === 0) continue;
-            const lw = agg.longest;
-            decorations.push({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [agg.sx / agg.n, agg.sy / agg.n] },
-                properties: {
-                    kind: KIND.TRAIL_LABEL_PT,
-                    min_zoom: 0,
-                    text: tname,
-                    symbol_sort_key: -Math.round(lw.totalLength),
-                    trail_name: tname,
-                    shared_routes: lw.sharedRoutes,
-                },
-            });
-        }
     }
 
     return { type: "FeatureCollection", features: decorations };
@@ -1698,14 +1712,15 @@ function addDecorationLayers() {
         },
     });
 
-    // Overview point labels — a single loop/trail name at the route/trail's
-    // open-space centroid. maxzoom OVERVIEW_LABEL_MAX_ZOOM hands off to the
-    // curve-following on-path line label (which becomes eligible one stop
-    // earlier, at LABEL_CROSSOVER_ZOOM): below the crossover the centroid
-    // label is the sole, reliably-placed overview name; the one-zoom overlap
-    // covers twisty trails where on-path text can't fit yet (see the
-    // OVERVIEW_LABEL_MAX_ZOOM comment). symbol-sort-key (negative length)
-    // makes the longest names win MapLibre's overlap drop among themselves.
+    // Overview point labels — a single loop/trail name pinned ON the trail
+    // (computeDecorations Pass 1.6 reserves its footprint so arrows/diamonds
+    // deconflict around it). maxzoom OVERVIEW_LABEL_MAX_ZOOM hands off to the
+    // curve-following line label (eligible one stop earlier, at
+    // LABEL_CROSSOVER_ZOOM): below the crossover this point label is the sole,
+    // reliably-placed overview name; the one-zoom overlap covers twisty trails
+    // where curve text can't fit yet (see the OVERVIEW_LABEL_MAX_ZOOM
+    // comment). symbol-sort-key (negative length) makes the longest names win
+    // MapLibre's overlap drop among themselves.
     map.addLayer({
         id: "decor-route-name-pt",
         type: "symbol",
@@ -1720,8 +1735,8 @@ function addDecorationLayers() {
             "text-field": ["get", "text"],
             "text-font": ["Noto Sans Regular"],
             // Track the line label's growth (10->14:13, 18:16) so where the
-            // centroid persists into the on-path band it doesn't read frozen-
-            // small next to its neighbours.
+            // overview label persists into the on-path band it doesn't read
+            // frozen-small next to its neighbours.
             "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13, 18, 15],
             "text-padding": 4,
             "symbol-sort-key": ["get", "symbol_sort_key"],
