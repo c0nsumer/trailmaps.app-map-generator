@@ -124,11 +124,27 @@ CONFIG_SPEC = [
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # When true (the default), highlighting a route or trail dims
     # everything else on the map (basemap tint + non-highlighted
-    # labels/arrows/difficulty hidden + POI markers faded) so the
-    # highlighted feature reads as a spotlight. Set false per-map to
-    # keep every route visible at full brightness behind the
-    # highlight ribbon.
+    # arrows/difficulty hidden + POI markers faded) so the highlighted
+    # feature reads as a spotlight. Name labels stay visible for
+    # wayfinding. Set false per-map to keep every route visible at full
+    # brightness behind the highlight ribbon.
     ("map_dim_on_highlight", "mapDimOnHighlight", True),
+    # Opacity (0..1) of the dark scrim used for BOTH the in-map spotlight
+    # wash while a route/trail is highlighted (only when
+    # map_dim_on_highlight is true) AND the Search / Options / About menu
+    # backdrops (via the --scrim-opacity CSS var, published in init()).
+    # One value so the in-map wash and the menu backdrops share a single
+    # density — moving between a highlight and an open menu reads as one
+    # continuous wash. Lower keeps the surrounding network legible (you
+    # can still trace the connecting trails needed to reach the
+    # highlighted one); higher is a stronger dim. Default 0.40.
+    ("scrim_opacity", "scrimOpacity", 0.40),
+    # When true (the default), a highlighted route/trail gets a soft
+    # amber selection glow beneath the ribbon so it reads as "selected"
+    # at a glance — including dark/black routes that would otherwise be
+    # easy to lose. Set false to drop back to the outline + stroke ribbon
+    # with no glow.
+    ("highlight_glow", "highlightGlow", True),
     # When true (the default), MapLibre writes `#zoom/lat/lon` to
     # the URL hash as the user pans/zooms, and honours any hash on
     # page load. Makes views shareable and survives reload, at the

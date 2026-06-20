@@ -20,6 +20,15 @@
  */
 
 :root {
+    /* Shared "recede the background" scrim. Used by BOTH the in-map
+       highlight wash (the dim-tint layer, via app.js) and the Search /
+       Options / About+Welcome overlay backdrops below, so moving between
+       a highlight and an open menu reads as one continuous wash.
+       --scrim-opacity is overwritten at runtime from scrim_opacity
+       (see init() in app.js); 0.40 is the pre-JS fallback. Black in both
+       schemes, so it lives here in :root with no dark-mode override. */
+    --scrim-opacity: 0.40;
+    --overlay-scrim: rgba(0, 0, 0, var(--scrim-opacity));
     --sheet-bg: rgba(255, 255, 255, 0.98);
     --sheet-text: #222;
     --sheet-text-muted: #666;
@@ -1257,7 +1266,7 @@ body {
 .about-modal-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay-scrim);
     cursor: pointer;
 }
 
@@ -2361,13 +2370,22 @@ body:has(.options-overlay.is-open) .fab-stack {
     position: relative;
 }
 
-.fab:hover {
-    /* --pill-bg is "subtly different from sheet bg" — light grey on
-     * light mode (darker than sheet), darker grey on dark mode
-     * (lighter than sheet). Replacing the bg outright instead of
-     * overlaying because --sheet-hover is translucent and would
-     * make the FAB nearly transparent against the map. */
-    background: var(--pill-bg);
+/* Gate hover behind (hover: hover) so it only applies to real pointers
+ * (mouse / trackpad). On touch, :hover sticks to the last-tapped element
+ * until the next tap elsewhere — which left the Reset View FAB (a
+ * momentary action with no pressed/active state to mask it) stuck grey
+ * after a tap. The stateful FABs (Locate, Search, Options) hid the same
+ * latent bug behind their post-tap state/accent fill. Matches the
+ * (hover: hover) guard already used on .opt-toggle-row-clickable. */
+@media (hover: hover) {
+    .fab:hover {
+        /* --pill-bg is "subtly different from sheet bg" — light grey on
+         * light mode (darker than sheet), darker grey on dark mode
+         * (lighter than sheet). Replacing the bg outright instead of
+         * overlaying because --sheet-hover is translucent and would
+         * make the FAB nearly transparent against the map. */
+        background: var(--pill-bg);
+    }
 }
 
 .fab:active {
@@ -2591,16 +2609,21 @@ body.fabs-labeled .fab-label {
     position: fixed;
     inset: 0;
     z-index: 6;
-    background: rgba(0, 0, 0, 0);  /* transparent → dim on .is-open */
+    /* Scrim is INSTANT (no background transition). It's suppressed /
+     * restored atomically by the single-scrim rules below (when a
+     * highlight wash or a modal backdrop is already dimming the map); a
+     * fading scrim there would stack or flash against the other scrim.
+     * The panel still animates (slides up). On mobile the sheet covers
+     * this scrim as it slides, so the fade was barely visible anyway. */
+    background: rgba(0, 0, 0, 0);  /* transparent → --overlay-scrim on .is-open */
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     pointer-events: none;
-    transition: background 0.22s ease-out;
 }
 
 .search-overlay.is-open {
-    background: rgba(0, 0, 0, 0.32);
+    background: var(--overlay-scrim);
     pointer-events: auto;
 }
 
@@ -2799,21 +2822,48 @@ body.fabs-labeled .fab-label {
     position: fixed;
     inset: 0;
     z-index: 7;
-    background: rgba(0, 0, 0, 0);  /* transparent → dim on .is-open */
+    /* Instant scrim — see .search-overlay for the rationale. */
+    background: rgba(0, 0, 0, 0);  /* transparent → --overlay-scrim on .is-open */
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     pointer-events: none;
-    transition: background 0.22s ease-out;
 }
 
 .options-overlay.is-open {
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--overlay-scrim);
     pointer-events: auto;
 }
 
 .options-overlay[hidden] {
     display: none !important;
+}
+
+/* Single-scrim rule — only one black scrim is ever visible, so they never
+ * stack (double-dark) or animate against each other. Scrims, bottom → top:
+ * the in-map highlight wash (the WebGL dim-tint, at --scrim-opacity), the
+ * Search / Options overlay scrim, and the About / Welcome modal backdrop.
+ * A higher scrim wins; the ones beneath it are suppressed:
+ *   - .has-spotlight (a route/trail highlight wash is up): the steady
+ *     dim-tint already dims the map, so the Search / Options overlay scrim
+ *     is suppressed and the wash shows through unchanged — opening a menu
+ *     over a highlight, or switching results, changes nothing about the
+ *     dim (no breathing from two fading blacks).
+ *   - .modal-open (About / Welcome is up): its backdrop is the single
+ *     scrim — it covers and dims everything below, INCLUDING the Options
+ *     panel — so the Search / Options overlay scrim is suppressed (else
+ *     About-over-Options reads as a double dim). The in-map wash also
+ *     yields to it (suppressed in JS, see refreshSpotlightDim), so the
+ *     modal backdrop alone dims map + panel uniformly, with or without a
+ *     highlight. The modal backdrop itself is therefore never suppressed.
+ * The overlay scrims are instant (no background transition; see .search-
+ * overlay / .options-overlay), so each suppression is an atomic swap, not
+ * a cross-fade. */
+body.has-spotlight .search-overlay.is-open,
+body.has-spotlight .options-overlay.is-open,
+body.modal-open .search-overlay.is-open,
+body.modal-open .options-overlay.is-open {
+    background: transparent;
 }
 
 .options-overlay-panel {

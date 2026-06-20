@@ -163,13 +163,21 @@ function applyMapPaintForScheme(scheme) {
             }
         }
     }
-    // Highlight silhouettes (route + trail) — the single scheme-contrasting
-    // outline beneath the coloured/yellow stroke. Constant per scheme, so
-    // owned here instead of being recoloured per selection.
-    for (const id of ["route-highlight-outline", "trail-highlight-outline"]) {
-        if (map.getLayer(id)) {
-            map.setPaintProperty(id, "line-color", t.highlightOutline);
-        }
+    // Highlight silhouettes. The TRAIL outline is a constant scheme-
+    // contrasting silhouette (black on the light basemap, white on dark).
+    // The ROUTE outline is luminance-matched to the highlighted route's
+    // own colour (highlightOutlineForColor) so a dark/black route keeps a
+    // readable edge under the wash; re-applied here so a scheme toggle
+    // mid-highlight doesn't reset it to the scheme silhouette.
+    if (map.getLayer("trail-highlight-outline")) {
+        map.setPaintProperty("trail-highlight-outline", "line-color", t.highlightOutline);
+    }
+    if (map.getLayer("route-highlight-outline")) {
+        const routeInfo = highlight && highlight.kind === "route"
+            ? CONFIG.routes[highlight.key] : null;
+        map.setPaintProperty("route-highlight-outline", "line-color",
+            routeInfo ? highlightOutlineForColor(effectiveRouteColor(routeInfo))
+                : t.highlightOutline);
     }
     if (map.getLayer("decor-arrow")) {
         map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
@@ -179,6 +187,14 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("hillshade", "hillshade-highlight-color", t.hillshadeHighlight);
     }
 }
+
+// Shared "recede the background" scrim density, used by BOTH the in-map
+// highlight wash (the dim-tint layer) and the CSS overlay backdrops
+// (--scrim-opacity, published in init() from this value) — so the
+// highlight wash and the menu backdrops read as one density. Driven by
+// scrim_opacity; clamped to a valid alpha.
+const SCRIM_OPACITY = Math.max(0, Math.min(1,
+    typeof CONFIG.scrimOpacity === "number" ? CONFIG.scrimOpacity : 0.40));
 
 // Apply a chosen scheme to the live page. Three concerns:
 //   1. Persist preference to LS so subsequent visits use it.
@@ -1813,9 +1829,9 @@ function buildDecorFilter(kind) {
 }
 
 // Refresh the diamond + arrow filters in response to highlight state
-// changes. Label visibility (and route_name's solo-route filter) is
-// handled in updateLabels(); see that function for the additional
-// dim-aware logic.
+// changes. Name-label visibility is handled in updateLabels(); labels
+// are intentionally NOT narrowed under the dim (connecting trails stay
+// labelled for wayfinding) — only diamonds / arrows narrow here.
 function updateDecorationsHighlight() {
     if (map.getLayer("decor-diamond")) {
         map.setFilter("decor-diamond", buildDecorFilter(KIND.DIAMOND));
@@ -2219,6 +2235,12 @@ async function checkPMTilesRangeSupport() {
 }
 
 async function init() {
+    // Publish the shared scrim density to CSS so the overlay backdrops
+    // (--overlay-scrim) match the in-map highlight wash (dim-tint) exactly
+    // — one continuous wash as the rider moves between a highlight and an
+    // open menu. Both read from the same SCRIM_OPACITY / scrim_opacity.
+    document.documentElement.style.setProperty(
+        "--scrim-opacity", String(SCRIM_OPACITY));
     try {
         validateConfigShape();
     } catch (e) {
@@ -2895,6 +2917,7 @@ function initWelcomeModal() {
     function dismissWelcome() {
         LS.set(flagKey, true);
         modal.classList.add("hidden");
+        syncModalOpenClass();
     }
 
     if (closeBtn) closeBtn.addEventListener("click", dismissWelcome);
@@ -2912,7 +2935,10 @@ function initWelcomeModal() {
     // Show the modal on the next frame so the floating chrome has
     // settled into place first (otherwise the modal can flash before
     // the brand + FAB stack render on slow first paints).
-    requestAnimationFrame(() => modal.classList.remove("hidden"));
+    requestAnimationFrame(() => {
+        modal.classList.remove("hidden");
+        syncModalOpenClass();
+    });
 }
 
 // MDI SVG paths for the welcome controls hint. Same paths as the
@@ -3124,12 +3150,28 @@ function initAbout() {
     buildAboutModalContent();
 }
 
+// Mirror "an About/Welcome modal is on screen" onto <body class="modal-
+// open"> so the single-scrim CSS can suppress the Search/Options overlay
+// scrim underneath it. Both modals share the .about-modal styling and
+// open over an already-open Options overlay; without this their backdrop
+// (z-index 100) stacks on the overlay scrim (z-index 7) into a darker-
+// than-intended double dim. Computed from the live DOM so About and
+// Welcome can't get out of sync.
+function syncModalOpenClass() {
+    document.body.classList.toggle("modal-open", anyModalOpen());
+    // The in-map wash yields to a modal (see refreshSpotlightDim), so its
+    // opacity + .has-spotlight depend on modal state — refresh them here.
+    refreshSpotlightDim();
+}
+
 function openAboutModal() {
     document.getElementById("about-modal").classList.remove("hidden");
+    syncModalOpenClass();
 }
 
 function closeAboutModal() {
     document.getElementById("about-modal").classList.add("hidden");
+    syncModalOpenClass();
 }
 
 // Build an external link for the About modal. Validates the URL
@@ -4070,20 +4112,38 @@ async function loadTrails() {
         }
     }
 
-    // Dim-tint — full-viewport black wash, hidden by default. Rendered
-    // above the basemap + trail casings/fills but below the clip-arrows,
-    // highlights, labels, difficulty, and arrows. When
+    // Dim-tint — full-viewport black wash, transparent by default.
+    // Rendered above the basemap + trail casings/fills but below the
+    // clip-arrows, highlights, labels, difficulty, and arrows. When
     // `CONFIG.mapDimOnHighlight` is true AND a route/trail is highlighted,
-    // applyDimState() flips visibility to "visible" and the basemap +
-    // non-highlighted trail lines recede behind the wash so the
-    // highlighted ribbon reads as a spotlight.
+    // refreshSpotlightDim() sets its opacity to SCRIM_OPACITY so the
+    // basemap + non-highlighted trail lines recede behind the wash and
+    // the highlighted ribbon reads as a spotlight. It stays steady while
+    // a menu opens over it (the menu suppresses its own scrim instead —
+    // see .has-spotlight in style.css), so the dim never animates against
+    // a menu's scrim.
     map.addLayer({
         id: "dim-tint",
         type: "background",
-        layout: { "visibility": "none" },
         paint: {
             "background-color": "#000",
-            "background-opacity": 0.45,
+            // Starts transparent; refreshSpotlightDim() sets it to
+            // SCRIM_OPACITY whenever a highlight is active. The wash must
+            // change INSTANTLY — and duration:0 is REQUIRED to get that:
+            // MapLibre's default paint transition is 300ms, so without it
+            // the opacity fades in over ~300ms. On the "tap a search
+            // result" path (the menu scrim is removed instantly while the
+            // camera flies ~300ms) that fade reads as the background
+            // un-dimming then re-dimming during the fly. duration:0 makes
+            // the wash an atomic swap with the menu scrim instead of an
+            // animation against it (two fading black layers also wouldn't
+            // composite to a constant → wobble). The wash is steady while
+            // up; menus suppress their own scrim over it (see
+            // .has-spotlight in style.css). The SAME SCRIM_OPACITY drives
+            // the CSS overlay scrims via --scrim-opacity (set in init()),
+            // so both share one density.
+            "background-opacity": 0,
+            "background-opacity-transition": { duration: 0 },
         },
     });
 
@@ -4186,7 +4246,7 @@ async function loadTrails() {
     const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
     const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
 
-    // Two-layer route highlight (bottom → top):
+    // Route highlight ribbon (bottom → top), over an optional amber glow:
     //   outline:  thick silhouette around the highlight ribbon. Colour
     //             is bidirectional (black for light routes, white for
     //             dark) — set by highlightRoute() to mirror the
@@ -4206,6 +4266,31 @@ async function loadTrails() {
     // amber (or the previous route's color) to the target. Setting
     // duration: 0 makes the colour change instantaneous, so by the
     // time the filter exposes the layer it's already at the target.
+    //
+    // Optional selection glow (highlight_glow, default on): a soft amber
+    // aura BENEATH the ribbon so any route — a black one included — reads
+    // unmistakably as selected against the dimmed map. Rendered as an
+    // OPAQUE core + line-blur, not a translucent wide stroke: the earlier
+    // translucent glow was removed because its alpha doubled where a line
+    // self-overlaps at a tight switchback, spiking bright at hairpins. An
+    // opaque core can't double; the blur supplies the soft outer falloff.
+    // Amber matches the highlight-chip accent (--highlight-amber).
+    if (CONFIG.highlightGlow !== false) {
+        map.addLayer({
+            id: "route-highlight-glow",
+            type: "line",
+            source: "trails",
+            filter: NONE_FILTER_ROUTE,
+            paint: {
+                "line-color": "#ffb700",
+                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 17, 18, 28],
+                "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 5, 18, 7],
+                "line-opacity": 1,
+                "line-offset": makeOffsetExpr(),
+            },
+            layout: { "line-cap": "round", "line-join": "round" },
+        });
+    }
     map.addLayer({
         id: "route-highlight-outline",
         type: "line",
@@ -4238,13 +4323,31 @@ async function loadTrails() {
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
-    // Two-layer trail highlight (bottom → top):
+    // Trail highlight ribbon (bottom → top), over an optional amber glow:
     //   outline:  thick scheme-contrasting silhouette (black on light
     //             basemap, white on dark — see applyMapPaintForScheme)
     //   stroke:   highlighter yellow (#FFEC00) — see highlightTrail().
     //             Trails span multiple routes so they have no native
     //             colour; the highlighter yellow is the framework's
     //             "no colour of its own" emphasis state.
+    // Optional selection glow — see the route glow above for why it's an
+    // opaque core + blur rather than a translucent stroke.
+    if (CONFIG.highlightGlow !== false) {
+        map.addLayer({
+            id: "trail-highlight-glow",
+            type: "line",
+            source: "trails",
+            filter: NONE_FILTER_TRAIL,
+            paint: {
+                "line-color": "#ffb700",
+                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 17, 18, 28],
+                "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 5, 18, 7],
+                "line-opacity": 1,
+                "line-offset": makeOffsetExpr(),
+            },
+            layout: { "line-cap": "round", "line-join": "round" },
+        });
+    }
     map.addLayer({
         id: "trail-highlight-outline",
         type: "line",
@@ -4377,31 +4480,29 @@ function buildLabelFilter(kind, ...extraFilters) {
 }
 
 function updateLabels() {
-    const dim = highlightDimActive();
+    // Name labels are deliberately NOT narrowed under the spotlight dim.
+    // The wash recedes the surrounding network visually, but its names
+    // stay readable so a rider can still trace the connecting trails
+    // needed to reach the highlighted one (the in-field "how do I get
+    // there?" case). Only the tint + decorations (diamonds / arrows /
+    // clip-arrows) narrow to the highlight — see the applyDimState path.
 
     // Per-route route-name label layers — each scoped to one route via
     // its baseline filter (set at layer creation, not here). Source
     // data (computeLabelData) only carries shared-way features now;
-    // solo-way labels live on the decor-route-name layer.
-    // Visible only in "routes" mode; trail highlights hide them all
-    // (route names don't correspond to a particular trail), and route
-    // highlights keep only the matching layer.
+    // solo-way labels live on the decor-route-name layer. Visible only
+    // in "routes" mode.
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `trail-label-${routeId}`;
         if (!map.getLayer(layerId)) continue;
 
-        let visible = labelMode === "routes" && visibleRoutes.has(routeId);
-        if (visible && dim) {
-            visible = highlight.kind === "route" && routeId === highlight.key;
-        }
+        const visible = labelMode === "routes" && visibleRoutes.has(routeId);
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
     }
 
     // Solo-way route-name labels (one LineString per way with exactly
     // one visible route, labelled with that route's name). Visible
-    // only in "routes" mode. Under dim: route highlight narrows to
-    // that route via solo_route_id; trail highlight hides all route
-    // names (same semantics as per-route layers above).
+    // only in "routes" mode.
     //
     // Event mode: hidden entirely. The per-route trail-label-<id>
     // layers (only created for featured routes; see addLayer loop
@@ -4409,78 +4510,44 @@ function updateLabels() {
     // mode, so the rider sees the event route's name and nothing
     // else.
     if (map.getLayer("decor-route-name")) {
-        let visible = labelMode === "routes" && !CONFIG.eventModeActive;
-        let filter = buildLabelFilter(KIND.ROUTE_NAME);
-        if (visible && dim) {
-            if (highlight.kind === "route") {
-                filter = buildLabelFilter(KIND.ROUTE_NAME,
-                    ["==", ["get", "solo_route_id"], highlight.key]);
-            } else {
-                visible = false;
-            }
-        }
+        const visible = labelMode === "routes" && !CONFIG.eventModeActive;
         map.setLayoutProperty("decor-route-name",
             "visibility", visible ? "visible" : "none");
-        if (visible) map.setFilter("decor-route-name", filter);
+        if (visible) {
+            map.setFilter("decor-route-name", buildLabelFilter(KIND.ROUTE_NAME));
+        }
     }
 
     // Trail-name labels (one per physical way). Visible only in
-    // "trails" mode. Under dim: route highlight narrows to that
-    // route's shared-ways via the shared_routes array; trail
-    // highlight narrows to the matching trail_name.
+    // "trails" mode.
     if (map.getLayer("decor-trail-name")) {
         const visible = labelMode === "trails";
         map.setLayoutProperty("decor-trail-name", "visibility",
             visible ? "visible" : "none");
         if (visible) {
-            let filter;
-            if (dim && highlight.kind === "route") {
-                filter = buildLabelFilter(KIND.TRAIL_NAME,
-                    ["in", highlight.key, ["get", "shared_routes"]]);
-            } else if (dim && highlight.kind === "trail") {
-                filter = buildLabelFilter(KIND.TRAIL_NAME,
-                    ["==", ["get", "trail_name"], highlight.key]);
-            } else {
-                filter = buildLabelFilter(KIND.TRAIL_NAME);
-            }
-            map.setFilter("decor-trail-name", filter);
+            map.setFilter("decor-trail-name", buildLabelFilter(KIND.TRAIL_NAME));
         }
     }
 
-    // Overview point labels — same mode / highlight-dim semantics as the
-    // line labels above; the layer maxzoom (set at creation) restricts
-    // them to overview zoom.
+    // Overview point labels — same mode-based visibility as the line
+    // labels above; the layer maxzoom (set at creation) restricts them
+    // to overview zoom.
     if (map.getLayer("decor-route-name-pt")) {
-        let visible = labelMode === "routes" && !CONFIG.eventModeActive;
-        let filter = buildLabelFilter(KIND.ROUTE_LABEL_PT);
-        if (visible && dim) {
-            if (highlight.kind === "route") {
-                filter = buildLabelFilter(KIND.ROUTE_LABEL_PT,
-                    ["==", ["get", "solo_route_id"], highlight.key]);
-            } else {
-                visible = false;
-            }
-        }
+        const visible = labelMode === "routes" && !CONFIG.eventModeActive;
         map.setLayoutProperty("decor-route-name-pt",
             "visibility", visible ? "visible" : "none");
-        if (visible) map.setFilter("decor-route-name-pt", filter);
+        if (visible) {
+            map.setFilter("decor-route-name-pt",
+                buildLabelFilter(KIND.ROUTE_LABEL_PT));
+        }
     }
     if (map.getLayer("decor-trail-name-pt")) {
         const visible = labelMode === "trails";
         map.setLayoutProperty("decor-trail-name-pt",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            let filter;
-            if (dim && highlight.kind === "route") {
-                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT,
-                    ["in", highlight.key, ["get", "shared_routes"]]);
-            } else if (dim && highlight.kind === "trail") {
-                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT,
-                    ["==", ["get", "trail_name"], highlight.key]);
-            } else {
-                filter = buildLabelFilter(KIND.TRAIL_LABEL_PT);
-            }
-            map.setFilter("decor-trail-name-pt", filter);
+            map.setFilter("decor-trail-name-pt",
+                buildLabelFilter(KIND.TRAIL_LABEL_PT));
         }
     }
 }
@@ -4841,30 +4908,36 @@ function updateTrailDisplay() {
 // ============================================================
 // Highlight system
 // ============================================================
-// Layer groups — the dark outline + amber glow + amber stroke render
-// as a single unit. All three layers take the same filter; only the
-// stroke and glow take the dynamic colour (the outline stays dark).
-// Two layers each (bottom → top): outline + stroke.
-//   outline: always black, never recoloured — silhouettes against any
-//            basemap/trail.
-//   stroke:  recoloured per highlight via setPaintProperty. For routes
-//            it takes the route's native colour (the chip + ribbon
-//            agree on identity); for trails it takes the framework's
-//            "highlighter yellow" #FFEC00 (trails span multiple routes
-//            so they have no single native colour to inherit).
+// Layer groups — per highlight kind the ribbon is up to three stacked
+// line layers that share one filter (set / cleared together):
+//   glow (optional): soft amber aura beneath everything; constant
+//            colour, opaque core + blur. Gated by highlight_glow — the
+//            id stays in the arrays below and the getLayer() guards in
+//            highlightRoute/Trail skip it when the layer wasn't created.
+//   outline: thick silhouette. For routes it's luminance-matched to the
+//            route's own colour (white for a dark route, black for a
+//            light one — see highlightOutlineForColor) so the ribbon
+//            keeps a readable edge under the wash; for trails it's the
+//            scheme-contrasting silhouette (black on light, white on
+//            dark).
+//   stroke:  recoloured per highlight via setPaintProperty — the route's
+//            native colour (chip + ribbon agree on identity), or the
+//            framework's "highlighter yellow" #FFEC00 for trails (which
+//            span multiple routes, so no single native colour).
 //
 // History: an earlier four-layer sandwich (outline + blurred glow +
-// stroke + white core) lived here. Both the glow (bright spikes at
-// switchbacks) and the white core (zoom-dependent visibility, blurred
-// against light-coloured routes after the route-native-colour switch)
-// have been removed. The current pair gets the "highlighted" read
-// from sheer thickness vs. the unhighlighted fill plus the always-on
-// scheme-contrasting silhouette; the spotlight dim does the rest.
+// stroke + white core) lived here. The white core was dropped for good
+// (zoom-dependent visibility; blurred into light routes). The glow was
+// removed once too — its TRANSLUCENT wide stroke spiked bright where a
+// line self-overlaps at switchbacks — and is now back in a spike-safe
+// form (opaque core + line-blur; see the layer definition).
 const ROUTE_HIGHLIGHT_LAYERS = [
+    "route-highlight-glow",
     "route-highlight-outline",
     "route-highlight-stroke",
 ];
 const TRAIL_HIGHLIGHT_LAYERS = [
+    "trail-highlight-glow",
     "trail-highlight-outline",
     "trail-highlight-stroke",
 ];
@@ -4883,13 +4956,25 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 // Gated behind `CONFIG.mapDimOnHighlight` (per-map YAML, default ON —
 // opt out with `map_dim_on_highlight: false`). When active,
 // highlighting a route or trail dims the rest of the map:
-//   - The `dim-tint` background layer comes on, blackening the basemap
-//     + non-highlighted trail casings/fills.
-//   - Labels, difficulty icons, one-way arrows, and clip-arrows are
-//     narrowed to the highlighted route/trail only (so they don't punch
-//     through the tint on other lines).
-//   - POI markers (DOM overlay, above the WebGL canvas) fade via the
-//     `body.map-dim-active` class in style.css.
+//   - The `dim-tint` background layer fades in, washing the basemap +
+//     non-highlighted trail casings/fills toward black (strength is
+//     SCRIM_OPACITY, from scrim_opacity).
+//   - Difficulty icons, one-way arrows, and clip-arrows are narrowed to
+//     the highlighted route/trail only (so they don't punch through the
+//     tint on other lines). Name labels are deliberately NOT narrowed —
+//     they stay readable so connecting trails can still be followed to
+//     reach the highlighted one.
+//   - POI markers (DOM overlay, above the WebGL canvas) fade to ~0.25
+//     unless adjacent to the highlight, via Marker.setOpacity() in
+//     updateMarkerDimState().
+// The in-map wash and the Search / Options / About menu backdrops share
+// one scrim density (SCRIM_OPACITY / --scrim-opacity) but are never both
+// animated at once: while a highlight is active the wash is steady and
+// the menus suppress their own backdrop (CSS .has-spotlight) so the
+// steady wash shows through; with no highlight the menu's own scrim
+// provides the dim. Two fading black layers don't composite to a
+// constant, so keeping it to one animated layer avoids the "variable
+// dimming" wobble — see refreshSpotlightDim().
 // Clearing the highlight — or toggling the config off — restores normal
 // visibility in one pass via applyDimState().
 
@@ -4920,20 +5005,91 @@ function updateClipArrowsDim() {
     }
 }
 
+// True while an About/Welcome modal is on screen. These are the only
+// surfaces with a full-viewport backdrop that covers (and must dim) an
+// Options panel sitting behind them — see refreshSpotlightDim. Search /
+// Options are overlays, NOT modals, and are deliberately excluded.
+function anyModalOpen() {
+    const shown = (id) => {
+        const el = document.getElementById(id);
+        return !!el && !el.classList.contains("hidden");
+    };
+    return shown("about-modal") || shown("welcome-modal");
+}
+
+// Drive the in-map spotlight wash + mirror its state onto <body
+// class="has-spotlight"> for CSS.
+//
+// Why not couple this to whether a *menu overlay* is open? Because the
+// wash (a WebGL background layer) and an overlay's own scrim (a CSS layer)
+// are two independent black layers. An earlier version cross-faded them on
+// open/close to avoid stacking — but two fading black layers don't
+// composite to a constant: `1−(1−a)(1−b)` dips below the target mid-fade,
+// and the WebGL vs CSS easings differ, so the map "breathed" (variable
+// dimming). The fix: never animate two scrims at once. The wash is steady
+// (and instant) while a highlight is active, and the Search/Options
+// overlays suppress THEIR OWN scrim while .has-spotlight is set (CSS), so
+// the steady wash shows through — opening a menu over a highlight, or
+// switching results, changes nothing about the wash.
+//
+// A/W MODAL EXCEPTION: the wash yields to an About/Welcome modal. That
+// modal's backdrop covers the whole viewport — including the Options
+// panel behind it — and dims it. The in-map wash can't dim that panel (a
+// DOM box above the WebGL canvas), and keeping the wash on would also
+// double-dim the map under the backdrop. So while a modal is open the
+// wash is suppressed and the modal backdrop (same --scrim-opacity) is the
+// single scrim, dimming map + panel uniformly whether or not a highlight
+// is active. (Overlays are excluded from anyModalOpen(), so the wash
+// stays on behind a Search sheet — the highlighted route still reads.)
+function refreshSpotlightDim() {
+    if (!map || !map.getLayer("dim-tint")) return;
+    const on = highlightDimActive() && !anyModalOpen();
+    map.setPaintProperty("dim-tint", "background-opacity", on ? SCRIM_OPACITY : 0);
+    document.body.classList.toggle("has-spotlight", on);
+}
+
 // One-shot sync of everything that responds to dim + highlight state.
 // Called from highlightRoute / highlightTrail / clearHighlight, and
 // from updateTrailDisplay() so season/emergency toggles don't
 // accidentally re-enable non-highlighted labels under an active dim.
 function applyDimState() {
-    const active = highlightDimActive();
-    if (map.getLayer("dim-tint")) {
-        map.setLayoutProperty("dim-tint", "visibility",
-            active ? "visible" : "none");
-    }
+    refreshSpotlightDim();
     updateLabels();
     updateDecorationsHighlight();
     updateClipArrowsDim();
     updateMarkerDimState();
+}
+
+// sRGB relative luminance (0 = black, 1 = white) of any CSS colour.
+// Uses a 1×1 canvas so it resolves hex, rgb(), and named colours (an
+// OSM `colour` tag can be any of these) without a bespoke parser; an
+// unparseable value leaves the prior valid fill (#000) → treated as
+// dark. Cheap: called once per route highlight / scheme toggle.
+let _lumCtx = null;
+function relativeLuminance(cssColor) {
+    if (!_lumCtx) {
+        const c = document.createElement("canvas");
+        c.width = c.height = 1;
+        _lumCtx = c.getContext("2d", { willReadFrequently: true });
+    }
+    _lumCtx.fillStyle = "#000000";
+    _lumCtx.fillStyle = cssColor;   // invalid input keeps the prior value
+    _lumCtx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = _lumCtx.getImageData(0, 0, 1, 1).data;
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+// Highlight-outline colour for a route painted in `color`. The ribbon is
+// outline (wide) + the route's own-colour stroke (narrow); the outline
+// frames that stroke so the route reads as selected. Keying it to the
+// STROKE's luminance (dark route → white silhouette, light route →
+// black) is what keeps a black/dark route visible: under the spotlight
+// wash the dimmed background is dark, so the old basemap-contrasting
+// black outline vanished into it along with the black stroke. Contrast
+// against the stroke instead and the ribbon always has a readable edge,
+// on either basemap and at any wash level.
+function highlightOutlineForColor(color) {
+    return relativeLuminance(color) < 0.5 ? "#ffffff" : "#000000";
 }
 
 function highlightRoute(routeId) {
@@ -4971,6 +5127,14 @@ function highlightRoute(routeId) {
         if (map.getLayer(layerId)) {
             map.setPaintProperty(layerId, "line-color", color);
         }
+    }
+    // Outline silhouette: luminance-matched to this route's colour so a
+    // dark/black route keeps a readable light edge under the wash (see
+    // highlightOutlineForColor). Set before the filter activates the
+    // layer — same flash-prevention ordering as the stroke above.
+    if (map.getLayer("route-highlight-outline")) {
+        map.setPaintProperty("route-highlight-outline", "line-color",
+            highlightOutlineForColor(color));
     }
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {

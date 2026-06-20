@@ -116,6 +116,8 @@ KNOWN_KEYS = {
     "suppress_basemap_pois": bool,
     "suppress_basemap_oneway_arrows": bool,
     "map_dim_on_highlight": bool,
+    "scrim_opacity": (int, float),
+    "highlight_glow": bool,
     "url_hash": bool,
     "poi_proximity_m": (int, float),
     "show_route_distance": bool,
@@ -475,6 +477,19 @@ def _validate_geometry(report, config):
                 f"unusually large ({pm} m); the proximity filter is "
                 "effectively disabled and unrelated bbox POIs may render",
             )
+
+    # scrim_opacity: alpha (0..1) of the shared scrim (in-map highlight
+    # wash + menu backdrops). Outside that range is meaningless — the app
+    # clamps, but flag it at build so a typo (e.g. 40 instead of 0.40) is
+    # caught rather than silently turning the whole map black.
+    if (
+        "scrim_opacity" in config
+        and isinstance(config["scrim_opacity"], (int, float))
+        and not isinstance(config["scrim_opacity"], bool)
+    ):
+        op = config["scrim_opacity"]
+        if not 0 <= op <= 1:
+            report.err("scrim_opacity", f"must be in [0,1], got {op}")
 
     if "center" in config and isinstance(config["center"], list):
         c = config["center"]

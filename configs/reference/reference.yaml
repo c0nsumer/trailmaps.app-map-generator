@@ -204,6 +204,15 @@ relations:
 # Dim non-highlighted routes / trails when one is highlighted.
 # map_dim_on_highlight: true
 
+# Scrim opacity (0..1) shared by the in-map highlight wash AND the
+# Search / Options / About menu backdrops; lower keeps connecting trails
+# legible for wayfinding, higher is a stronger dim. Default 0.40.
+# scrim_opacity: 0.40
+
+# Soft amber selection glow beneath the highlighted ribbon (helps dark
+# routes read as selected). Set false for no glow.
+# highlight_glow: true
+
 # Write #zoom/lat/lon to the URL hash as the rider moves and restore it on load.
 # url_hash: false
 
