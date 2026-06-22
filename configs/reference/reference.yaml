@@ -293,6 +293,10 @@ relations:
 # logo image is reused as the icon source, so most maps set only one of the two.
 # icon: icon.png
 
+# If you set NEITHER logo: nor icon:, the engine falls back to its bundled
+# placeholder (a bicycle on the brand green, assets/placeholder-logo.png) so the
+# map still gets favicons, an installable PWA icon, and an on-page brand mark.
+
 # ============================================================
 # User-supplied points
 # ============================================================

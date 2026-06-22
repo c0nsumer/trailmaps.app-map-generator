@@ -43,6 +43,50 @@ def test_example_config_dry_run():
     assert rc in (None, 0), f"dry-run returned {rc!r}"
 
 
+def test_apply_default_brand_when_no_logo_or_icon():
+    import build
+
+    config = {}
+    assert build.apply_default_brand(config, REPO_ROOT) is True
+    assert config["icon"] == os.path.join(REPO_ROOT, "assets", "placeholder-logo.png")
+    assert os.path.isfile(config["icon"])
+
+
+def test_apply_default_brand_skipped_when_icon_set():
+    import build
+
+    config = {"icon": "/somewhere/custom-icon.png"}
+    assert build.apply_default_brand(config, REPO_ROOT) is False
+    assert config["icon"] == "/somewhere/custom-icon.png"
+
+
+def test_apply_default_brand_skipped_when_logo_set():
+    import build
+
+    config = {"logo": "logo.webp"}
+    assert build.apply_default_brand(config, REPO_ROOT) is False
+    assert "icon" not in config
+
+
+def test_apply_default_brand_skipped_when_icons_dir_set():
+    import build
+
+    config = {"icons_dir": "icons/"}
+    assert build.apply_default_brand(config, REPO_ROOT) is False
+    assert "icon" not in config
+
+
+def test_bundled_placeholder_icon_ships_and_is_usable():
+    # The default-brand fallback depends on this asset existing and being
+    # a usable icon source (square, >=256px, Pillow-readable).
+    from PIL import Image
+
+    asset = os.path.join(REPO_ROOT, "assets", "placeholder-logo.png")
+    assert os.path.isfile(asset), f"missing bundled placeholder: {asset}"
+    im = Image.open(asset)
+    assert im.width == im.height and im.width >= 256
+
+
 if __name__ == "__main__":
     import traceback
 

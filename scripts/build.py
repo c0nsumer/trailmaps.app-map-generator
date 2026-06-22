@@ -735,6 +735,28 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.step("Dry run complete — no files written, no network calls made.")
 
 
+def apply_default_brand(config, project_root):
+    """Fall back to the engine's bundled placeholder when a map sets no
+    branding source of its own (``logo:``, ``icon:``, or the legacy
+    ``icons_dir:``). Returns True if the default applied.
+
+    Set as ``icon`` (not ``logo``) so every existing consumer treats it
+    exactly like a curator-set icon: favicon + maskable-PWA generation
+    (``resolve_icon_source``), the on-page brand image (``logo:`` ->
+    ``icon:`` fallback), and ``accent_color: auto`` (logo -> icon
+    fallback). The result: a brandless map is still installable and
+    shows the bicycle as its mark. An explicit ``logo:`` or ``icon:``
+    always wins.
+    """
+    if config.get("logo") or config.get("icon") or config.get("icons_dir"):
+        return False
+    default_icon = os.path.join(project_root, "assets", "placeholder-logo.png")
+    if not os.path.isfile(default_icon):
+        return False
+    config["icon"] = default_icon
+    return True
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
@@ -843,6 +865,14 @@ def main(argv=None):
         for line in errors:
             print(line)
         sys.exit(1)
+
+    # A map that configures neither logo: nor icon: still gets favicons,
+    # a maskable PWA icon + manifest (installable), and an on-page brand
+    # mark by falling back to the engine's bundled placeholder. Applied
+    # after validation (which judges the curator's real config) so it
+    # also shows up in --dry-run's branding summary below.
+    if apply_default_brand(config, project_root):
+        console.info("No logo/icon configured — using the bundled placeholder bike icon")
 
     # Path resolution precedence: CLI flag > config field > legacy default.
     # CLI-flag paths resolve against the current working directory so the
