@@ -3828,14 +3828,24 @@ function hasVisibleProximityPois(poiType, threshold) {
 // currently in scope; out-of-scope markers hide the row.
 function updatePoiToggleVisibility() {
     const flips = [
-        ["toggle-markers",        CONFIG.showMarkers,        POI.TRAIL_MARKER,    POI_PROXIMITY_METERS],
-        ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS],
-        ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS],
-        ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS],
+        ["toggle-markers",        CONFIG.showMarkers,        POI.TRAIL_MARKER,    POI_PROXIMITY_METERS,         "trail_markers"],
+        ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS,         "features"],
+        ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS, "toilets"],
+        ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS, "drinking_water"],
     ];
-    for (const [id, gate, type, threshold] of flips) {
+    for (const [id, gate, type, threshold, layerName] of flips) {
         const btn = document.getElementById(id);
         if (!btn) continue;
+        // Curator-forced layers: wirePeekToggle already hid this row and
+        // skipped the click wiring (the rider gets no off affordance).
+        // Keep it hidden — re-revealing it on a proximity pass would
+        // resurrect a dead, unclickable control. The layer itself stays
+        // visible via the aria-pressed default + proximity filter,
+        // independent of the row. See isForcedVisible / wirePeekToggle.
+        if (isForcedVisible(layerName)) {
+            btn.classList.add("hidden");
+            continue;
+        }
         const show = gate && hasVisibleProximityPois(type, threshold);
         btn.classList.toggle("hidden", !show);
     }
@@ -6055,13 +6065,6 @@ async function loadPOIs() {
     const hideToggleRow = (id) => {
         const el = document.getElementById(id);
         if (el) el.classList.add("hidden");
-    };
-
-    // Reveal a toggle row that starts hidden by default (so maps with
-    // no data for that POI type don't show a dead control).
-    const showToggleRow = (id) => {
-        const el = document.getElementById(id);
-        if (el) el.classList.remove("hidden");
     };
 
     // Trail markers — merged guideposts + emergency-access layer. The
