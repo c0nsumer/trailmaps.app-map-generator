@@ -102,9 +102,42 @@ def generate_png_icons(source_img, output_dir):
     return count
 
 
-def generate_maskable_icon(
-    source_img, output_dir, size=512, safe_ratio=0.8, bg_color=(255, 255, 255, 255)
-):
+def _detect_bleed_color(img, default=(255, 255, 255, 255)):
+    """Pick the maskable bleed color from the source's corners.
+
+    A *full-bleed* source — an opaque background painted edge-to-edge,
+    like the bicycle placeholder's green field — must bleed in its own
+    background color. Filling the maskable margin with white instead
+    leaves the logo's square sitting on a white field, and the OEM
+    circle/squircle mask then reveals that white as a ring: the logo
+    appears as "a square floating on a white circle" (the exact PWA
+    symptom this guards against).
+
+    A logo on a transparent (or white) backplate keeps the white
+    `default`, which matches the manifest `background_color` and the
+    apple-touch-icon's white composite, so nothing else changes.
+
+    Heuristic: sample the four corners a little inside the edge (to skip
+    any anti-aliased rim). If all four are opaque and identical, the
+    source is full-bleed and that shared color is the bleed; otherwise
+    fall back to `default`.
+    """
+    rgba = img if img.mode == "RGBA" else img.convert("RGBA")
+    w, h = rgba.size
+    inset = max(1, min(w, h) // 64)
+    corners = [
+        rgba.getpixel((inset, inset)),
+        rgba.getpixel((w - 1 - inset, inset)),
+        rgba.getpixel((inset, h - 1 - inset)),
+        rgba.getpixel((w - 1 - inset, h - 1 - inset)),
+    ]
+    first = corners[0]
+    if first[3] == 255 and all(c == first for c in corners):
+        return first
+    return default
+
+
+def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_color=None):
     """Generate a maskable PWA icon (Android home-screen tile).
 
     Android applies an OEM-specific mask shape (circle on Pixel,
@@ -120,11 +153,16 @@ def generate_maskable_icon(
     larger white circle instead of filling the home-screen tile.
 
     The source is scaled to `safe_ratio` of the canvas, centered, and
-    the surrounding margin is filled with `bg_color` so the tile paints
-    edge-to-edge under any mask. White matches the existing manifest
-    `background_color` and the apple-touch-icon's white composite, so
-    iOS / Android / older fallbacks all stay visually consistent.
+    the surrounding margin is filled with `bg_color`. When `bg_color`
+    is None (the default) it is auto-detected from the source corners
+    via `_detect_bleed_color`: a full-bleed source (e.g. the bicycle
+    placeholder's green field) bleeds in its own color so the tile is a
+    solid field edge-to-edge under any mask, while a logo on a
+    transparent/white backplate keeps white — matching the manifest
+    `background_color` and the apple-touch-icon's white composite.
     """
+    if bg_color is None:
+        bg_color = _detect_bleed_color(source_img)
     inner = int(size * safe_ratio)
     canvas = Image.new("RGBA", (size, size), bg_color)
 
