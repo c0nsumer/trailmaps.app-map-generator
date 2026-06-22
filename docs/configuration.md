@@ -285,6 +285,8 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 | `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x80 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
 | `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically (so most maps only need to set one of the two). |
 
+If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green) so every map still gets favicons, an installable PWA icon, and a brand mark. An explicit `logo:` or `icon:` always takes precedence.
+
 ### User-supplied points
 
 | Key | Required | Default | Description |
@@ -986,8 +988,9 @@ against busy map areas.
 
 If `logo` is omitted but `icon` is set, the icon source is used as the logo
 automatically: square icons render as ~80x80 badges in the overlay and ~56x56 in
-the About modal. If neither `logo` nor `icon` is set, the logo overlay is hidden
-and the About modal shows only the text title in its header.
+the About modal. If neither `logo` nor `icon` is set, the engine's bundled
+placeholder becomes the icon source and therefore the logo too, so the overlay
+shows the placeholder bicycle badge rather than being hidden.
 
 ### Icon (`icon`)
 
@@ -1020,8 +1023,10 @@ The build generates the following files from the source image:
 | `icons/safari-pinned-tab.svg` | : | Auto-traced silhouette (requires `potrace`) |
 | `icons/site.webmanifest` | : | PWA manifest with `name` and `title` from config |
 
-If neither `icon` nor `logo` is set, all icon `<link>` tags are stripped from
-the HTML output and no manifest is generated.
+If a map sets neither `icon` nor `logo`, the engine falls back to a bundled
+placeholder icon (`assets/placeholder-logo.png`, a bicycle on the brand green),
+so favicons and the PWA manifest are still generated and the map stays
+installable. An explicit `icon:` or `logo:` always takes precedence.
 
 **Tip:** Use a simple, high-contrast design for the icon: it needs to be
 recognisable at 16x16 pixels. Avoid fine text or thin lines.
