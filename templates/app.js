@@ -6962,21 +6962,35 @@ function setupFloatingChrome() {
     // segment" appearance.
     function wirePeekToggle(id, lsKey, defaultOn, onChange, layerName) {
         const row = document.getElementById(id);
-        if (!row || row.classList.contains("hidden")) return;
+        if (!row) return;
         // forced_visible: if this layer is in CONFIG.forcedVisible,
-        // hide the row entirely, force-fire onChange(true) once so
-        // the layer renders visible, and skip the click wiring. The
-        // rider has no off affordance and any persisted LS state is
-        // ignored (write-through suppressed too — we don't touch LS
-        // so a future config change that drops the force still
-        // restores the rider's last preference). layerName is
-        // optional so existing call sites that haven't opted in yet
-        // keep working unchanged.
+        // mark the row on (aria-pressed=true), hide it entirely,
+        // force-fire onChange(true) once so the layer renders visible,
+        // and skip the click wiring. The rider has no off affordance
+        // and any persisted LS state is ignored (write-through
+        // suppressed too — we don't touch LS so a future config change
+        // that drops the force still restores the rider's last
+        // preference). layerName is optional so existing call sites
+        // that haven't opted in yet keep working unchanged.
+        //
+        // This MUST run before the hidden-row guard below. By the time
+        // setupFloatingChrome() wires the toggles, loadPOIs() →
+        // updatePoiToggleVisibility() has already hidden every forced
+        // proximity row, and toilets/drinking-water also start hidden
+        // in the template — so the guard would otherwise short-circuit
+        // the force-on and the layer would silently never render.
+        // aria-pressed must be set first because the proximity-gated
+        // POI layers render via updateMarkerProximity() → isOn(), which
+        // reads exactly this attribute (not isForcedVisible).
         if (layerName && isForcedVisible(layerName)) {
+            row.setAttribute("aria-pressed", "true");
             row.classList.add("hidden");
             onChange(true);
             return;
         }
+        // No data for this layer — loadPOIs()/the template left the row
+        // hidden. Skip wiring so we don't surface a dead control.
+        if (row.classList.contains("hidden")) return;
         const onBtn = row.querySelector('[data-value="on"]');
         const offBtn = row.querySelector('[data-value="off"]');
         if (!onBtn || !offBtn) return;
