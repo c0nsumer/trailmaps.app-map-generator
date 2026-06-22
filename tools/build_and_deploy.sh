@@ -49,7 +49,7 @@ Options:
   -h, --help         Show this help
 
 Anything after a literal -- is forwarded to build.py:
-  $(basename "$0") ramba -- --skip-basemap --skip-terrain
+  $(basename "$0") ramba -- --no-basemap --no-terrain
 
 Examples:
   $(basename "$0")                      # build & deploy everything

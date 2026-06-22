@@ -4,6 +4,10 @@
 Queries the Overpass API for a super-relation and its member relations,
 fetches all member ways with geometry, merges consecutive ways that share
 the same set of relations, and outputs a GeoJSON file.
+
+Internal build sub-stage: build.py imports and calls fetch_trails()
+directly; the ``__main__`` CLI exists only for standalone debugging and
+ad-hoc data refreshes.
 """
 
 import json
@@ -574,6 +578,27 @@ def compute_bbox_from_features(features, buffer=0.005):
     return [min_lon - buffer, min_lat - buffer, max_lon + buffer, max_lat + buffer]
 
 
+def _log_relation_list(relations, *, clipped=False):
+    """Print one indented line per relation (name, id, colour), with an
+    optional ``[clipped]`` marker. Shared by the local-.osm and Overpass
+    fetch paths so the two stay in lockstep."""
+    suffix = " [clipped]" if clipped else ""
+    for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
+        colour = info["colour"] or "(no tag)"
+        console.info(f"  {info['name']} ({rel_id}) colour={colour}{suffix}")
+
+
+def _log_way_counts(relations, all_ways):
+    """Print each relation's extracted way count, warning on any relation
+    that resolved to zero ways (a likely bad relation ID or an
+    over-aggressive clip). Shared by both fetch paths."""
+    for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
+        way_count = len(all_ways.get(rel_id, {}))
+        console.info(f"{info['name']}: {way_count} ways")
+        if way_count == 0:
+            console.warn(f"No ways found for {info['name']} ({rel_id})")
+
+
 def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     """Main entry point: fetch trails and write GeoJSON."""
     config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
@@ -634,8 +659,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         super_relation_expansions.update(source_expansions)
         _log_expansions("expanded", source_expansions)
         console.info(f"Found {len(relations)} relation(s):")
-        for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
-            console.info(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
+        _log_relation_list(relations)
 
         clipped_relations = {}
         if clipped_relation_ids:
@@ -645,10 +669,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             )
             super_relation_expansions.update(clipped_expansions)
             _log_expansions("clipped", clipped_expansions)
-            for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                console.info(
-                    f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
-                )
+            _log_relation_list(clipped_relations, clipped=True)
             relations.update(clipped_relations)
 
         # Expand winter sets through the super-relation map BEFORE
@@ -664,11 +685,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
         console.step(f"Stage B: Extracting ways for {len(relations)} relations...")
         all_ways = extract_ways(parsed, list(relations.keys()))
-        for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
-            way_count = len(all_ways.get(rel_id, {}))
-            console.info(f"{info['name']}: {way_count} ways")
-            if way_count == 0:
-                console.info(f"  warn: No ways found for {info['name']} ({rel_id})")
+        _log_way_counts(relations, all_ways)
     else:
         # Stage A: Fetch all relation metadata in a single query
         console.step("Stage A: Fetching relation metadata...")
@@ -686,17 +703,13 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             sys.exit(1)
 
         console.info(f"Found {len(members)} relation(s):")
-        for rel_id, info in sorted(members.items(), key=lambda x: x[1]["name"]):
-            console.info(f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'}")
+        _log_relation_list(members)
 
         relations = dict(members)
 
         if clipped_relations:
             console.info(f"Found {len(clipped_relations)} clipped relation(s):")
-            for rel_id, info in sorted(clipped_relations.items(), key=lambda x: x[1]["name"]):
-                console.info(
-                    f"  {info['name']} ({rel_id}) colour={info['colour'] or '(no tag)'} [clipped]"
-                )
+            _log_relation_list(clipped_relations, clipped=True)
             relations.update(clipped_relations)
 
         # Apply winter_relations config override (marks relations as winter
@@ -712,11 +725,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         # Stage B: Fetch ways for all relations in a single bulk query
         console.step(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
         all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir)
-        for rel_id, info in sorted(relations.items(), key=lambda x: x[1]["name"]):
-            way_count = len(all_ways.get(rel_id, {}))
-            console.info(f"{info['name']}: {way_count} ways")
-            if way_count == 0:
-                console.info(f"  warn: No ways found for {info['name']} ({rel_id})")
+        _log_way_counts(relations, all_ways)
 
     # Build way-to-relations mapping
     way_relations = build_way_to_relations_map(relations, all_ways)
@@ -1006,7 +1015,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 if __name__ == "__main__":
     parser = cli.config_output_parser("Fetch trail data from OpenStreetMap via Overpass.")
     parser.add_argument(
-        "cache_dir", nargs="?", default="cache", help="Cache directory (default: cache)"
+        "--cache-dir", default="cache", help="Cache directory (default: cache)"
     )
     args = parser.parse_args()
 

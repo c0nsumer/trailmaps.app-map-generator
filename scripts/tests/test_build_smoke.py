@@ -68,14 +68,6 @@ def test_apply_default_brand_skipped_when_logo_set():
     assert "icon" not in config
 
 
-def test_apply_default_brand_skipped_when_icons_dir_set():
-    import build
-
-    config = {"icons_dir": "icons/"}
-    assert build.apply_default_brand(config, REPO_ROOT) is False
-    assert "icon" not in config
-
-
 def test_bundled_placeholder_icon_ships_and_is_usable():
     # The default-brand fallback depends on this asset existing and being
     # a usable icon source (square, >=256px, Pillow-readable).

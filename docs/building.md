@@ -66,8 +66,9 @@ finish in under 30 seconds.
 python scripts/build.py configs/example/example.yaml                 # Full build (uses caches)
 python scripts/build.py configs/example/example.yaml --force          # Re-fetch everything (clears Overpass cache)
 python scripts/build.py configs/example/example.yaml --trails         # Re-fetch trail data from OSM (uses Overpass cache)
-python scripts/build.py configs/example/example.yaml --skip-terrain   # Skip terrain tile generation
-python scripts/build.py configs/example/example.yaml --skip-basemap   # Skip basemap extraction
+python scripts/build.py configs/example/example.yaml --no-terrain     # Skip terrain tile generation
+python scripts/build.py configs/example/example.yaml --no-basemap     # Skip basemap extraction
+python scripts/build.py configs/example/example.yaml --dry-run        # Validate + print the plan, write nothing
 ```
 
 - `--force` clears the Overpass API response cache (`cache/`) and
@@ -86,16 +87,28 @@ python scripts/build.py configs/example/example.yaml --skip-basemap   # Skip bas
   colour overrides flow through `fetch_pois.py` on each invocation.
   The OSM portion still hits the Overpass cache internally so the
   always-on rebuild stays sub-second.
-- `--skip-terrain` and `--skip-basemap` skip the corresponding tile
+- `--no-terrain` and `--no-basemap` skip the corresponding tile
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.
+- `--dry-run` validates the config and prints what would be fetched and
+  generated, then exits — no Overpass calls, no tile downloads, no file
+  writes.
+- `--output-dir DIR` and `--cache-dir DIR` redirect the build output and
+  the data cache away from the repo-relative `build/<slug>/` and `cache/`
+  defaults. The package form (`python -m map_generator build …`) forwards
+  both unchanged.
+- `--no-minify` and `--no-precompress` opt out of the default-on
+  minification and `.gz`/`.zst` precompression for fast local iteration;
+  leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
+- `--quiet` suppresses step and progress output, leaving only notes,
+  warnings, and errors.
 
 The basemap extraction automatically detects the latest available
 [Protomaps planet build](https://maps.protomaps.com/builds/), so
 there's no URL to update by hand. You can override this by setting
 the `PROTOMAPS_PLANET_URL` environment variable.
 
-Flags can be combined: `--trails --skip-basemap --skip-terrain`
+Flags can be combined: `--trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching
 tiles.
 
@@ -157,7 +170,7 @@ patterns:
 ./tools/build_and_deploy.sh --force example
 
 # Pass extra flags through to build.py
-./tools/build_and_deploy.sh example -- --skip-basemap --skip-terrain
+./tools/build_and_deploy.sh example -- --no-basemap --no-terrain
 ```
 
 The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
@@ -286,7 +299,7 @@ files manually and run with `--trails`:
 
 ```bash
 rm cache/overpass_*.json
-python scripts/build.py configs/example/example.yaml --trails --skip-basemap --skip-terrain
+python scripts/build.py configs/example/example.yaml --trails --no-basemap --no-terrain
 ```
 
 ### Build and data dates

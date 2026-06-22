@@ -5,6 +5,9 @@ Downloads SRTM elevation data for the configured bounding box, reprojects
 to Web Mercator, encodes as Terrain RGB, and packages as PMTiles for
 MapLibre GL JS hillshade rendering.
 
+Internal build sub-stage: build.py imports and calls fetch_terrain()
+directly; the ``__main__`` CLI exists only for standalone debugging.
+
 Dependencies:
   pip install elevation rasterio rio-rgbify rio-pmtiles
   (Also requires GDAL system libraries)

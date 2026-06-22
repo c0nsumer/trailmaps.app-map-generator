@@ -16,7 +16,7 @@ from datetime import datetime
 import console
 from event_mode import _apply_event_mode_to_relations
 from font_trimmer import copy_trimmed_fonts
-from generate_icons import generate_icons, generate_manifest
+from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
 from validate_config import DEFAULT_VISIBLE_LAYERS
@@ -872,8 +872,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # would remove the manifest link even though copy_assets
             # would happily generate a manifest from the logo,
             # leaving a build with icons on disk but no PWA install.)
-            icons_dir_legacy = config.get("icons_dir", "")
-            if not resolve_icon_source(config, project_root) and not icons_dir_legacy:
+            if not resolve_icon_source(config, project_root):
                 content = re.sub(
                     r"\s*<!-- Icons start -->.*?<!-- Icons end -->\n",
                     "",
@@ -893,7 +892,7 @@ def copy_assets(config, output_dir):
 
     # Logo: resampled to a bounding-box render size and written as logo.webp.
     # If `logo:` is omitted but `icon:` is set, the icon source is used as the
-    # logo automatically (square icons render as ~80x80 badges).
+    # logo automatically (square icons render as ~48x48 badges).
     logo_path = config.get("logo", "")
     icon_path = config.get("icon", "")
     logo_src = None
@@ -920,10 +919,10 @@ def copy_assets(config, output_dir):
         # case, accepting the small CLS risk over emitting wrong dims.
         config["_brand_img_dims"] = process_logo(logo_src, out_path)
 
-    # Icons — generate from source image or copy from legacy icons_dir.
-    # Source resolution (icon: → logo: → none) is shared with the HTML
-    # icons-block strip in copy_templates via resolve_icon_source().
-    icons_dir_legacy = config.get("icons_dir", "")
+    # Icons — generated from the resolved source image. Source resolution
+    # (icon: → logo: → none) is shared with the HTML icons-block strip in
+    # copy_templates via resolve_icon_source(); the manifest is written
+    # inside generate_icons().
     icon_path = resolve_icon_source(config, project_root)
     if icon_path and icon_path != config.get("icon", ""):
         # The fallback fired — the resolved source is the logo, not
@@ -932,33 +931,6 @@ def copy_assets(config, output_dir):
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
-        # Manifest is generated inside generate_icons
-    elif icons_dir_legacy:
-        console.warn("'icons_dir' is deprecated, use 'icon' instead")
-        icons_src = os.path.join(project_root, icons_dir_legacy)
-        icons_dst = os.path.join(output_dir, "icons")
-        if os.path.exists(icons_src):
-            os.makedirs(icons_dst, exist_ok=True)
-            icon_files = [
-                "apple-touch-icon.png",
-                "favicon-32x32.png",
-                "favicon-16x16.png",
-                "safari-pinned-tab.svg",
-                "android-chrome-192x192.png",
-                "android-chrome-256x256.png",
-                "mstile-150x150.png",
-            ]
-            copied = 0
-            for fname in icon_files:
-                src = os.path.join(icons_src, fname)
-                if os.path.exists(src):
-                    shutil.copy2(src, os.path.join(icons_dst, fname))
-                    copied += 1
-            console.info(f"Copied {copied} icon files")
-            # Always generate manifest dynamically (replaces static copy)
-            generate_manifest(config, output_dir)
-        else:
-            console.warn(f"Icons directory not found: {icons_src}")
     else:
         console.info("No icon configured — skipping icon generation")
 

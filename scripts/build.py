@@ -8,7 +8,7 @@ Usage:
     python scripts/build.py configs/example/example.yaml
     python scripts/build.py configs/example/example.yaml --force
     python scripts/build.py configs/example/example.yaml --trails
-    python scripts/build.py configs/example/example.yaml --skip-terrain
+    python scripts/build.py configs/example/example.yaml --no-terrain
 """
 
 import argparse
@@ -111,7 +111,8 @@ def _round_geojson_precision(geojson, ndigits=COORD_PRECISION):
 def _minify_assets(output_dir):
     """Minify app.js + style.css in-place, logging progress via console.
 
-    Used by main() when --minify is set. Conservative pure-python
+    Used by main() unless --no-minify is passed (minification is on by
+    default). Conservative pure-python
     minifiers (rjsmin / rcssmin): they preserve string literals
     verbatim (so the embedded CONFIG JSON in app.js stays intact),
     don't rewrite identifiers (no breaking changes for code that
@@ -438,8 +439,8 @@ def load_config(config_path):
     the slug in every path. Absolute paths in the YAML are passed through
     unchanged (useful for shared assets outside the repo).
 
-    Resolved keys: ``logo``, ``icon``, ``osm_file``, ``icons_dir`` (legacy),
-    and every ``custom_routes[].geometry``. All other paths (``output_dir``,
+    Resolved keys: ``logo``, ``icon``, ``osm_file``, and every
+    ``custom_routes[].geometry``. All other paths (``output_dir``,
     ``base_layers[].url``, etc.) stay in their original form — they're
     either repo-relative or external URLs.
     """
@@ -453,7 +454,7 @@ def load_config(config_path):
             return path
         return path if os.path.isabs(path) else os.path.join(config_dir, path)
 
-    for key in ("logo", "icon", "osm_file", "icons_dir"):
+    for key in ("logo", "icon", "osm_file"):
         if key in config:
             config[key] = _resolve(config[key])
 
@@ -686,13 +687,13 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- Tile generation ----
     console.step("Tile generation:")
-    if args.skip_basemap:
-        console.info("basemap: SKIPPED (--skip-basemap)")
+    if args.no_basemap:
+        console.info("basemap: SKIPPED (--no-basemap)")
     else:
         bm_zoom = config.get("basemap_maxzoom", 15)
         console.info(f"basemap: pan_bbox extracted to maxzoom {bm_zoom}")
-    if args.skip_terrain or not config.get("show_terrain", True):
-        reason = "--skip-terrain" if args.skip_terrain else "show_terrain: false"
+    if args.no_terrain or not config.get("show_terrain", True):
+        reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
     else:
         tr_zoom = config.get("terrain_maxzoom", 12)
@@ -737,8 +738,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
 def apply_default_brand(config, project_root):
     """Fall back to the engine's bundled placeholder when a map sets no
-    branding source of its own (``logo:``, ``icon:``, or the legacy
-    ``icons_dir:``). Returns True if the default applied.
+    branding source of its own (``logo:`` or ``icon:``). Returns True if
+    the default applied.
 
     Set as ``icon`` (not ``logo``) so every existing consumer treats it
     exactly like a curator-set icon: favicon + maskable-PWA generation
@@ -748,7 +749,7 @@ def apply_default_brand(config, project_root):
     shows the bicycle as its mark. An explicit ``logo:`` or ``icon:``
     always wins.
     """
-    if config.get("logo") or config.get("icon") or config.get("icons_dir"):
+    if config.get("logo") or config.get("icon"):
         return False
     default_icon = os.path.join(project_root, "assets", "placeholder-logo.png")
     if not os.path.isfile(default_icon):
@@ -768,8 +769,8 @@ def main(argv=None):
         action="store_true",
         help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.",
     )
-    parser.add_argument("--skip-terrain", action="store_true", help="Skip terrain tile generation")
-    parser.add_argument("--skip-basemap", action="store_true", help="Skip basemap extraction")
+    parser.add_argument("--no-terrain", action="store_true", help="Skip terrain tile generation")
+    parser.add_argument("--no-basemap", action="store_true", help="Skip basemap extraction")
     parser.add_argument(
         "--output-dir",
         help="Write build output to this directory. Overrides "
@@ -790,66 +791,40 @@ def main(argv=None):
         help="Validate config and print what would be fetched / generated, then exit. "
         "No Overpass calls, no tile downloads, no file writes.",
     )
-    # Minification defaults to ON: the canonical use of build.py is
-    # "produce ready-to-deploy artifacts," regardless of which deploy
-    # mechanism (SSH/rsync via tools/build_and_deploy.sh, or any other
-    # static-host workflow) will ship them. Local-iteration debug is
-    # the explicit opt-out via --no-minify. --minify stays as a no-op
-    # alias for backwards compatibility (any older script or shell
-    # history that passes it still works; the flag's presence is
-    # redundant with the default but never wrong).
-    parser.add_argument(
-        "--minify",
-        action="store_true",
-        default=True,
-        help="Minify app.js and style.css in the build output "
-        "(default: enabled). Pass --no-minify for "
-        "local-iteration debug where readable output is "
-        "more useful than smaller output.",
-    )
+    # Minification and precompression both default to ON: the canonical
+    # use of build.py is "produce ready-to-deploy artifacts," regardless
+    # of which deploy mechanism (tools/build_and_deploy.sh, or any other
+    # static-host workflow) ships them. Each has a single --no-* opt-out
+    # for local-iteration debug; the defaults are set explicitly via
+    # parser.set_defaults() below.
     parser.add_argument(
         "--no-minify",
         dest="minify",
         action="store_false",
-        help="Disable minification (overrides the default). "
-        "Use for local-iteration debug; for deploy, "
-        "leave the default on.",
+        help="Disable minification of app.js and style.css (default: "
+        "enabled). Use for local-iteration debug where readable output "
+        "is more useful than smaller output; for deploy, leave it on.",
     )
-    # Precompression defaults to ON for the same reason as minify: the
-    # canonical use of build.py is "produce ready-to-deploy artifacts."
     # The .gz/.zst sidecars are inert on a server that doesn't serve them
-    # (and on serve.py), so default-on is safe; --no-precompress skips the
-    # extra compression time for fast local iteration.
-    parser.add_argument(
-        "--precompress",
-        action="store_true",
-        default=True,
-        help="Write .gz/.zst sidecars for compressible assets so a "
-        "precompressed-aware server (Caddy `precompressed`, nginx "
-        "`gzip_static`) serves them with no request-time CPU "
-        "(default: enabled). Pass --no-precompress to skip.",
-    )
+    # (and on serve.py), so precompress default-on is safe.
     parser.add_argument(
         "--no-precompress",
         dest="precompress",
         action="store_false",
-        help="Disable sidecar precompression (overrides the default). "
-        "Use for fast local-iteration builds.",
+        help="Disable .gz/.zst sidecars for compressible assets (default: "
+        "enabled). The sidecars let a precompressed-aware server (Caddy "
+        "`precompressed`, nginx `gzip_static`) serve them with no "
+        "request-time CPU. Skip for fast local-iteration builds.",
     )
-    verbosity = parser.add_mutually_exclusive_group()
-    verbosity.add_argument(
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="Suppress progress output; show only notes, warnings, and errors.",
     )
-    verbosity.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show extra per-item detail.",
-    )
+    parser.set_defaults(minify=True, precompress=True)
     args = parser.parse_args(argv)
 
-    console.set_verbosity(quiet=args.quiet, verbose=args.verbose)
+    console.set_verbosity(quiet=args.quiet)
 
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -1222,8 +1197,8 @@ def main(argv=None):
     post_messages = []  # printed AFTER all parallel tasks complete
 
     # ---- Basemap planning ----
-    if args.skip_basemap:
-        post_messages.append("Basemap: Skipped (--skip-basemap)")
+    if args.no_basemap:
+        post_messages.append("Basemap: Skipped (--no-basemap)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(basemap_path, basemap_bbox, basemap_maxzoom)
         if args.force or needs_regen:
@@ -1242,8 +1217,8 @@ def main(argv=None):
     # ---- Terrain planning ----
     if not config.get("show_terrain", True):
         post_messages.append("Terrain: Disabled in config (show_terrain: false)")
-    elif args.skip_terrain:
-        post_messages.append("Terrain: Skipped (--skip-terrain)")
+    elif args.no_terrain:
+        post_messages.append("Terrain: Skipped (--no-terrain)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(terrain_path, terrain_bbox, terrain_maxzoom)
         if args.force or needs_regen:
@@ -1290,7 +1265,7 @@ def main(argv=None):
     copy_templates(config, output_dir, trails_geojson)
     console.blank()
 
-    # Step 5.5: Minify app.js + style.css when --minify is set. Runs
+    # Step 5.5: Minify app.js + style.css unless --no-minify was passed. Runs
     # AFTER copy_templates (which writes the files we minify) and
     # BEFORE generate_service_worker (which hashes file contents into
     # CACHE_VERSION — so the SW's hash refers to the final minified

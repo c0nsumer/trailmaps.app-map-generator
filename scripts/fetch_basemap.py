@@ -4,6 +4,9 @@
 Uses the pmtiles CLI to extract vector tiles for the configured bounding
 box from the Protomaps planet file. The output is a PMTiles file that can
 be served statically.
+
+Internal build sub-stage: build.py imports and calls fetch_basemap()
+directly; the ``__main__`` CLI exists only for standalone debugging.
 """
 
 import os

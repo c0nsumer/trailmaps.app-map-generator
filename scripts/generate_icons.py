@@ -137,6 +137,13 @@ def _detect_bleed_color(img, default=(255, 255, 255, 255)):
     return default
 
 
+def _rgba_to_hex(color):
+    """Format an (R, G, B, …) tuple as a ``#rrggbb`` string. Alpha is
+    dropped — PWA manifest colors are opaque."""
+    r, g, b = color[0], color[1], color[2]
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_color=None):
     """Generate a maskable PWA icon (Android home-screen tile).
 
@@ -228,7 +235,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
         os.unlink(tmp_path)
 
 
-def generate_manifest(config, output_dir):
+def generate_manifest(config, output_dir, bg_color=None):
     """Generate a PWA web manifest with app name from config.
 
     The manifest drives Chrome's WebAPK install on Android — Android's
@@ -259,13 +266,22 @@ def generate_manifest(config, output_dir):
     """
     name = config.get("name", "Map")
     title = config.get("title", "Trail Map")
+    # background_color paints the PWA launch splash. Match it to the icon's
+    # detected bleed field (passed from generate_icons) so a full-bleed
+    # coloured icon — e.g. the green placeholder — gets a splash matching
+    # its tile instead of a white flash. A transparent/white-backplate logo
+    # resolves to the white default, so the common case is unchanged.
+    # theme_color (status bar) stays white: the in-page colour-scheme
+    # bootstrap overrides it per light/dark on first paint, so a baked-in
+    # value would only flash for one frame and could fight that logic.
+    background_color = _rgba_to_hex(bg_color) if bg_color else "#ffffff"
     manifest = {
         "name": title,
         "short_name": name,
         "start_url": "../",
         "scope": "../",
         "display": "standalone",
-        "background_color": "#ffffff",
+        "background_color": background_color,
         "theme_color": "#ffffff",
         "icons": [
             {
@@ -350,12 +366,16 @@ def generate_icons(source_path, output_dir, config):
     if img.mode not in ("RGBA", "RGB"):
         img = img.convert("RGBA")
 
+    # Detect the icon's bleed field once and feed it to both the maskable
+    # tile (so it fills edge-to-edge under any OEM mask) and the manifest
+    # (so the PWA splash background matches a full-bleed coloured icon).
+    bleed = _detect_bleed_color(img)
     count = generate_png_icons(img, output_dir)
-    generate_maskable_icon(img, output_dir)
+    generate_maskable_icon(img, output_dir, bg_color=bleed)
     count += 1
     generate_favicon_ico(img, output_dir)
     has_svg = generate_safari_pinned_tab(img, output_dir)
-    generate_manifest(config, output_dir)
+    generate_manifest(config, output_dir, bg_color=bleed)
 
     parts = [f"{count} PNGs", "favicon.ico", "manifest"]
     if has_svg:

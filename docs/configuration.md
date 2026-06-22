@@ -282,8 +282,8 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x80 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
-| `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically (so most maps only need to set one of the two). |
+| `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x48 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
+| `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically — but only when the logo is a Pillow-readable raster (PNG/WebP/JPEG/…); an SVG logo can't be rasterised into icons, so set `icon:` explicitly in that case. (Most maps only need to set one of the two.) |
 
 If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green) so every map still gets favicons, an installable PWA icon, and a brand mark. An explicit `logo:` or `icon:` always takes precedence.
 
@@ -966,9 +966,9 @@ currently rasterised and should be pre-converted.
 | Property | Detail |
 |---|---|
 | **Purpose** | Map overlay branding; also shown in the About modal header |
-| **Map overlay render** | Inside a 200x80 px bounding box on desktop, 150x60 px on mobile |
+| **Map overlay render** | Inside a 280x64 px bounding box on desktop (≥768px), 200x48 px on mobile |
 | **About modal render** | Inside a 140x56 px box on desktop, 100x40 px on mobile |
-| **Binding axis** | Wide wordmarks (aspect at least 2.5:1) land at 200 px wide; square or tall logos land at 80 px tall |
+| **Binding axis** | Wide wordmarks (aspect wider than ~4.17:1, the 200:48 box) land at 200 px wide; square or tall logos land at 48 px tall |
 | **Pre-resize target** | Source is resampled to ~2x the render size (max longer side ~400 px on desktop). Never upscaled; smaller sources are preserved. |
 | **Recommended source** | At least 2x the expected render size on its long side (e.g. 400+ px wide for a wordmark); higher is fine, the framework resizes down |
 | **Recommended format** | Any Pillow-readable raster format; output is always WebP |
@@ -1016,12 +1016,13 @@ The build generates the following files from the source image:
 | `icons/android-chrome-192x192.png` | 192x192 | Android home screen |
 | `icons/android-chrome-256x256.png` | 256x256 | Android home screen (high-DPI) |
 | `icons/android-chrome-512x512.png` | 512x512 | Android home screen (Chrome WebAPK) |
+| `icons/android-chrome-maskable-512x512.png` | 512x512 | Maskable PWA tile (Android). Content sits in the inner 80% safe zone; the margin bleeds the icon's own field colour so it fills any OEM mask shape (circle, squircle, …) |
 | `icons/mstile-150x150.png` | 150x150 | Windows Start tile |
 | `icons/favicon-32x32.png` | 32x32 | Standard browser tab icon |
 | `icons/favicon-16x16.png` | 16x16 | Small browser tab icon |
 | `favicon.ico` | 16, 32, 48 | Multi-resolution ICO for legacy browsers |
 | `icons/safari-pinned-tab.svg` | : | Auto-traced silhouette (requires `potrace`) |
-| `icons/site.webmanifest` | : | PWA manifest with `name` and `title` from config |
+| `icons/site.webmanifest` | : | PWA manifest (`name`/`title` from config). Its `background_color` (the launch-splash field) is set to a full-bleed icon's detected colour, defaulting to white for transparent/white-backplate sources |
 
 If a map sets neither `icon` nor `logo`, the engine falls back to a bundled
 placeholder icon (`assets/placeholder-logo.png`, a bicycle on the brand green),

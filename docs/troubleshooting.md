@@ -63,7 +63,7 @@ persists:
   scratch.
 - Or delete `build/<slug>/basemap.pmtiles` and
   `build/<slug>/terrain.pmtiles` manually, then re-run without
-  `--skip-basemap` / `--skip-terrain`.
+  `--no-basemap` / `--no-terrain`.
 
 ## PMTiles won't load offline
 

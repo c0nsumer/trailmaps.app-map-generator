@@ -48,7 +48,7 @@ with a clear hint if neither is set.
 ./tools/build_and_deploy.sh --force ramba
 
 # Pass extra flags to build.py after a -- separator
-./tools/build_and_deploy.sh ramba -- --skip-basemap --skip-terrain
+./tools/build_and_deploy.sh ramba -- --no-basemap --no-terrain
 ```
 
 ### Options

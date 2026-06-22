@@ -9,7 +9,6 @@ Vocabulary::
 
     step    a top-level pipeline phase           (no indent)
     info    ordinary progress under a step       (indented)
-    detail  high-volume progress, --verbose only (indented)
     note    an advisory worth noticing           "  note: ..."
     warn    a non-fatal problem                  "  warn: ..."
     error   a serious problem                    "  error: ..."
@@ -18,7 +17,6 @@ Verbosity is set once from the CLI via :func:`set_verbosity`:
 
     quiet    only note / warn / error
     normal   + step / info / blank                (default)
-    verbose  + detail
 
 Everything goes to stdout today; routing diagnostics elsewhere would be a
 one-line change here rather than a sweep across every caller — which is the
@@ -40,20 +38,14 @@ for _stream in (sys.stdout, sys.stderr):
 
 QUIET = 0
 NORMAL = 1
-VERBOSE = 2
 
 _verbosity = NORMAL
 
 
-def set_verbosity(*, quiet=False, verbose=False):
+def set_verbosity(*, quiet=False):
     """Set global output verbosity. Call once at CLI startup."""
     global _verbosity
-    if quiet:
-        _verbosity = QUIET
-    elif verbose:
-        _verbosity = VERBOSE
-    else:
-        _verbosity = NORMAL
+    _verbosity = QUIET if quiet else NORMAL
 
 
 def step(msg=""):
@@ -65,12 +57,6 @@ def step(msg=""):
 def info(msg):
     """Ordinary progress under a step. Indented one level."""
     if _verbosity >= NORMAL:
-        print(f"  {msg}")
-
-
-def detail(msg):
-    """Minor, high-volume progress shown only with --verbose."""
-    if _verbosity >= VERBOSE:
         print(f"  {msg}")
 
 

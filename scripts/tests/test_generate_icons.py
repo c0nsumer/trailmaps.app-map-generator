@@ -1,4 +1,4 @@
-"""Tests for generate_icons.py — maskable-icon bleed handling.
+"""Tests for generate_icons.py — maskable-icon bleed + manifest colour.
 
 Run from repo root:
     python -m pytest scripts/tests/test_generate_icons.py -v
@@ -6,6 +6,7 @@ Or as a script:
     python scripts/tests/test_generate_icons.py
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -15,6 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from generate_icons import (  # noqa: E402
     _detect_bleed_color,
+    _rgba_to_hex,
+    generate_icons,
     generate_maskable_icon,
 )
 from PIL import Image  # noqa: E402
@@ -86,6 +89,36 @@ def test_maskable_transparent_logo_still_white():
         out = os.path.join(d, "icons", "android-chrome-maskable-512x512.png")
         m = Image.open(out).convert("RGBA")
         assert m.getpixel((0, 0)) == WHITE
+
+
+def _read_manifest_bg(output_dir):
+    with open(os.path.join(output_dir, "icons", "site.webmanifest"), encoding="utf-8") as f:
+        return json.load(f)["background_color"]
+
+
+def test_manifest_background_matches_full_bleed_icon():
+    """End-to-end: a full-bleed green source yields a manifest
+    background_color matching its field, so the PWA launch splash matches
+    the maskable tile instead of flashing white."""
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "src.png")
+        _full_bleed(GREEN, 512).save(src)
+        generate_icons(src, d, {"name": "M", "title": "Map"})
+        assert _read_manifest_bg(d) == "#3a6b3e"
+
+
+def test_manifest_background_white_for_transparent_logo():
+    """A transparent-backplate logo keeps the white default splash."""
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "src.png")
+        _logo_on((0, 0, 0, 0), 512).save(src)
+        generate_icons(src, d, {"name": "M", "title": "Map"})
+        assert _read_manifest_bg(d) == "#ffffff"
+
+
+def test_rgba_to_hex_drops_alpha():
+    assert _rgba_to_hex(GREEN) == "#3a6b3e"
+    assert _rgba_to_hex((255, 255, 255)) == "#ffffff"
 
 
 if __name__ == "__main__":

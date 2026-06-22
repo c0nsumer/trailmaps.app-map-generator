@@ -123,7 +123,8 @@ separate private orchestrator that drives this engine as a CLI tool.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the same
    `configs/<slug>/` folder and reference them by bare filename (e.g.
    `logo: logo.webp`, `icon: icon.png`). Either key alone is fine; the framework
-   uses one as a fallback for the other.
+   uses one as a fallback for the other — except that an SVG logo can't be
+   rasterised into icons, so set `icon:` to a PNG/WebP if your logo is an SVG.
 4. Run `python scripts/build.py configs/<slug>/<slug>.yaml` to generate the
    output.
 5. Deploy `build/<slug>/` to your server. See

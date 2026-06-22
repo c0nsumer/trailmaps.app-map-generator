@@ -6,6 +6,10 @@ box, combines with config-specified parking locations (which include
 driving direction URLs), and outputs a GeoJSON file.
 
 Parking areas are defined entirely in the YAML config, not fetched from OSM.
+
+Internal build sub-stage: build.py imports and calls fetch_pois() directly;
+the ``__main__`` CLI exists only for standalone debugging and ad-hoc data
+refreshes.
 """
 
 import json
@@ -432,7 +436,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
 if __name__ == "__main__":
     parser = cli.config_output_parser("Fetch points of interest from OpenStreetMap via Overpass.")
     parser.add_argument(
-        "cache_dir", nargs="?", default="cache", help="Cache directory (default: cache)"
+        "--cache-dir", default="cache", help="Cache directory (default: cache)"
     )
     args = parser.parse_args()
 

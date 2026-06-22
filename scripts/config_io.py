@@ -7,7 +7,7 @@ config's directory. Previously copy-pasted across both scripts; now
 lives here as the single source of truth.
 
 The full build.py load_config is richer (resolves ``logo``,
-``icon``, ``osm_file``, ``icons_dir``, and every
+``icon``, ``osm_file``, and every
 ``custom_routes[].geometry``) — that path is the standard one when
 running through ``build.py``. The trimmed version in this module is
 the one fetch_trails and fetch_pois use when invoked directly from

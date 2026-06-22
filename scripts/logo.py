@@ -169,9 +169,9 @@ def process_logo(source_path, output_path):
 
     For raster sources the output is always WebP (even if the input was PNG/
     JPEG/etc.) with render dimensions inside the LOGO_DESKTOP_W × LOGO_DESKTOP_H
-    box: wide wordmarks (aspect ≥ 2.5:1) are width-bound at 200 px, anything
-    else is height-bound at 80 px. We never upscale; small sources are saved
-    at their original dimensions.
+    box: wide wordmarks (aspect wider than the 200×48 box, ≈ 4.17:1) are
+    width-bound at 200 px, anything else is height-bound at 48 px. We never
+    upscale; small sources are saved at their original dimensions.
 
     SVG sources skip Pillow entirely; they are copied with one defensive
     rewrite -- if the root <svg> uses percentage width/height (or omits them)
