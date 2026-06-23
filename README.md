@@ -116,10 +116,11 @@ separate private orchestrator that drives this engine as a CLI tool.
 2. Create `configs/<slug>/` (the folder name must match your chosen slug
    exactly). Copy
    [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
-   into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and
-   `relations:` (a non-empty list of OSM relation IDs; each entry may be a leaf
-   route relation or a super-relation). Uncomment and adjust any other keys you
-   want to customise.
+   into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and a
+   geometry source — usually `relations:` (a non-empty list of OSM relation IDs;
+   each entry may be a leaf route relation or a super-relation), or, for a
+   route-only / event map, `custom_routes` / `event_mode.routes` instead.
+   Uncomment and adjust any other keys you want to customise.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the same
    `configs/<slug>/` folder and reference them by bare filename (e.g.
    `logo: logo.webp`, `icon: icon.png`). Either key alone is fine; the framework

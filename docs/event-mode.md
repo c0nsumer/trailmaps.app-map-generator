@@ -56,6 +56,36 @@ Drop the GeoJSON file (typically a single `LineString` or `MultiLineString`
 renders bright red; every OSM trail in relation 12345678 renders muted
 grey-dashed; POIs and the rest of the chrome behave normally.
 
+### Route-only event maps (no OSM relations)
+
+To show the event route *alone* — no surrounding trail network — omit
+`relations` entirely. As long as `event_mode.routes` (or `custom_routes`)
+supplies geometry, the map builds with just those routes:
+
+```yaml
+name: My Race
+slug: my-race
+title: "2026 My Race Map"
+
+event_mode:
+  routes:
+    - id: race-2026
+      name: "2026 My Race Course"
+      color: "#FF0000"
+      geometry: race-2026.geojson
+```
+
+With no `relations` there's no background network to mute, so only the course
+renders. The map view (center / zoom / bounds) is computed from the route
+geometry. Event mode's featuring transform still runs, but with nothing to push
+to the background it's effectively a no-op — for a single route alone,
+`custom_routes` on its own is equivalent; reach for `event_mode` when you also
+want featured-only [direction arrows](#direction-arrows) or always-on
+[event POIs](#event-pois). To suppress the OSM POIs/amenities that would
+otherwise be fetched within the route's bounding box, set the relevant `show_*`
+gates to `false` (see
+[Build-time data gates](configuration.md#build-time-data-gates)).
+
 ## Schema
 
 ```yaml

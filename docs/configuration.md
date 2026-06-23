@@ -97,10 +97,18 @@ title: "My Trails Map"
 relations: [12425503]
 ```
 
+`name`, `slug`, and `title` are always required. Beyond those, a config needs
+**at least one geometry source** — `relations`, `custom_routes`, or
+`event_mode.routes`. The example above uses `relations` (an OSM trail system); a
+route-only map (e.g. a race course with no surrounding network) can instead
+supply only `custom_routes` or `event_mode.routes` and omit `relations`
+entirely. See [Custom routes](#custom-routes-full-guide) and
+[Event mode](event-mode.md).
+
 To start a new map, copy `configs/reference/reference-minimal.yaml` into
-`configs/<your-slug>/<your-slug>.yaml`, set the four required keys, drop your
-`logo.webp` / `icon.png` / any custom-route GeoJSONs into the same folder, and
-reference them by bare filename in the config.
+`configs/<your-slug>/<your-slug>.yaml`, set the required identity keys plus a
+geometry source, drop your `logo.webp` / `icon.png` / any custom-route GeoJSONs
+into the same folder, and reference them by bare filename in the config.
 
 ## Config reference
 
@@ -116,7 +124,7 @@ reference them by bare filename in the config.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `relations` | Yes | : | Non-empty list of OSM relation IDs to render as routes. **Each entry may be a leaf route relation OR a super-relation** (auto-expanded into its child routes one level deep at fetch time; the parent itself is dropped since it has no ways). Order doesn't matter. Multi-system maps just list every entry-point relation. |
+| `relations` | Conditional | : | Non-empty list of OSM relation IDs to render as routes. **Required unless the map supplies geometry via `custom_routes` or `event_mode.routes`** — a route-only / event map can omit it. **Each entry may be a leaf route relation OR a super-relation** (auto-expanded into its child routes one level deep at fetch time; the parent itself is dropped since it has no ways). Order doesn't matter. Multi-system maps just list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
 | `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. |
 | `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. See [Event mode](event-mode.md) for the schema and worked examples. |
@@ -377,6 +385,12 @@ Some routes can't live in OSM: race courses, event loops, demo routes, or any
 transient route that doesn't match permanent signed infrastructure on the
 ground. The framework supports these as first-class citizens via the
 `custom_routes` config key.
+
+`custom_routes` can supplement an OSM map (relations + custom routes together)
+**or be the only geometry on the map**: a config with `custom_routes` (or
+`event_mode.routes`) and no `relations` renders those routes alone, with no
+surrounding trail network fetched. The map view is computed from the custom
+geometry like any other map.
 
 ```yaml
 custom_routes:
