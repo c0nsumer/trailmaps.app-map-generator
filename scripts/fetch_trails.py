@@ -599,14 +599,59 @@ def _log_way_counts(relations, all_ways):
             console.warn(f"No ways found for {info['name']} ({rel_id})")
 
 
+def _has_custom_geometry(config):
+    """True when the config supplies route geometry without OSM relations:
+    top-level `custom_routes` or inline `event_mode.routes`. Lets a
+    race/event map render a GeoJSON route with no `relations:` at all."""
+    if config.get("custom_routes"):
+        return True
+    em = config.get("event_mode")
+    return bool(isinstance(em, dict) and em.get("routes"))
+
+
+def _write_empty_trails(output_path, map_name):
+    """Write + return an empty-but-well-formed trails.geojson skeleton.
+
+    Used for relation-free maps: enrichment later folds the custom /
+    event-route geometry into this structure, so the `metadata` skeleton
+    must match the normal fetch path (`routes`, `super_relation_expansions`)
+    for downstream readers (build.py, enrichment.py, event_mode.py).
+    """
+    console.step(f"No relations for {map_name}: writing empty trail base (route-only map)")
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [],
+        "metadata": {"routes": {}, "super_relation_expansions": {}},
+    }
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(geojson, f, separators=(",", ":"))
+    # Mirror the main path's stale-sibling cleanup so a prior relation-based
+    # build's clip_endpoints.geojson doesn't linger and draw phantom
+    # continuation arrowheads on the route-only render.
+    endpoints_path = os.path.join(os.path.dirname(output_path) or ".", "clip_endpoints.geojson")
+    if os.path.exists(endpoints_path):
+        os.remove(endpoints_path)
+        console.info(f"Removed stale {endpoints_path}")
+    return geojson
+
+
 def fetch_trails(config_or_path, output_path, cache_dir="cache"):
     """Main entry point: fetch trails and write GeoJSON."""
     config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
     source_ids = list(config.get("relations") or [])
     if not source_ids:
+        # No OSM relations. A race/event or route-only map supplies its
+        # geometry via custom_routes / event_mode.routes, which enrichment
+        # folds into trails.geojson AFTER this fetch. Emit a well-formed
+        # empty skeleton so the build proceeds; if there's no custom
+        # geometry either, there's genuinely nothing to build.
+        if _has_custom_geometry(config):
+            return _write_empty_trails(output_path, config["name"])
         sys.exit(
-            "ERROR: config must specify `relations:` "
-            "(a non-empty list of OSM relation IDs that anchor this map)."
+            "ERROR: config must specify `relations:` (a non-empty list of "
+            "OSM relation IDs) or supply `custom_routes` / "
+            "`event_mode.routes` geometry."
         )
     # winter / summer / emergency lists carry bucket semantics on top,
     # but from fetch_trails.py's perspective they all mean "pull this

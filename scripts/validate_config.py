@@ -31,10 +31,11 @@ import yaml
 # ----------------------------------------------------------------------
 
 # Top-level keys that are required. Empty values still fail.
-# `relations` carries an additional non-empty check via _validate_relations
-# below (an empty list is structurally a value but useless: the build has
-# no source data to fetch).
-REQUIRED_KEYS = {"name", "slug", "relations"}
+# A geometry source (`relations` / `custom_routes` / `event_mode.routes`) is
+# deliberately NOT listed here — it's enforced separately by
+# _validate_geometry_source below, which accepts ANY of the three so a
+# race/event or route-only map can ship a GeoJSON route with no OSM relations.
+REQUIRED_KEYS = {"name", "slug"}
 
 # All known top-level keys with expected Python types. None means "no type
 # check" (handled by a custom validator below). Using tuples for "any of".
@@ -1469,23 +1470,47 @@ def _validate_event_mode(report, config):
         report.err("event_mode.poi_color", f"not a valid color: {pc!r}")
 
 
-def _validate_relations(report, config):
-    """`relations` must be a non-empty list of OSM relation IDs.
+def _validate_geometry_source(report, config):
+    """A map needs at least one geometry source to render.
 
-    The required-key check upstream already ensures the key is present;
-    this catches the structural-but-useless `relations: []` form. Type
-    and per-element int checks live in `_validate_types` and
-    `_validate_relation_id_dicts` respectively, so this validator only
-    asserts non-emptiness.
+    Historically that was always `relations` (a non-empty list of OSM
+    relation IDs). It can now instead — or additionally — come from
+    `custom_routes` or inline `event_mode.routes` (raw GeoJSON), so a
+    race/event map can ship a route alone with no OSM relations at all.
+
+    This enforces "at least one source present" and still rejects the
+    structurally-useless `relations: []` when nothing else supplies
+    geometry. Type / per-element int checks live in `_validate_types` and
+    `_validate_relation_id_dicts`; this validator only asserts presence.
     """
     rels = config.get("relations")
-    if rels is None:
-        # Already reported by _validate_required.
+    has_relations = isinstance(rels, list) and len(rels) > 0
+
+    custom = config.get("custom_routes")
+    has_custom = isinstance(custom, list) and len(custom) > 0
+
+    em = config.get("event_mode")
+    has_event_routes = (
+        isinstance(em, dict) and isinstance(em.get("routes"), list) and len(em["routes"]) > 0
+    )
+
+    if has_relations or has_custom or has_event_routes:
         return
-    if isinstance(rels, list) and not rels:
+
+    # Nothing supplies geometry. If they tried `relations` (present but
+    # empty), point at it specifically; otherwise report the general
+    # "no source at all" case.
+    if rels is not None:
         report.err(
             "relations",
-            "must be a non-empty list of OSM relation IDs (at least one entry required)",
+            "must be a non-empty list of OSM relation IDs, or supply route "
+            "geometry via `custom_routes` / `event_mode.routes` instead",
+        )
+    else:
+        report.err(
+            "relations",
+            "config has no geometry source: provide a non-empty `relations` "
+            "list, `custom_routes`, or `event_mode.routes`",
         )
 
 
@@ -1560,7 +1585,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_unknown_keys(report, config)
     _validate_required(report, config)
     _validate_types(report, config)
-    _validate_relations(report, config)
+    _validate_geometry_source(report, config)
     _validate_enums(report, config)
     _validate_geometry(report, config)
     _validate_colors(report, config)
