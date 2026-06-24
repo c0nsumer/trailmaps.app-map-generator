@@ -2,7 +2,7 @@
 """Generate self-hosted terrain/hillshade tiles as PMTiles.
 
 Downloads SRTM elevation data for the configured bounding box, reprojects
-to Web Mercator, encodes as Terrain RGB, and packages as PMTiles for
+to Web Mercator, encodes as Terrarium RGB, and packages as PMTiles for
 MapLibre GL JS hillshade rendering.
 
 Internal build sub-stage: build.py imports and calls fetch_terrain()
@@ -26,7 +26,7 @@ import cli
 import console
 import yaml
 
-# Mapterhorn (Protomaps terrain) — pre-built terrain RGB PMTiles
+# Mapterhorn (Protomaps terrain) — pre-built Terrarium-encoded RGB PMTiles
 # This is the simpler alternative to building from SRTM
 MAPTERHORN_URL = "https://download.mapterhorn.com/planet.pmtiles"
 
@@ -119,7 +119,7 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
 
     dem_path = os.path.join(cache_dir, "dem.tif")
     dem_mercator_path = os.path.join(cache_dir, "dem_3857.tif")
-    terrain_rgb_path = os.path.join(cache_dir, "terrain_rgb.tif")
+    terrarium_path = os.path.join(cache_dir, "terrarium.tif")
 
     # Pad bbox for context
     pad = 0.05
@@ -154,18 +154,20 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         console.error(f"gdalwarp failed: {result.stderr}")
         return False
 
-    # Step 3: Encode as Terrain RGB
-    console.info("Encoding as Terrain RGB...")
+    # Step 3: Encode as Terrarium RGB. This MUST match the client's
+    # raster-dem `encoding: "terrarium"` (app.js addTerrainLayers) and the
+    # primary Mapterhorn path, which is Terrarium too. Mapbox Terrain-RGB
+    # (the old `-b -10000 -i 0.1`) would be silently misdecoded by the
+    # terrarium reader into garbage elevations and a broken hillshade.
+    console.info("Encoding as Terrarium RGB...")
     result = subprocess.run(
         [
             "rio",
             "rgbify",
-            "-b",
-            "-10000",
-            "-i",
-            "0.1",
+            "-e",
+            "terrarium",
             dem_mercator_path,
-            terrain_rgb_path,
+            terrarium_path,
         ],
         capture_output=True,
         text=True,
@@ -180,7 +182,7 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         [
             "rio",
             "pmtiles",
-            terrain_rgb_path,
+            terrarium_path,
             output_path,
             "--format",
             "PNG",
