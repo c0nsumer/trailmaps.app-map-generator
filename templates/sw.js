@@ -38,15 +38,31 @@ const CACHE_NAME = `trail-map-${SW_CONFIG.CACHE_VERSION}`;
 // within tens of seconds to a couple of minutes depending on
 // connection speed).
 //
-// Side effect on the update toast in app.js: previously the toast
-// fired only after cache.addAll completed (30 s – 2 min after a
-// deploy). With install completing immediately, the new SW reaches
-// "installed" state within ~1 s of page load, so the "Reload" toast
-// appears much sooner after a deploy. Functionally identical — the
-// reload-handler is already defensive about reg.waiting being
-// cleared (app.js ~line 7313) — just a different rhythm.
+// We deliberately do NOT call skipWaiting() here. A new SW installs
+// but stays in the "waiting" state until either the rider taps
+// "Reload" on the update toast (which posts SKIP_WAITING — see the
+// message handler below) or every old-SW client closes. This is the
+// standard double-buffered update model, and it matters most on poor
+// connectivity:
+//
+//   skipWaiting() on install would activate the new SW immediately,
+//   and the activate handler below deletes the previous cache. The
+//   new cache is still empty at that moment (backgroundPrecache is
+//   fire-and-forget and the large files — trails.geojson, the
+//   PMTiles — haven't downloaded yet). On a flaky cellular link the
+//   tiny sw.js squeaks through and triggers the swap, but the big
+//   files then stall, so the page is left fetching required data
+//   (loadTrails) from an empty cache over a dead network: blank
+//   basemap, no trail lines, indefinite hang. Leaving the new SW
+//   waiting keeps the OLD SW in control and its OLD cache intact, so
+//   the map keeps loading from cache regardless of connectivity; the
+//   update applies only when the rider explicitly reloads (ideally on
+//   a good connection) or next cold launch.
+//
+// backgroundPrecache() still runs at install time, filling the NEW
+// cache alongside the old one, so by the time the rider reloads the
+// new version is already warm.
 self.addEventListener("install", (event) => {
-    event.waitUntil(self.skipWaiting());
     // Fire-and-forget. Intentionally NOT inside event.waitUntil so
     // it cannot delay install completion.
     backgroundPrecache();

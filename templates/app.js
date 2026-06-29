@@ -3873,12 +3873,33 @@ function getDashColors(routeInfo) {
 // ============================================================
 // Trail data loading
 // ============================================================
+
+// fetch() with a hard timeout. The browser's own network timeout can
+// run to a minute or more, and on "reported but dead" cellular a
+// request can hang that whole time — leaving an awaiting data loader
+// stalled with no error and no UI feedback (blank map, no toast). An
+// AbortController bounds the wait so a hung request rejects promptly
+// and the caller's catch can surface its "failed to load" toast. A
+// cache hit served by the service worker resolves instantly and never
+// reaches the timeout, so this only ever bites a genuine network
+// stall. 20 s is generous enough not to abort a slow-but-real download
+// of these (small) GeoJSON files; bump it if a map's data grows large.
+async function fetchWithTimeout(resource, ms = 20000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+        return await fetch(resource, { signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function loadTrails() {
     // trails.geojson is required — if it 404s or fails to parse, the
     // app has nothing to render. Fail loudly with a visible message
     // instead of letting downstream addSource calls die opaquely.
     try {
-        const resp = await fetch("trails.geojson");
+        const resp = await fetchWithTimeout("trails.geojson");
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
@@ -3897,7 +3918,7 @@ async function loadTrails() {
     // probe-fetch.
     if (CONFIG.hasClipEndpoints) {
         try {
-            const clipResp = await fetch("clip_endpoints.geojson");
+            const clipResp = await fetchWithTimeout("clip_endpoints.geojson");
             if (clipResp.ok) clipEndpointsData = await clipResp.json();
         } catch (_) {
             clipEndpointsData = null;
@@ -6014,7 +6035,7 @@ async function loadPOIs() {
     // toast a warning; downstream count-based gating (`hasTrailMarkers`,
     // `hasParking`, etc.) auto-hides the relevant toggle rows.
     try {
-        const resp = await fetch("pois.geojson");
+        const resp = await fetchWithTimeout("pois.geojson");
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
