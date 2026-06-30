@@ -577,7 +577,14 @@
                     <!-- PWA start -->
                     <button id="install-btn" class="opt-action-row install-btn hidden" type="button">
                         <span class="install-btn-icon" aria-hidden="true">
-                            <img src="icons/android-chrome-192x192.png" alt="">
+                            <!-- loading="lazy": this button lives in the closed
+                                 Options panel, so there's no reason to fetch the
+                                 icon on the critical path. The same 192px PNG is
+                                 already pulled eagerly by the web manifest (and
+                                 is in the SW PRECACHE_URLS), so it's warm in the
+                                 SW cache by the time the panel is ever opened —
+                                 the lazy fetch hits cache, even offline. -->
+                            <img src="icons/android-chrome-192x192.png" alt="" loading="lazy">
                         </span>
                         <span class="opt-action-text">
                             <span class="opt-action-title">Install as app</span>

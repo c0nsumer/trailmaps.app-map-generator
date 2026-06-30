@@ -265,13 +265,33 @@ def generate_service_worker(config, output_dir):
             all_files.append(rel_url)
 
     precache_urls = ["./"]
+    precache_pmtiles = []  # large archives, deferred to the tail (see below)
     pmtiles_files = []
     for rel_url in all_files:
         if not _is_precachable_glyph(rel_url):
             continue
-        precache_urls.append(rel_url)
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)
+            precache_pmtiles.append(rel_url)
+        else:
+            precache_urls.append(rel_url)
+
+    # Append the multi-MB .pmtiles archives (basemap ~2 MB, terrain up to
+    # ~30 MB) at the END of the precache list. backgroundPrecache() walks
+    # PRECACHE_URLS sequentially (one cache.add at a time), so whatever
+    # sits early monopolises the link until it finishes. Alphabetical
+    # order put basemap.pmtiles 3rd and terrain.pmtiles mid-list, ahead of
+    # the lightweight UI assets (icons, sprites, glyph PBFs, vendor JS).
+    # On a slow first visit that meant tens of seconds of big-file download
+    # before the cheap chrome assets cached, needlessly contending with the
+    # foreground map's own fetches. Caching the small assets first gets the
+    # UI offline-ready fast and leaves the big sequential pull for last;
+    # the rider's actual viewport is served meanwhile via cache-on-fetch +
+    # Range passthrough, so deferring the full archives costs nothing.
+    # (PMTILES_FILES order is independent — it's only a suffix-match set for
+    # the Range handler. CACHE_VERSION hashes all_files, not this list, so
+    # reordering here does NOT bust any rider's cache.)
+    precache_urls.extend(precache_pmtiles)
 
     # Compute cache version from actual file CONTENTS of every
     # deployed file in the build (not just the precache subset). The earlier
