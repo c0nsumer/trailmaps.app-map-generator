@@ -2269,6 +2269,10 @@ async function init() {
             wrap.appendChild(code);
             container.appendChild(wrap);
         }
+        // Tear down the initial-load bar — a config-broken build renders
+        // the error card above instead of a map, and a bar spinning over
+        // it reads as "still working" when it's actually dead.
+        if (window.__hideMapLoading) window.__hideMapLoading();
         return;
     }
 
@@ -2829,6 +2833,28 @@ async function init() {
         // shared and the relation changed).
         if (_pendingShareHighlight) {
             applyPendingShareHighlight();
+        }
+
+        // Hide the initial-load progress bar once the opening viewport is
+        // painted. When this map has terrain we can't use the first global
+        // map 'idle' — the terrain raster-dem pmtiles source loads its
+        // header asynchronously, and an 'idle' can fire after basemap +
+        // trails settle but before the hillshade tiles paint, hiding the
+        // bar too early (most visible on a hard reload). Instead we wait on
+        // _terrainTilesLoaded (armed in addTerrainLayers), which resolves
+        // — at an idle — once terrain has SETTLED for the view: tiles
+        // loaded, or none needed (config gate / out of coverage). It
+        // resolves AT an idle, so we hide directly here; registering a
+        // fresh once('idle') could wait for a busy→idle transition that
+        // never comes. __hideMapLoading is idempotent; the 30s inline
+        // safety net covers a stalled terrain header (rare — HEAD passed).
+        const _hideBar = () => {
+            if (window.__hideMapLoading) window.__hideMapLoading();
+        };
+        if (CONFIG.showTerrain && map.getSource("terrain") && _terrainTilesLoaded) {
+            _terrainTilesLoaded.then(_hideBar);
+        } else {
+            map.once("idle", _hideBar);
         }
     });
 
@@ -3486,6 +3512,11 @@ function buildCustomStyle(layer, base) {
 // ============================================================
 // Terrain / Hillshade (light tones)
 // ============================================================
+// Resolves once terrain has settled for the opening viewport — hillshade
+// tiles loaded, or none needed (out of coverage / config gate). Stays
+// null when this map has no terrain. Set by addTerrainLayers(), consumed
+// by the initial-load progress bar's hide gate in the style.load handler.
+let _terrainTilesLoaded = null;
 async function addTerrainLayers() {
     try {
         const resp = await fetch("terrain.pmtiles", { method: "HEAD" });
@@ -3527,6 +3558,34 @@ async function addTerrainLayers() {
             "hillshade-highlight-color": t.hillshadeHighlight,
         },
     }, beforeLayer);
+
+    // Resolve when terrain has SETTLED for the opening viewport — used to
+    // time the initial-load progress bar hide. "Settled" means either the
+    // hillshade tiles have loaded, OR the view genuinely needs none (it's
+    // outside the terrain pan_bbox, or at a zoom with no terrain). Both
+    // are valid: terrain is a config gate, so we must never hang waiting
+    // for tiles that will never come.
+    //
+    // The trick is to evaluate isSourceLoaded("terrain") ONLY inside an
+    // 'idle' handler. A *synchronous* isSourceLoaded read is unreliable:
+    // right after the pmtiles header loads there's a window where the
+    // source reports loaded() === true with zero tiles requested yet, and
+    // acting on that hides the bar before any elevation paints (the
+    // early-hide bug, most visible on a hard reload). That window cannot
+    // coexist with 'idle' — by the time the map is idle its render loop
+    // has run sourceCache.update() for the terrain source, so a true
+    // reading here is genuine (tiles loaded, or none needed). If the
+    // header is still in flight, isSourceLoaded is false and we stay armed
+    // for the next idle. Listener removes itself on resolve.
+    _terrainTilesLoaded = new Promise((resolve) => {
+        const onIdle = () => {
+            if (map.isSourceLoaded("terrain")) {
+                map.off("idle", onIdle);
+                resolve();
+            }
+        };
+        map.on("idle", onIdle);
+    });
 }
 
 // Resolve the colour a route appears as on the map, in priority order:
@@ -3907,6 +3966,10 @@ async function loadTrails() {
     } catch (e) {
         console.error("loadTrails: trails.geojson failed to load:", e);
         showToast("Map data failed to load. Try reloading the page.");
+        // This rejection skips the rest of the style.load pipeline,
+        // including the map.once('idle') hide registered there, so hide
+        // the bar here — otherwise it lingers under the error toast.
+        if (window.__hideMapLoading) window.__hideMapLoading();
         throw e;  // halt init — there's nothing useful to render
     }
 

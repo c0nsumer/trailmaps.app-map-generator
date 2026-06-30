@@ -790,6 +790,28 @@ def copy_templates(config, output_dir, trails_geojson):
             default_scheme = config.get("default_color_scheme", "light")
             bootstrap_slug = json.dumps(slug)  # JS string-safe
             bootstrap_default = json.dumps(default_scheme)
+            # Accent base vars, baked into the pre-paint bootstrap so the
+            # per-map accent is correct on the FIRST frame — before app.js
+            # (which carries CONFIG) has downloaded. Without this, a slow
+            # first load paints accent-coloured chrome (notably the
+            # initial-load progress bar) with style.css's default
+            # --accent-light blue until app.js patches it: a visible colour
+            # flash. Inline style on <html> beats the stylesheet :root
+            # defaults; app.js still sets the same four vars later
+            # (idempotent). style.css maps --accent / --on-accent from
+            # these per [data-color-scheme], so a missing palette here just
+            # falls back to the stylesheet defaults (accent_js empty).
+            _accent_palette = config.get("_accent_palette") or {}
+            accent_js = ""
+            for _av_name, _av_val in (
+                ("--accent-light", _accent_palette.get("light")),
+                ("--accent-dark", _accent_palette.get("dark")),
+                ("--on-accent-light", _accent_palette.get("onLight")),
+                ("--on-accent-dark", _accent_palette.get("onDark")),
+            ):
+                if _av_val:
+                    accent_js += "d.style.setProperty(%s,%s);" % (
+                        json.dumps(_av_name), json.dumps(_av_val))
             # The runtime stores LS values JSON-stringified (see
             # LS.set in app.js: setItem(..., JSON.stringify(value))),
             # so a stored "dark" preference is on disk as the
@@ -802,6 +824,7 @@ def copy_templates(config, output_dir, trails_geojson):
                 "<script>"
                 "(function(){"
                 "try{"
+                "var d=document.documentElement;"
                 f'var raw=localStorage.getItem({bootstrap_slug}+".mtb.colorScheme");'
                 "var stored=null;"
                 "if(raw){try{stored=JSON.parse(raw);}catch(e){stored=raw;}}"
@@ -810,6 +833,7 @@ def copy_templates(config, output_dir, trails_geojson):
                 's=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";'
                 "}"
                 'document.documentElement.setAttribute("data-color-scheme",s);'
+                + accent_js +
                 # Sync the meta theme-color tag in the same pass so
                 # the Android Chrome PWA status bar paints the right
                 # colour on first frame (the static value in the

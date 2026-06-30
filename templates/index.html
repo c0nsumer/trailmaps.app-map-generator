@@ -86,6 +86,50 @@
 <body>
     <div id="map"></div>
 
+    <!-- Initial-load progress bar. A thin indeterminate strip shown while
+         the opening map view streams in (notably terrain.pmtiles on large
+         maps like bigm/ramba) and hidden by app.js once the viewport has
+         painted (map 'idle'). The inline script below owns the REVEAL: it
+         waits ~400ms so a fast/cached load never flashes the bar, and stays
+         suppressed while a modal (the first-visit welcome) is covering the
+         map — the modal is the first-run loading screen in that case.
+         app.js owns the HIDE via window.__hideMapLoading(), defined here
+         inline so it's safe to call before app.js has parsed. -->
+    <div id="map-loading-bar" role="progressbar" aria-label="Loading map" aria-busy="true" hidden></div>
+    <script>
+    (function () {
+        var bar = document.getElementById('map-loading-bar');
+        if (!bar) return;
+        var done = false, revealTimer = null;
+        function hide() {
+            if (done) return;
+            done = true;
+            clearTimeout(revealTimer);
+            bar.classList.remove('visible');
+            bar.hidden = true;
+            bar.setAttribute('aria-busy', 'false');
+        }
+        function tryReveal() {
+            if (done) return;
+            // A modal (welcome / About) covering the map IS the loading
+            // screen in that case — don't stack a bar on top. Re-check
+            // after it closes (modal-open clears on dismiss).
+            if (document.body.classList.contains('modal-open')) {
+                revealTimer = setTimeout(tryReveal, 300);
+                return;
+            }
+            bar.hidden = false;
+            bar.classList.add('visible');
+        }
+        revealTimer = setTimeout(tryReveal, 400);
+        // Safety net: never spin forever, even if app.js fails to load or
+        // never reaches its 'idle' gate (dead network, JS error). Hide is
+        // idempotent, so app.js calling __hideMapLoading() first is fine.
+        setTimeout(hide, 30000);
+        window.__hideMapLoading = hide;
+    })();
+    </script>
+
     <!-- Brand: top-left trail-system identity. The build pipeline:
          - Replaces __BRAND_TITLE__ with the map's title text
          - Strips the <img> when neither `logo:` nor `icon:` is configured

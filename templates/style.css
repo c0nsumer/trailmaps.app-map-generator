@@ -2188,6 +2188,72 @@ body {
     outline: none;
 }
 
+/* ----- Initial-load progress bar ----------------------------------- */
+/* Thin indeterminate bar pinned to the top edge, shown during the first
+ * map load and hidden once the opening viewport has painted (map 'idle').
+ * Reveal is delayed ~400ms by index.html's inline script so fast/cached
+ * loads never flash it, and suppressed while a modal covers the map. Sits
+ * UNDER the modals (z=100) and toasts (z=200) — a return-visit rider with
+ * a pending SW-update toast sees the bar up top and the toast at centre,
+ * no z-order fight. Indeterminate, not a percentage: MapLibre exposes no
+ * reliable total for streaming PMTiles, so any percentage would be faked. */
+#map-loading-bar {
+    position: fixed;
+    top: env(safe-area-inset-top, 0px);
+    left: 0;
+    right: 0;
+    height: 6px;
+    z-index: 90;
+    /* No overflow:hidden — the moving segment's glow needs to spill past
+     * the 6px track. The segment sweeps off both viewport edges (see the
+     * keyframe); the app's full-screen no-scroll layout keeps that from
+     * adding scrollbars. */
+    background: rgba(0, 0, 0, 0.1);
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+    pointer-events: none;
+}
+
+#map-loading-bar.visible { opacity: 1; }
+
+/* Moving segment — the map's accent colour (--accent, per-map from
+ * CONFIG.accentColor, mapped per scheme), with a glow trail so it reads
+ * clearly at a glance. Pinned to the top edge, never covering the map;
+ * stays legible over both light and dark basemaps, where the faint track
+ * is invisible. Using the variable means the bar (and its color-mixed
+ * glow) tracks the per-scheme accent automatically. */
+#map-loading-bar::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    border-radius: 3px;
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--accent) 70%, transparent);
+    animation: map-loading-slide 2s ease-in-out infinite;
+}
+
+@keyframes map-loading-slide {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(360%); }
+}
+
+/* Reduced-motion: no horizontal travel — a full-width bar that gently
+ * pulses opacity instead. */
+@media (prefers-reduced-motion: reduce) {
+    #map-loading-bar::before {
+        width: 100%;
+        animation: map-loading-pulse 2s ease-in-out infinite;
+    }
+}
+
+@keyframes map-loading-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+}
+
 /* ----- Mobile / narrow viewport tweaks ----------------------------- */
 @media (max-width: 480px) {
     .about-modal-content {
