@@ -777,6 +777,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.info(f"share_button: {bool(config.get('share_button', True))}")
     console.info(f"url_hash: {bool(config.get('url_hash', False))}")
     console.info(f"distance_units: {config.get('distance_units', 'mi')}")
+    console.info(f"route_legend: {config.get('route_legend', 'auto')}")
     console.blank()
 
     console.step("Dry run complete — no files written, no network calls made.")

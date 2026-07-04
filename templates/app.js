@@ -2834,6 +2834,12 @@ async function init() {
         // run after setupFloatingChrome so the FABs' main click
         // handlers are wired (our dismiss listener piggybacks).
         setupFabLabels();
+        // Route legend expand/collapse wiring + boot state. After
+        // setupFloatingChrome: its initial applyVisibilityChange()
+        // populated visibleRoutes (which decides the legend's default
+        // collapsed state) and already ran the first
+        // rebuildRouteLegend() row build.
+        initRouteLegend();
         setupInteractions();
         promoteBasemapLabels();
         suppressBasemapPathLabels();
@@ -4973,6 +4979,7 @@ function applyVisibilityChange() {
     updateTrailDisplay();
     updateMarkerProximity();
     rebuildFinderList();
+    rebuildRouteLegend();
     pruneInvisibleHighlights();
     // If the highlighted entity is no longer visible, clear it.
     if (highlight) {
@@ -5298,6 +5305,9 @@ function highlightRoute(routeId) {
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
+
+    // Mark this route's legend row as the selected one.
+    syncRouteLegendActiveRow();
 }
 
 function highlightTrail(trailName) {
@@ -5339,6 +5349,10 @@ function highlightTrail(trailName) {
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
+
+    // A trail highlight is not a route highlight — clear any legend
+    // row marked from a previous route selection.
+    syncRouteLegendActiveRow();
 }
 
 // highlightPoi — single POI highlight. Hands off to highlightPoiSet
@@ -5907,6 +5921,10 @@ function clearRouteTrailHighlight() {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
         }
     }
+    // Legend active-row mark follows the highlight lifecycle. Synced
+    // here (not in clearHighlight) so POI highlights — which route
+    // through this teardown, not clearHighlight — also unmark the row.
+    syncRouteLegendActiveRow();
 }
 
 function clearHighlight() {
@@ -6002,6 +6020,165 @@ function hideHighlightChip() {
 }
 
 // ============================================================
+// Route legend (key) — bottom-left card
+// ============================================================
+// Pairs each visible route's colour with its name (+ stats) so riders
+// can tell same-shaped coloured loops apart at a glance — previously
+// the colour→name mapping was only discoverable by tapping a route.
+// Rows tap through to highlightRoute(), so the legend doubles as a
+// "show me the short route" control. Gated by CONFIG.routeLegend:
+// false never renders it; "auto" (the default) and true both show it
+// whenever the map has ≥2 listable routes — with 0–1 there's nothing
+// to disambiguate. They differ only in the boot state: auto starts
+// expanded at ≤ LEGEND_EXPANDED_MAX_ROUTES rows (a card that small
+// costs nothing) and collapsed to the compact "Key" chip above that;
+// true forces expanded regardless of count, for curators whose map IS
+// the key (an early draft hid auto entirely on many-route maps, but
+// the production counts — RAMBA 11, Shelden 14 — were exactly the
+// confusing-loops maps that motivated the feature, and the collapsed
+// chip is cheap enough to keep). The rider's expand/collapse choice
+// persists per-map (LS "legendCollapsed") and beats either default
+// on later visits.
+const LEGEND_EXPANDED_MAX_ROUTES = 5;
+
+// The rows the legend would show right now: routes visible under the
+// rider's current season/emergency toggles (visibleRoutes — same
+// gate the map itself renders by), minus non-featured routes on
+// event maps (matching the label restriction in
+// labelsVisibleForRoute). routeIndex is already sorted by name.
+function legendListableRoutes() {
+    return routeIndex.filter((r) => {
+        if (!visibleRoutes.has(r.id)) return false;
+        if (CONFIG.eventModeActive && !r.featured) return false;
+        return true;
+    });
+}
+
+// (Re)build the legend rows and resolve overall visibility. Called
+// from applyVisibilityChange() so season/emergency toggles update the
+// legend in the same breath as the map — a legend row for a hidden
+// route (or a missing row for a shown one) would be worse than no
+// legend. Safe to call before initRouteLegend has wired the
+// expand/collapse buttons: it only touches rows + the .hidden gate.
+function rebuildRouteLegend() {
+    const wrap = document.getElementById("route-legend");
+    const list = document.getElementById("route-legend-list");
+    if (!wrap || !list) return;
+
+    const rows = legendListableRoutes();
+    // 0–1 routes: nothing to disambiguate, hide regardless of config
+    // (route_legend: true forces the expanded boot state, not an
+    // empty card).
+    const show = CONFIG.routeLegend !== false && rows.length >= 2;
+    wrap.classList.toggle("hidden", !show);
+    if (!show) return;
+
+    list.textContent = "";
+    for (const r of rows) {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "route-legend-row";
+        btn.dataset.routeId = r.id;
+
+        const swatch = document.createElement("span");
+        swatch.className = "route-legend-swatch";
+        swatch.style.background = r.color;
+        swatch.setAttribute("aria-hidden", "true");
+        btn.appendChild(swatch);
+
+        const name = document.createElement("span");
+        name.className = "route-legend-row-name";
+        name.textContent = r.name;
+        btn.appendChild(name);
+
+        // Same gating as finder rows: routeStatsText returns "" when
+        // neither distance nor elevation is enabled/available, and we
+        // omit the span entirely rather than render an empty one.
+        const stats = routeStatsText(r);
+        if (stats) {
+            const statsEl = document.createElement("span");
+            statsEl.className = "route-legend-row-stats";
+            statsEl.textContent = stats;
+            btn.appendChild(statsEl);
+        }
+
+        // Tap toggles: highlight this route, or clear if it's already
+        // the highlighted one — so the legend row behaves like the
+        // control it looks like, rather than requiring the rider to
+        // find the chip's × to undo what the legend did.
+        btn.addEventListener("click", () => {
+            if (highlight && highlight.kind === "route"
+                && String(highlight.key) === String(r.id)) {
+                clearHighlight();
+            } else {
+                highlightRoute(r.id);
+            }
+        });
+
+        li.appendChild(btn);
+        list.appendChild(li);
+    }
+    syncRouteLegendActiveRow();
+}
+
+// Mark the currently-highlighted route's legend row (accent stripe via
+// .is-active + aria-current) and clear every other row's mark. Reads
+// the global highlight state rather than taking a parameter so every
+// call site — highlightRoute, highlightTrail, clearRouteTrailHighlight,
+// rebuildRouteLegend — stays a bare one-liner that can't pass stale
+// data. String() both sides: route ids arrive as strings from dataset
+// but may be set as numbers by map-tap handlers.
+function syncRouteLegendActiveRow() {
+    const list = document.getElementById("route-legend-list");
+    if (!list) return;
+    const activeId = (highlight && highlight.kind === "route")
+        ? String(highlight.key) : null;
+    for (const btn of list.querySelectorAll(".route-legend-row")) {
+        const on = activeId !== null && btn.dataset.routeId === activeId;
+        btn.classList.toggle("is-active", on);
+        if (on) btn.setAttribute("aria-current", "true");
+        else btn.removeAttribute("aria-current");
+    }
+}
+
+// Wire expand/collapse + pick the boot state. Runs once from init()
+// after setupFloatingChrome() so visibleRoutes is populated (the
+// boot-time applyVisibilityChange has already run rebuildRouteLegend
+// by then; this just settles the collapsed/expanded presentation).
+function initRouteLegend() {
+    const wrap = document.getElementById("route-legend");
+    const chip = document.getElementById("route-legend-chip");
+    const collapseBtn = document.getElementById("route-legend-collapse");
+    if (!wrap || !chip || !collapseBtn) return;
+
+    const applyCollapsed = (collapsed) => {
+        wrap.classList.toggle("is-collapsed", collapsed);
+        // aria-expanded lives on the chip (the control a screen-reader
+        // user lands on when the card is collapsed); the collapse
+        // button inside the card is labelled by its aria-label.
+        chip.setAttribute("aria-expanded", String(!collapsed));
+    };
+
+    // Boot state: the rider's stored choice wins; otherwise expanded
+    // for small legends and for route_legend: true, collapsed for big
+    // ones (see the section comment for the threshold reasoning).
+    const stored = LS.get("legendCollapsed", null);
+    const defaultCollapsed = CONFIG.routeLegend !== true
+        && legendListableRoutes().length > LEGEND_EXPANDED_MAX_ROUTES;
+    applyCollapsed(typeof stored === "boolean" ? stored : defaultCollapsed);
+
+    chip.addEventListener("click", () => {
+        applyCollapsed(false);
+        LS.set("legendCollapsed", false);
+    });
+    collapseBtn.addEventListener("click", () => {
+        applyCollapsed(true);
+        LS.set("legendCollapsed", true);
+    });
+}
+
+// ============================================================
 // Route + trail indexes for the finder
 // ============================================================
 function buildRouteIndex() {
@@ -6015,6 +6192,10 @@ function buildRouteIndex() {
             winter: !!info.winter,
             emergency: !!info.emergency,
             isCustom: !!info.isCustom,
+            // Event-mode flag — the route legend lists featured routes
+            // only on event maps (the muted background network isn't a
+            // route a rider chooses between).
+            featured: !!info.featured,
             // Per-route stats from compute_route_stats.py. Any may
             // be absent: distance is gated by show_route_distance,
             // elevation by show_route_elevation + a successful

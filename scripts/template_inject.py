@@ -171,6 +171,15 @@ CONFIG_SPEC = [
     # where the curator wants no share affordance (e.g. private/
     # family maps); leave true for community/public maps.
     ("share_button", "shareButton", True),
+    # On-map route key (bottom-left card: swatch + name + stats per
+    # route, tap to highlight). Shows whenever the map has ≥2 listable
+    # routes; "auto" (default) boots it expanded for small route counts
+    # and collapsed to a "Key" chip for large ones, true forces the
+    # expanded boot state regardless of count, false never renders it.
+    # The count thresholds live in the runtime (initRouteLegend,
+    # templates/app.js) since "listable" depends on the rider's
+    # season/emergency toggles.
+    ("route_legend", "routeLegend", "auto"),
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).
     # parking/trailhead/feature colours flow to CSS custom

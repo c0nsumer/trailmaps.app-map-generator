@@ -260,6 +260,42 @@
         </button>
     </div>
 
+    <!-- Route legend (key) — bottom-left card pairing each visible
+         route's colour with its name so riders can tell same-shaped
+         coloured loops apart without tapping the map. Occupies the one
+         unclaimed chrome corner (above the MapLibre attribution line).
+         Two states, toggled by JS via .is-collapsed on the container:
+         the expanded card (header + one runtime-built row per route;
+         rows tap-through to highlightRoute) and a compact "Key" chip.
+         Both live in the DOM so expand/collapse is a class flip, not a
+         rebuild. Whether the legend shows at all — and which state it
+         starts in — is decided by initRouteLegend() from
+         CONFIG.routeLegend plus the listable-route count; the container
+         stays .hidden on maps that don't qualify. -->
+    <div id="route-legend" class="route-legend hidden">
+        <button id="route-legend-chip" class="route-legend-chip" type="button" aria-expanded="false" aria-controls="route-legend-card" aria-label="Show route key">
+            <!-- mdi:format-list-bulleted (Apache 2.0, Pictogrammers) —
+                 dot-per-row list reads as "legend rows" at chip size. -->
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                <path d="M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z"/>
+            </svg>
+            <span>Key</span>
+        </button>
+        <section id="route-legend-card" class="route-legend-card" role="region" aria-label="Route key">
+            <div class="route-legend-header">
+                <span class="route-legend-title">Routes</span>
+                <button id="route-legend-collapse" class="route-legend-collapse" type="button" aria-label="Collapse route key">
+                    <!-- mdi:chevron-down (Apache 2.0, Pictogrammers) —
+                         points at the corner the card collapses into. -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z"/>
+                    </svg>
+                </button>
+            </div>
+            <ul id="route-legend-list" class="route-legend-list"></ul>
+        </section>
+    </div>
+
     <!-- Search overlay — full-viewport layer with a panel inside.
          The outer .search-overlay is the backdrop dim + click-outside
          target. The inner .search-overlay-panel is the actual visible

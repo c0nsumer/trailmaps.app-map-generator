@@ -2341,15 +2341,24 @@ body {
  * When `additional_logos:` is configured the build stacks secondary
  * brand images under the primary one. The presence of a
  * .brand-logo-secondary flips #brand from its default horizontal row
- * to a left-aligned vertical column; single-logo maps are unaffected
+ * to a centered vertical column; single-logo maps are unaffected
  * (the :has() rule simply doesn't match). Secondaries share the primary
  * logo's bounding box (same max-width/height) so the stack reads as a
  * coherent, consistently-scaled brand column rather than a ragged mix
  * of sizes. Each logo still renders at its own aspect ratio inside that
- * box (a wide wordmark fills the width; a square badge sits at 48px). */
+ * box (a wide wordmark fills the width; a square badge sits at 48px).
+ *
+ * align-items: center is deliberate. Every logo is height-bound to the
+ * same 48/64 px, so their widths vary with aspect ratio (a wide wordmark
+ * ends up ~200 px, a squarer mark much narrower). Left-aligning those
+ * different widths reads as "slightly off"; centering them on a shared
+ * axis — the widest logo defines the column width, the rest center under
+ * it — reads as an intentional lockup. The #brand box shrinks to its
+ * widest child (capped by its own max-width), so the axis IS the widest
+ * logo's centerline. */
 #brand:has(.brand-logo-secondary) {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 8px;
 }
 
@@ -2443,10 +2452,16 @@ body {
  * but tapping them dismisses the overlay instead of activating
  * the FAB, which is confusing. Hiding them clarifies the modal
  * relationship: while an overlay is up, the FABs are not the
- * active control surface; close the overlay to get them back. */
+ * active control surface; close the overlay to get them back.
+ * The route legend (bottom-left) joins the rule for the same
+ * reason — its rows are tappable and would look active through
+ * the search half-sheet's dim. */
 body:has(.search-overlay.is-open) .fab-stack,
 body:has(.options-overlay.is-open) .fab-stack,
-body:has(.gpx-overlay.is-open) .fab-stack {
+body:has(.gpx-overlay.is-open) .fab-stack,
+body:has(.search-overlay.is-open) .route-legend,
+body:has(.options-overlay.is-open) .route-legend,
+body:has(.gpx-overlay.is-open) .route-legend {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease-out;
@@ -3203,6 +3218,154 @@ body.modal-open .gpx-overlay.is-open {
 
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
     margin: 0 !important;
+}
+
+/* ----- Route legend (key), bottom-left ------------------------------
+ *
+ * Small always-available card pairing each visible route's colour
+ * with its name (+ stats), so riders can tell same-shaped coloured
+ * loops apart without tapping the map. Shares the bottom-left corner
+ * with the attribution line: the legend sits ABOVE it, offset by the
+ * attribution chip's height plus a small gap, so neither occludes
+ * the other. Chrome adapts to the colour scheme via the same sheet
+ * tokens as the FABs / highlight chip / overlays.
+ *
+ * Two states on the container (flipped by initRouteLegend in app.js):
+ * default shows .route-legend-card; .is-collapsed swaps it for the
+ * compact "Key" chip. Both stay in the DOM — expand/collapse is a
+ * class flip, not a rebuild. z-index matches the FAB stacks (5, below
+ * open overlays), and the legend joins the FABs' hide-under-overlay
+ * rule below for the same reason they have one. */
+.route-legend {
+    position: fixed;
+    left: calc(12px + env(safe-area-inset-left, 0));
+    /* 12px corner inset + ~22px attribution line + 6px gap. */
+    bottom: calc(40px + var(--safe-bottom));
+    z-index: 5;
+}
+
+.route-legend.is-collapsed .route-legend-card { display: none; }
+.route-legend:not(.is-collapsed) .route-legend-chip { display: none; }
+
+/* Collapsed pill — same recipe as the FABs / highlight chip. */
+.route-legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--sheet-bg);
+    border: 1.5px solid var(--sheet-border);
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    color: var(--sheet-text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px 6px 10px;
+    cursor: pointer;
+}
+
+.route-legend-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--sheet-bg);
+    border: 1px solid var(--sheet-border);
+    border-radius: 12px;
+    box-shadow: 0 3px 10px var(--sheet-shadow);
+    padding: 6px 8px 8px;
+    /* Narrow enough to never crowd the bottom-right Search FAB on a
+     * phone; long route names ellipsize inside rows instead of
+     * widening the card. */
+    max-width: min(70vw, 260px);
+}
+
+.route-legend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 2px 2px 4px;
+}
+
+.route-legend-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
+}
+
+.route-legend-collapse {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 2px;
+    color: var(--sheet-text-muted);
+    cursor: pointer;
+}
+
+.route-legend-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    /* Many-route maps scroll inside the card rather than growing
+     * past the brand mark at top-left. */
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+/* Rows are <button>s (built by rebuildRouteLegend) — tapping one
+ * highlights that route, same wiring as a finder route row. */
+.route-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: 8px;
+    padding: 5px 6px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--sheet-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+/* Row for the currently-highlighted route — same accent treatment
+ * as the finder's keyboard-active row so "selected" reads the same
+ * in both lists. */
+.route-legend-row.is-active {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Same swatch recipe as .finder-row-swatch — a short line segment,
+ * i.e. a miniature of the route ribbon itself. Own class so the two
+ * lists can diverge without cross-file surprises. */
+.route-legend-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 4px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    background: #888;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.route-legend-row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.route-legend-row-stats {
+    font-size: 11px;
+    color: var(--sheet-text-muted);
+    flex-shrink: 0;
 }
 
 /* ============================================================
