@@ -1321,6 +1321,16 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 // Arrows and diamonds share the DECOR_MZ_* zoom tiers above. Each
 // icon-tier's candidates are deconflicted against everything already
 // placed, including obstacle markers gathered up front.
+// Event mode restricts route-name labels to the featured route(s) so
+// the muted background network never labels itself. Non-event maps
+// label every route, so this gate is a no-op there. Mirrors the
+// per-route shared-way label layers, which are only created for
+// featured routes (see the trail-label-<id> addLayer loop).
+function routeLabelAllowed(rid) {
+    if (!CONFIG.eventModeActive) return true;
+    return !!(CONFIG.routes[rid] && CONFIG.routes[rid].featured);
+}
+
 function computeDecorations() {
     const decorations = [];
     // Build a spatial-hash index of all collision targets. Seed with
@@ -1369,7 +1379,7 @@ function computeDecorations() {
                 });
             }
         }
-        if (way.soloRouteName) {
+        if (way.soloRouteName && routeLabelAllowed(way.soloRouteId)) {
             for (const run of runs) {
                 decorations.push({
                     type: "Feature",
@@ -1469,6 +1479,7 @@ function computeDecorations() {
             }
         }
         for (const [rid, agg] of routeAgg) {
+            if (!routeLabelAllowed(rid)) continue;
             const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
             if (!name || agg.n === 0) continue;
             emitOverviewLabel(name, agg.longest,
@@ -1861,9 +1872,12 @@ let basemapMode = "default"; // "default" or "custom:<id>"
 // mode is locked to "routes" (so the featured route's name shows)
 // and the rider's persisted preference is ignored. The Labels
 // segmented control is hidden in setupOptionsOverlay so they have
-// no way to flip it. Only featured-route labels actually render —
-// see updateLabels() and the per-route label addLayer() filter for
-// the visibility narrowing.
+// no way to flip it. Route labels then render exactly as on a normal
+// map (overview point label at low zoom handing off to curve-following
+// on-path labels up close), but only for the featured route(s): the
+// per-route shared-way layers are created for featured routes alone,
+// and the trail-decorations route labels are gated at emission via
+// routeLabelAllowed() so the muted background network stays unlabelled.
 //
 // forced_labels override: when CONFIG.forcedLabels is set (one of
 // "routes", "trails", "none"), labelMode is locked to that value
@@ -4624,13 +4638,12 @@ function updateLabels() {
     // one visible route, labelled with that route's name). Visible
     // only in "routes" mode.
     //
-    // Event mode: hidden entirely. The per-route trail-label-<id>
-    // layers (only created for featured routes; see addLayer loop
-    // earlier) are the sole source of route-name labels in event
-    // mode, so the rider sees the event route's name and nothing
-    // else.
+    // Event mode renders these identically to a normal map — the
+    // source only carries featured-route labels there (computeDecorations
+    // gates emission via routeLabelAllowed), so the muted background
+    // network stays unlabelled without any layer-level special case.
     if (map.getLayer("decor-route-name")) {
-        const visible = labelMode === "routes" && !CONFIG.eventModeActive;
+        const visible = labelMode === "routes";
         map.setLayoutProperty("decor-route-name",
             "visibility", visible ? "visible" : "none");
         if (visible) {
@@ -4653,7 +4666,7 @@ function updateLabels() {
     // labels above; the layer maxzoom (set at creation) restricts them
     // to overview zoom.
     if (map.getLayer("decor-route-name-pt")) {
-        const visible = labelMode === "routes" && !CONFIG.eventModeActive;
+        const visible = labelMode === "routes";
         map.setLayoutProperty("decor-route-name-pt",
             "visibility", visible ? "visible" : "none");
         if (visible) {
