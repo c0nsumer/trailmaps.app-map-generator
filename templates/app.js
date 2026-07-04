@@ -8251,7 +8251,7 @@ function setupInteractions() {
     let parkingPopupOpen = false;
     for (const marker of [...trailMarkerMarkers,
                           ...parkingMarkers, ...trailheadMarkers,
-                          ...featureMarkers]) {
+                          ...featureMarkers, ...eventPoiMarkers]) {
         marker.getElement().addEventListener("click", () => {
             parkingPopupOpen = true;
             requestAnimationFrame(() => { parkingPopupOpen = false; });
