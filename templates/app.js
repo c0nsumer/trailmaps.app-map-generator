@@ -8486,7 +8486,7 @@ function setupInteractions() {
             // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
             // Escape to neutralise any vandalism (script tags,
             // event handlers) in OSM data.
-            html += `<div class="popup-title">Trail: ${escapeHtml(trailName)}</div>`;
+            html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
         }
         if (routeItems) {
             const label = matchedRoutes.length === 1
