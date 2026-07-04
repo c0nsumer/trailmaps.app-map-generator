@@ -917,6 +917,41 @@ def copy_templates(config, output_dir, trails_geojson):
                     flags=re.DOTALL,
                 )
 
+            # Additional (secondary) brand images — event + sponsor logos
+            # stacked under the primary logo in #brand. Rendered in
+            # copy_assets() into logo-N.webp / logo-N.svg with per-logo
+            # dark-mode invert. Build the <img> tags here (alt="" — these
+            # are decorative co-branding; the primary logo/alt already
+            # names the map for screen readers), or strip the placeholder
+            # block entirely when no additional logos are configured.
+            rendered_additional = config.get("_additional_logos_rendered") or []
+            if rendered_additional:
+                tags = []
+                for extra in rendered_additional:
+                    cls = "brand-logo-secondary"
+                    if extra.get("invert_dark", True):
+                        cls += " invert-dark"
+                    dims = ""
+                    if extra.get("width") and extra.get("height"):
+                        dims = f' width="{extra["width"]}" height="{extra["height"]}"'
+                    tags.append(
+                        f'<img src="{extra["url"]}" alt="" class="{cls}"{dims} decoding="async">'
+                    )
+                content = content.replace(
+                    "__ADDITIONAL_LOGOS__", "\n        " + "\n        ".join(tags) + "\n        "
+                )
+            else:
+                # [ \t]* (not \s*) so we consume only this line's own
+                # indentation, not the newline after the preceding doc
+                # comment — otherwise the stripped block would pull the
+                # <span> up onto the comment's line.
+                content = re.sub(
+                    r"[ \t]*<!-- Additional logos start -->.*?<!-- Additional logos end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
+                )
+
             # Strip PWA install UI and SW registration when PWA is disabled
             if not config.get("pwa", True):
                 content = re.sub(
@@ -987,6 +1022,39 @@ def copy_assets(config, output_dir):
         # copy_templates falls back to omitting the attributes in that
         # case, accepting the small CLS risk over emitting wrong dims.
         config["_brand_img_dims"] = process_logo(logo_src, out_path)
+
+    # Secondary brand images (event + sponsor logos). Each is processed
+    # through the SAME pipeline as the primary logo (raster → WebP,
+    # SVG → dimensioned SVG) into logo-2 / logo-3 / … and stacked under
+    # the primary in the #brand element by copy_templates. Display-only:
+    # they never feed icon generation, accent derivation, the About modal,
+    # or og:image — all of that stays keyed to the primary `logo:`.
+    rendered_additional = []
+    for idx, entry in enumerate(config.get("additional_logos") or [], start=2):
+        if not isinstance(entry, dict):
+            continue
+        src_rel = entry.get("path")
+        if not isinstance(src_rel, str) or not src_rel:
+            continue
+        candidate = os.path.join(project_root, src_rel)
+        if not os.path.isfile(candidate):
+            console.warn(f"Additional logo not found: {candidate}")
+            continue
+        ext = os.path.splitext(candidate)[1].lower()
+        out_name = f"logo-{idx}.svg" if ext == ".svg" else f"logo-{idx}.webp"
+        w, h = process_logo(candidate, os.path.join(output_dir, out_name))
+        rendered_additional.append(
+            {
+                "url": out_name,
+                "width": w,
+                "height": h,
+                # Per-logo dark-mode invert, default true (matches the
+                # framework default for the primary logo). Colored /
+                # photographic sponsor logos set invert_dark: false.
+                "invert_dark": entry.get("invert_dark", True),
+            }
+        )
+    config["_additional_logos_rendered"] = rendered_additional
 
     # Icons — generated from the resolved source image. Source resolution
     # (icon: → logo: → none) is shared with the HTML icons-block strip in

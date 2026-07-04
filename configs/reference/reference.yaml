@@ -305,6 +305,22 @@ relations:
 # placeholder (a bicycle on the brand green, assets/placeholder-logo.png) so the
 # map still gets favicons, an installable PWA icon, and an on-page brand mark.
 
+# Additional logos (config-folder-relative). Secondary brand images — e.g. an
+# event logo plus one or more sponsor logos — stacked vertically UNDER the
+# primary logo: in the top-left brand mark. Rendered top-to-bottom in the order
+# listed, a touch smaller than the primary. These are DISPLAY-ONLY: the primary
+# logo: still drives favicon / PWA icon generation, accent_color auto-derivation,
+# the About-modal image, and the social-share (og:image), so icon output is
+# unchanged no matter how many logos you add here. Like the primary logo they sit
+# in a click-through overlay — taps pass through to the map underneath. Each entry:
+#   - path:        (required) image file, raster or SVG, same pipeline as logo:
+#   - invert_dark: (optional, default true) auto-invert in dark mode; set false
+#                  for colored / photographic sponsor logos that look wrong inverted.
+# additional_logos:
+#   - path: event-logo.svg
+#   - path: sponsor-acme.webp
+#     invert_dark: false
+
 # ============================================================
 # User-supplied points
 # ============================================================

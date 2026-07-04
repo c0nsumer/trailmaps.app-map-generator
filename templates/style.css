@@ -2337,6 +2337,47 @@ body {
             drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
+/* ----- Additional logos (event + sponsors) ------------------------- *
+ * When `additional_logos:` is configured the build stacks secondary
+ * brand images under the primary one. The presence of a
+ * .brand-logo-secondary flips #brand from its default horizontal row
+ * to a left-aligned vertical column; single-logo maps are unaffected
+ * (the :has() rule simply doesn't match). Secondaries share the primary
+ * logo's bounding box (same max-width/height) so the stack reads as a
+ * coherent, consistently-scaled brand column rather than a ragged mix
+ * of sizes. Each logo still renders at its own aspect ratio inside that
+ * box (a wide wordmark fills the width; a square badge sits at 48px). */
+#brand:has(.brand-logo-secondary) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.brand-logo-secondary {
+    max-width: 200px;
+    max-height: 48px;
+    width: auto;
+    height: auto;
+    opacity: 0.95;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+@media (min-width: 768px) {
+    .brand-logo-secondary {
+        max-width: 280px;
+        max-height: 64px;
+    }
+}
+
+/* Per-logo dark-mode invert, baked in at build time as .invert-dark
+ * (default on; sponsors with colored/photographic marks set
+ * invert_dark: false in YAML to opt out). Same lightness-flip as the
+ * primary logo so hues survive the invert. */
+[data-color-scheme="dark"] .brand-logo-secondary.invert-dark {
+    filter: invert(1) hue-rotate(180deg)
+            drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
 /* Title span — visible only when no image is present (build-time
  * stripping removes the <img> when neither logo nor icon is
  * configured). When the img IS present, hide the span via :has()

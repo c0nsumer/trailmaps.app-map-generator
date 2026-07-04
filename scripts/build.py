@@ -460,8 +460,9 @@ def load_config(config_path):
     the slug in every path. Absolute paths in the YAML are passed through
     unchanged (useful for shared assets outside the repo).
 
-    Resolved keys: ``logo``, ``icon``, ``osm_file``, and every
-    ``custom_routes[].geometry``. All other paths (``output_dir``,
+    Resolved keys: ``logo``, ``icon``, ``osm_file``, every
+    ``custom_routes[].geometry``, and every ``additional_logos[].path``.
+    All other paths (``output_dir``,
     ``base_layers[].url``, etc.) stay in their original form — they're
     either repo-relative or external URLs.
     """
@@ -482,6 +483,13 @@ def load_config(config_path):
     for entry in config.get("custom_routes") or []:
         if isinstance(entry, dict) and "geometry" in entry:
             entry["geometry"] = _resolve(entry["geometry"])
+
+    # Secondary brand images (event + sponsor logos) live alongside the
+    # config like `logo:`/`icon:`; resolve each path so copy_assets sees
+    # an absolute source.
+    for entry in config.get("additional_logos") or []:
+        if isinstance(entry, dict) and "path" in entry:
+            entry["path"] = _resolve(entry["path"])
 
     # Inline event_mode.routes share the same path-resolution semantics
     # as top-level custom_routes (relative to the config YAML). Resolve
@@ -750,6 +758,16 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
             console.info(f"{key}: (none)")
         else:
             console.info(f"{key}: {_display_path(path)}")
+    extra_logos = config.get("additional_logos") or []
+    for i, entry in enumerate(extra_logos):
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path") or ""
+        invert = entry.get("invert_dark", True)
+        console.info(
+            f"additional_logos[{i}]: {_display_path(path)}"
+            f"{'' if invert else ' (invert_dark: false)'}"
+        )
     console.blank()
 
     # ---- PWA / sharing ----

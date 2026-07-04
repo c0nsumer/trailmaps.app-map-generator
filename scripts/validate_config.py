@@ -133,6 +133,10 @@ KNOWN_KEYS = {
     # Branding / chrome
     "logo": str,
     "icon": str,
+    # Secondary brand images (event + sponsor logos) stacked vertically
+    # under the primary `logo:`. Display-only — never drive icon
+    # generation / accent / About / og:image. See _validate_additional_logos.
+    "additional_logos": list,
     "about": dict,
     "welcome": (dict, bool),
     "default_visible": (list, str),
@@ -207,6 +211,9 @@ HANDLED_SPECIALLY = {
     "accent_color",  # → CONFIG.accentColor (hex; "auto" resolved from logo at build time)
     "logo",  # → CONFIG.logoUrl (after asset pipeline)
     "icon",  # → fallback for logoUrl
+    "additional_logos",  # → baked into #brand HTML at build time
+    #   (logo-2.webp / logo-N.svg + brand-logo-secondary imgs);
+    #   nothing flows into the runtime CONFIG.
     "event_mode",  # → consumed by _apply_event_mode pre-pass; emits
     #   per-route overrides into relation_colors /
     #   dashed_relations / custom_routes mutations.
@@ -733,6 +740,45 @@ def _validate_point_lists(report, config):
                 report.err(f"{where}.name", f"must be a string, got {type(item['name']).__name__}")
 
 
+def _validate_additional_logos(report, config):
+    """additional_logos: optional list of secondary brand images (an event
+    logo, one or more sponsor logos) rendered stacked under the primary
+    `logo:` in the top-left brand element. Each entry is a mapping:
+
+        - path: str (required) — config-relative image path (raster or SVG),
+          processed through the same pipeline as `logo:`.
+        - invert_dark: bool (optional, default true) — auto-invert this
+          logo in dark mode. Set false for colored / photographic sponsor
+          logos that shouldn't be inverted.
+
+    Display-only: these never drive icon/favicon generation, accent-color
+    derivation, the About modal, or og:image — all of that stays keyed to
+    the primary `logo:`. File existence is checked in _validate_paths.
+    """
+    al = config.get("additional_logos")
+    if al is None:
+        return
+    if not isinstance(al, list):
+        report.err("additional_logos", f"must be a list, got {type(al).__name__}")
+        return
+    for i, entry in enumerate(al):
+        where = f"additional_logos[{i}]"
+        if not isinstance(entry, dict):
+            report.err(where, f"must be a mapping with a `path:` key, got {type(entry).__name__}")
+            continue
+        p = entry.get("path")
+        if not isinstance(p, str) or not p.strip():
+            report.err(where, "missing required `path:` (non-empty string)")
+        if "invert_dark" in entry and not isinstance(entry["invert_dark"], bool):
+            report.err(
+                f"{where}.invert_dark",
+                f"expected bool, got {type(entry['invert_dark']).__name__}",
+            )
+        unknown = set(entry) - {"path", "invert_dark"}
+        if unknown:
+            report.err(where, f"unknown key(s) {sorted(unknown)}; allowed: path, invert_dark")
+
+
 def _validate_paths(report, config, config_dir):
     """Asset path existence. logo / icon / osm_file and every
     custom_routes[].geometry path are checked via os.path.isfile. Relative
@@ -790,6 +836,21 @@ def _validate_paths(report, config, config_dir):
             continue
         if not os.path.isfile(full):
             report.err(key, f"file not found: {p} (resolved to {full})")
+
+    al = config.get("additional_logos")
+    if isinstance(al, list):
+        for i, entry in enumerate(al):
+            if not isinstance(entry, dict):
+                continue
+            p = entry.get("path")
+            if not isinstance(p, str) or not p:
+                continue
+            full = _full(p)
+            key = f"additional_logos[{i}].path"
+            if not _check_path_safe(key, p, full):
+                continue
+            if not os.path.isfile(full):
+                report.err(key, f"file not found: {p} (resolved to {full})")
 
     cr = config.get("custom_routes")
     if isinstance(cr, list):
@@ -1718,6 +1779,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_weekdays(report, config)
     _validate_dashed_relations(report, config)
     _validate_point_lists(report, config)
+    _validate_additional_logos(report, config)
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_event_mode(report, config)

@@ -150,6 +150,12 @@
         <!-- Brand img start -->
         <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img"__BRAND_IMG_DIMS__ fetchpriority="high">
         <!-- Brand img end -->
+        <!-- Additional (event + sponsor) logos: the build replaces the
+             placeholder with a stack of <img class="brand-logo-secondary">
+             from `additional_logos:` in the config, or strips this whole
+             block when none are configured. Presence of a secondary logo
+             switches #brand to a vertical column (see style.css). -->
+        <!-- Additional logos start -->__ADDITIONAL_LOGOS__<!-- Additional logos end -->
         <span id="brand-title">__BRAND_TITLE__</span>
     </div>
 
