@@ -2990,6 +2990,18 @@ const _WELCOME_ICON_SEARCH     = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.
 // glyph (templates/index.html). Event maps with event_mode.gpx only.
 const _WELCOME_ICON_GPX        = "M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z";
 
+// Count-aware GPX wording, shared by every GPX surface: the FAB
+// discovery label + aria-label, the download-sheet title, and the
+// welcome-modal controls row. Singular/plural follows the configured
+// file count so a one-file event map never promises "files" — and no
+// two surfaces can disagree because they all read from here.
+function _gpxWording() {
+    const plural = (CONFIG.gpxDownloads || []).length > 1;
+    const noun = plural ? "GPX files" : "GPX file";
+    return { label: noun, action: "Download " + noun, plural };
+}
+
+
 function _welcomeIconSvg(pathD) {
     // Returns the SVG markup for one welcome-icon glyph. 18×18
     // matches comfortably with the body text size, currentColor so
@@ -3129,8 +3141,11 @@ function buildWelcomeControlsHint() {
     // Inserted before Search to match the on-screen FAB order (it
     // sits at the bottom of the top-right stack, below Options).
     if ((CONFIG.gpxDownloads || []).length) {
-        rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: "GPX",
-            desc: "Download route GPX files for your bike computer." });
+        const w = _gpxWording();
+        rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: w.label,
+            desc: w.plural
+                ? "Download route GPX files for your bike computer."
+                : "Download the route's GPX file for your bike computer." });
     }
 
     for (const r of rows) {
@@ -6562,8 +6577,9 @@ function setupFabLabels() {
         { id: "toggle-options",    label: "Options" },
         // Event maps only — the GPX FAB is stripped from index.html at
         // build time otherwise, and the missing-button guard below
-        // skips the entry.
-        { id: "toggle-gpx",        label: "GPX" },
+        // skips the entry. Label pluralised by the actual file count
+        // (matches the sheet title + aria-label; see _gpxWording).
+        { id: "toggle-gpx",        label: _gpxWording().label },
         { id: "toggle-search",     label: "Search" },
     ];
 
@@ -6932,6 +6948,17 @@ function setupFloatingChrome() {
     // matches copies distributed by the event's official source. The
     // sheet stays open across row taps so a rider can grab several
     // routes in one visit.
+    //
+    // Wording is count-aware and shared across every surface (FAB
+    // discovery label, FAB aria-label, sheet title, welcome-modal
+    // row) via _gpxWording() so "GPX file" vs "GPX files" never
+    // disagrees between the tooltip and the sheet it opens.
+    {
+        const w = _gpxWording();
+        const gpxTitle = document.getElementById("gpx-overlay-title");
+        if (gpxTitle) gpxTitle.textContent = w.action;
+        if (gpxBtn) gpxBtn.setAttribute("aria-label", w.action);
+    }
     function closeGpxOverlay() {
         setOverlayOpen(gpxOverlay, gpxBtn, false);
     }

@@ -227,6 +227,10 @@
             </svg>
         </button>
         <!-- GPX start -->
+        <!-- aria-label is a boot-time placeholder; app.js rewrites it
+             (and the sheet title + FAB discovery label) to the
+             count-aware "Download GPX file" / "Download GPX files"
+             via _gpxWording(). -->
         <button id="toggle-gpx" class="fab" type="button" aria-label="Download GPX" aria-pressed="false" aria-controls="gpx-overlay">
             <!-- mdi:download (Apache 2.0, Pictogrammers). Universal
                  "get a file" glyph; the sheet it opens supplies the
