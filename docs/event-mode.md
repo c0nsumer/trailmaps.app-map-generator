@@ -31,6 +31,8 @@ background treatment.
 - [Worked examples](#worked-examples)
 - [Branding](#branding)
 - [Welcome modal](#welcome-modal)
+- [Labels in event mode](#labels-in-event-mode)
+- [Route legend in event mode](#route-legend-in-event-mode)
 - [What event mode does NOT change](#what-event-mode-does-not-change)
 - [Cross-references](#cross-references)
 
@@ -520,6 +522,21 @@ dark-mode shade, each with its own text colour) from the logo's dominant
 saturated colour. This lets the whole UI feel branded for the event without
 manually picking a hex value.
 
+Event maps often carry co-branding — the organising club's mark plus the
+event's own logo, or a title sponsor. Use
+[`additional_logos:`](configuration.md#additional-logos-additional_logos) to
+stack secondary images under the primary logo in the brand mark:
+
+```yaml
+icon: sponsor_logo.webp            # primary: drives icons + accent
+additional_logos:
+  - path: club_logo.webp
+    invert_dark: false             # colourful mark; don't invert in dark mode
+```
+
+These are display-only — icons, accent derivation, and share previews stay
+keyed to the primary `logo:` / `icon:`.
+
 ## Welcome modal
 
 Use the existing [`welcome:`](configuration.md#welcome-modal) block to write
@@ -554,6 +571,22 @@ route is the focus, not the underlying trail network.
 This pairs well with `default_labels: routes` in your YAML (which seeds the
 rider's first-visit experience), but event mode forces the runtime state
 regardless of what's persisted in localStorage.
+
+## Route legend in event mode
+
+The on-map route legend (the bottom-left key card; see
+[`route_legend`](configuration.md#display) in the configuration guide) lists
+**featured routes only** on event maps — the muted background network isn't a
+course a rider chooses between, so it doesn't earn a row. This mirrors the
+label restriction above: featured routes are the map's subject, everything
+else is context.
+
+For the common two-course event (a full and a short route), the legend is the
+first-glance answer to "which colour am I riding?": with `route_legend: auto`
+(the default) a map with 2–5 featured routes boots with the card expanded,
+showing each course's colour, name, and (when
+[`show_route_distance`](configuration.md#build-time-data-gates) is on)
+distance. Tapping a row highlights that course and fits it in view.
 
 ## What event mode does NOT change
 

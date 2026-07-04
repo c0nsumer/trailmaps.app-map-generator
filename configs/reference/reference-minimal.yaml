@@ -71,6 +71,7 @@ relations:
 # url_hash: false
 # distance_units: mi
 # share_button: true
+# route_legend: auto
 
 # --- Marker and accent colours ---
 # marker_color: "#795548"
@@ -95,6 +96,9 @@ relations:
 # --- Branding ---
 # logo: logo.webp
 # icon: icon.png
+# additional_logos:
+#   - path: sponsor.webp
+#     invert_dark: false
 
 # --- User-supplied points ---
 # trailheads: []

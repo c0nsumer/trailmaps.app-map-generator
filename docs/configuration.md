@@ -250,6 +250,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honour any hash on page load: enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
 | `distance_units` | No | `"mi"` | Units for **all** distance and elevation values. `"mi"`: miles for distance, feet for elevation gain. `"km"`: kilometres for distance, metres for elevation gain. Affects render-time formatting only. |
 | `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view and any active highlight — a route, a trail, or a place (a single POI, a name group, or a whole POI category) selected from the Finder — as a deep-link URL and offers it via the native share sheet (mobile) or clipboard (desktop); opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
+| `route_legend` | No | `"auto"` | On-map route key: a small bottom-left card (above the attribution line) listing each visible route as a colour swatch + name + stats, so riders can tell same-shaped coloured loops apart at a glance. Tapping a row highlights that route, exactly like tapping it in the Finder; tapping the highlighted row again clears it. Shown whenever the map has 2+ listable routes (with 0–1 there is nothing to disambiguate); "listable" follows the rider's season / emergency toggles, and event maps list featured routes only. `"auto"` starts expanded at 2–5 routes and collapsed to a compact **Key** chip at 6+; `true` starts expanded regardless of count; `false` never renders it. The rider's expand / collapse choice persists per-map and beats either default. Row stats follow `show_route_distance` / `show_route_elevation` and `distance_units`. |
 
 ### Marker and accent colours
 
@@ -292,6 +293,7 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 |-----|----------|---------|-------------|
 | `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x48 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
 | `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically — but only when the logo is a Pillow-readable raster (PNG/WebP/JPEG/…); an SVG logo can't be rasterised into icons, so set `icon:` explicitly in that case. (Most maps only need to set one of the two.) |
+| `additional_logos` | No | `[]` | Secondary brand images — an event logo, one or more sponsor logos — stacked vertically **under** the primary logo in the top-left brand mark, rendered top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`) and `invert_dark:` (optional, default `true`; set `false` for colourful or photographic marks that look wrong inverted). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
 
 If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green) so every map still gets favicons, an installable PWA icon, and a brand mark. An explicit `logo:` or `icon:` always takes precedence.
 
@@ -969,7 +971,7 @@ They serve different purposes and have different requirements.
 
 ### Logo (`logo`)
 
-The logo is displayed as an overlay in the bottom-left corner of the map and at
+The logo is displayed as an overlay in the top-left corner of the map and at
 the top-right of the **About this map** modal header. At build time the
 framework opens the source with Pillow, picks the binding axis from the source's
 aspect ratio, resamples to ~2x the display size with LANCZOS for retina
@@ -990,7 +992,7 @@ currently rasterised and should be pre-converted.
 
 The logo can be any shape: the bounding-box render handles wordmarks, square
 badges, and tall marks cleanly. Wide horizontal wordmarks produce the most
-brand-prominent result in the lower-left overlay.
+brand-prominent result in the top-left overlay.
 
 #### Colour guidance
 
@@ -1046,6 +1048,32 @@ installable. An explicit `icon:` or `logo:` always takes precedence.
 **Tip:** Use a simple, high-contrast design for the icon: it needs to be
 recognisable at 16x16 pixels. Avoid fine text or thin lines.
 
+### Additional logos (`additional_logos`)
+
+Secondary brand images — typically an event logo plus one or more sponsor
+logos — stacked vertically under the primary logo in the top-left brand mark:
+
+```yaml
+logo: club-logo.webp
+additional_logos:
+  - path: event-logo.svg
+  - path: sponsor-acme.webp
+    invert_dark: false             # colourful mark; don't invert in dark mode
+```
+
+Each entry's `path:` goes through the same pipeline as the primary `logo:`
+(raster sources → normalised WebP, SVG sources → dimensioned SVG) and is written
+to the output as `logo-2`, `logo-3`, … in listed order. Secondaries share the
+primary logo's bounding box, rendered a touch smaller, so the stack reads as one
+consistently-scaled brand column; each image still keeps its own aspect ratio
+inside that box. `invert_dark:` (default `true`) controls the per-logo dark-mode
+auto-invert, matching `invert_logo_dark` on the primary.
+
+These are display-only. Favicon / PWA icon generation, `accent_color: auto`
+derivation, the About-modal image, and social-share previews are all keyed to
+the primary `logo:` / `icon:` and ignore this list entirely. Like the primary
+logo, the stack is click-through — taps pass to the map underneath.
+
 ## Privacy
 
 A generated map is entirely client-side. It sets no cookies, runs no analytics,
@@ -1068,6 +1096,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
+| `mtb.legendCollapsed` | Boolean: route legend collapsed to its **Key** chip (`true`) or expanded (`false`) |
 
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.

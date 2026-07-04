@@ -32,11 +32,14 @@ Oaks Map as of 2026-May-12*
     PWA; open About.
   - Search: find POIs, parking, toilets, trails, and routes on the map.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
+- On-map route legend: a collapsible bottom-left key pairing each route's
+  colour with its name and stats; tap a row to highlight that route.
 - Trail markers, trailheads, parking, features, toilets, drinking water as
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.
 - Light and dark colour schemes; per-map accent colour (manual or auto-derived
-  from the logo); per-map branding via a logo and icon.
+  from the logo); per-map branding via a logo and icon, plus optional secondary
+  event / sponsor logos stacked under the primary.
 - Summer and Winter Modes: Main intention is to show trails that are groomed for
   winter use.
 
