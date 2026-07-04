@@ -2404,7 +2404,8 @@ body {
  * relationship: while an overlay is up, the FABs are not the
  * active control surface; close the overlay to get them back. */
 body:has(.search-overlay.is-open) .fab-stack,
-body:has(.options-overlay.is-open) .fab-stack {
+body:has(.options-overlay.is-open) .fab-stack,
+body:has(.gpx-overlay.is-open) .fab-stack {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease-out;
@@ -2927,8 +2928,10 @@ body.fabs-labeled .fab-label {
  * a cross-fade. */
 body.has-spotlight .search-overlay.is-open,
 body.has-spotlight .options-overlay.is-open,
+body.has-spotlight .gpx-overlay.is-open,
 body.modal-open .search-overlay.is-open,
-body.modal-open .options-overlay.is-open {
+body.modal-open .options-overlay.is-open,
+body.modal-open .gpx-overlay.is-open {
     background: transparent;
 }
 
@@ -3012,11 +3015,101 @@ body.modal-open .options-overlay.is-open {
     overscroll-behavior: contain;
 }
 
+/* ----- GPX download sheet ------------------------------------------
+ *
+ * Compact bottom sheet for event-map GPX downloads (markup exists
+ * only on maps with event_mode.gpx; stripped at build time
+ * otherwise). Same outer-backdrop / inner-panel pattern as the
+ * Search overlay, but content-sized — a few rows, not a fixed-height
+ * half sheet. Rows reuse .finder-row for divider / hover / tap
+ * styling consistency with the Search results list. */
+
+.gpx-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    /* Instant scrim — see .search-overlay for the rationale. */
+    background: rgba(0, 0, 0, 0);  /* transparent → --overlay-scrim on .is-open */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+}
+
+.gpx-overlay.is-open {
+    background: var(--overlay-scrim);
+    pointer-events: auto;
+}
+
+.gpx-overlay[hidden] {
+    display: none !important;
+}
+
+.gpx-overlay-panel {
+    background: var(--sheet-bg);
+    border-top: 1px solid var(--sheet-border);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    box-shadow: 0 -2px 12px var(--sheet-shadow);
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--safe-bottom);
+    transform: translateY(100%);
+    transition: transform 0.22s ease-out;
+    overflow: hidden;
+    /* Content-sized, capped: a long multi-class event list scrolls
+     * inside .gpx-overlay-list rather than growing past the cap. */
+    max-height: min(60dvh, 480px);
+}
+
+.gpx-overlay.is-open .gpx-overlay-panel {
+    transform: translateY(0);
+}
+
+.gpx-overlay-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 12px 16px;
+    border-bottom: 1px solid var(--sheet-divider);
+    flex-shrink: 0;
+}
+
+.gpx-overlay-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--sheet-text);
+    margin: 0;
+}
+
+.gpx-overlay-list {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+}
+
+/* Rows are .finder-row (divider, hover, 44px min-height) plus this
+ * modifier. The first row's top divider is redundant right under the
+ * header's border-bottom. */
+.gpx-row:first-child {
+    border-top: none;
+}
+
+/* Muted trailing download glyph on each row — signals "tapping this
+ * saves a file" (vs. the Search rows' tap-to-highlight). */
+.gpx-row-glyph {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--sheet-text-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .search-overlay,
     .options-overlay,
+    .gpx-overlay,
     .search-overlay-panel,
-    .options-overlay-panel {
+    .options-overlay-panel,
+    .gpx-overlay-panel {
         transition: none;
     }
 }
@@ -3089,7 +3182,8 @@ body.modal-open .options-overlay.is-open {
      * overlay — search stays bottom-anchored, options stays
      * vertically-centred.) */
     .search-overlay,
-    .options-overlay {
+    .options-overlay,
+    .gpx-overlay {
         align-items: center;
     }
 
@@ -3110,6 +3204,17 @@ body.modal-open .options-overlay.is-open {
     /* Search panel — anchored ~24px above the bottom. */
     .search-overlay-panel {
         height: min(60dvh, 540px);
+        margin-bottom: 24px;
+    }
+
+    /* GPX sheet — same card treatment + bottom anchor as Search,
+     * but content-sized (no fixed height; the mobile max-height cap
+     * carries over). */
+    .gpx-overlay-panel {
+        width: min(440px, calc(100vw - 48px));
+        border: 1px solid var(--sheet-border);
+        border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
         margin-bottom: 24px;
     }
 

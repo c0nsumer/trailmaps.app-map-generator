@@ -367,6 +367,7 @@ PRECOMPRESS_EXTENSIONS = (
     ".webmanifest",
     ".html",
     ".txt",
+    ".gpx",  # XML; event-map course downloads compress ~5-10x
 )
 # Below ~1 KB the sidecar + extra Accept-Encoding negotiation isn't worth it.
 PRECOMPRESS_MIN_BYTES = 1024
@@ -491,6 +492,13 @@ def load_config(config_path):
         for entry in em.get("routes") or []:
             if isinstance(entry, dict) and "geometry" in entry:
                 entry["geometry"] = _resolve(entry["geometry"])
+        # event_mode.gpx.routes[].file — curator-supplied .gpx assets,
+        # same semantics again.
+        em_gpx = em.get("gpx")
+        if isinstance(em_gpx, dict):
+            for entry in em_gpx.get("routes") or []:
+                if isinstance(entry, dict) and "file" in entry:
+                    entry["file"] = _resolve(entry["file"])
 
     # Stash the config's directory in case downstream code wants it
     # (error messages, future relative-path fields). Name-spaced with an

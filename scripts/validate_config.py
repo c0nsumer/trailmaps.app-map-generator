@@ -826,6 +826,23 @@ def _validate_paths(report, config, config_dir):
                 if not os.path.isfile(full):
                     report.err(key, f"file not found: {p} (resolved to {full})")
 
+        # event_mode.gpx.routes[].file — curator-supplied .gpx assets,
+        # same relative-to-config-dir semantics.
+        em_gpx = em.get("gpx")
+        if isinstance(em_gpx, dict) and isinstance(em_gpx.get("routes"), list):
+            for i, entry in enumerate(em_gpx["routes"]):
+                if not isinstance(entry, dict):
+                    continue
+                p = entry.get("file")
+                if not isinstance(p, str) or not p:
+                    continue
+                full = _full(p)
+                key = f"event_mode.gpx.routes[{i}].file"
+                if not _check_path_safe(key, p, full):
+                    continue
+                if not os.path.isfile(full):
+                    report.err(key, f"file not found: {p} (resolved to {full})")
+
 
 def _collect_osm_relation_ids(config):
     """Return a set of stringified OSM relation IDs referenced anywhere
@@ -1268,7 +1285,7 @@ def _validate_event_mode(report, config):
         return
 
     # Reject unknown sub-keys.
-    allowed = {"routes", "featured", "background_style", "direction_arrows", "pois", "poi_color"}
+    allowed = {"routes", "featured", "background_style", "direction_arrows", "pois", "poi_color", "gpx"}
     for k in em:
         if k not in allowed:
             suggestions = difflib.get_close_matches(k, allowed, n=2)
@@ -1468,6 +1485,114 @@ def _validate_event_mode(report, config):
     pc = em.get("poi_color")
     if pc is not None and not _is_color(pc):
         report.err("event_mode.poi_color", f"not a valid color: {pc!r}")
+
+    # gpx: optional downloadable-GPX block. Each entry offers one .gpx
+    # file in the runtime's download sheet. Currently only curator-
+    # supplied files (`file:`); `relation:` / `route:` generation is
+    # planned but not implemented (see .claude/plans/gpx-generation.md),
+    # so those keys are rejected with a forward-looking message rather
+    # than a generic "unknown key".
+    _validate_event_gpx(report, em.get("gpx"))
+
+
+# Source keys an event_mode.gpx.routes entry may carry. Exactly one is
+# required per entry. Only "file" is implemented; the others are
+# reserved for the deferred generation feature.
+_GPX_SOURCE_KEYS_IMPLEMENTED = {"file"}
+_GPX_SOURCE_KEYS_RESERVED = {"relation", "route"}
+
+
+def _validate_event_gpx(report, gpx):
+    """Validate the optional `event_mode.gpx` block.
+
+    Schema:
+      gpx:
+        routes:                 # required, non-empty list
+          - name: <string>      # required; display label in the sheet
+            file: <path>        # required; curator-supplied .gpx,
+                                # relative to the config YAML's dir.
+                                # Copied verbatim; filename preserved.
+
+    Filenames are preserved into the build output (`gpx/<basename>`),
+    so two entries whose files share a basename would silently
+    overwrite each other — rejected here.
+
+    File existence is checked in `_validate_paths` alongside the other
+    per-map asset paths (it has the config-dir context).
+    """
+    if gpx is None:
+        return
+    if not isinstance(gpx, dict):
+        report.err("event_mode.gpx", f"expected dict, got {type(gpx).__name__}")
+        return
+
+    allowed = {"routes"}
+    for k in gpx:
+        if k not in allowed:
+            suggestions = difflib.get_close_matches(k, allowed, n=2)
+            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
+            report.err(f"event_mode.gpx.{k}", f"unknown key in event_mode.gpx{hint}")
+
+    routes = gpx.get("routes")
+    if not isinstance(routes, list) or not routes:
+        report.err(
+            "event_mode.gpx.routes",
+            f"required: non-empty list of {{name, file}} entries, got {routes!r}",
+        )
+        return
+
+    seen_basenames = {}
+    for i, entry in enumerate(routes):
+        where = f"event_mode.gpx.routes[{i}]"
+        if not isinstance(entry, dict):
+            report.err(where, f"expected dict, got {type(entry).__name__}")
+            continue
+
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            report.err(f"{where}.name", "required: non-empty string")
+
+        source_keys = (_GPX_SOURCE_KEYS_IMPLEMENTED | _GPX_SOURCE_KEYS_RESERVED) & entry.keys()
+        for k in entry.keys():
+            if k == "name" or k in source_keys:
+                continue
+            all_known = {"name"} | _GPX_SOURCE_KEYS_IMPLEMENTED | _GPX_SOURCE_KEYS_RESERVED
+            suggestions = difflib.get_close_matches(k, all_known, n=2)
+            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
+            report.err(f"{where}.{k}", f"unknown key in gpx route entry{hint}")
+
+        reserved = source_keys & _GPX_SOURCE_KEYS_RESERVED
+        if reserved:
+            report.err(
+                where,
+                f"source key(s) {sorted(reserved)} not implemented yet — "
+                f"GPX generation from relations/routes is planned; for "
+                f"now supply a prepared file via `file:`",
+            )
+            continue
+        if len(source_keys) != 1:
+            report.err(
+                where,
+                f"exactly one source key required (`file:`), "
+                f"got {sorted(source_keys) or 'none'}",
+            )
+            continue
+
+        p = entry.get("file")
+        if not isinstance(p, str) or not p:
+            report.err(f"{where}.file", f"required: non-empty path string, got {p!r}")
+            continue
+        base = os.path.basename(p)
+        if base in seen_basenames:
+            report.err(
+                f"{where}.file",
+                f"duplicate filename {base!r} (also used by "
+                f"event_mode.gpx.routes[{seen_basenames[base]}]) — "
+                f"filenames are preserved into the build's gpx/ dir, "
+                f"so entries must not share a basename",
+            )
+        else:
+            seen_basenames[base] = i
 
 
 def _validate_geometry_source(report, config):

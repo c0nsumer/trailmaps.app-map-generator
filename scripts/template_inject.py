@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import sys
+import urllib.parse
 from datetime import datetime
 
 import console
@@ -203,6 +204,34 @@ CONFIG_SPEC = [
     # User-supplied
     ("parking", "parking", []),
 ]
+
+
+def gpx_download_entries(config):
+    """Resolve event_mode.gpx.routes into [(src_path, basename, meta)].
+
+    Single source of truth for the GPX-download pipeline: copy_assets
+    copies src → gpx/<basename> in the build output, and
+    inject_config_into_template emits each meta dict ({name, url}) as
+    CONFIG.gpxDownloads. Filenames are preserved verbatim so riders get
+    a file identical — name included — to one distributed by the
+    event's official source; the url is percent-encoded because
+    official filenames may contain spaces. Entries are assumed
+    validated (validate_config._validate_event_gpx) and paths resolved
+    to absolute (build.load_config).
+    """
+    em = config.get("event_mode") or {}
+    gpx = em.get("gpx") if isinstance(em, dict) else None
+    out = []
+    for entry in (gpx or {}).get("routes") or []:
+        if not isinstance(entry, dict):
+            continue
+        src = entry.get("file")
+        name = entry.get("name")
+        if not src or not name:
+            continue
+        base = os.path.basename(src)
+        out.append((src, base, {"name": name, "url": "gpx/" + urllib.parse.quote(base)}))
+    return out
 
 
 def inject_config_into_template(template_content, config, trails_geojson):
@@ -509,6 +538,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["eventModeActive"] = bool(em)
     config_obj["eventPoiColor"] = em.get("poi_color", "")
     config_obj["hasEventPois"] = bool(em.get("pois"))
+    # gpxDownloads: entries for the GPX download sheet ({name, url}).
+    # Empty on maps without event_mode.gpx — the FAB markup is stripped
+    # from index.html at build time in that case (see copy_templates),
+    # so the runtime only reads this when the FAB exists.
+    config_obj["gpxDownloads"] = [meta for _src, _base, meta in gpx_download_entries(config)]
     # default_trail_color: string or object with color/pattern/cap
     dtc = config.get("default_trail_color", "#808080")
     if isinstance(dtc, dict):
@@ -748,6 +782,17 @@ def copy_templates(config, output_dir, trails_geojson):
                     flags=re.DOTALL,
                 )
 
+            # Strip the GPX download FAB + sheet when the map has no
+            # event_mode.gpx entries (the common case) — same pattern
+            # as the Share strip so non-event maps carry no dead markup.
+            if not gpx_download_entries(config):
+                content = re.sub(
+                    r"\s*<!-- GPX start -->.*?<!-- GPX end -->\n",
+                    "",
+                    content,
+                    flags=re.DOTALL,
+                )
+
             # Brand title — substitute the map's title text into both
             # the alt= on the brand-img (used by screen readers + as a
             # fallback when the image is missing) AND the brand-title
@@ -957,6 +1002,22 @@ def copy_assets(config, output_dir):
         generate_icons(icon_src, output_dir, config)
     else:
         console.info("No icon configured — skipping icon generation")
+
+    # GPX downloads — curator-supplied course files, copied verbatim
+    # with filenames preserved (riders get a file identical, name
+    # included, to one distributed by the event's official source).
+    # Stale gpx/ from a prior build is removed first so deleting the
+    # config key cleanly drops the files from the output (and from the
+    # SW precache list, which walks the build tree after this).
+    gpx_dst = os.path.join(output_dir, "gpx")
+    if os.path.isdir(gpx_dst):
+        shutil.rmtree(gpx_dst)
+    gpx_entries = gpx_download_entries(config)
+    if gpx_entries:
+        os.makedirs(gpx_dst, exist_ok=True)
+        for gpx_src, gpx_base, _meta in gpx_entries:
+            shutil.copy2(gpx_src, os.path.join(gpx_dst, gpx_base))
+        console.info(f"Copied {len(gpx_entries)} GPX download file(s)")
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")

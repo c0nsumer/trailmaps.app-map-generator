@@ -2986,6 +2986,9 @@ const _WELCOME_ICON_OPTIONS    = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12
 // mdi:magnify (Apache 2.0, Pictogrammers) — matches the Search FAB
 // glyph (templates/index.html).
 const _WELCOME_ICON_SEARCH     = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
+// mdi:download (Apache 2.0, Pictogrammers) — matches the GPX FAB
+// glyph (templates/index.html). Event maps with event_mode.gpx only.
+const _WELCOME_ICON_GPX        = "M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z";
 
 function _welcomeIconSvg(pathD) {
     // Returns the SVG markup for one welcome-icon glyph. 18×18
@@ -3121,6 +3124,14 @@ function buildWelcomeControlsHint() {
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
             desc: _welcomeSearchDescription() },
     ];
+
+    // GPX download FAB — event maps with event_mode.gpx only.
+    // Inserted before Search to match the on-screen FAB order (it
+    // sits at the bottom of the top-right stack, below Options).
+    if ((CONFIG.gpxDownloads || []).length) {
+        rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: "GPX",
+            desc: "Download route GPX files for your bike computer." });
+    }
 
     for (const r of rows) {
         const li = document.createElement("li");
@@ -6549,6 +6560,10 @@ function setupFabLabels() {
         { id: "toggle-locate",     label: "Locate" },
         { id: "toggle-reset-view", label: "Reset view" },
         { id: "toggle-options",    label: "Options" },
+        // Event maps only — the GPX FAB is stripped from index.html at
+        // build time otherwise, and the missing-button guard below
+        // skips the entry.
+        { id: "toggle-gpx",        label: "GPX" },
         { id: "toggle-search",     label: "Search" },
     ];
 
@@ -6711,6 +6726,11 @@ function setupFloatingChrome() {
     const optionsOverlay = document.getElementById("options-overlay");
     const searchBtn = document.getElementById("toggle-search");
     const optionsBtn = document.getElementById("toggle-options");
+    // GPX download sheet — markup only exists on maps with
+    // event_mode.gpx configured (stripped at build time otherwise),
+    // so these are null on most maps and every gpx code path no-ops.
+    const gpxOverlay = document.getElementById("gpx-overlay");
+    const gpxBtn = document.getElementById("toggle-gpx");
 
     // Replace the index.html's hardcoded "routes, trails, and places"
     // strings on the search FAB, the overlay, and the input with
@@ -6761,9 +6781,12 @@ function setupFloatingChrome() {
     }
 
     function openSearchOverlay() {
-        // Single-overlay invariant: close Options if it's open.
+        // Single-overlay invariant: close Options / GPX if open.
         if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
             setOverlayOpen(optionsOverlay, optionsBtn, false);
+        }
+        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
+            setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(searchOverlay, searchBtn, true);
         // Auto-focus the input ONLY on devices whose primary input is
@@ -6800,6 +6823,9 @@ function setupFloatingChrome() {
     function openOptionsOverlay() {
         if (searchOverlay && searchOverlay.classList.contains("is-open")) {
             setOverlayOpen(searchOverlay, searchBtn, false);
+        }
+        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
+            setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(optionsOverlay, optionsBtn, true);
     }
@@ -6895,6 +6921,79 @@ function setupFloatingChrome() {
         });
     }
 
+    // ----- GPX download sheet (event maps with event_mode.gpx only)
+    //
+    // The FAB ALWAYS opens the sheet — even with a single configured
+    // file — so a curiosity tap shows a dismissible sheet naming the
+    // route instead of instantly dropping a file into the rider's
+    // Downloads folder. Tapping a row downloads that row's file via a
+    // temporary same-origin <a download>; the saved filename is the
+    // URL basename, preserved verbatim from the curator's file so it
+    // matches copies distributed by the event's official source. The
+    // sheet stays open across row taps so a rider can grab several
+    // routes in one visit.
+    function closeGpxOverlay() {
+        setOverlayOpen(gpxOverlay, gpxBtn, false);
+    }
+    function openGpxOverlay() {
+        // Single-overlay invariant, same as Search / Options.
+        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
+            setOverlayOpen(searchOverlay, searchBtn, false);
+        }
+        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
+            setOverlayOpen(optionsOverlay, optionsBtn, false);
+        }
+        setOverlayOpen(gpxOverlay, gpxBtn, true);
+    }
+    const gpxList = document.getElementById("gpx-list");
+    if (gpxOverlay && gpxBtn && gpxList) {
+        for (const entry of CONFIG.gpxDownloads || []) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "finder-row gpx-row";
+            const name = document.createElement("span");
+            name.className = "finder-row-name";
+            name.textContent = entry.name;
+            row.appendChild(name);
+            const glyph = document.createElement("span");
+            glyph.className = "gpx-row-glyph";
+            glyph.setAttribute("aria-hidden", "true");
+            // mdi:download (Apache 2.0, Pictogrammers) — trailing cue
+            // that tapping the row saves a file.
+            glyph.innerHTML =
+                '<svg viewBox="0 0 24 24" width="18" height="18" ' +
+                'fill="currentColor" aria-hidden="true">' +
+                '<path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg>';
+            row.appendChild(glyph);
+            row.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const a = document.createElement("a");
+                a.href = entry.url;
+                // Empty download attr = save under the URL's basename.
+                a.download = "";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            });
+            gpxList.appendChild(row);
+        }
+        gpxBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (gpxOverlay.classList.contains("is-open")) closeGpxOverlay();
+            else openGpxOverlay();
+        });
+        const gpxClose = document.getElementById("gpx-close");
+        if (gpxClose) {
+            gpxClose.addEventListener("click", (e) => {
+                e.stopPropagation();
+                closeGpxOverlay();
+            });
+        }
+        gpxOverlay.addEventListener("click", (e) => {
+            if (e.target === gpxOverlay) closeGpxOverlay();
+        });
+    }
+
     // When the About modal is up, the overlay Escape handlers must
     // stand down — About sits on top of everything and owns the
     // foreground. Without this guard a stray Escape would close the
@@ -6916,6 +7015,10 @@ function setupFloatingChrome() {
         }
         if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
             closeOptionsOverlay();
+            return;
+        }
+        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
+            closeGpxOverlay();
             return;
         }
         if (searchOverlay && searchOverlay.classList.contains("is-open")) {

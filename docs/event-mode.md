@@ -27,6 +27,7 @@ background treatment.
 - [Background style application](#background-style-application)
 - [Direction arrows](#direction-arrows)
 - [Event POIs](#event-pois)
+- [GPX downloads](#gpx-downloads)
 - [Worked examples](#worked-examples)
 - [Branding](#branding)
 - [Welcome modal](#welcome-modal)
@@ -124,6 +125,11 @@ event_mode:
 
   poi_color: <css colour>          # optional; chip colour for event
                                    # POIs (default: deep red #D32F2F).
+
+  gpx:                             # optional; downloadable GPX files
+    routes:                        # required, non-empty list
+      - name: <string>             # required; label in the download sheet
+        file: <path>               # required; .gpx relative to this YAML
 ```
 
 **Required**: at least one of `routes` or `featured` must be non-empty.
@@ -327,6 +333,52 @@ Event POIs differ from regular POIs in four ways:
 
 Event POIs are indexed in the search overlay alongside other places, so a rider
 can type "start" or "aid" to find them.
+
+## GPX downloads
+
+Offer riders the event's official course file(s) for their bike computer,
+straight from the map:
+
+```yaml
+event_mode:
+  routes: [...]
+  gpx:
+    routes:
+      - name: "Long Course"
+        file: long_course_2026_prepared.gpx
+      - name: "Short Course"
+        file: short_course_2026_prepared.gpx
+```
+
+Each entry needs:
+
+- **`name`** (required): the label shown in the download sheet. Display only —
+  it does not affect the downloaded file.
+- **`file`** (required): a curator-supplied `.gpx` file, relative to this YAML
+  (same convention as `geometry:`). Copied into the build **verbatim, filename
+  preserved** — a rider who downloads it from the map gets a file identical,
+  name included, to one distributed by the event's official source. Entries
+  must not share a filename (the validator rejects duplicates).
+
+What the rider sees: a download FAB (down-arrow glyph) in the top-right stack
+below Options, present only when `gpx:` is configured. Tapping it opens a
+compact bottom sheet with one row per entry; tapping a row downloads that
+file. The sheet always opens — even with a single file — so an exploratory
+tap shows a dismissible sheet naming the route rather than instantly dropping
+a file into the rider's Downloads. The sheet stays open across row taps, so
+grabbing several routes is just several taps. There is deliberately no
+"download all" bundle: bike computers import one course per file anyway.
+
+The files land in `build/<slug>/gpx/` and are picked up by the service-worker
+precache automatically, so they remain downloadable offline once the map has
+been visited.
+
+Prepare the files for head-unit compatibility before dropping them in (the
+framework does not transform them): GPX 1.1, one course per file, a single
+continuous track segment, points ordered in the direction of travel.
+Generating GPX files from the map's own route data (OSM relations / GeoJSON)
+is planned but not yet implemented — the validator reserves `relation:` and
+`route:` source keys for that.
 
 ## Worked examples
 

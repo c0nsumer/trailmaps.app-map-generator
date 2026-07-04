@@ -35,6 +35,14 @@ relations:
 # Feature one or more routes prominently; every other trail renders muted.
 # Full schema and examples in docs/event-mode.md.
 # event_mode:
+#   routes: []                       # inline featured routes (custom_routes entry shape)
+#   featured: []                     # feature existing custom_routes ids / OSM relation ids
+#   direction_arrows: false          # always-on arrows along inline routes
+#   pois: []                         # always-on event POIs ({name, coordinates, description})
+#   gpx:                             # downloadable GPX files (FAB + download sheet)
+#     routes:
+#     - name: Long Course            # display label in the download sheet
+#       file: long_course.gpx        # .gpx next to this YAML; filename preserved on download
 
 # ============================================================
 # Route buckets

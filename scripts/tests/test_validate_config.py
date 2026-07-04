@@ -113,6 +113,64 @@ def test_empty_relations_without_other_source_rejected():
     assert any("relations" in e for e in _errors(relations=[]))
 
 
+# --- event_mode.gpx (downloadable course files) ----------------------------
+
+@contextlib.contextmanager
+def _gpx_file():
+    """Yield the path to a temp .gpx file (content irrelevant — the
+    validator only checks existence; files are copied verbatim)."""
+    with tempfile.NamedTemporaryFile("w", suffix=".gpx", delete=False) as f:
+        f.write("<gpx/>")
+        path = f.name
+    try:
+        yield path
+    finally:
+        os.unlink(path)
+
+
+def _gpx_errors(gpx):
+    """Validate BASE + an event_mode block carrying `gpx`. `featured`
+    satisfies event mode's routes-or-featured requirement so the only
+    errors under test are the gpx ones."""
+    return _errors(event_mode={"featured": [12345678], "gpx": gpx})
+
+
+def test_event_gpx_valid():
+    with _gpx_file() as p:
+        assert _gpx_errors({"routes": [{"name": "Course", "file": p}]}) == []
+
+
+def test_event_gpx_missing_name_rejected():
+    with _gpx_file() as p:
+        errors = _gpx_errors({"routes": [{"file": p}]})
+    assert any("gpx.routes[0].name" in e for e in errors), errors
+
+
+def test_event_gpx_reserved_source_key_rejected():
+    # `relation:` / `route:` are reserved for the deferred generation
+    # feature — rejected with a forward-looking message, not silently
+    # accepted or treated as a generic unknown key.
+    errors = _gpx_errors({"routes": [{"name": "Course", "relation": -129}]})
+    assert any("not implemented" in e for e in errors), errors
+
+
+def test_event_gpx_duplicate_basename_rejected():
+    # Filenames are preserved into the build's gpx/ dir, so two entries
+    # sharing a basename would silently overwrite each other.
+    with _gpx_file() as p:
+        errors = _gpx_errors(
+            {"routes": [{"name": "A", "file": p}, {"name": "B", "file": p}]}
+        )
+    assert any("duplicate filename" in e for e in errors), errors
+
+
+def test_event_gpx_missing_file_rejected():
+    errors = _gpx_errors(
+        {"routes": [{"name": "Course", "file": "/nonexistent/course.gpx"}]}
+    )
+    assert any("file not found" in e for e in errors), errors
+
+
 if __name__ == "__main__":
     import traceback
 
