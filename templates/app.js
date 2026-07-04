@@ -6037,7 +6037,7 @@ function hideHighlightChip() {
 // the production counts — RAMBA 11, Shelden 14 — were exactly the
 // confusing-loops maps that motivated the feature, and the collapsed
 // chip is cheap enough to keep). The rider's expand/collapse choice
-// persists per-map (LS "legendCollapsed") and beats either default
+// persists per-map (LS "mtb.legendCollapsed") and beats either default
 // on later visits.
 const LEGEND_EXPANDED_MAX_ROUTES = 5;
 
@@ -6163,18 +6163,18 @@ function initRouteLegend() {
     // Boot state: the rider's stored choice wins; otherwise expanded
     // for small legends and for route_legend: true, collapsed for big
     // ones (see the section comment for the threshold reasoning).
-    const stored = LS.get("legendCollapsed", null);
+    const stored = LS.get("mtb.legendCollapsed", null);
     const defaultCollapsed = CONFIG.routeLegend !== true
         && legendListableRoutes().length > LEGEND_EXPANDED_MAX_ROUTES;
     applyCollapsed(typeof stored === "boolean" ? stored : defaultCollapsed);
 
     chip.addEventListener("click", () => {
         applyCollapsed(false);
-        LS.set("legendCollapsed", false);
+        LS.set("mtb.legendCollapsed", false);
     });
     collapseBtn.addEventListener("click", () => {
         applyCollapsed(true);
-        LS.set("legendCollapsed", true);
+        LS.set("mtb.legendCollapsed", true);
     });
 }
 
