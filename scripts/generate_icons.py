@@ -271,10 +271,14 @@ def generate_manifest(config, output_dir, bg_color=None):
     # coloured icon — e.g. the green placeholder — gets a splash matching
     # its tile instead of a white flash. A transparent/white-backplate logo
     # resolves to the white default, so the common case is unchanged.
-    # theme_color (status bar) stays white: the in-page colour-scheme
-    # bootstrap overrides it per light/dark on first paint, so a baked-in
-    # value would only flash for one frame and could fight that logic.
+    # theme_color paints the installed-WebAPK status bar from launch
+    # until the page's own meta theme-color takes over. Use the light
+    # accent shade so the bar is branded (not white) from the first
+    # frame; the in-page bootstrap + app.js then keep the meta in sync
+    # per light/dark scheme. Fallback mirrors style.css's framework
+    # default for direct/standalone callers without a resolved palette.
     background_color = _rgba_to_hex(bg_color) if bg_color else "#ffffff"
+    theme_color = (config.get("_accent_palette") or {}).get("light") or "#1D6FA5"
     manifest = {
         "name": title,
         "short_name": name,
@@ -282,7 +286,7 @@ def generate_manifest(config, output_dir, bg_color=None):
         "scope": "../",
         "display": "standalone",
         "background_color": background_color,
-        "theme_color": "#ffffff",
+        "theme_color": theme_color,
         "icons": [
             {
                 "src": "android-chrome-192x192.png",

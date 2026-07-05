@@ -236,7 +236,7 @@ function applyColorScheme(rawScheme) {
 // Sync the <meta name="theme-color"> tag with the current scheme so
 // installed-PWA mode on Android (and any other UA that paints
 // browser chrome from theme-color) flips its status bar between
-// the light and dark sheet backgrounds. The static value in
+// the light and dark accent shades. The static value in
 // index.html is just the boot-time default; once app.js runs we
 // own the value and update it on every applyColorScheme call.
 function updateThemeColorMeta(resolved) {
@@ -246,11 +246,13 @@ function updateThemeColorMeta(resolved) {
         meta.setAttribute("name", "theme-color");
         document.head.appendChild(meta);
     }
-    // Match the chrome surface the rider's status bar will sit
-    // against. These hex values are the resolved colors of the
-    // --sheet-bg token (rgba alpha not allowed in theme-color, so
-    // we use the equivalent opaque hex).
-    meta.setAttribute("content", resolved === "dark" ? "#1c1c1e" : "#ffffff");
+    // Brand the browser chrome with the per-map accent, matching the
+    // resolved scheme's shade. The literal fallbacks mirror
+    // style.css's framework-default accent for maps built without a
+    // CONFIG palette.
+    meta.setAttribute("content", resolved === "dark"
+        ? (CONFIG.accentDark || "#258cd0")
+        : (CONFIG.accentLight || "#1d6fa5"));
 }
 
 // Wire the OS prefers-color-scheme listener. Only takes effect when

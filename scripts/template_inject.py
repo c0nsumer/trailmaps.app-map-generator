@@ -846,6 +846,12 @@ def copy_templates(config, output_dir, trails_geojson):
             # these per [data-color-scheme], so a missing palette here just
             # falls back to the stylesheet defaults (accent_js empty).
             _accent_palette = config.get("_accent_palette") or {}
+            # theme-color hexes for the browser chrome (Android PWA
+            # status bar): the per-scheme accent shades. build.py always
+            # resolves a palette; the literals mirror style.css's
+            # framework defaults for any direct caller that didn't.
+            _tc_light = _accent_palette.get("light") or "#1d6fa5"
+            _tc_dark = _accent_palette.get("dark") or "#258cd0"
             accent_js = ""
             for _av_name, _av_val in (
                 ("--accent-light", _accent_palette.get("light")),
@@ -879,19 +885,28 @@ def copy_templates(config, output_dir, trails_geojson):
                 'document.documentElement.setAttribute("data-color-scheme",s);'
                 + accent_js +
                 # Sync the meta theme-color tag in the same pass so
-                # the Android Chrome PWA status bar paints the right
-                # colour on first frame (the static value in the
-                # template is just a fallback; without this update,
-                # a dark-mode PWA would show a light status bar
-                # until applyColorScheme runs much later in app.js).
+                # the Android Chrome PWA status bar paints the per-map
+                # accent for the resolved scheme on first frame (the
+                # static value in the template is just a fallback;
+                # without this update the status bar would keep the
+                # manifest's light-accent colour until applyColorScheme
+                # runs much later in app.js).
                 "var m=document.querySelector('meta[name=\"theme-color\"]');"
                 "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
-                'm.setAttribute(\'content\',s==="dark"?"#1c1c1e":"#ffffff");'
+                f'm.setAttribute(\'content\',s==="dark"?{json.dumps(_tc_dark)}:{json.dumps(_tc_light)});'
                 "}catch(e){}"
                 "})();"
                 "</script>"
             )
             content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
+            # Static brand-colour substitutions: the theme-color meta
+            # (no-JS fallback — the bootstrap re-points it per scheme
+            # on first frame), the Safari pinned-tab mask-icon tint,
+            # and the legacy Windows tile colour all take the light
+            # accent shade. replace() catches every occurrence. No-op
+            # when the icons block (which carries all three tags) was
+            # stripped for icon-less maps.
+            content = content.replace("__THEME_COLOR__", _tc_light)
 
             # Inject or remove brand image. Logo source falls back to
             # icon: when logo: is omitted; raster sources are normalized

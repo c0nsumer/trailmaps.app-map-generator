@@ -50,10 +50,25 @@
     <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link rel="manifest" href="icons/site.webmanifest">
-    <link rel="mask-icon" href="icons/safari-pinned-tab.svg" color="#5bbad5">
-    <meta name="msapplication-TileColor" content="#da532c">
-    <meta name="theme-color" content="#ffffff">
+    <link rel="mask-icon" href="icons/safari-pinned-tab.svg" color="__THEME_COLOR__">
+    <meta name="msapplication-TileColor" content="__THEME_COLOR__">
+    <meta name="theme-color" content="__THEME_COLOR__">
     <!-- Icons end -->
+
+    <!-- iOS installed-app (Add to Home Screen) chrome. iOS ignores
+         the manifest theme_color and offers no arbitrary status-bar
+         colour; black-translucent instead runs the map full-bleed
+         UNDER the status bar (white clock/battery text) like native
+         map apps. body::after in style.css draws a scrim across the
+         top safe-area so that white text stays legible over light
+         basemaps and sheets. The -capable meta is the legacy
+         standalone trigger — modern iOS honours the manifest's
+         display:standalone, but the status-bar-style meta is only
+         reliably applied with the legacy flag present, and it also
+         covers icon-less maps whose manifest link is stripped.
+         Outside the icons block so that strip never removes it. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Colour-scheme bootstrap: runs synchronously BEFORE any
          stylesheet so first paint already has the right

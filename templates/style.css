@@ -280,6 +280,36 @@ body {
     touch-action: none;
 }
 
+/* ----- iOS standalone status-bar scrim ----------------------------- */
+/* Companion to index.html's apple-mobile-web-app-status-bar-style:
+ * black-translucent — in the installed iOS app the map runs full-bleed
+ * under the status bar, whose clock/battery text iOS always draws in
+ * WHITE in that mode. This gradient keeps that text legible over light
+ * basemaps AND over the light sheet overlays (search/options/GPX fill
+ * the viewport with --sheet-bg under the status bar), which is why it
+ * sits above even the toasts (z=200) — it must never end up under an
+ * opened sheet. pointer-events: none keeps it out of hit-testing.
+ *
+ * Self-gating by height: env(safe-area-inset-top) is only non-zero
+ * where content actually extends under a status bar — the iOS
+ * standalone app. Everywhere else (desktop, Android — whose WebAPK
+ * status bar is opaque accent via theme-color — and in-browser iOS,
+ * portrait) it resolves to 0px and the scrim doesn't exist. Over dark
+ * scheme content a dark gradient is near-invisible, so no per-scheme
+ * override is needed. */
+body::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--safe-top);
+    z-index: 300;
+    background: linear-gradient(to bottom,
+        rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.15) 70%, rgba(0, 0, 0, 0));
+    pointer-events: none;
+}
+
 .hidden {
     display: none !important;
 }
