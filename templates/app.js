@@ -2831,18 +2831,20 @@ async function init() {
         buildTrailIndex();
         buildPoiIndex();
         setupFloatingChrome();
+        // Routes panel docked-state wiring + boot form. After
+        // setupFloatingChrome: its initial applyVisibilityChange()
+        // populated visibleRoutes (which decides the panel's default
+        // docked state) and already ran the first
+        // rebuildRoutePanel() row build. Before setupFabLabels: the
+        // panel's discovery label only mounts when the panel booted
+        // collapsed, so the collapsed class must be settled first.
+        initRoutePanel();
         // First-visit-per-map FAB-label discoverability cue. Mounts
         // labels under each FAB, dismisses on tap or 5 s timeout.
         // Self-suppresses on subsequent visits via LS flag. Must
         // run after setupFloatingChrome so the FABs' main click
         // handlers are wired (our dismiss listener piggybacks).
         setupFabLabels();
-        // Routes panel docked-state wiring + boot form. After
-        // setupFloatingChrome: its initial applyVisibilityChange()
-        // populated visibleRoutes (which decides the panel's default
-        // docked state) and already ran the first
-        // rebuildRoutePanel() row build.
-        initRoutePanel();
         setupInteractions();
         promoteBasemapLabels();
         suppressBasemapPathLabels();
@@ -3006,6 +3008,10 @@ const _WELCOME_ICON_RESET_VIEW = "M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2
 // glyph (templates/index.html). Reverted from a brief mdi:tune
 // experiment that read as "audio equalizer" rather than "settings".
 const _WELCOME_ICON_OPTIONS    = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
+// mdi:format-list-bulleted (Apache 2.0, Pictogrammers) — matches the
+// routes-panel chip glyph (templates/index.html): dot-per-row list
+// reads as "route rows".
+const _WELCOME_ICON_ROUTES     = "M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z";
 // mdi:magnify (Apache 2.0, Pictogrammers) — matches the routes
 // panel's Search-row glyph (templates/index.html).
 const _WELCOME_ICON_SEARCH     = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
@@ -3144,17 +3150,17 @@ function buildWelcomeControlsHint() {
 
     // Order matches the on-screen chrome reading top-to-bottom on
     // the right edge: the FAB stack (Locate → Reset View → Options)
-    // followed by the routes panel (Search row) at bottom-right.
-    // Same sequence the rider sees on the map keeps the mental
-    // mapping cheap.
+    // followed by the routes panel (Routes key + its Search row) at
+    // bottom-right. Same sequence the rider sees on the map keeps
+    // the mental mapping cheap.
     //
-    // The Search row teaches the bottom-right corner: search is the
-    // verb a first-visit rider needs taught (the key rows explain
-    // themselves — colour + name + tap), so the row keeps the
-    // magnifier icon and "Search" name, with the key mentioned in the
-    // description. Every map has a key now (a geometry source is
-    // required, so there's always ≥1 route), so the key sentence is
-    // unconditional.
+    // Routes gets its own row (chip's list icon) rather than a
+    // sentence tacked onto Search: the panel is the map key — the
+    // first thing a rider orients by — and it deserves the same
+    // billing as the FABs. Every map has a key (a geometry source is
+    // required, so there's always ≥1 route), so the row is
+    // unconditional. Search keeps its own row for the verb a
+    // first-visit rider needs taught.
     const rows = [
         { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
             desc: "Track your position on the map." },
@@ -3162,15 +3168,18 @@ function buildWelcomeControlsHint() {
             desc: "Reset the map to its starting view." },
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
+        { icon: _WELCOME_ICON_ROUTES,     name: "Routes",
+            desc: "The map key — each route's colour and name."
+                + " Tap a route to highlight it on the map;"
+                + " collapse the panel when you want more map." },
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
-            desc: _welcomeSearchDescription()
-                + " The key above it pairs each route's colour with"
-                + " its name — tap one to highlight that route." },
+            desc: _welcomeSearchDescription() },
     ];
 
     // GPX download FAB — event maps with event_mode.gpx only.
-    // Inserted before Search to match the on-screen order (it sits
-    // at the bottom of the top-right stack, below Options).
+    // Inserted after Options to match the on-screen order (it sits
+    // at the bottom of the top-right stack, above the bottom-right
+    // panel's Routes + Search rows).
     if ((CONFIG.gpxDownloads || []).length) {
         const w = _gpxWording();
         rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: w.label,
@@ -6858,18 +6867,21 @@ function setupFabLabels() {
         mounted.push({ btn, label });
     }
 
-    // Routes-panel discovery label. Anchored to the panel CONTAINER
-    // (not the chip) so it shows in both docked forms — the chip is
-    // display:none when the card is up, so a chip-anchored label would
-    // be invisible on an expanded boot. "Route key" names the function
-    // (the card header's "Routes" names the content); it deliberately
-    // under-claims — POI/difficulty symbology lives in the Options
-    // swatches, not here. Shares the .fab-label styling + dismissal so
-    // all discovery cues read as one first-visit moment; a click
-    // anywhere in the panel dismisses (handled by the mounted loop
-    // below, since panel clicks bubble to the container).
+    // Routes-panel discovery label — only when the panel booted
+    // COLLAPSED. The expanded card is self-evident (header says
+    // "Routes", the rows show colour + name), so a label would be
+    // noise; the collapsed chip is the form that needs naming.
+    // Anchored to the panel container (clicks bubble to it, so the
+    // mounted loop's dismiss fires on any panel tap); initRoutePanel
+    // has already settled .is-collapsed by the time we run. "Route
+    // key" names the function (the card header's "Routes" names the
+    // content); it deliberately under-claims — POI/difficulty
+    // symbology lives in the Options swatches, not here. Shares the
+    // .fab-label styling + dismissal so all discovery cues read as
+    // one first-visit moment.
     const panel = document.getElementById("route-panel");
-    if (panel && !panel.classList.contains("hidden")) {
+    if (panel && !panel.classList.contains("hidden")
+            && panel.classList.contains("is-collapsed")) {
         const label = document.createElement("span");
         label.className = "fab-label";
         label.textContent = "Route key";
@@ -8322,16 +8334,24 @@ function routeStatsText(r) {
 // Shared route-swatch builder for the key rows (rebuildRoutePanel) and
 // the finder rows (makeRouteRow), so the two lists can never disagree
 // about how a route's line is drawn. Plain routes get the flat colour
-// bar; dashed routes get a mini inline SVG ribbon that reuses the
-// on-map dash semantics (isDashed / getDashPattern / getDashCap /
-// getDashColors) — a two-colour underlay beneath a dashed top line,
-// with dots falling out of a [0, N] pattern + round cap. `className`
-// is the caller's own swatch class (.route-panel-swatch or
+// bar; dashed routes get a mini inline SVG ribbon — a two-colour
+// underlay beneath a dashed top line, dots for a [0, N] pattern.
+// `className` is the caller's own swatch class (.route-panel-swatch or
 // .finder-row-swatch), which the .is-dashed CSS variant widens for the
-// SVG. Scale is for legibility, not fidelity: on the map dasharray
-// units are line-widths (~4px here), so a [4,4] cycle at ×4 would be
-// wider than the whole swatch and still read solid — scale ×2 and
-// widen the swatch (~18px) so at least one dash-gap cycle shows.
+// SVG.
+//
+// The ribbon renders for LEGIBILITY, not map-space fidelity. Naively
+// scaling the config pattern into the SVG breaks two ways at swatch
+// size: (a) SVG round/square linecaps extend every dash by half the
+// stroke width (2px here) at EACH end, so any scaled gap ≤ 4px is
+// swallowed and the ribbon reads solid — that's [1, 1] as a solid bar;
+// (b) a long-dash cycle ([4, 1]) scaled to map proportions is wider
+// than the whole swatch, also reading solid. So instead: dashes render
+// with butt caps (no extension) at the pattern's dash:gap duty ratio,
+// two cycles across the swatch, gap clamped to stay visible; dot
+// patterns render as three evenly spaced round dots. Any dashed/dotted
+// route thus visibly differs from a solid bar, which is the swatch's
+// actual job.
 function routeSwatchEl(r, className) {
     if (!isDashed(r)) {
         const swatch = document.createElement("span");
@@ -8350,11 +8370,11 @@ function routeSwatchEl(r, className) {
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
     svg.setAttribute("aria-hidden", "true");
 
-    const line = (stroke, dashArray, cap) => {
+    const line = (stroke, dashArray, cap, x1, x2) => {
         const el = document.createElementNS(NS, "line");
-        el.setAttribute("x1", "0");
+        el.setAttribute("x1", String(x1 !== undefined ? x1 : 0));
         el.setAttribute("y1", String(y));
-        el.setAttribute("x2", String(W));
+        el.setAttribute("x2", String(x2 !== undefined ? x2 : W));
         el.setAttribute("y2", String(y));
         el.setAttribute("stroke", stroke);
         el.setAttribute("stroke-width", String(sw));
@@ -8367,10 +8387,34 @@ function routeSwatchEl(r, className) {
     // Two-colour dash: solid second colour underlay, dashed first on top
     // (r.color already resolves to dashColors[0] via effectiveRouteColor).
     if (dashColors && dashColors.length >= 2) {
-        svg.appendChild(line(dashColors[1], null, getDashCap(r)));
+        svg.appendChild(line(dashColors[1], null));
     }
-    const dashArray = getDashPattern(r).map((n) => n * 2).join(" ");
-    svg.appendChild(line(r.color, dashArray, getDashCap(r)));
+
+    const pattern = getDashPattern(r);
+    if (pattern[0] === 0) {
+        // Dot pattern ([0, N] + round cap on the map). Three round-cap
+        // dots, inset half a dot so the end dots aren't clipped by the
+        // viewport: zero-length dashes at path offsets 0 / 7 / 14 on a
+        // line from x=2 to x=16 → dot centres 2 / 9 / 16, 3px clear
+        // between 4px dots.
+        const inset = sw / 2;
+        svg.appendChild(line(r.color, "0 7", "round", inset, W - inset));
+    } else {
+        // Dash pattern. Duty ratio from the config (multi-segment
+        // patterns fold to their overall dash:gap ratio), two cycles
+        // across the swatch, butt caps so the gap is exactly what we
+        // set. Clamps keep both parts visible for extreme ratios
+        // ([4, 1] would otherwise leave a 1.8px gap).
+        let dashSum = 0, total = 0;
+        for (let i = 0; i < pattern.length; i++) {
+            total += pattern[i];
+            if (i % 2 === 0) dashSum += pattern[i];
+        }
+        const cycle = W / 2;
+        const gap = Math.min(cycle - 2,
+            Math.max(2.5, cycle * (1 - dashSum / total)));
+        svg.appendChild(line(r.color, `${cycle - gap} ${gap}`, "butt"));
+    }
     return svg;
 }
 

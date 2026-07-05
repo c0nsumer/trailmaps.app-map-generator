@@ -490,7 +490,8 @@ expanded search state.
   swamp the viewport (roughly, it starts expanded when the card would fit
   within a third of the screen height, chip otherwise). The rider's expand /
   collapse choice then persists per-map (`mtb.routePanelExpanded`) and beats
-  that default. A first-visit **Route key** label points the panel out.
+  that default. When the panel boots collapsed, a first-visit **Route key**
+  label points the chip out (the expanded card explains itself).
 
 ## Trail finder
 
