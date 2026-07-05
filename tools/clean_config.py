@@ -24,6 +24,10 @@ Behaviour:
   not) are replaced with the production's value when production sets
   that key. Multi-line template blocks (e.g. commented `# welcome:`
   with indented continuation comments) are skipped past wholesale.
+- LIVE (uncommented) template keys that production does NOT set are
+  commented out rather than copied — the cleaned output must never
+  inherit a template placeholder value (e.g. the example `relations:`
+  ID on a custom-route-only map that legitimately omits the key).
 - Template lines that aren't key lines (section dividers, prose
   comments, blank lines) are preserved verbatim.
 - Production keys that don't appear anywhere in the template are
@@ -216,6 +220,7 @@ def clean_config(template_path, production_path, output_path):
 
     output_lines = []
     seen_keys = set()
+    commented_out = set()
     i = 0
     while i < len(template_lines):
         line = template_lines[i]
@@ -224,6 +229,23 @@ def clean_config(template_path, production_path, output_path):
             output_lines.extend(format_key(key, production[key]))
             seen_keys.add(key)
             i = find_block_end(template_lines, i)
+        elif key is not None and not line.lstrip().startswith("#"):
+            # Template key is LIVE (uncommented — the template's
+            # always-set examples: name / slug / title / relations)
+            # but production doesn't set it. Copying the block
+            # verbatim would smuggle the template's placeholder value
+            # into the cleaned output — this bit the two
+            # custom-route-only event maps, whose legitimately-omitted
+            # `relations:` gained the template's example ID. Comment
+            # the block out instead ("# " + line matches the
+            # template's commented-key style, and "#   - item" parses
+            # as a commented continuation), so the key stays
+            # discoverable but sets nothing.
+            end = find_block_end(template_lines, i)
+            for tl in template_lines[i:end]:
+                output_lines.append("# " + tl if tl.strip() else tl)
+            commented_out.add(key)
+            i = end
         else:
             output_lines.append(line)
             i += 1
@@ -239,7 +261,7 @@ def clean_config(template_path, production_path, output_path):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(output_lines) + "\n")
 
-    return seen_keys, extra
+    return seen_keys, extra, commented_out
 
 
 def main():
@@ -290,13 +312,18 @@ def main():
         base, ext = os.path.splitext(args.production)
         output_path = f"{base}-cleaned{ext or '.yaml'}"
 
-    seen, extra = clean_config(args.template, args.production, output_path)
+    seen, extra, commented_out = clean_config(args.template, args.production, output_path)
     print(f"Wrote {output_path}")
     print(f"  {len(seen)} key(s) from production matched template positions")
     if extra:
         print(f"  {len(extra)} key(s) appended (not in template): {sorted(extra)}")
     else:
         print("  No extra keys to append (all production keys matched the template).")
+    if commented_out:
+        print(
+            f"  {len(commented_out)} live template key(s) not set by production, "
+            f"commented out: {sorted(commented_out)}"
+        )
 
 
 if __name__ == "__main__":

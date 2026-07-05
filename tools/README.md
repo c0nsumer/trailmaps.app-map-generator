@@ -83,7 +83,13 @@ documentation comments) while preserving every value the production
 file explicitly set.
 
 The original file is never modified. Review the cleaned output and
-swap it in manually when satisfied.
+swap it in manually when satisfied. Two caveats worth knowing before
+swapping: inline comments in the production file (e.g. relation-ID
+annotations like `- 20502171 # Addison Connector`) are NOT carried
+over — the template's comments win — and live template keys the
+production file doesn't set are commented out in the output rather
+than inherited (so a custom-route-only map that omits `relations:`
+never picks up the template's placeholder ID).
 
 ### Usage
 
