@@ -1843,9 +1843,9 @@ function buildDecorFilter(kind) {
 }
 
 // Refresh the diamond + arrow filters in response to highlight state
-// changes. Name-label visibility is handled in updateLabels(); labels
-// are intentionally NOT narrowed under the dim (connecting trails stay
-// labelled for wayfinding) — only diamonds / arrows narrow here.
+// changes. Name-label visibility is handled in updateLabels(): trail
+// names stay un-narrowed for wayfinding; route names narrow to a
+// highlighted route there — only diamonds / arrows narrow here.
 function updateDecorationsHighlight() {
     if (map.getLayer("decor-diamond")) {
         map.setFilter("decor-diamond", buildDecorFilter(KIND.DIAMOND));
@@ -4640,12 +4640,20 @@ function buildLabelFilter(kind, ...extraFilters) {
 }
 
 function updateLabels() {
-    // Name labels are deliberately NOT narrowed under the spotlight dim.
-    // The wash recedes the surrounding network visually, but its names
-    // stay readable so a rider can still trace the connecting trails
-    // needed to reach the highlighted one (the in-field "how do I get
-    // there?" case). Only the tint + decorations (diamonds / arrows /
-    // clip-arrows) narrow to the highlight — see the applyDimState path.
+    // TRAIL-name labels are deliberately NOT narrowed under the spotlight
+    // dim. The wash recedes the surrounding network visually, but its
+    // names stay readable so a rider can still trace the connecting
+    // trails needed to reach the highlighted one (the in-field "how do
+    // I get there?" case).
+    //
+    // ROUTE-name labels DO narrow when the highlight is itself a route.
+    // Routes are alternatives, not connectors: on an event map whose
+    // loops share corridor ways, a bright "Full Route" label riding a
+    // dimmed line while Short Route is spotlit reads as if the wrong
+    // route were highlighted. Trail highlights leave route labels
+    // alone — same wayfinding rationale as trail names.
+    const routeNarrow = (highlightDimActive() && highlight.kind === "route")
+        ? highlight.key : null;
 
     // Per-route route-name label layers — each scoped to one route via
     // its baseline filter (set at layer creation, not here). Source
@@ -4656,7 +4664,8 @@ function updateLabels() {
         const layerId = `trail-label-${routeId}`;
         if (!map.getLayer(layerId)) continue;
 
-        const visible = labelMode === "routes" && visibleRoutes.has(routeId);
+        const visible = labelMode === "routes" && visibleRoutes.has(routeId)
+            && (!routeNarrow || routeId === routeNarrow);
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
     }
 
@@ -4673,7 +4682,10 @@ function updateLabels() {
         map.setLayoutProperty("decor-route-name",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-route-name", buildLabelFilter(KIND.ROUTE_NAME));
+            map.setFilter("decor-route-name", routeNarrow
+                ? buildLabelFilter(KIND.ROUTE_NAME,
+                    ["==", ["get", "solo_route_id"], routeNarrow])
+                : buildLabelFilter(KIND.ROUTE_NAME));
         }
     }
 
@@ -4696,8 +4708,10 @@ function updateLabels() {
         map.setLayoutProperty("decor-route-name-pt",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-route-name-pt",
-                buildLabelFilter(KIND.ROUTE_LABEL_PT));
+            map.setFilter("decor-route-name-pt", routeNarrow
+                ? buildLabelFilter(KIND.ROUTE_LABEL_PT,
+                    ["==", ["get", "solo_route_id"], routeNarrow])
+                : buildLabelFilter(KIND.ROUTE_LABEL_PT));
         }
     }
     if (map.getLayer("decor-trail-name-pt")) {
@@ -5121,9 +5135,10 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 //     SCRIM_OPACITY, from scrim_opacity).
 //   - Difficulty icons, one-way arrows, and clip-arrows are narrowed to
 //     the highlighted route/trail only (so they don't punch through the
-//     tint on other lines). Name labels are deliberately NOT narrowed —
-//     they stay readable so connecting trails can still be followed to
-//     reach the highlighted one.
+//     tint on other lines). Route-name labels narrow too when a ROUTE is
+//     highlighted (see updateLabels); trail-name labels are deliberately
+//     NOT narrowed — they stay readable so connecting trails can still
+//     be followed to reach the highlighted one.
 //   - POI markers (DOM overlay, above the WebGL canvas) fade to ~0.25
 //     unless adjacent to the highlight, via Marker.setOpacity() in
 //     updateMarkerDimState().
