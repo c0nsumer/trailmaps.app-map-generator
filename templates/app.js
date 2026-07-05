@@ -8494,7 +8494,7 @@ function routeStatsText(r) {
 // the finder rows (makeRouteRow), so the two lists can never disagree
 // about how a route's line is drawn. Plain routes get the flat colour
 // bar; dashed routes get a mini inline SVG ribbon — a two-colour
-// underlay beneath a dashed top line, dots for a [0, N] pattern.
+// underlay beneath a dashed top line, round pills for a [0, N] pattern.
 // `className` is the caller's own swatch class (.route-panel-swatch or
 // .finder-row-swatch), which the .is-dashed CSS variant widens for the
 // SVG.
@@ -8508,9 +8508,8 @@ function routeStatsText(r) {
 // than the whole swatch, also reading solid. So instead: dashes render
 // with butt caps (no extension) at the pattern's dash:gap duty ratio,
 // two cycles across the swatch, gap clamped to stay visible; dot
-// patterns render as three evenly spaced round dots. Any dashed/dotted
-// route thus visibly differs from a solid bar, which is the swatch's
-// actual job.
+// patterns render as round-capped pills. Any dashed/dotted route thus
+// visibly differs from a solid bar, which is the swatch's actual job.
 function routeSwatchEl(r, className) {
     if (!isDashed(r)) {
         const swatch = document.createElement("span");
@@ -8551,13 +8550,17 @@ function routeSwatchEl(r, className) {
 
     const pattern = getDashPattern(r);
     if (pattern[0] === 0) {
-        // Dot pattern ([0, N] + round cap on the map). Three round-cap
-        // dots, inset half a dot so the end dots aren't clipped by the
-        // viewport: zero-length dashes at path offsets 0 / 7 / 14 on a
-        // line from x=2 to x=16 → dot centres 2 / 9 / 16, 3px clear
-        // between 4px dots.
-        const inset = sw / 2;
-        svg.appendChild(line(r.color, "0 7", "round", inset, W - inset));
+        // Dot pattern ([0, N] + round cap on the map). NOT drawn as
+        // perfect dots: MapLibre bakes dasharrays into a per-tile-zoom
+        // SDF strip and stretches it along the line at fractional
+        // zooms, so on the map the "dots" render as oblong pills most
+        // of the time. Two round-capped pills match that reality —
+        // perfect swatch dots over-promised (user report: swatch dots
+        // vs map blobs read as different styles). Geometry: 2px dash
+        // segments at path offsets 0-2 / 9-11 on a line from x=3.5 to
+        // x=14.5; round caps extend each end by sw/2=2px → pills
+        // spanning x 1.5-7.5 and 10.5-16.5, 3px clear between them.
+        svg.appendChild(line(r.color, "2 7", "round", 3.5, 14.5));
     } else {
         // Dash pattern. Duty ratio from the config (multi-segment
         // patterns fold to their overall dash:gap ratio), two cycles
