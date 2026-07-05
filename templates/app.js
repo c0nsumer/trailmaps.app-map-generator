@@ -6056,7 +6056,8 @@ function hideHighlightChip() {
 //
 // Container forms, resolved by rebuildRoutePanel (mutually exclusive):
 //   key card     — ≥2 listable routes and route_panel isn't false
-//   .is-collapsed— the compact "Routes" chip (docked alternative to
+//   .is-collapsed— a compact round list-icon button, FAB-styled to
+//                  match the top-right stack (docked alternative to
 //                  the card; rider-toggled, persisted per-map as
 //                  LS "mtb.routePanel" = "key" | "chip")
 //   .is-searchonly — 0–1 listable routes (or route_panel: false):

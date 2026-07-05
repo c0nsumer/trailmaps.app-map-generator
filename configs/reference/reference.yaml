@@ -239,7 +239,7 @@ relations:
 # nothing to disambiguate); "listable" follows the rider's season / emergency
 # toggles, and event maps list featured routes only.
 #   auto (default) — starts expanded at 2-5 routes, collapsed to a compact
-#                    "Routes" chip at 6+. The rider's expand/collapse choice
+#                    round list-icon button at 6+. The rider's expand/collapse choice
 #                    persists per map and beats this default.
 #   true           — starts expanded regardless of route count.
 #   false          — no key rows; the panel is just its search entry.

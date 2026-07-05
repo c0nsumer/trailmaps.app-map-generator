@@ -3233,7 +3233,8 @@ body.modal-open .gpx-overlay.is-open {
  * Container states (managed by rebuildRoutePanel / initRoutePanel in
  * app.js, mutually exclusive by construction):
  *   (default)       key card: header + rows + Search row
- *   .is-collapsed   compact "Routes" chip
+ *   .is-collapsed   compact round list-icon button (shared .fab
+ *                   chrome, matching the top-right stack)
  *   .is-searchonly  lone search pill (maps with 0–1 listable routes:
  *                   no key rows to show, but search must stay
  *                   reachable — it replaced the Search FAB)
@@ -3269,22 +3270,11 @@ body.modal-open .gpx-overlay.is-open {
     font-weight: 600;
 }
 
-/* Collapsed pill — same recipe as the FABs / highlight chip. */
-.route-panel-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--sheet-bg);
-    border: 1.5px solid var(--sheet-border);
-    border-radius: 999px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    color: var(--sheet-text);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 6px 12px 6px 10px;
-    cursor: pointer;
-}
+/* Collapsed chip — a round icon-only button sharing the .fab class
+ * (see index.html), so the docked panel matches the top-right stack
+ * exactly: same size, chrome, and colour-scheme behaviour, with no
+ * styles to keep in sync here. The display:none swap rules above
+ * out-specify .fab's display:inline-flex. */
 
 .route-panel-card {
     display: flex;

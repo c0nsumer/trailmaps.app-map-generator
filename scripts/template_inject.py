@@ -175,8 +175,9 @@ CONFIG_SPEC = [
     # per route, tap to highlight, with the finder docked behind its
     # Search row). Key rows show whenever the map has ≥2 listable
     # routes; "auto" (default) boots the panel expanded for small
-    # route counts and collapsed to the "Routes" chip for large ones,
-    # true forces the expanded boot state regardless of count, false
+    # route counts and collapsed to a round list-icon button for
+    # large ones, true forces the expanded boot state regardless of
+    # count, false
     # suppresses key rows entirely (the panel degenerates to its
     # search entry, which can't be config'd away — it replaced the
     # Search FAB). Count thresholds live in the runtime
