@@ -3263,9 +3263,9 @@ function buildWelcomeControlsHint() {
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
         { icon: _WELCOME_ICON_ROUTES,     name: "Routes",
-            desc: "The map key — each route's colour and name."
-                + " Tap a route to highlight it on the map;"
-                + " collapse the panel when you want more map." },
+            desc: "Each route's colour and name."
+                + " Tap a route to highlight it on the map"
+                + " or collapse the panel." },
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
             desc: _welcomeSearchDescription() },
     ];
