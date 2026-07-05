@@ -953,29 +953,63 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
     return false;
 }
 
-// ---- Decoration density tiers (min_zoom gates; eye-tunable) ----
-// Direction arrows AND difficulty diamonds share these tiers. Density
-// grows with zoom: the overview band (below PER_WAY) shows markers spaced
-// along each connected run so every stretch reads at a glance without the
-// per-way speckle; detail zooms layer on the per-way pair, then the 400 m
-// and 200 m sweeps.
+// ---- Decoration density (min_zoom gates; eye-tunable) ----
+// Direction arrows AND difficulty diamonds share the ladder below. The
+// overview band shows markers spaced along each connected run so every
+// stretch reads at a glance without per-way speckle; the ladder then
+// layers on one rung of markers per zoom level.
 const DECOR_MZ_RUN     = 0;   // run-spaced overview markers
-const DECOR_MZ_PER_WAY = 14;  // 2 per physical way
-const DECOR_MZ_D400    = 15;  // every 400 m
-const DECOR_MZ_D200    = 16;  // every 200 m (close-in)
+const DECOR_MZ_PER_WAY = 14;  // 2 diamonds per physical way
 
-// Ground-distance spacing between overview (run-tier) markers. Larger =
-// sparser when zoomed out; a run gets one marker per this many metres
-// (straight-line), with a guaranteed minimum of one so no run is unmarked.
-const OVERVIEW_ARROW_SPACING_M   = 500;
-const OVERVIEW_DIAMOND_SPACING_M = 500;
+// ---- Screen-space density ladder ----
+// Fixed metre cadences (the old 500 m overview / 400 m / 200 m tiers)
+// double their on-screen spacing across every zoom level inside a tier,
+// then snap back where the next tier gates in — a 2-4x density sawtooth
+// that read as "sometimes sparse, sometimes busy" (4 px overview spacing
+// at z10 on a big network; 450 px gaps at z18). The ladder replaces
+// them: one rung per zoom level, each rung's ground cadence chosen so
+// markers sit ~DECOR_TARGET_SPACING_PX apart ON SCREEN at the zoom where
+// the rung gates in. Coarse rungs place first and finer rungs nest into
+// their gaps via the shared collision index, so placements stay put as
+// the rider zooms in.
+const DECOR_TARGET_SPACING_PX = 110;
+// Finest cadence the ladder emits. Caps total feature count on big
+// networks (a 100 km one-way system stays ~1-2k arrows, not 10k); past
+// the zoom where the floor engages, on-screen spacing grows again —
+// acceptable close-in, where the rider is inspecting a specific trail.
+const DECOR_CADENCE_FLOOR_M = 100;
 
-// Along-chain cadence (metres) for the detail arrow tiers. Unlike the old
-// per-way sweeps, the phase is carried across way boundaries (see
-// placeArrowTierAlongChains) so arrows stay evenly spaced where a route
-// changes trail name or difficulty. Eye-tunable.
-const ARROW_CADENCE_MID   = 400;  // mid tier   (zoom >= DECOR_MZ_PER_WAY)
-const ARROW_CADENCE_CLOSE = 200;  // close tier (zoom >= DECOR_MZ_D200)
+// Metres of ground per CSS pixel at the map's own latitude (Web
+// Mercator), for converting a target screen spacing into a ground
+// cadence per zoom level.
+function decorMetersPerPixel(zoom) {
+    const lat = (CONFIG.bbox[1] + CONFIG.bbox[3]) / 2;
+    return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+}
+
+// Build [{ minZoom, cadenceM }] rungs covering fromZoom..toZoom. Stops
+// early once the floor engages — finer rungs would just repeat it.
+function decorCadenceLadder(targetPx, floorM, fromZoom, toZoom) {
+    const rungs = [];
+    for (let z = fromZoom; z <= toZoom; z++) {
+        const c = targetPx * decorMetersPerPixel(z);
+        rungs.push({ minZoom: z, cadenceM: Math.max(c, floorM) });
+        if (c <= floorM) break;
+    }
+    return rungs;
+}
+
+// Icon ladder: first rung one stop above the map minimum (the run tier
+// owns the map-wide overview), last at maxZoom or wherever the cadence
+// floor engages.
+const DECOR_LADDER = decorCadenceLadder(DECOR_TARGET_SPACING_PX,
+    DECOR_CADENCE_FLOOR_M, CONFIG.minZoom + 1, CONFIG.maxZoom);
+
+// Ground spacing between overview (run-tier) markers — the same screen
+// target, anchored at the map's minimum zoom where the whole system is
+// in view. Every run still gets at least one marker regardless.
+const DECOR_OVERVIEW_SPACING_M =
+    DECOR_TARGET_SPACING_PX * decorMetersPerPixel(CONFIG.minZoom);
 
 // Zoom at which the curve-following on-path labels become ELIGIBLE (their
 // minzoom). Set to 16, deliberately ABOVE the per-way arrow tier
@@ -1240,12 +1274,15 @@ function sampleChain(entries, a) {
 // one-way chain, phase carried across way boundaries so spacing stays
 // consistent where a route changes trail name or difficulty. Shares the
 // `placed` collision index (so arrows dodge POIs, diamonds, and each
-// other) and registers every placement; call coarse tiers before fine so
-// finer tiers nest into the gaps. Guarantees at least one arrow per chain.
+// other) and registers every placement; call coarse rungs before fine so
+// finer rungs nest into the gaps. `guarantee` forces at least one arrow
+// per chain — passed on a single mid-ladder rung (see the ladder pass)
+// so every chain shows direction by detail zoom without speckling the
+// overview zooms of branchy networks with one arrow per chain arm.
 // Arrow-specific (rotation / reverse-day); add an extraPropsFn to reuse
 // the chain machinery for other icon kinds.
 function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
-                                   placed) {
+                                   placed, guarantee) {
     const R = DECOR_RADIUS_M.arrow;
     const reverseSet = reverseRoutesToday;
     for (const chain of chains) {
@@ -1275,7 +1312,7 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
         for (let a = cadenceM / 2; a < chainLength; a += cadenceM) {
             if (emit(a)) placedAny = true;
         }
-        if (!placedAny) {
+        if (!placedAny && guarantee) {
             // Short or fully-contested chain: still mark direction once.
             for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) {
                 if (emit(chainLength * f)) break;
@@ -1314,13 +1351,13 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 //              trail; placed AFTER the run-tier markers so those keep
 //              priority, reserves its footprint so the per-way/sweep tiers
 //              below deconflict around it; maxzoom hands to line labels)
-//   Pass 2   — per-way mandatory icons (2 diamonds + 2 arrows per
-//              applicable way) so even short trails get markings
-//   Pass 3   — 400 m icon sweep
-//   Pass 4   — 200 m icon sweep (fills the 400 m gaps)
-// Arrows and diamonds share the DECOR_MZ_* zoom tiers above. Each
-// icon-tier's candidates are deconflicted against everything already
-// placed, including obstacle markers gathered up front.
+//   Pass 2   — per-way mandatory diamonds (2 per applicable way) so
+//              even short trails get difficulty markings
+//   Pass 3   — density ladder: one diamond sweep + one arrow sweep per
+//              zoom rung (see DECOR_LADDER), coarse to fine
+// Arrows and diamonds share the DECOR_LADDER rungs above. Each rung's
+// candidates are deconflicted against everything already placed,
+// including obstacle markers gathered up front.
 // Event mode restricts route-name labels to the featured route(s) so
 // the muted background network never labels itself. Non-event maps
 // label every route, so this gate is a no-op there. Mirrors the
@@ -1408,7 +1445,7 @@ function computeDecorations() {
             (w) => w.oneway === "yes" || w.oneway === "reversible",
             () => "");
         placeOverviewRuns(arrowRuns, KIND.ARROW, DECOR_RADIUS_M.arrow,
-            DECOR_MZ_RUN, OVERVIEW_ARROW_SPACING_M, decorations, placed,
+            DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
             (w, pt) => {
                 const reverse = reverseSet.has(w.routeId)
                     || w.sharedRoutes.some((id) => reverseSet.has(id));
@@ -1423,7 +1460,7 @@ function computeDecorations() {
         (w) => ["0", "1", "2", "3", "4", "5"].includes(w.imba),
         (w) => w.imba);
     placeOverviewRuns(diamondRuns, KIND.DIAMOND, DECOR_RADIUS_M.diamond,
-        DECOR_MZ_RUN, OVERVIEW_DIAMOND_SPACING_M, decorations, placed,
+        DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
         (w) => ({
             imba_difficulty: w.imba,
             trail_name: w.trailName,
@@ -1515,7 +1552,7 @@ function computeDecorations() {
 
     // ---- Pass 2: per-way mandatory diamonds — 2 per applicable way so
     //      even short trails get clear difficulty markings. (Arrows are
-    //      handled by the continuous chain tiers, after the diamonds.) ----
+    //      handled by the ladder's continuous chain sweeps below.) ----
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
@@ -1537,24 +1574,22 @@ function computeDecorations() {
             }
         }
     }
-    // Mid arrow tier: even ~400 m cadence along each one-way chain. Placed
-    // after the diamonds so difficulty icons keep priority and arrows fill
-    // the space around them.
-    if (arrowsAllowed) {
-        placeArrowTierAlongChains(arrowChains, ARROW_CADENCE_MID,
-            DECOR_MZ_PER_WAY, decorations, placed);
-    }
-
-    // ---- Pass 3: diamonds every 400 m (DECOR_MZ_D400). The Pass 2
-    //      anchors at L*0.25/0.75 establish the pattern; this fills the
-    //      gaps. Arrows use the continuous chain tiers, not per-way. ----
-    for (const way of ways) {
-        const L = way.totalLength;
-        const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-
-        if (hasDiamond) {
-            for (let arc = 400; arc < L; arc += 400) {
-                tryPlaceDecoration(way, [arc], KIND.DIAMOND, DECOR_MZ_D400,
+    // ---- Pass 3: density ladder — one rung per zoom level (see
+    //      DECOR_LADDER). Each rung sweeps diamonds along every rated
+    //      way and arrows along every one-way chain at the rung's
+    //      cadence. Diamonds place first within a rung so difficulty
+    //      icons keep priority and arrows fill the space around them.
+    //      On finer rungs, candidates coincident with coarser
+    //      placements get dropped by the collision check, so each rung
+    //      fills gaps rather than stacking. ----
+    let arrowGuaranteeSpent = false;
+    for (let ri = 0; ri < DECOR_LADDER.length; ri++) {
+        const rung = DECOR_LADDER[ri];
+        for (const way of ways) {
+            if (!["0", "1", "2", "3", "4", "5"].includes(way.imba)) continue;
+            for (let arc = rung.cadenceM; arc < way.totalLength;
+                 arc += rung.cadenceM) {
+                tryPlaceDecoration(way, [arc], KIND.DIAMOND, rung.minZoom,
                     decorations, placed, () => ({
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
@@ -1562,32 +1597,19 @@ function computeDecorations() {
                     }));
             }
         }
-    }
-
-    // ---- Pass 4: diamonds every 200 m so close-in views get a denser
-    //      pattern. Most arcs coincide with Pass 3 placements and get
-    //      rejected by the collision check; the rest land in the gaps. ----
-    for (const way of ways) {
-        const L = way.totalLength;
-        const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
-
-        if (hasDiamond) {
-            for (let arc = 200; arc < L; arc += 200) {
-                tryPlaceDecoration(way, [arc], KIND.DIAMOND, DECOR_MZ_D200,
-                    decorations, placed, () => ({
-                        imba_difficulty: way.imba,
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                    }));
-            }
+        if (arrowsAllowed) {
+            // Spend the per-chain guarantee exactly once, on the first
+            // rung at or past the per-way zoom (or the final rung on a
+            // low-maxZoom map whose ladder never reaches it): by detail
+            // zoom every chain shows direction, while the coarse
+            // overview rungs stay free of per-chain speckle.
+            const guarantee = !arrowGuaranteeSpent
+                && (rung.minZoom >= DECOR_MZ_PER_WAY
+                    || ri === DECOR_LADDER.length - 1);
+            if (guarantee) arrowGuaranteeSpent = true;
+            placeArrowTierAlongChains(arrowChains, rung.cadenceM,
+                rung.minZoom, decorations, placed, guarantee);
         }
-    }
-    // Close arrow tier: even ~200 m cadence along each one-way chain for
-    // dense close-in coverage. Arrows coincident with the mid tier get
-    // dropped by the collision check; the rest fill the gaps.
-    if (arrowsAllowed) {
-        placeArrowTierAlongChains(arrowChains, ARROW_CADENCE_CLOSE,
-            DECOR_MZ_D200, decorations, placed);
     }
 
     return { type: "FeatureCollection", features: decorations };
