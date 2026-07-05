@@ -230,18 +230,20 @@ relations:
 # Show the "Share this view" row in the Options overlay.
 # share_button: true
 
-# On-map route key: a small bottom-left card listing each visible route as
-# a colour swatch + name + stats; tapping a row highlights that route. Lets
-# riders tell same-shaped coloured loops apart without tapping the map.
-# Shows whenever the map has 2+ listable routes (with 0-1 there's nothing to
-# disambiguate); "listable" follows the rider's season / emergency toggles,
-# and event maps list featured routes only.
+# Routes panel key rows. The bottom-right panel is the map's one routes
+# surface: a key card listing each visible route as a colour swatch + name +
+# stats (tap a row to highlight it), with a Search row docked at the bottom
+# that expands into the full finder. This setting governs the KEY ROWS only —
+# the search entry replaced the Search button and is always present.
+# Key rows show whenever the map has 2+ listable routes (with 0-1 there's
+# nothing to disambiguate); "listable" follows the rider's season / emergency
+# toggles, and event maps list featured routes only.
 #   auto (default) — starts expanded at 2-5 routes, collapsed to a compact
-#                    "Key" chip at 6+. The rider's expand/collapse choice
+#                    "Routes" chip at 6+. The rider's expand/collapse choice
 #                    persists per map and beats this default.
 #   true           — starts expanded regardless of route count.
-#   false          — never show.
-# route_legend: auto
+#   false          — no key rows; the panel is just its search entry.
+# route_panel: auto
 
 # ============================================================
 # Marker and accent colours

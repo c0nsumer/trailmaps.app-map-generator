@@ -250,7 +250,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honour any hash on page load: enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
 | `distance_units` | No | `"mi"` | Units for **all** distance and elevation values. `"mi"`: miles for distance, feet for elevation gain. `"km"`: kilometres for distance, metres for elevation gain. Affects render-time formatting only. |
 | `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view and any active highlight — a route, a trail, or a place (a single POI, a name group, or a whole POI category) selected from the Finder — as a deep-link URL and offers it via the native share sheet (mobile) or clipboard (desktop); opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
-| `route_legend` | No | `"auto"` | On-map route key: a small bottom-left card (above the attribution line) listing each visible route as a colour swatch + name + stats, so riders can tell same-shaped coloured loops apart at a glance. Tapping a row highlights that route, exactly like tapping it in the Finder; tapping the highlighted row again clears it. Shown whenever the map has 2+ listable routes (with 0–1 there is nothing to disambiguate); "listable" follows the rider's season / emergency toggles, and event maps list featured routes only. `"auto"` starts expanded at 2–5 routes and collapsed to a compact **Key** chip at 6+; `true` starts expanded regardless of count; `false` never renders it. The rider's expand / collapse choice persists per-map and beats either default. Row stats follow `show_route_distance` / `show_route_elevation` and `distance_units`. |
+| `route_panel` | No | `"auto"` | Key rows in the routes panel — the bottom-right surface that is both the map's route key and the entry to Search (its pinned **Search** row opens the search overlay; the panel absorbed the old Search button, so the search entry itself cannot be configured away). Key rows list each visible route as a colour swatch + name + stats so same-shaped coloured loops are tellable apart at a glance; tapping a row highlights that route, exactly like tapping it in the Finder, and tapping the highlighted row again clears it. Rows appear whenever the map has 2+ listable routes (with 0–1 the panel is just a labeled search pill); "listable" follows the rider's season / emergency toggles, respects `show_routes: false`, and event maps list featured routes only. `"auto"` starts expanded at 2–5 routes and collapsed to a compact **Routes** chip at 6+; `true` starts expanded regardless of count; `false` suppresses key rows entirely (search pill only). The rider's expand / collapse choice persists per-map and beats either default. Row stats follow `show_route_distance` / `show_route_elevation` and `distance_units`. |
 
 ### Marker and accent colours
 
@@ -466,9 +466,10 @@ Custom routes are indistinguishable from OSM routes in every runtime behaviour:
 
 ## Trail finder
 
-The Search overlay (opened via the Search FAB) contains a combined routes /
-trails / places finder with one search input, type-filter chips, and sectioned
-results:
+The Search overlay (opened via the routes panel's **Search** row at
+bottom-right — the finder is that panel's expanded state) contains a combined
+routes / trails / places finder with one search input, type-filter chips, and
+sectioned results:
 
 ```
 [mdi:magnify] Search routes & trails
@@ -1096,7 +1097,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
-| `mtb.legendCollapsed` | Boolean: route legend collapsed to its **Key** chip (`true`) or expanded (`false`) |
+| `mtb.routePanel` | `"key"` or `"chip"`: the routes panel's docked state — expanded key card or minimized chip. Only these two are stored; the open search overlay is never persisted |
 
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.

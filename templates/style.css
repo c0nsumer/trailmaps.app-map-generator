@@ -2273,14 +2273,16 @@ body {
  * it, occupying corners:
  *   - #brand              top-left     : logo or title text
  *   - #fab-stack-top      top-right    : Locate (corner) + Options
- *   - #fab-stack-bottom   bottom-right : Search (one-handed thumb)
+ *   - #route-panel        bottom-right : routes key + search entry
+ *                                        (one-handed thumb corner)
  *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
  *   - .options-overlay    full-screen  : opens via Options FAB
- *   - .search-overlay     half-sheet   : opens via Search FAB
+ *   - .search-overlay     half-sheet   : opens via the routes
+ *                                        panel's Search row
  *
- * FAB stacks sit BELOW open overlays in the z-stack so the overlay
- * panel cleanly covers them at the same corner — see .fab-stack
- * below for the full reasoning.
+ * The FAB stack and the routes panel sit BELOW open overlays in the
+ * z-stack so the overlay panel cleanly covers them at the same
+ * corner — see .fab-stack below for the full reasoning.
  * ============================================================ */
 
 /* ----- Brand (top-left identity) ----------------------------------- */
@@ -2442,26 +2444,22 @@ body {
     top: calc(12px + var(--safe-top));
 }
 
-.fab-stack-bottom {
-    bottom: calc(12px + var(--safe-bottom));
-}
-
-/* Hide FAB stacks when ANY overlay is open. Without this, the
- * top-right stack stays visible through the search-overlay dim
- * (the dim is only 32% opaque) — the FABs would look interactive
- * but tapping them dismisses the overlay instead of activating
- * the FAB, which is confusing. Hiding them clarifies the modal
- * relationship: while an overlay is up, the FABs are not the
- * active control surface; close the overlay to get them back.
- * The route legend (bottom-left) joins the rule for the same
- * reason — its rows are tappable and would look active through
- * the search half-sheet's dim. */
+/* Hide the FAB stack and the routes panel when ANY overlay is open.
+ * Without this, the top-right stack stays visible through the
+ * search-overlay dim (the dim is only 32% opaque) — the FABs would
+ * look interactive but tapping them dismisses the overlay instead
+ * of activating the FAB, which is confusing. Hiding them clarifies
+ * the modal relationship: while an overlay is up, they are not the
+ * active control surface; close the overlay to get them back. For
+ * the routes panel + search overlay specifically, the fade doubles
+ * as the v1 expand transition — the docked panel fades out as the
+ * sheet (its expanded state) slides up from the same edge. */
 body:has(.search-overlay.is-open) .fab-stack,
 body:has(.options-overlay.is-open) .fab-stack,
 body:has(.gpx-overlay.is-open) .fab-stack,
-body:has(.search-overlay.is-open) .route-legend,
-body:has(.options-overlay.is-open) .route-legend,
-body:has(.gpx-overlay.is-open) .route-legend {
+body:has(.search-overlay.is-open) .route-panel,
+body:has(.options-overlay.is-open) .route-panel,
+body:has(.gpx-overlay.is-open) .route-panel {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease-out;
@@ -3201,12 +3199,13 @@ body.modal-open .gpx-overlay.is-open {
 
 /* MapLibre attribution lives at bottom-left (added to the map via
  * map.addControl(..., "bottom-left") in app.js). Respect safe-area-
- * inset-bottom for the iOS home-bar area. Bottom-LEFT is currently
- * empty (brand is top-left, FAB stack is bottom-right); attribution
- * fits there cleanly without competing with any other chrome.
+ * inset-bottom for the iOS home-bar area. Bottom-LEFT is otherwise
+ * empty (brand is top-left, FAB stack top-right, routes panel
+ * bottom-right); attribution fits there cleanly without competing
+ * with any other chrome.
  *
- * Inset matches the brand element (top-left, 12 px) and the FAB
- * stack (bottom-right, 12 px) so all three corner elements sit the
+ * Inset matches the brand element (top-left, 12 px) and the routes
+ * panel (bottom-right, 12 px) so all corner elements sit the
  * same distance from their respective corners. The inner chip's
  * default 0 0 10 10 margin (set by MapLibre's own stylesheet) is
  * flattened so the visible chip edge IS the 12 px inset rather
@@ -3220,35 +3219,58 @@ body.modal-open .gpx-overlay.is-open {
     margin: 0 !important;
 }
 
-/* ----- Route legend (key), bottom-left ------------------------------
+/* ----- Routes panel, bottom-right -----------------------------------
  *
- * Small always-available card pairing each visible route's colour
- * with its name (+ stats), so riders can tell same-shaped coloured
- * loops apart without tapping the map. Shares the bottom-left corner
- * with the attribution line: the legend sits ABOVE it, offset by the
- * attribution chip's height plus a small gap, so neither occludes
- * the other. Chrome adapts to the colour scheme via the same sheet
- * tokens as the FABs / highlight chip / overlays.
+ * The map's one routes surface, docked in the old Search FAB's corner
+ * (kept for one-handed thumb reach). The key card pairs each visible
+ * route's colour with its name (+ stats) so same-shaped coloured
+ * loops are tellable apart at a glance; the Search row pinned at the
+ * card's bottom opens the search overlay — the finder is this panel's
+ * expanded state, not a separate destination. Chrome adapts to the
+ * colour scheme via the same sheet tokens as the FABs / highlight
+ * chip / overlays.
  *
- * Two states on the container (flipped by initRouteLegend in app.js):
- * default shows .route-legend-card; .is-collapsed swaps it for the
- * compact "Key" chip. Both stay in the DOM — expand/collapse is a
- * class flip, not a rebuild. z-index matches the FAB stacks (5, below
- * open overlays), and the legend joins the FABs' hide-under-overlay
- * rule below for the same reason they have one. */
-.route-legend {
+ * Container states (managed by rebuildRoutePanel / initRoutePanel in
+ * app.js, mutually exclusive by construction):
+ *   (default)       key card: header + rows + Search row
+ *   .is-collapsed   compact "Routes" chip
+ *   .is-searchonly  lone search pill (maps with 0–1 listable routes:
+ *                   no key rows to show, but search must stay
+ *                   reachable — it replaced the Search FAB)
+ *   .hidden         nothing (the finder would be empty too)
+ * All forms stay in the DOM — state changes are class flips, not
+ * rebuilds. z-index matches the FAB stack (5, below open overlays),
+ * and the panel joins the FABs' hide-under-overlay rule above; for
+ * the search overlay that fade doubles as the v1 expand transition. */
+.route-panel {
     position: fixed;
-    left: calc(12px + env(safe-area-inset-left, 0));
-    /* 12px corner inset + ~22px attribution line + 6px gap. */
-    bottom: calc(40px + var(--safe-bottom));
+    right: calc(12px + env(safe-area-inset-right, 0));
+    bottom: calc(12px + var(--safe-bottom));
     z-index: 5;
 }
 
-.route-legend.is-collapsed .route-legend-card { display: none; }
-.route-legend:not(.is-collapsed) .route-legend-chip { display: none; }
+.route-panel.is-collapsed .route-panel-card { display: none; }
+.route-panel:not(.is-collapsed) .route-panel-chip { display: none; }
+
+/* Search-only form: the card sheds its header + rows and the Search
+ * row alone renders as a labeled pill — strictly more discoverable
+ * than the icon-only FAB it replaced. */
+.route-panel.is-searchonly .route-panel-header,
+.route-panel.is-searchonly .route-panel-list { display: none; }
+.route-panel.is-searchonly .route-panel-card {
+    border-radius: 999px;
+    padding: 4px 6px;
+}
+.route-panel.is-searchonly .route-panel-search {
+    border-top: none;
+    margin-top: 0;
+    padding: 8px 10px;
+    color: var(--sheet-text);
+    font-weight: 600;
+}
 
 /* Collapsed pill — same recipe as the FABs / highlight chip. */
-.route-legend-chip {
+.route-panel-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -3264,7 +3286,7 @@ body.modal-open .gpx-overlay.is-open {
     cursor: pointer;
 }
 
-.route-legend-card {
+.route-panel-card {
     display: flex;
     flex-direction: column;
     background: var(--sheet-bg);
@@ -3272,13 +3294,12 @@ body.modal-open .gpx-overlay.is-open {
     border-radius: 12px;
     box-shadow: 0 3px 10px var(--sheet-shadow);
     padding: 6px 8px 8px;
-    /* Narrow enough to never crowd the bottom-right Search FAB on a
-     * phone; long route names ellipsize inside rows instead of
-     * widening the card. */
+    /* Narrow enough to never dominate a phone screen; long route
+     * names ellipsize inside rows instead of widening the card. */
     max-width: min(70vw, 260px);
 }
 
-.route-legend-header {
+.route-panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3286,7 +3307,7 @@ body.modal-open .gpx-overlay.is-open {
     padding: 2px 2px 2px 4px;
 }
 
-.route-legend-title {
+.route-panel-title {
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -3294,7 +3315,7 @@ body.modal-open .gpx-overlay.is-open {
     color: var(--sheet-text-muted);
 }
 
-.route-legend-collapse {
+.route-panel-collapse {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3305,7 +3326,7 @@ body.modal-open .gpx-overlay.is-open {
     cursor: pointer;
 }
 
-.route-legend-list {
+.route-panel-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -3315,9 +3336,9 @@ body.modal-open .gpx-overlay.is-open {
     overflow-y: auto;
 }
 
-/* Rows are <button>s (built by rebuildRouteLegend) — tapping one
+/* Rows are <button>s (built by rebuildRoutePanel) — tapping one
  * highlights that route, same wiring as a finder route row. */
-.route-legend-row {
+.route-panel-row {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -3336,7 +3357,7 @@ body.modal-open .gpx-overlay.is-open {
 /* Row for the currently-highlighted route — same accent treatment
  * as the finder's keyboard-active row so "selected" reads the same
  * in both lists. */
-.route-legend-row.is-active {
+.route-panel-row.is-active {
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
 }
@@ -3344,7 +3365,7 @@ body.modal-open .gpx-overlay.is-open {
 /* Same swatch recipe as .finder-row-swatch — a short line segment,
  * i.e. a miniature of the route ribbon itself. Own class so the two
  * lists can diverge without cross-file surprises. */
-.route-legend-swatch {
+.route-panel-swatch {
     display: inline-block;
     width: 14px;
     height: 4px;
@@ -3354,7 +3375,7 @@ body.modal-open .gpx-overlay.is-open {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
-.route-legend-row-name {
+.route-panel-row-name {
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -3362,10 +3383,36 @@ body.modal-open .gpx-overlay.is-open {
     white-space: nowrap;
 }
 
-.route-legend-row-stats {
+.route-panel-row-stats {
     font-size: 11px;
     color: var(--sheet-text-muted);
     flex-shrink: 0;
+}
+
+/* The finder's front door, pinned under the key rows. Muted and
+ * input-toned so it reads as "type here next" rather than another
+ * route; the top border fences it off from the rows above. */
+.route-panel-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--sheet-border);
+    margin-top: 4px;
+    padding: 8px 6px 4px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--sheet-text-muted);
+    text-align: left;
+    cursor: pointer;
+}
+
+.route-panel-search span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* ============================================================

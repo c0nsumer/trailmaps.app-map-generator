@@ -25,15 +25,18 @@ Oaks Map as of 2026-May-12*
   after the first visit, including PMTiles range requests served from cache.
 - Self-hosted basemap tiles (Protomaps), optional terrain hillshade
   (Mapterhorn), and optional custom raster basemaps.
-- Four on-map controls: Locate, Reset View, Options, and Search:
+- On-map controls: Locate, Reset View, and Options buttons (top-right), plus
+  the routes panel (bottom-right):
   - Locate: show the user's position from the device GNSS sensors.
   - Reset View: return to the map's initial framing.
   - Options: toggle labels, colour scheme, season, and POI layers; install the
     PWA; open About.
-  - Search: find POIs, parking, toilets, trails, and routes on the map.
+  - Routes panel: the route key, and — via its Search row — find POIs,
+    parking, toilets, trails, and routes on the map.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
-- On-map route legend: a collapsible bottom-left key pairing each route's
-  colour with its name and stats; tap a row to highlight that route.
+- Routes panel: a collapsible bottom-right key pairing each route's colour
+  with its name and stats — tap a row to highlight that route — with the
+  search overlay docked behind its Search row.
 - Trail markers, trailheads, parking, features, toilets, drinking water as
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.

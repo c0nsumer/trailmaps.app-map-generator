@@ -2834,12 +2834,12 @@ async function init() {
         // run after setupFloatingChrome so the FABs' main click
         // handlers are wired (our dismiss listener piggybacks).
         setupFabLabels();
-        // Route legend expand/collapse wiring + boot state. After
+        // Routes panel docked-state wiring + boot form. After
         // setupFloatingChrome: its initial applyVisibilityChange()
-        // populated visibleRoutes (which decides the legend's default
-        // collapsed state) and already ran the first
-        // rebuildRouteLegend() row build.
-        initRouteLegend();
+        // populated visibleRoutes (which decides the panel's default
+        // docked state) and already ran the first
+        // rebuildRoutePanel() row build.
+        initRoutePanel();
         setupInteractions();
         promoteBasemapLabels();
         suppressBasemapPathLabels();
@@ -3003,8 +3003,8 @@ const _WELCOME_ICON_RESET_VIEW = "M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2
 // glyph (templates/index.html). Reverted from a brief mdi:tune
 // experiment that read as "audio equalizer" rather than "settings".
 const _WELCOME_ICON_OPTIONS    = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
-// mdi:magnify (Apache 2.0, Pictogrammers) — matches the Search FAB
-// glyph (templates/index.html).
+// mdi:magnify (Apache 2.0, Pictogrammers) — matches the routes
+// panel's Search-row glyph (templates/index.html).
 const _WELCOME_ICON_SEARCH     = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
 // mdi:download (Apache 2.0, Pictogrammers) — matches the GPX FAB
 // glyph (templates/index.html). Event maps with event_mode.gpx only.
@@ -3029,10 +3029,10 @@ function _welcomeIconSvg(pathD) {
     return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${pathD}"/></svg>`;
 }
 
-// Build the controls-hint section: four rows, each with the FAB's
-// icon + the control's name + a one-line description. Helps a
-// first-visit rider learn what each of the four corner-anchored
-// FAB buttons does (Locate + Reset View + Options top-right, Search
+// Build the controls-hint section: one row per corner-anchored
+// control, each with its icon + name + a one-line description. Helps
+// a first-visit rider learn the chrome (Locate + Reset View + Options
+// FABs top-right, the routes panel with its search entry
 // bottom-right) without leaving the welcome modal.
 // Join a list of phrases with comma + Oxford "and" — "x", "x and y",
 // "x, y, and z". Used by the dynamic welcome descriptions to read
@@ -3142,10 +3142,29 @@ function buildWelcomeControlsHint() {
     const list = document.createElement("ul");
     list.className = "welcome-modal-controls-list";
 
-    // Order matches the on-screen FAB layout reading top-to-bottom:
-    // top stack (Locate → Reset View → Options) followed by the
-    // bottom stack (Search). Same sequence the rider sees on the
-    // map keeps the mental mapping cheap.
+    // Order matches the on-screen chrome reading top-to-bottom on
+    // the right edge: the FAB stack (Locate → Reset View → Options)
+    // followed by the routes panel (Search row) at bottom-right.
+    // Same sequence the rider sees on the map keeps the mental
+    // mapping cheap.
+    //
+    // The Search row teaches the routes panel: search is the verb a
+    // first-visit rider needs taught (the key rows explain
+    // themselves — colour + name + tap), so the row keeps the
+    // magnifier icon and "Search" name, with the key mentioned in
+    // the description when this map will actually show key rows.
+    // That check runs against static CONFIG (total configured
+    // routes, featured-only in event mode, show_routes gate) because
+    // the welcome modal is built before the route index and
+    // visibleRoutes exist — season filtering is ignored, which is
+    // close enough for orientation copy.
+    let panelHasKeyRows = false;
+    if (CONFIG.routePanel !== false && CONFIG.showRoutes !== false) {
+        const routes = Object.values(CONFIG.routes || {});
+        const listable = CONFIG.eventModeActive
+            ? routes.filter((r) => r.featured) : routes;
+        panelHasKeyRows = listable.length >= 2;
+    }
     const rows = [
         { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
             desc: "Track your position on the map." },
@@ -3154,12 +3173,15 @@ function buildWelcomeControlsHint() {
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
-            desc: _welcomeSearchDescription() },
+            desc: _welcomeSearchDescription() + (panelHasKeyRows
+                ? " The key above it pairs each route's colour with"
+                  + " its name — tap one to highlight that route."
+                : "") },
     ];
 
     // GPX download FAB — event maps with event_mode.gpx only.
-    // Inserted before Search to match the on-screen FAB order (it
-    // sits at the bottom of the top-right stack, below Options).
+    // Inserted before Search to match the on-screen order (it sits
+    // at the bottom of the top-right stack, below Options).
     if ((CONFIG.gpxDownloads || []).length) {
         const w = _gpxWording();
         rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: w.label,
@@ -4979,7 +5001,7 @@ function applyVisibilityChange() {
     updateTrailDisplay();
     updateMarkerProximity();
     rebuildFinderList();
-    rebuildRouteLegend();
+    rebuildRoutePanel();
     pruneInvisibleHighlights();
     // If the highlighted entity is no longer visible, clear it.
     if (highlight) {
@@ -5306,8 +5328,8 @@ function highlightRoute(routeId) {
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
 
-    // Mark this route's legend row as the selected one.
-    syncRouteLegendActiveRow();
+    // Mark this route's panel key row as the selected one.
+    syncRoutePanelActiveRow();
 }
 
 function highlightTrail(trailName) {
@@ -5350,9 +5372,9 @@ function highlightTrail(trailName) {
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
 
-    // A trail highlight is not a route highlight — clear any legend
-    // row marked from a previous route selection.
-    syncRouteLegendActiveRow();
+    // A trail highlight is not a route highlight — clear any panel
+    // key row marked from a previous route selection.
+    syncRoutePanelActiveRow();
 }
 
 // highlightPoi — single POI highlight. Hands off to highlightPoiSet
@@ -5921,10 +5943,10 @@ function clearRouteTrailHighlight() {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
         }
     }
-    // Legend active-row mark follows the highlight lifecycle. Synced
+    // Panel active-row mark follows the highlight lifecycle. Synced
     // here (not in clearHighlight) so POI highlights — which route
     // through this teardown, not clearHighlight — also unmark the row.
-    syncRouteLegendActiveRow();
+    syncRoutePanelActiveRow();
 }
 
 function clearHighlight() {
@@ -6020,33 +6042,49 @@ function hideHighlightChip() {
 }
 
 // ============================================================
-// Route legend (key) — bottom-left card
+// Routes panel — key card + search entry, bottom-right
 // ============================================================
-// Pairs each visible route's colour with its name (+ stats) so riders
-// can tell same-shaped coloured loops apart at a glance — previously
-// the colour→name mapping was only discoverable by tapping a route.
-// Rows tap through to highlightRoute(), so the legend doubles as a
-// "show me the short route" control. Gated by CONFIG.routeLegend:
-// false never renders it; "auto" (the default) and true both show it
-// whenever the map has ≥2 listable routes — with 0–1 there's nothing
-// to disambiguate. They differ only in the boot state: auto starts
-// expanded at ≤ LEGEND_EXPANDED_MAX_ROUTES rows (a card that small
-// costs nothing) and collapsed to the compact "Key" chip above that;
-// true forces expanded regardless of count, for curators whose map IS
-// the key (an early draft hid auto entirely on many-route maps, but
-// the production counts — RAMBA 11, Shelden 14 — were exactly the
-// confusing-loops maps that motivated the feature, and the collapsed
-// chip is cheap enough to keep). The rider's expand/collapse choice
-// persists per-map (LS "mtb.legendCollapsed") and beats either default
-// on later visits.
-const LEGEND_EXPANDED_MAX_ROUTES = 5;
+// The map's ONE routes surface, progressive disclosure over the
+// rider's intent ladder: glance ("which colour is which?" — the key
+// rows), browse ("what are my options?" — same rows, tap to
+// highlight), search ("take me to X" — the Search row pinned at the
+// card's bottom opens the search overlay, which is this panel's
+// expanded state, not a separate destination; it absorbed the old
+// Search FAB). A key row pairs a route's colour with its name
+// (+ stats); previously that mapping was only discoverable by
+// tapping a route on the map.
+//
+// Container forms, resolved by rebuildRoutePanel (mutually exclusive):
+//   key card     — ≥2 listable routes and route_panel isn't false
+//   .is-collapsed— the compact "Routes" chip (docked alternative to
+//                  the card; rider-toggled, persisted per-map as
+//                  LS "mtb.routePanel" = "key" | "chip")
+//   .is-searchonly — 0–1 listable routes (or route_panel: false):
+//                  nothing to disambiguate, but search must stay
+//                  reachable, so the panel is a lone labeled pill
+//   .hidden      — the finder would be empty too (no routes, trails,
+//                  or places): no panel at all
+//
+// Boot state under "auto": expanded at ≤ PANEL_EXPANDED_MAX_ROUTES
+// rows (a card that small costs nothing), chip above that.
+// route_panel: true forces expanded regardless of count, for curators
+// whose map IS the key. (An early standalone-legend draft hid itself
+// entirely on many-route maps, but the production counts — RAMBA 11,
+// Shelden 14 — were exactly the confusing-loops maps that motivated
+// the key, and the chip is cheap enough to keep.) The rider's stored
+// docked-state choice beats either default on later visits; the find
+// state is never persisted — no map should boot into an open search.
+const PANEL_EXPANDED_MAX_ROUTES = 5;
 
-// The rows the legend would show right now: routes visible under the
+// The rows the key would show right now: routes visible under the
 // rider's current season/emergency toggles (visibleRoutes — same
 // gate the map itself renders by), minus non-featured routes on
 // event maps (matching the label restriction in
-// labelsVisibleForRoute). routeIndex is already sorted by name.
-function legendListableRoutes() {
+// labelsVisibleForRoute). Nothing when show_routes: false — a map
+// that hides routes from the finder shouldn't key them either.
+// routeIndex is already sorted by name.
+function panelListableRoutes() {
+    if (CONFIG.showRoutes === false) return [];
     return routeIndex.filter((r) => {
         if (!visibleRoutes.has(r.id)) return false;
         if (CONFIG.eventModeActive && !r.featured) return false;
@@ -6054,41 +6092,53 @@ function legendListableRoutes() {
     });
 }
 
-// (Re)build the legend rows and resolve overall visibility. Called
-// from applyVisibilityChange() so season/emergency toggles update the
-// legend in the same breath as the map — a legend row for a hidden
-// route (or a missing row for a shown one) would be worse than no
-// legend. Safe to call before initRouteLegend has wired the
-// expand/collapse buttons: it only touches rows + the .hidden gate.
-function rebuildRouteLegend() {
-    const wrap = document.getElementById("route-legend");
-    const list = document.getElementById("route-legend-list");
+// (Re)build the key rows and resolve which form the panel takes.
+// Called from applyVisibilityChange() so season/emergency toggles
+// update the key in the same breath as the map — a key row for a
+// hidden route (or a missing row for a shown one) would be worse
+// than no key. Safe to call before initRoutePanel has wired the
+// expand/collapse buttons: it only touches rows + the form classes.
+function rebuildRoutePanel() {
+    const wrap = document.getElementById("route-panel");
+    const list = document.getElementById("route-panel-list");
     if (!wrap || !list) return;
 
-    const rows = legendListableRoutes();
-    // 0–1 routes: nothing to disambiguate, hide regardless of config
-    // (route_legend: true forces the expanded boot state, not an
-    // empty card).
-    const show = CONFIG.routeLegend !== false && rows.length >= 2;
-    wrap.classList.toggle("hidden", !show);
-    if (!show) return;
+    const rows = panelListableRoutes();
+    // Key rows need ≥2 routes (with 0–1 there's nothing to
+    // disambiguate — route_panel: true forces the expanded boot
+    // state, not an empty card) and route_panel !== false.
+    const keyRows = CONFIG.routePanel !== false && rows.length >= 2;
+    // The panel vanishes entirely only when the finder would be
+    // empty too — otherwise its search entry must survive in the
+    // lone-pill form, since it replaced the Search FAB.
+    const searchable = _searchTargets().length > 0;
+    wrap.classList.toggle("hidden", !keyRows && !searchable);
+    wrap.classList.toggle("is-searchonly", !keyRows && searchable);
+    if (!keyRows) {
+        // Lone-pill form: no rows to render, and any stale collapsed
+        // state must go — the pill lives inside the card, which
+        // .is-collapsed would hide.
+        wrap.classList.remove("is-collapsed");
+        list.textContent = "";
+        return;
+    }
 
     list.textContent = "";
     for (const r of rows) {
         const li = document.createElement("li");
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "route-legend-row";
+        btn.className = "route-panel-row";
         btn.dataset.routeId = r.id;
 
         const swatch = document.createElement("span");
-        swatch.className = "route-legend-swatch";
+        swatch.className = "route-panel-swatch";
         swatch.style.background = r.color;
         swatch.setAttribute("aria-hidden", "true");
         btn.appendChild(swatch);
 
         const name = document.createElement("span");
-        name.className = "route-legend-row-name";
+        name.className = "route-panel-row-name";
         name.textContent = r.name;
         btn.appendChild(name);
 
@@ -6098,15 +6148,15 @@ function rebuildRouteLegend() {
         const stats = routeStatsText(r);
         if (stats) {
             const statsEl = document.createElement("span");
-            statsEl.className = "route-legend-row-stats";
+            statsEl.className = "route-panel-row-stats";
             statsEl.textContent = stats;
             btn.appendChild(statsEl);
         }
 
         // Tap toggles: highlight this route, or clear if it's already
-        // the highlighted one — so the legend row behaves like the
+        // the highlighted one — so the key row behaves like the
         // control it looks like, rather than requiring the rider to
-        // find the chip's × to undo what the legend did.
+        // find the chip's × to undo what the key did.
         btn.addEventListener("click", () => {
             if (highlight && highlight.kind === "route"
                 && String(highlight.key) === String(r.id)) {
@@ -6119,22 +6169,22 @@ function rebuildRouteLegend() {
         li.appendChild(btn);
         list.appendChild(li);
     }
-    syncRouteLegendActiveRow();
+    syncRoutePanelActiveRow();
 }
 
-// Mark the currently-highlighted route's legend row (accent stripe via
+// Mark the currently-highlighted route's key row (accent stripe via
 // .is-active + aria-current) and clear every other row's mark. Reads
 // the global highlight state rather than taking a parameter so every
 // call site — highlightRoute, highlightTrail, clearRouteTrailHighlight,
-// rebuildRouteLegend — stays a bare one-liner that can't pass stale
+// rebuildRoutePanel — stays a bare one-liner that can't pass stale
 // data. String() both sides: route ids arrive as strings from dataset
 // but may be set as numbers by map-tap handlers.
-function syncRouteLegendActiveRow() {
-    const list = document.getElementById("route-legend-list");
+function syncRoutePanelActiveRow() {
+    const list = document.getElementById("route-panel-list");
     if (!list) return;
     const activeId = (highlight && highlight.kind === "route")
         ? String(highlight.key) : null;
-    for (const btn of list.querySelectorAll(".route-legend-row")) {
+    for (const btn of list.querySelectorAll(".route-panel-row")) {
         const on = activeId !== null && btn.dataset.routeId === activeId;
         btn.classList.toggle("is-active", on);
         if (on) btn.setAttribute("aria-current", "true");
@@ -6144,12 +6194,12 @@ function syncRouteLegendActiveRow() {
 
 // Wire expand/collapse + pick the boot state. Runs once from init()
 // after setupFloatingChrome() so visibleRoutes is populated (the
-// boot-time applyVisibilityChange has already run rebuildRouteLegend
+// boot-time applyVisibilityChange has already run rebuildRoutePanel
 // by then; this just settles the collapsed/expanded presentation).
-function initRouteLegend() {
-    const wrap = document.getElementById("route-legend");
-    const chip = document.getElementById("route-legend-chip");
-    const collapseBtn = document.getElementById("route-legend-collapse");
+function initRoutePanel() {
+    const wrap = document.getElementById("route-panel");
+    const chip = document.getElementById("route-panel-chip");
+    const collapseBtn = document.getElementById("route-panel-collapse");
     if (!wrap || !chip || !collapseBtn) return;
 
     const applyCollapsed = (collapsed) => {
@@ -6160,21 +6210,31 @@ function initRouteLegend() {
         chip.setAttribute("aria-expanded", String(!collapsed));
     };
 
-    // Boot state: the rider's stored choice wins; otherwise expanded
-    // for small legends and for route_legend: true, collapsed for big
-    // ones (see the section comment for the threshold reasoning).
-    const stored = LS.get("mtb.legendCollapsed", null);
-    const defaultCollapsed = CONFIG.routeLegend !== true
-        && legendListableRoutes().length > LEGEND_EXPANDED_MAX_ROUTES;
-    applyCollapsed(typeof stored === "boolean" ? stored : defaultCollapsed);
+    // Boot state: the rider's stored docked-state choice wins;
+    // otherwise expanded for small key lists and for
+    // route_panel: true, chip for big ones (see the section comment
+    // for the threshold reasoning). Skipped for the lone-pill form —
+    // it has no docked states, and applying a stale "chip" here
+    // would hide the pill (it lives inside the card). Only
+    // "key"/"chip" are ever stored; the find state is never
+    // persisted.
+    if (!wrap.classList.contains("is-searchonly")) {
+        const stored = LS.get("mtb.routePanel", null);
+        const defaultCollapsed = CONFIG.routePanel !== true
+            && panelListableRoutes().length > PANEL_EXPANDED_MAX_ROUTES;
+        const collapsed = stored === "chip" ? true
+            : stored === "key" ? false
+            : defaultCollapsed;
+        applyCollapsed(collapsed);
+    }
 
     chip.addEventListener("click", () => {
         applyCollapsed(false);
-        LS.set("mtb.legendCollapsed", false);
+        LS.set("mtb.routePanel", "key");
     });
     collapseBtn.addEventListener("click", () => {
         applyCollapsed(true);
-        LS.set("mtb.legendCollapsed", true);
+        LS.set("mtb.routePanel", "chip");
     });
 }
 
@@ -6192,7 +6252,7 @@ function buildRouteIndex() {
             winter: !!info.winter,
             emergency: !!info.emergency,
             isCustom: !!info.isCustom,
-            // Event-mode flag — the route legend lists featured routes
+            // Event-mode flag — the routes panel keys featured routes
             // only on event maps (the muted background network isn't a
             // route a rider chooses between).
             featured: !!info.featured,
@@ -6762,9 +6822,10 @@ function setupFabLabels() {
     const FLAG_KEY = "mtb.fabsLabeled";
     if (LS.get(FLAG_KEY)) return;
 
-    // Mirror the FAB-stack composition (top: Locate, Reset, Options
-    // / bottom: Search). Order matters only insofar as labels mount
-    // in DOM order; visual stacking comes from the FABs themselves.
+    // Mirror the FAB-stack composition (top-right: Locate, Reset,
+    // Options, GPX). No entry for search — the routes panel absorbed
+    // the Search FAB, and the panel is self-labeling (its chip, card
+    // title, and Search row all carry visible text).
     const FABS = [
         { id: "toggle-locate",     label: "Locate" },
         { id: "toggle-reset-view", label: "Reset view" },
@@ -6774,7 +6835,6 @@ function setupFabLabels() {
         // skips the entry. Label pluralised by the actual file count
         // (matches the sheet title + aria-label; see _gpxWording).
         { id: "toggle-gpx",        label: _gpxWording().label },
-        { id: "toggle-search",     label: "Search" },
     ];
 
     const mounted = [];
@@ -6926,15 +6986,16 @@ function setupFloatingChrome() {
     // Two distinct surfaces, each with its own open/close lifecycle.
     // The Options overlay covers the entire viewport; the Search
     // overlay covers the bottom ~55% so the map stays visible above.
-    // Both are dismissed via Escape, their own close button, or
-    // re-tapping the FAB that opened them. The Search overlay also
-    // dismisses on tap-outside (the visible map area above the
-    // sheet). Because the overlays are visually distinct from each
-    // other, only one can be open at a time — opening one closes the
-    // other.
+    // Both are dismissed via Escape or their own close button; the
+    // Search overlay also dismisses on tap-outside (the visible map
+    // area above the sheet). Because the overlays are visually
+    // distinct from each other, only one can be open at a time —
+    // opening one closes the other. The search overlay's launcher is
+    // the routes panel's Search row (it absorbed the old Search FAB);
+    // dismissing it returns to whichever docked panel form was up.
     const searchOverlay = document.getElementById("search-overlay");
     const optionsOverlay = document.getElementById("options-overlay");
-    const searchBtn = document.getElementById("toggle-search");
+    const searchBtn = document.getElementById("route-panel-search");
     const optionsBtn = document.getElementById("toggle-options");
     // GPX download sheet — markup only exists on maps with
     // event_mode.gpx configured (stripped at build time otherwise),
@@ -6943,10 +7004,13 @@ function setupFloatingChrome() {
     const gpxBtn = document.getElementById("toggle-gpx");
 
     // Replace the index.html's hardcoded "routes, trails, and places"
-    // strings on the search FAB, the overlay, and the input with
-    // labels derived from what this map actually surfaces. Mirrors
-    // the gating in renderResults() so a map with show_routes: false
-    // doesn't promise route results in its placeholder/aria-labels.
+    // strings on the panel's Search row, the overlay, and the input
+    // with labels derived from what this map actually surfaces.
+    // Mirrors the gating in renderResults() so a map with
+    // show_routes: false doesn't promise route results in its
+    // placeholder/aria-labels. The Search row shows the same
+    // placeholder text the input will greet the rider with — the row
+    // is the input's docked preview.
     {
         const targets = _searchTargets();
         if (targets.length) {
@@ -6958,6 +7022,9 @@ function setupFloatingChrome() {
                 finderInput.setAttribute("aria-label", ariaLabel);
             }
             if (searchBtn) searchBtn.setAttribute("aria-label", ariaLabel);
+            const searchRowLabel =
+                document.getElementById("route-panel-search-label");
+            if (searchRowLabel) searchRowLabel.textContent = placeholder;
             if (searchOverlay) searchOverlay.setAttribute("aria-label", ariaLabel);
         }
     }
@@ -7048,7 +7115,11 @@ function setupFloatingChrome() {
         else openOptionsOverlay();
     }
 
-    // FAB click handlers
+    // Launcher click handlers — the panel's Search row and the
+    // Options FAB. (The Search row can only ever OPEN in practice:
+    // while the overlay is up the whole panel is faded out and
+    // pointer-inert. toggle keeps the pairing symmetric and costs
+    // nothing.)
     if (searchBtn) {
         searchBtn.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -7065,10 +7136,10 @@ function setupFloatingChrome() {
     // Search overlay's Cancel button + tap-on-backdrop dismissal.
     // The overlay element IS the backdrop (full viewport, dimmed
     // when open). Clicks land on either the overlay element itself
-    // (backdrop area) or on a descendant (the panel). We close on
-    // the former, ignore the latter. The FAB stack is z-indexed
-    // ABOVE the overlay so FAB clicks don't reach this handler at
-    // all — they toggle the overlay via their own click handlers.
+    // (backdrop area) or on a descendant (the sheet panel). We close
+    // on the former, ignore the latter. The routes panel can't
+    // interfere: while the overlay is open it's faded out and
+    // pointer-inert (see the hide-under-overlay rule in style.css).
     const searchCancel = document.getElementById("search-cancel");
     if (searchCancel) {
         searchCancel.addEventListener("click", (e) => {

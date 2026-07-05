@@ -180,24 +180,23 @@
         </svg>
     </button>
 
-    <!-- Floating button stacks — split into two corner-anchored groups
-         on the right edge. Top-right holds Locate (top, most-used —
-         frequently checked while riding) and Options (just below).
-         Bottom-right holds Search alone, where a one-handed thumb
-         naturally rests. Both groups respect the same 12 px corner
-         inset as the brand element on the left.
+    <!-- Floating button stack — one corner-anchored group, top-right:
+         Locate (top, most-used — frequently checked while riding),
+         Reset View, and Options (below). It respects the same 12 px
+         corner inset as the brand element on the left. Bottom-right
+         belongs to the routes panel (see #route-panel below), which
+         absorbed the old Search FAB; the MapLibre attribution sits at
+         bottom-LEFT (separate corner, no conflict).
 
-         Z-INDEX vs OVERLAYS: FABs sit BELOW the open overlay
-         (overlay z=6/7, FAB z=5) so the overlay panel and its
-         close-X cleanly cover the FABs at the same corner — no
-         visual overlap at the close button. The trade-off is that
-         while one overlay is open, tapping the OTHER FAB to switch
-         doesn't work (the FAB is hidden by the overlay's backdrop).
-         The rider has to close the current overlay first, then tap
-         the other FAB. That's an acceptable two-tap switch given
-         how rarely overlays are used together. The MapLibre
-         attribution sits at bottom-LEFT (separate corner, no
-         conflict). -->
+         Z-INDEX vs OVERLAYS: FABs (and the routes panel) sit BELOW an
+         open overlay (overlay z=6/7, FAB/panel z=5) so the overlay
+         panel and its close-X cleanly cover them at the same corner —
+         no visual overlap at the close button. The trade-off is that
+         while one overlay is open, tapping another launcher to switch
+         doesn't work (it's hidden by the overlay's backdrop). The
+         rider has to close the current overlay first. That's an
+         acceptable two-tap switch given how rarely overlays are used
+         together. -->
     <div id="fab-stack-top" class="fab-stack fab-stack-top" role="group" aria-label="Map controls — locate, reset view, and options">
         <button id="toggle-locate" class="fab" type="button" aria-pressed="false" aria-label="Locate me">
             <!-- mdi:crosshairs-gps (Apache 2.0, Pictogrammers) — inner dot
@@ -251,40 +250,34 @@
         </button>
         <!-- GPX end -->
     </div>
-    <div id="fab-stack-bottom" class="fab-stack fab-stack-bottom" role="group" aria-label="Map controls — search">
-        <button id="toggle-search" class="fab" type="button" aria-label="Search routes, trails, and places" aria-pressed="false" aria-controls="search-overlay">
-            <!-- mdi:magnify (Apache 2.0, Pictogrammers) -->
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-                <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
-            </svg>
-        </button>
-    </div>
-
-    <!-- Route legend (key) — bottom-left card pairing each visible
-         route's colour with its name so riders can tell same-shaped
-         coloured loops apart without tapping the map. Occupies the one
-         unclaimed chrome corner (above the MapLibre attribution line).
-         Two states, toggled by JS via .is-collapsed on the container:
-         the expanded card (header + one runtime-built row per route;
-         rows tap-through to highlightRoute) and a compact "Key" chip.
-         Both live in the DOM so expand/collapse is a class flip, not a
-         rebuild. Whether the legend shows at all — and which state it
-         starts in — is decided by initRouteLegend() from
-         CONFIG.routeLegend plus the listable-route count; the container
-         stays .hidden on maps that don't qualify. -->
-    <div id="route-legend" class="route-legend hidden">
-        <button id="route-legend-chip" class="route-legend-chip" type="button" aria-expanded="false" aria-controls="route-legend-card" aria-label="Show route key">
+    <!-- Routes panel — the map's ONE routes surface, docked bottom-right
+         (the old Search FAB's corner, kept for one-handed thumb reach).
+         Progressive disclosure over the rider's intent ladder:
+           chip ("Routes")  →  key card  →  find (the search overlay)
+         The key card pairs each visible route's colour with its name so
+         same-shaped coloured loops are tellable apart at a glance; rows
+         tap through to highlightRoute. The Search row pinned at the
+         card's bottom expands into the full search overlay — the finder
+         is the panel's expanded state, not a separate destination.
+         Docked states are a .is-collapsed class flip (both live in the
+         DOM); which form the panel takes at boot — key card, chip, a
+         lone search pill (.is-searchonly, for maps with 0–1 listable
+         routes), or nothing (finder would be empty too) — is decided by
+         rebuildRoutePanel()/initRoutePanel() from CONFIG.routePanel
+         plus the listable-route count. -->
+    <div id="route-panel" class="route-panel hidden">
+        <button id="route-panel-chip" class="route-panel-chip" type="button" aria-expanded="false" aria-controls="route-panel-card" aria-label="Show routes">
             <!-- mdi:format-list-bulleted (Apache 2.0, Pictogrammers) —
-                 dot-per-row list reads as "legend rows" at chip size. -->
+                 dot-per-row list reads as "route rows" at chip size. -->
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
                 <path d="M7,5H21V7H7V5M7,13V11H21V13H7M4,4.5A1.5,1.5 0 0,1 5.5,6A1.5,1.5 0 0,1 4,7.5A1.5,1.5 0 0,1 2.5,6A1.5,1.5 0 0,1 4,4.5M4,10.5A1.5,1.5 0 0,1 5.5,12A1.5,1.5 0 0,1 4,13.5A1.5,1.5 0 0,1 2.5,12A1.5,1.5 0 0,1 4,10.5M7,19V17H21V19H7M4,16.5A1.5,1.5 0 0,1 5.5,18A1.5,1.5 0 0,1 4,19.5A1.5,1.5 0 0,1 2.5,18A1.5,1.5 0 0,1 4,16.5Z"/>
             </svg>
-            <span>Key</span>
+            <span>Routes</span>
         </button>
-        <section id="route-legend-card" class="route-legend-card" role="region" aria-label="Route key">
-            <div class="route-legend-header">
-                <span class="route-legend-title">Routes</span>
-                <button id="route-legend-collapse" class="route-legend-collapse" type="button" aria-label="Collapse route key">
+        <section id="route-panel-card" class="route-panel-card" role="region" aria-label="Routes">
+            <div class="route-panel-header">
+                <span class="route-panel-title">Routes</span>
+                <button id="route-panel-collapse" class="route-panel-collapse" type="button" aria-label="Collapse routes panel">
                     <!-- mdi:chevron-down (Apache 2.0, Pictogrammers) —
                          points at the corner the card collapses into. -->
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -292,7 +285,19 @@
                     </svg>
                 </button>
             </div>
-            <ul id="route-legend-list" class="route-legend-list"></ul>
+            <ul id="route-panel-list" class="route-panel-list"></ul>
+            <!-- The finder's front door. aria-label + label text are
+                 rewritten at boot from what this map actually surfaces
+                 (same _searchTargets() source as the finder input's
+                 placeholder). aria-pressed is maintained by the shared
+                 setOverlayOpen() plumbing, like the old Search FAB. -->
+            <button id="route-panel-search" class="route-panel-search" type="button" aria-label="Search routes, trails, and places" aria-pressed="false" aria-controls="search-overlay">
+                <!-- mdi:magnify (Apache 2.0, Pictogrammers) -->
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                    <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+                </svg>
+                <span id="route-panel-search-label">Search…</span>
+            </button>
         </section>
     </div>
 
@@ -300,9 +305,9 @@
          The outer .search-overlay is the backdrop dim + click-outside
          target. The inner .search-overlay-panel is the actual visible
          chrome (half-sheet on mobile, centred card on desktop).
-         Triggered by the Search FAB; dismissed by Cancel button, Esc,
-         tap on the backdrop (anywhere outside the panel), result
-         selection, or tapping the Search FAB again. -->
+         Triggered by the routes panel's Search row; dismissed by
+         Cancel button, Esc, tap on the backdrop (anywhere outside
+         the panel), or result selection. -->
     <div id="search-overlay" class="search-overlay" role="dialog" aria-modal="false" aria-label="Search routes, trails, and places" hidden>
         <div class="search-overlay-panel">
             <div class="search-overlay-header">

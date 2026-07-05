@@ -125,10 +125,11 @@ KNOWN_KEYS = {
     "show_route_elevation": bool,
     "distance_units": str,
     "share_button": bool,
-    # On-map route key: "auto" (default — show when the map has a
-    # legend-friendly number of routes), true (always), false (never).
-    # Bool or the literal string "auto"; enum-checked in _validate_enums.
-    "route_legend": (bool, str),
+    # Routes panel key rows: "auto" (default — key rows at 2+ routes,
+    # boot state by count), true (boot expanded regardless of count),
+    # false (no key rows; the panel is just its search entry). Bool or
+    # the literal string "auto"; enum-checked in _validate_enums.
+    "route_panel": (bool, str),
     # User-supplied feature data
     "trailheads": list,
     "parking": list,
@@ -410,14 +411,14 @@ def _validate_enums(report, config):
             f"must be one of {sorted(VALID_DISTANCE_UNITS)}, got {config['distance_units']!r}",
         )
 
-    # route_legend accepts bools plus the single string "auto" (the
+    # route_panel accepts bools plus the single string "auto" (the
     # default). Any other string is almost certainly a typo of one of
     # those three, so name all of them in the error.
-    if "route_legend" in config:
-        v = config["route_legend"]
+    if "route_panel" in config:
+        v = config["route_panel"]
         if not isinstance(v, bool) and v != "auto":
             report.err(
-                "route_legend",
+                "route_panel",
                 f"must be true, false, or 'auto', got {v!r}",
             )
 
