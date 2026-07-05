@@ -49,6 +49,7 @@ clipped_relations:
 
 # --- Per-route style overrides ---
 # relation_colors: {}
+# relation_names: {}
 dashed_relations:
   20502171: # Addison Oaks to Bald Mountain Connector
     pattern: [0, 2]

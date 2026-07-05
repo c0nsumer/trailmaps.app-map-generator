@@ -31,6 +31,10 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
       no inclusion in any of the three lists is summer-only.
       ``summer_relations`` is the opt-back-in list for year-round routes
       (the RAMBA SBR pattern: ridden in summer AND groomed in winter).
+    - Applies ``relation_names`` display-name overrides to both
+      metadata.routes and the per-feature ``route_name`` property, and
+      warns about relation_names / relation_colors keys that match no
+      fetched route (typo guard).
     - Loads each ``custom_routes`` entry's GeoJSON file, validates geometry
       type (LineString / MultiLineString only), normalises features into
       the shape fetch_trails.py emits (one LineString per feature), and
@@ -105,6 +109,50 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
 
         if prior != (is_summer, is_winter, is_emergency, False):
             changed = True
+
+    # ----- Per-route display-name overrides (relation_names) -----
+    # Applied here, post-cache, so a YAML edit takes effect on a plain
+    # rebuild: the expanded trails.geojson is regenerated from the
+    # pristine trails.src.geojson base (which keeps the OSM names) on
+    # every build, so adding, changing, or REMOVING an override never
+    # needs a --trails refetch. Runs before the subway-style pass so
+    # stub features inherit the overridden route_name. Custom routes
+    # are unaffected (string IDs; they name themselves in YAML).
+    relation_names = {str(k): v for k, v in (config.get("relation_names") or {}).items()}
+    if relation_names:
+        for rid_str, new_name in relation_names.items():
+            info = routes.get(rid_str)
+            if info is not None and info.get("name") != new_name:
+                info["name"] = new_name
+                changed = True
+        for feat in trails_geojson["features"]:
+            props = feat.get("properties") or {}
+            new_name = relation_names.get(str(props.get("route_id")))
+            if new_name is not None and props.get("route_name") != new_name:
+                props["route_name"] = new_name
+                changed = True
+
+    # ----- Typo guard on per-relation override keys -----
+    # An override keyed by a relation that isn't on the map is silently
+    # inert (relation_names above no-ops; relation_colors is looked up
+    # per fetched route at injection time), so surface it here. Runs
+    # before event mode synthesises relation_colors entries in
+    # template_inject, so only the curator's own keys are checked. A
+    # super-relation parent is a special case: it was expanded into its
+    # children at fetch time, so point the curator at those IDs.
+    for key in ("relation_names", "relation_colors"):
+        for rid in config.get(key) or {}:
+            rid_str = str(rid)
+            if rid_str in routes:
+                continue
+            if rid_str in super_expansions:
+                children = ", ".join(super_expansions[rid_str])
+                console.warn(
+                    f"{key}[{rid}]: this is a super-relation; key the "
+                    f"override by its child route ID(s) instead: {children}"
+                )
+            else:
+                console.warn(f"{key}[{rid}]: no such route on this map (typo?)")
 
     # ----- Stringify route_id / shared_routes on every feature -----
     # The runtime treats route ids as opaque strings everywhere (so

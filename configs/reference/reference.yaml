@@ -166,6 +166,10 @@ relations:
 # Map of relation ID to CSS colour; overrides the OSM colour tag.
 # relation_colors: {}
 
+# Map of relation ID to display name; overrides the OSM name tag everywhere
+# (routes panel, map labels, popups, search).
+# relation_names: {}
+
 # Map of relation ID to dash config. See docs/configuration.md (Dash patterns).
 # dashed_relations: {}
 

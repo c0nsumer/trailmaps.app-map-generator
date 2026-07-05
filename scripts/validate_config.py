@@ -74,6 +74,7 @@ KNOWN_KEYS = {
     # Per-relation overrides (dicts keyed by integer relation IDs)
     "relation_colors": dict,
     "dashed_relations": dict,
+    "relation_names": dict,
     # Day-of-week / date-parity direction-arrow reversal schedule.
     # Single hierarchical key: top-level reverse_days is system-wide;
     # nested per_route block holds per-relation overrides. See
@@ -182,6 +183,9 @@ BUILD_ONLY_KEYS = {
     "relation_colors",
     "dashed_relations",
     "direction_schedule",
+    # Display-name overrides folded into per-route metadata + feature
+    # route_name properties by _enrich_trails_geojson (post-cache).
+    "relation_names",
     # Build-time bbox / tile-extract knobs
     "pan_padding",  # consumed by expand_bbox_for_pan; runtime sees pan_bbox
     "basemap_maxzoom",  # consumed by fetch_basemap.py
@@ -560,7 +564,7 @@ def _validate_colors(report, config):
 
 def _validate_relation_id_dicts(report, config):
     """Keys of per-relation dicts must be int (or int-coercible str)."""
-    for key in ("relation_colors", "dashed_relations"):
+    for key in ("relation_colors", "dashed_relations", "relation_names"):
         d = config.get(key)
         if not isinstance(d, dict):
             continue
@@ -698,6 +702,16 @@ def _validate_dashed_relations(report, config):
                 )
         else:
             report.err(where, f"expected list or dict, got {type(spec).__name__}")
+
+
+def _validate_relation_names(report, config):
+    """relation_names values are display names: non-empty strings."""
+    rn = config.get("relation_names")
+    if not isinstance(rn, dict):
+        return
+    for rid, name in rn.items():
+        if not isinstance(name, str) or not name.strip():
+            report.err(f"relation_names[{rid}]", f"must be a non-empty string, got {name!r}")
 
 
 def _validate_point_lists(report, config):
@@ -1771,6 +1785,7 @@ def validate_config(config, *, config_path=None, project_root=None):
     _validate_relation_id_dicts(report, config)
     _validate_weekdays(report, config)
     _validate_dashed_relations(report, config)
+    _validate_relation_names(report, config)
     _validate_point_lists(report, config)
     _validate_additional_logos(report, config)
     _validate_paths(report, config, config_dir)

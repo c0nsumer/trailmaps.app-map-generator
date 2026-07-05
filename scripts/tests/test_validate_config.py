@@ -113,6 +113,27 @@ def test_empty_relations_without_other_source_rejected():
     assert any("relations" in e for e in _errors(relations=[]))
 
 
+# --- relation_names (per-route display-name overrides) ---------------------
+
+def test_relation_names_valid():
+    assert _errors(relation_names={12345678: "Mountain Bike Trail"}) == []
+
+
+def test_relation_names_non_int_key_rejected():
+    errors = _errors(relation_names={"not-an-id": "Trail"})
+    assert any("relation_names" in e and "not an OSM relation ID" in e for e in errors), errors
+
+
+def test_relation_names_empty_value_rejected():
+    errors = _errors(relation_names={12345678: "  "})
+    assert any("relation_names[12345678]" in e for e in errors), errors
+
+
+def test_relation_names_non_string_value_rejected():
+    errors = _errors(relation_names={12345678: 42})
+    assert any("relation_names[12345678]" in e for e in errors), errors
+
+
 # --- event_mode.gpx (downloadable course files) ----------------------------
 
 @contextlib.contextmanager

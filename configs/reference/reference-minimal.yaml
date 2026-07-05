@@ -50,6 +50,7 @@ relations:
 
 # --- Per-route style overrides ---
 # relation_colors: {}
+# relation_names: {}
 # dashed_relations: {}
 # color_by: relation
 # default_trail_color: "#808080"
