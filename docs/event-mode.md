@@ -575,7 +575,7 @@ regardless of what's persisted in localStorage.
 ## Routes panel in event mode
 
 The routes panel (the bottom-right key card + Search entry; see
-[`route_panel`](configuration.md#display) in the configuration guide) keys
+[`panel_mode`](configuration.md#display) in the configuration guide) keys
 **featured routes only** on event maps — the muted background network isn't a
 course a rider chooses between, so it doesn't earn a key row. This mirrors
 the label restriction above: featured routes are the map's subject,
@@ -583,7 +583,7 @@ everything else is context. The panel's Search row still opens the full
 finder, where featured AND background routes both appear.
 
 For the common two-course event (a full and a short route), the key is the
-first-glance answer to "which colour am I riding?": with `route_panel: auto`
+first-glance answer to "which colour am I riding?": with `panel_mode: auto`
 (the default) a map with 2–5 featured routes boots with the card expanded,
 showing each course's colour, name, and (when
 [`show_route_distance`](configuration.md#build-time-data-gates) is on)

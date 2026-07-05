@@ -171,19 +171,18 @@ CONFIG_SPEC = [
     # where the curator wants no share affordance (e.g. private/
     # family maps); leave true for community/public maps.
     ("share_button", "shareButton", True),
-    # Routes panel key rows (bottom-right panel: swatch + name + stats
-    # per route, tap to highlight, with the finder docked behind its
-    # Search row). Key rows show whenever the map has ≥2 listable
-    # routes; "auto" (default) boots the panel expanded for small
+    # What the bottom-right corner control is: the routes panel (key
+    # rows: swatch + name + stats per route, tap to highlight, with a
+    # Search button pinned at the bottom) or the plain round search
+    # button. "auto" (default) picks the routes panel whenever the
+    # map has ≥2 listable routes — booting it expanded for small
     # route counts and collapsed to a round list-icon button for
-    # large ones, true forces the expanded boot state regardless of
-    # count, false
-    # suppresses key rows entirely (the panel degenerates to its
-    # search entry, which can't be config'd away — it replaced the
-    # Search FAB). Count thresholds live in the runtime
-    # (initRoutePanel, templates/app.js) since "listable" depends on
-    # the rider's season/emergency toggles.
-    ("route_panel", "routePanel", "auto"),
+    # large ones — and the search button otherwise. "routes" forces
+    # the expanded boot state regardless of count; "search" is the
+    # search button only, no key rows. Count thresholds live in the
+    # runtime (initRoutePanel, templates/app.js) since "listable"
+    # depends on the rider's season/emergency toggles.
+    ("panel_mode", "panelMode", "auto"),
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).
     # parking/trailhead/feature colours flow to CSS custom

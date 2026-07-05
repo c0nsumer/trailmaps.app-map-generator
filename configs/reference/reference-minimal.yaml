@@ -71,7 +71,7 @@ relations:
 # url_hash: false
 # distance_units: mi
 # share_button: true
-# route_panel: auto
+# panel_mode: auto
 
 # --- Marker and accent colours ---
 # marker_color: "#795548"

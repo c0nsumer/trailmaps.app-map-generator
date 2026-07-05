@@ -3235,9 +3235,10 @@ body.modal-open .gpx-overlay.is-open {
  *   (default)       key card: header + rows + Search row
  *   .is-collapsed   compact round list-icon button (shared .fab
  *                   chrome, matching the top-right stack)
- *   .is-searchonly  lone search pill (maps with 0–1 listable routes:
- *                   no key rows to show, but search must stay
- *                   reachable — it replaced the Search FAB)
+ *   .is-searchonly  round icon-only magnifier button (maps with 0–1
+ *                   listable routes, or panel_mode: search — no key
+ *                   rows, but search must stay reachable; visually
+ *                   the pre-panel Search FAB it replaced)
  *   .hidden         nothing (the finder would be empty too)
  * All forms stay in the DOM — state changes are class flips, not
  * rebuilds. z-index matches the FAB stack (5, below open overlays),
@@ -3253,21 +3254,27 @@ body.modal-open .gpx-overlay.is-open {
 .route-panel.is-collapsed .route-panel-card { display: none; }
 .route-panel:not(.is-collapsed) .route-panel-chip { display: none; }
 
-/* Search-only form: the card sheds its header + rows and the Search
- * row alone renders as a labeled pill — strictly more discoverable
- * than the icon-only FAB it replaced. */
+/* Search-button form: the card sheds its chrome entirely and the
+ * Search button alone renders as a round icon-only magnifier FAB
+ * (the .fab class is added by rebuildRoutePanel) — visually the
+ * pre-panel Search FAB, so panel_mode: search restores the old UI
+ * rather than introducing a third style. The in-card button rules
+ * below are scoped to :not(.is-searchonly), so .fab's geometry
+ * applies unopposed; only the text span (hidden) and the glyph
+ * (whose width/height attributes are sized for the in-card row)
+ * need adjusting here. */
 .route-panel.is-searchonly .route-panel-header,
 .route-panel.is-searchonly .route-panel-list { display: none; }
 .route-panel.is-searchonly .route-panel-card {
-    border-radius: 999px;
-    padding: 4px 6px;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
 }
-.route-panel.is-searchonly .route-panel-search {
-    border-top: none;
-    margin-top: 0;
-    padding: 8px 10px;
-    color: var(--sheet-text);
-    font-weight: 600;
+.route-panel.is-searchonly .route-panel-search span { display: none; }
+.route-panel.is-searchonly .route-panel-search svg {
+    width: 22px;
+    height: 22px;
 }
 
 /* Collapsed chip — a round icon-only button sharing the .fab class
@@ -3379,23 +3386,27 @@ body.modal-open .gpx-overlay.is-open {
     flex-shrink: 0;
 }
 
-/* The finder's front door, pinned under the key rows. Muted and
- * input-toned so it reads as "type here next" rather than another
- * route; the top border fences it off from the rows above. */
-.route-panel-search {
+/* The finder's front door, pinned under the key rows — an honest
+ * button (bordered pill, centered label, full text colour) rather
+ * than a fake input: in a card this small a pretend field reads
+ * ambiguously, and the real input greets the rider inside the
+ * overlay. Scoped to :not(.is-searchonly) so the search-button
+ * form's .fab chrome applies unopposed. */
+.route-panel:not(.is-searchonly) .route-panel-search {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 6px;
     width: 100%;
+    margin-top: 6px;
+    padding: 7px 10px;
     background: none;
-    border: none;
-    border-top: 1px solid var(--sheet-border);
-    margin-top: 4px;
-    padding: 8px 6px 4px;
+    border: 1px solid var(--sheet-border);
+    border-radius: 999px;
     font: inherit;
     font-size: 13px;
-    color: var(--sheet-text-muted);
-    text-align: left;
+    font-weight: 600;
+    color: var(--sheet-text);
     cursor: pointer;
 }
 

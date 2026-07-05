@@ -230,20 +230,20 @@ relations:
 # Show the "Share this view" row in the Options overlay.
 # share_button: true
 
-# Routes panel key rows. The bottom-right panel is the map's one routes
-# surface: a key card listing each visible route as a colour swatch + name +
-# stats (tap a row to highlight it), with a Search row docked at the bottom
-# that expands into the full finder. This setting governs the KEY ROWS only —
-# the search entry replaced the Search button and is always present.
-# Key rows show whenever the map has 2+ listable routes (with 0-1 there's
-# nothing to disambiguate); "listable" follows the rider's season / emergency
-# toggles, and event maps list featured routes only.
-#   auto (default) — starts expanded at 2-5 routes, collapsed to a compact
-#                    round list-icon button at 6+. The rider's expand/collapse choice
-#                    persists per map and beats this default.
-#   true           — starts expanded regardless of route count.
-#   false          — no key rows; the panel is just its search entry.
-# route_panel: auto
+# What the bottom-right corner control is: the routes panel or the plain
+# search button. The routes panel is a key card listing each visible route as
+# a colour swatch + name + stats (tap a row to highlight it), with a Search
+# button pinned at the bottom that opens the full finder; the search button
+# alone is a round magnifier button opening the same finder. Search is always
+# reachable either way. "Listable" routes follow the rider's season /
+# emergency toggles, and event maps list featured routes only.
+#   auto (default) — routes panel when the map has 2+ listable routes
+#                    (expanded at 2-5, collapsed to a round list-icon button
+#                    at 6+; the rider's expand/collapse choice persists per
+#                    map and beats this default), search button otherwise.
+#   routes         — routes panel, starting expanded regardless of count.
+#   search         — search button only; no key rows.
+# panel_mode: auto
 
 # ============================================================
 # Marker and accent colours

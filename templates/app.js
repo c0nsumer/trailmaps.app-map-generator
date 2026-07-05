@@ -3148,18 +3148,19 @@ function buildWelcomeControlsHint() {
     // Same sequence the rider sees on the map keeps the mental
     // mapping cheap.
     //
-    // The Search row teaches the routes panel: search is the verb a
-    // first-visit rider needs taught (the key rows explain
+    // The Search row teaches the bottom-right corner: search is the
+    // verb a first-visit rider needs taught (the key rows explain
     // themselves — colour + name + tap), so the row keeps the
     // magnifier icon and "Search" name, with the key mentioned in
-    // the description when this map will actually show key rows.
+    // the description when this map will actually show key rows
+    // (panel_mode: search maps get the plain search button, no key).
     // That check runs against static CONFIG (total configured
     // routes, featured-only in event mode, show_routes gate) because
     // the welcome modal is built before the route index and
     // visibleRoutes exist — season filtering is ignored, which is
     // close enough for orientation copy.
     let panelHasKeyRows = false;
-    if (CONFIG.routePanel !== false && CONFIG.showRoutes !== false) {
+    if (CONFIG.panelMode !== "search" && CONFIG.showRoutes !== false) {
         const routes = Object.values(CONFIG.routes || {});
         const listable = CONFIG.eventModeActive
             ? routes.filter((r) => r.featured) : routes;
@@ -6054,27 +6055,33 @@ function hideHighlightChip() {
 // (+ stats); previously that mapping was only discoverable by
 // tapping a route on the map.
 //
-// Container forms, resolved by rebuildRoutePanel (mutually exclusive):
-//   key card     — ≥2 listable routes and route_panel isn't false
+// Container forms, resolved by rebuildRoutePanel (mutually
+// exclusive), selected by CONFIG.panelMode — the panel_mode YAML key,
+// named for what it switches between: the routes panel vs the plain
+// search button.
+//   key card     — ≥2 listable routes and panel_mode isn't "search"
 //   .is-collapsed— a compact round list-icon button, FAB-styled to
 //                  match the top-right stack (docked alternative to
 //                  the card; rider-toggled, persisted per-map as
 //                  LS "mtb.routePanel" = "key" | "chip")
-//   .is-searchonly — 0–1 listable routes (or route_panel: false):
+//   .is-searchonly — 0–1 listable routes (or panel_mode: "search"):
 //                  nothing to disambiguate, but search must stay
-//                  reachable, so the panel is a lone labeled pill
+//                  reachable, so the corner is a round icon-only
+//                  magnifier button — visually the pre-panel
+//                  Search FAB
 //   .hidden      — the finder would be empty too (no routes, trails,
-//                  or places): no panel at all
+//                  or places): no corner control at all
 //
 // Boot state under "auto": expanded at ≤ PANEL_EXPANDED_MAX_ROUTES
 // rows (a card that small costs nothing), chip above that.
-// route_panel: true forces expanded regardless of count, for curators
-// whose map IS the key. (An early standalone-legend draft hid itself
-// entirely on many-route maps, but the production counts — RAMBA 11,
-// Shelden 14 — were exactly the confusing-loops maps that motivated
-// the key, and the chip is cheap enough to keep.) The rider's stored
-// docked-state choice beats either default on later visits; the find
-// state is never persisted — no map should boot into an open search.
+// panel_mode: "routes" forces expanded regardless of count, for
+// curators whose map IS the key. (An early standalone-legend draft
+// hid itself entirely on many-route maps, but the production counts —
+// RAMBA 11, Shelden 14 — were exactly the confusing-loops maps that
+// motivated the key, and the chip is cheap enough to keep.) The
+// rider's stored docked-state choice beats either default on later
+// visits; the find state is never persisted — no map should boot
+// into an open search.
 const PANEL_EXPANDED_MAX_ROUTES = 5;
 
 // The rows the key would show right now: routes visible under the
@@ -6106,18 +6113,26 @@ function rebuildRoutePanel() {
 
     const rows = panelListableRoutes();
     // Key rows need ≥2 routes (with 0–1 there's nothing to
-    // disambiguate — route_panel: true forces the expanded boot
-    // state, not an empty card) and route_panel !== false.
-    const keyRows = CONFIG.routePanel !== false && rows.length >= 2;
-    // The panel vanishes entirely only when the finder would be
+    // disambiguate — panel_mode: routes forces the expanded boot
+    // state, not an empty card) and panel_mode !== "search".
+    const keyRows = CONFIG.panelMode !== "search" && rows.length >= 2;
+    // The corner vanishes entirely only when the finder would be
     // empty too — otherwise its search entry must survive in the
-    // lone-pill form, since it replaced the Search FAB.
+    // search-button form, since it replaced the Search FAB.
     const searchable = _searchTargets().length > 0;
     wrap.classList.toggle("hidden", !keyRows && !searchable);
     wrap.classList.toggle("is-searchonly", !keyRows && searchable);
+    // Search-button form: the Search button renders as a round
+    // icon-only magnifier FAB — visually the pre-panel Search FAB.
+    // Sharing the .fab class (like the collapsed chip) keeps its
+    // chrome in lockstep with the top-right stack; the in-card
+    // presentation styles are scoped to :not(.is-searchonly) so the
+    // two forms can't fight (see style.css).
+    const searchBtn = document.getElementById("route-panel-search");
+    if (searchBtn) searchBtn.classList.toggle("fab", !keyRows && searchable);
     if (!keyRows) {
-        // Lone-pill form: no rows to render, and any stale collapsed
-        // state must go — the pill lives inside the card, which
+        // No rows to render, and any stale collapsed state must go —
+        // the search button lives inside the card, which
         // .is-collapsed would hide.
         wrap.classList.remove("is-collapsed");
         list.textContent = "";
@@ -6213,15 +6228,15 @@ function initRoutePanel() {
 
     // Boot state: the rider's stored docked-state choice wins;
     // otherwise expanded for small key lists and for
-    // route_panel: true, chip for big ones (see the section comment
-    // for the threshold reasoning). Skipped for the lone-pill form —
-    // it has no docked states, and applying a stale "chip" here
-    // would hide the pill (it lives inside the card). Only
+    // panel_mode: routes, chip for big ones (see the section comment
+    // for the threshold reasoning). Skipped for the search-button
+    // form — it has no docked states, and applying a stale "chip"
+    // here would hide the button (it lives inside the card). Only
     // "key"/"chip" are ever stored; the find state is never
     // persisted.
     if (!wrap.classList.contains("is-searchonly")) {
         const stored = LS.get("mtb.routePanel", null);
-        const defaultCollapsed = CONFIG.routePanel !== true
+        const defaultCollapsed = CONFIG.panelMode !== "routes"
             && panelListableRoutes().length > PANEL_EXPANDED_MAX_ROUTES;
         const collapsed = stored === "chip" ? true
             : stored === "key" ? false
@@ -7005,13 +7020,13 @@ function setupFloatingChrome() {
     const gpxBtn = document.getElementById("toggle-gpx");
 
     // Replace the index.html's hardcoded "routes, trails, and places"
-    // strings on the panel's Search row, the overlay, and the input
-    // with labels derived from what this map actually surfaces.
-    // Mirrors the gating in renderResults() so a map with
-    // show_routes: false doesn't promise route results in its
-    // placeholder/aria-labels. The Search row shows the same
-    // placeholder text the input will greet the rider with — the row
-    // is the input's docked preview.
+    // strings on the search overlay and its input with labels derived
+    // from what this map actually surfaces. Mirrors the gating in
+    // renderResults() so a map with show_routes: false doesn't
+    // promise route results in its placeholder/aria-labels. The
+    // panel's Search button keeps its static "Search" text — it's an
+    // honest button, not a preview of the input — but its aria-label
+    // carries the full target list for screen readers.
     {
         const targets = _searchTargets();
         if (targets.length) {
@@ -7023,9 +7038,6 @@ function setupFloatingChrome() {
                 finderInput.setAttribute("aria-label", ariaLabel);
             }
             if (searchBtn) searchBtn.setAttribute("aria-label", ariaLabel);
-            const searchRowLabel =
-                document.getElementById("route-panel-search-label");
-            if (searchRowLabel) searchRowLabel.textContent = placeholder;
             if (searchOverlay) searchOverlay.setAttribute("aria-label", ariaLabel);
         }
     }

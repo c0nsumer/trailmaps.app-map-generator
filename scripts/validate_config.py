@@ -125,11 +125,12 @@ KNOWN_KEYS = {
     "show_route_elevation": bool,
     "distance_units": str,
     "share_button": bool,
-    # Routes panel key rows: "auto" (default — key rows at 2+ routes,
-    # boot state by count), true (boot expanded regardless of count),
-    # false (no key rows; the panel is just its search entry). Bool or
-    # the literal string "auto"; enum-checked in _validate_enums.
-    "route_panel": (bool, str),
+    # What the bottom-right corner control is: "auto" (default — the
+    # routes panel when the map has 2+ listable routes, the search
+    # button otherwise), "routes" (routes panel, boots expanded
+    # regardless of count), "search" (search button only, no key
+    # rows). Enum-checked in _validate_enums.
+    "panel_mode": str,
     # User-supplied feature data
     "trailheads": list,
     "parking": list,
@@ -227,6 +228,7 @@ HANDLED_SPECIALLY = {
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
+VALID_PANEL_MODES = {"auto", "routes", "search"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
     "sunday",
@@ -411,16 +413,11 @@ def _validate_enums(report, config):
             f"must be one of {sorted(VALID_DISTANCE_UNITS)}, got {config['distance_units']!r}",
         )
 
-    # route_panel accepts bools plus the single string "auto" (the
-    # default). Any other string is almost certainly a typo of one of
-    # those three, so name all of them in the error.
-    if "route_panel" in config:
-        v = config["route_panel"]
-        if not isinstance(v, bool) and v != "auto":
-            report.err(
-                "route_panel",
-                f"must be true, false, or 'auto', got {v!r}",
-            )
+    if "panel_mode" in config and config["panel_mode"] not in VALID_PANEL_MODES:
+        report.err(
+            "panel_mode",
+            f"must be one of {sorted(VALID_PANEL_MODES)}, got {config['panel_mode']!r}",
+        )
 
     if (
         "default_color_scheme" in config
