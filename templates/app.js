@@ -975,27 +975,6 @@ const DECOR_MZ_PER_WAY = 14;  // 2 diamonds per physical way
 // their gaps via the shared collision index, so placements stay put as
 // the rider zooms in.
 const DECOR_TARGET_SPACING_PX = 110;
-// At overview zooms the icons render at half scale (the decor layers'
-// icon-size ramp: 0.5 up to z12, rising to 1.0 at z18), so a fixed
-// pixel target READS sparser zoomed out than in close — a whole-map
-// view of a long course showed arrows too infrequent at the same
-// nominal spacing that looks right at z15. Grade the target instead:
-// tighter at the map's minimum zoom, easing up to
-// DECOR_TARGET_SPACING_PX across the same zoom span the icon-size ramp
-// climbs, flat beyond it.
-const OVERVIEW_TARGET_SPACING_PX = 75;
-const DECOR_TARGET_RAMP_END_ZOOM = 14;   // icon-size ramp's 0.7 stop
-
-// Screen-spacing target (px) for the icon ladder at a given zoom.
-function decorTargetPxAt(zoom) {
-    const z0 = CONFIG.minZoom;
-    if (zoom <= z0) return OVERVIEW_TARGET_SPACING_PX;
-    if (zoom >= DECOR_TARGET_RAMP_END_ZOOM) return DECOR_TARGET_SPACING_PX;
-    const t = (zoom - z0) / (DECOR_TARGET_RAMP_END_ZOOM - z0);
-    return OVERVIEW_TARGET_SPACING_PX
-        + t * (DECOR_TARGET_SPACING_PX - OVERVIEW_TARGET_SPACING_PX);
-}
-
 // Finest cadence the ladder emits. Caps total feature count on big
 // networks (a 100 km one-way system stays ~1-2k arrows, not 10k); past
 // the zoom where the floor engages, on-screen spacing grows again —
@@ -1012,13 +991,10 @@ function decorMetersPerPixel(zoom) {
 
 // Build [{ minZoom, cadenceM }] rungs covering fromZoom..toZoom. Stops
 // early once the floor engages — finer rungs would just repeat it.
-// `targetPx` is a number, or a function of zoom for graded targets
-// (see decorTargetPxAt).
 function decorCadenceLadder(targetPx, floorM, fromZoom, toZoom) {
     const rungs = [];
     for (let z = fromZoom; z <= toZoom; z++) {
-        const px = (typeof targetPx === "function") ? targetPx(z) : targetPx;
-        const c = px * decorMetersPerPixel(z);
+        const c = targetPx * decorMetersPerPixel(z);
         rungs.push({ minZoom: z, cadenceM: Math.max(c, floorM) });
         if (c <= floorM) break;
     }
@@ -1027,17 +1003,15 @@ function decorCadenceLadder(targetPx, floorM, fromZoom, toZoom) {
 
 // Icon ladder: first rung one stop above the map minimum (the run tier
 // owns the map-wide overview), last at maxZoom or wherever the cadence
-// floor engages. Graded target: tighter at overview zooms where the
-// icons render small.
-const DECOR_LADDER = decorCadenceLadder(decorTargetPxAt,
+// floor engages.
+const DECOR_LADDER = decorCadenceLadder(DECOR_TARGET_SPACING_PX,
     DECOR_CADENCE_FLOOR_M, CONFIG.minZoom + 1, CONFIG.maxZoom);
 
-// Ground spacing between overview (run-tier) markers — the overview
-// screen target, anchored at the map's minimum zoom where the whole
-// system is in view. Every run still gets at least one marker
-// regardless.
+// Ground spacing between overview (run-tier) markers — the same screen
+// target, anchored at the map's minimum zoom where the whole system is
+// in view. Every run still gets at least one marker regardless.
 const DECOR_OVERVIEW_SPACING_M =
-    OVERVIEW_TARGET_SPACING_PX * decorMetersPerPixel(CONFIG.minZoom);
+    DECOR_TARGET_SPACING_PX * decorMetersPerPixel(CONFIG.minZoom);
 
 // Zoom at which the curve-following on-path labels become ELIGIBLE (their
 // minzoom). Set to 16, deliberately ABOVE the per-way arrow tier
