@@ -3235,10 +3235,10 @@ body.modal-open .gpx-overlay.is-open {
  *   (default)       key card: header + rows + Search row
  *   .is-collapsed   compact round list-icon button (shared .fab
  *                   chrome, matching the top-right stack)
- *   .is-searchonly  round icon-only magnifier button (maps with 0–1
- *                   listable routes, or panel_mode: search — no key
- *                   rows, but search must stay reachable; visually
- *                   the pre-panel Search FAB it replaced)
+ *   .is-searchonly  round icon-only magnifier button (no listable
+ *                   routes, or panel_mode: search — no key rows,
+ *                   but search must stay reachable; visually the
+ *                   pre-panel Search FAB it replaced)
  *   .hidden         nothing (the finder would be empty too)
  * All forms stay in the DOM — state changes are class flips, not
  * rebuilds. z-index matches the FAB stack (5, below open overlays),

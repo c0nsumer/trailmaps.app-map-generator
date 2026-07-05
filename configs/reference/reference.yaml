@@ -237,10 +237,14 @@ relations:
 # alone is a round magnifier button opening the same finder. Search is always
 # reachable either way. "Listable" routes follow the rider's season /
 # emergency toggles, and event maps list featured routes only.
-#   auto (default) — routes panel when the map has 2+ listable routes
-#                    (expanded at 2-5, collapsed to a round list-icon button
-#                    at 6+; the rider's expand/collapse choice persists per
-#                    map and beats this default), search button otherwise.
+#   auto (default) — routes panel whenever the map has any listable route —
+#                    even one row keys the line's colour to its name and
+#                    makes search obvious. Expanded at 1-5 routes, collapsed
+#                    to a round list-icon button at 6+; the rider's
+#                    expand/collapse choice persists per map and beats this
+#                    default. The search button appears only when no route
+#                    is listable (show_routes: false, or a season bucket
+#                    with nothing in it).
 #   routes         — routes panel, starting expanded regardless of count.
 #   search         — search button only; no key rows.
 # panel_mode: auto

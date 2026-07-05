@@ -175,13 +175,16 @@ CONFIG_SPEC = [
     # rows: swatch + name + stats per route, tap to highlight, with a
     # Search button pinned at the bottom) or the plain round search
     # button. "auto" (default) picks the routes panel whenever the
-    # map has ≥2 listable routes — booting it expanded for small
-    # route counts and collapsed to a round list-icon button for
-    # large ones — and the search button otherwise. "routes" forces
-    # the expanded boot state regardless of count; "search" is the
-    # search button only, no key rows. Count thresholds live in the
-    # runtime (initRoutePanel, templates/app.js) since "listable"
-    # depends on the rider's season/emergency toggles.
+    # map has ANY listable route — every map has ≥1 (the validator
+    # requires a geometry source), so in practice the search button
+    # appears only via show_routes: false or a season bucket with
+    # nothing in it. The panel boots expanded for small route counts
+    # and collapsed to a round list-icon button for large ones.
+    # "routes" forces the expanded boot state regardless of count;
+    # "search" is the search button only, no key rows. Count
+    # thresholds live in the runtime (initRoutePanel,
+    # templates/app.js) since "listable" depends on the rider's
+    # season/emergency toggles.
     ("panel_mode", "panelMode", "auto"),
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).

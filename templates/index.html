@@ -260,9 +260,9 @@
          card's bottom expands into the full search overlay — the finder
          is the panel's expanded state, not a separate destination.
          Docked states are a .is-collapsed class flip (both live in the
-         DOM); which form the corner takes at boot — key card, chip, a
-         round search button (.is-searchonly, for maps with 0–1
-         listable routes or panel_mode: search), or nothing (finder
+         DOM); which form the corner takes at boot — key card (any
+         listable route), chip, a round search button (.is-searchonly:
+         no listable routes or panel_mode: search), or nothing (finder
          would be empty too) — is decided by rebuildRoutePanel()/
          initRoutePanel() from CONFIG.panelMode plus the
          listable-route count. -->

@@ -3164,7 +3164,7 @@ function buildWelcomeControlsHint() {
         const routes = Object.values(CONFIG.routes || {});
         const listable = CONFIG.eventModeActive
             ? routes.filter((r) => r.featured) : routes;
-        panelHasKeyRows = listable.length >= 2;
+        panelHasKeyRows = listable.length >= 1;
     }
     const rows = [
         { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
@@ -6059,16 +6059,17 @@ function hideHighlightChip() {
 // exclusive), selected by CONFIG.panelMode — the panel_mode YAML key,
 // named for what it switches between: the routes panel vs the plain
 // search button.
-//   key card     — ≥2 listable routes and panel_mode isn't "search"
+//   key card     — ≥1 listable route and panel_mode isn't "search"
+//                  (even one row earns its place: it keys the line's
+//                  colour to its name and makes search obvious)
 //   .is-collapsed— a compact round list-icon button, FAB-styled to
 //                  match the top-right stack (docked alternative to
 //                  the card; rider-toggled, persisted per-map as
 //                  LS "mtb.routePanel" = "key" | "chip")
-//   .is-searchonly — 0–1 listable routes (or panel_mode: "search"):
-//                  nothing to disambiguate, but search must stay
-//                  reachable, so the corner is a round icon-only
-//                  magnifier button — visually the pre-panel
-//                  Search FAB
+//   .is-searchonly — no listable routes (or panel_mode: "search"):
+//                  search must stay reachable, so the corner is a
+//                  round icon-only magnifier button — visually the
+//                  pre-panel Search FAB
 //   .hidden      — the finder would be empty too (no routes, trails,
 //                  or places): no corner control at all
 //
@@ -6112,10 +6113,15 @@ function rebuildRoutePanel() {
     if (!wrap || !list) return;
 
     const rows = panelListableRoutes();
-    // Key rows need ≥2 routes (with 0–1 there's nothing to
-    // disambiguate — panel_mode: routes forces the expanded boot
-    // state, not an empty card) and panel_mode !== "search".
-    const keyRows = CONFIG.panelMode !== "search" && rows.length >= 2;
+    // Key rows show for ANY listable route — even a single row does
+    // real key work (names the coloured line, shows distance, taps
+    // to fit) and keeps the corner consistent across maps. And since
+    // every map is built from route relations / custom routes /
+    // event routes (the validator requires a geometry source), zero
+    // listable routes only happens by curator choice
+    // (show_routes: false, panel_mode: "search") or a season bucket
+    // with nothing in it.
+    const keyRows = CONFIG.panelMode !== "search" && rows.length >= 1;
     // The corner vanishes entirely only when the finder would be
     // empty too — otherwise its search entry must survive in the
     // search-button form, since it replaced the Search FAB.
