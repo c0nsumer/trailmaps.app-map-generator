@@ -6310,6 +6310,15 @@ function initRoutePanel() {
         // user lands on when the card is collapsed); the collapse
         // button inside the card is labelled by its aria-label.
         chip.setAttribute("aria-expanded", String(!collapsed));
+        // Tell the first-visit FAB-label cue (setupFabLabels) the chip
+        // just appeared: if the cue is still live it late-mounts the
+        // "Route key" label, so a rider who collapses the panel during
+        // the cue isn't left with the one unnamed control. The boot-time
+        // call fires before setupFabLabels attaches its listener —
+        // harmless (boot-collapsed labelling is handled there directly).
+        if (collapsed) {
+            wrap.dispatchEvent(new CustomEvent("route-panel-collapsed"));
+        }
     };
 
     // Boot state: the rider's stored boolean wins; otherwise the
@@ -6983,27 +6992,33 @@ function setupFabLabels() {
         mounted.push({ btn, label });
     }
 
-    // Routes-panel discovery label — only when the panel booted
-    // COLLAPSED. The expanded card is self-evident (header says
-    // "Routes", the rows show colour + name), so a label would be
-    // noise; the collapsed chip is the form that needs naming.
-    // Anchored to the panel container (clicks bubble to it, so the
-    // mounted loop's dismiss fires on any panel tap); initRoutePanel
-    // has already settled .is-collapsed by the time we run. "Route
-    // key" names the function (the card header's "Routes" names the
-    // content); it deliberately under-claims — POI/difficulty
-    // symbology lives in the Options swatches, not here. Shares the
-    // .fab-label styling + dismissal so all discovery cues read as
-    // one first-visit moment.
+    // Routes-panel discovery label — only when the panel is COLLAPSED.
+    // The expanded card is self-evident (header says "Routes", the rows
+    // show colour + name), so a label would be noise; the collapsed
+    // chip is the form that needs naming. Anchored to the panel
+    // container (clicks bubble to it, so the mounted loop's dismiss
+    // fires on any panel tap); initRoutePanel has already settled
+    // .is-collapsed by the time we run. "Route key" names the function
+    // (the card header's "Routes" names the content); it deliberately
+    // under-claims — POI/difficulty symbology lives in the Options
+    // swatches, not here. Shares the .fab-label styling + dismissal so
+    // all discovery cues read as one first-visit moment.
+    //
+    // A panel that boots EXPANDED can still collapse while the cue is
+    // live — the route-panel-collapsed listener below names the chip
+    // the moment it appears.
     const panel = document.getElementById("route-panel");
-    if (panel && !panel.classList.contains("hidden")
-            && panel.classList.contains("is-collapsed")) {
+    const panelUsable = panel && !panel.classList.contains("hidden");
+    const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
         label.textContent = "Route key";
         label.setAttribute("aria-hidden", "true");
         panel.appendChild(label);
         mounted.push({ btn: panel, label });
+    };
+    if (panelUsable && panel.classList.contains("is-collapsed")) {
+        mountPanelLabel();
     }
 
     if (mounted.length === 0) return;
@@ -7040,6 +7055,28 @@ function setupFabLabels() {
     // listener that always early-returns.
     for (const { btn } of mounted) {
         btn.addEventListener("click", dismiss, { once: true });
+    }
+
+    // Late collapse: a panel that booted expanded has no label above,
+    // so if the rider collapses it while the cue is still live, mount
+    // "Route key" on the chip they just created (otherwise it would be
+    // the one unnamed control while every FAB is labelled). Dispatched
+    // by initRoutePanel's applyCollapsed. The dismiss listener attaches
+    // a task later: the collapsing click is still bubbling toward the
+    // panel when this handler runs, and a same-tick listener would
+    // catch that click and dismiss the whole cue — label included —
+    // the instant it mounted.
+    if (panelUsable) {
+        panel.addEventListener("route-panel-collapsed", () => {
+            if (dismissed) return;
+            if (mounted.some((m) => m.btn === panel)) return;
+            mountPanelLabel();
+            setTimeout(() => {
+                if (!dismissed) {
+                    panel.addEventListener("click", dismiss, { once: true });
+                }
+            }, 0);
+        });
     }
 
     function reveal() {
