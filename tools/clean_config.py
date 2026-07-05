@@ -8,7 +8,8 @@ documentation comments) and the PRODUCTION'S set values filled in.
 The intent is housekeeping: production configs accumulate cruft over
 time as they're maintained by hand — keys reordered, comments edited,
 sections renamed, etc. This tool re-aligns a config to the canonical
-template without losing any explicitly-set values.
+template without losing any explicitly-set values or any curator
+comments.
 
 Usage:
     python tools/clean_config.py configs/example/example.yaml
@@ -20,23 +21,34 @@ The original file is never modified — review the cleaned output and
 swap it in manually when satisfied.
 
 Behaviour:
-- Lines in the template that match a known config key (commented or
-  not) are replaced with the production's value when production sets
-  that key. Multi-line template blocks (e.g. commented `# welcome:`
-  with indented continuation comments) are skipped past wholesale.
+- Set keys are SPLICED, not re-serialized: the production file's own
+  lines for each key it sets are copied verbatim into the template's
+  position for that key. Inline comments, list-item annotations, and
+  comment lines inside a block survive by construction, and values
+  cannot be reformatted into something that parses differently.
+- Full-line comments directly above a set key travel with it.
+- A commented-out known-key block in production (a curator's stashed
+  alternative, e.g. `# forced_labels: routes`) replaces the template's
+  generic `# key: default` line for that key, so saved alternatives
+  keep their place instead of being flattened back to the default.
+- Keys production neither sets nor stashes appear as the template's
+  commented `# key: default` lines — every supported option stays
+  visible at its default.
 - LIVE (uncommented) template keys that production does NOT set are
   commented out rather than copied — the cleaned output must never
   inherit a template placeholder value (e.g. the example `relations:`
   ID on a custom-route-only map that legitimately omits the key).
-- Template lines that aren't key lines (section dividers, prose
-  comments, blank lines) are preserved verbatim.
 - Production keys that don't appear anywhere in the template are
   appended at the end under a `# --- Keys not in template ---`
   header. Catches drift in either direction (key the template
   forgot, or key the curator added that the template doesn't model).
-- Inline comments in the production file (e.g. `accent_color: auto
-  # logo is B/W`) are NOT preserved — the template's structure wins
-  for layout and the production's value wins for content.
+- Comments the placement heuristics can't attach anywhere are
+  appended under `# --- Unplaced comments carried from the previous
+  file (review/relocate) ---` — misplaced but kept, never lost.
+- Hard gate: after writing, the output is re-parsed and compared to
+  the original. Any difference in parsed data deletes the output and
+  aborts — the tool cannot hand back a config that behaves
+  differently from the file it was given.
 """
 
 import argparse
@@ -60,11 +72,35 @@ KEY_NAMES = set(KNOWN_KEYS.keys())
 # then check it against KEY_NAMES to filter out prose comments.
 KEY_LINE_RE = re.compile(r"^(?:#\s)?([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
+# Uncommented top-level key line in the production file. Deliberately
+# NOT filtered through KEY_NAMES: an unknown key the curator added
+# must still be captured as a block (it lands under "Keys not in
+# template"), or its lines would be silently dropped and the equality
+# gate would abort the run.
+LIVE_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
+
+# Commented-out known-key line: a curator's stashed alternative.
+# Tolerant of `#key:` with no space after the hash — real configs
+# contain that form.
+STASH_KEY_RE = re.compile(r"^#\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
+
 # A continuation line for a commented multi-line block looks like
 # `#   sub: val` or `#     - item` (`#` followed by 2+ spaces then
 # content). Plain `# Some prose` (one space, content) is NOT a
 # continuation — it's a fresh comment.
 COMMENTED_CONTINUATION_RE = re.compile(r"^#\s{2,}\S")
+
+# Commented list items (`# - 123`, `#- name: ...`) continue a stashed
+# block even at zero/one spaces of indent. The lookahead excludes
+# `# ---` section dividers.
+COMMENTED_LIST_ITEM_RE = re.compile(r"^#\s*-(?!-)")
+
+DIVIDER_RE = re.compile(r"^#\s*(-{3,}|={3,})")
+
+# Zero-indent sequence item (`- name: Main` at column 0) — valid YAML
+# that several production configs use under `trailheads:`/`parking:`.
+# It continues the preceding key's block despite not being indented.
+ZERO_INDENT_ITEM_RE = re.compile(r"^-(\s|$)")
 
 
 def extract_top_level_key(line):
@@ -119,115 +155,203 @@ def find_block_end(lines, start):
     return i
 
 
-def _scalar_text(v):
-    """YAML text for a single scalar value (no newline, no key prefix)."""
-    if v is None:
-        return "null"
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, (int, float)):
-        return str(v)
-    if isinstance(v, str):
-        # Defer to yaml.dump for quoting decisions (handles "yes"-vs-True
-        # ambiguity, leading colons, special chars). yaml.dump of a bare
-        # scalar appends `\n...\n` (document end marker); strip both.
-        # explicit_end=False suppresses `...` from the dumper directly,
-        # but PyYAML still emits it for some scalar shapes — belt-and-
-        # suspenders strip after.
-        out = yaml.dump(v, default_flow_style=True, explicit_end=False)
-        return out.replace("...\n", "").rstrip("\n").rstrip()
-    raise TypeError(f"_scalar_text: unsupported type {type(v).__name__}")
-
-
-def _is_scalar(v):
-    return v is None or isinstance(v, (bool, int, float, str))
-
-
-class _CleanDumper(yaml.SafeDumper):
-    """Custom dumper to fix two PyYAML default-formatting quirks:
-
-    1. Multi-line strings get `|` block-literal style (default would
-       single-quote with embedded \\n escapes, ugly + lossy on
-       trailing whitespace).
-    2. Dicts are ALWAYS block-style. Default `default_flow_style=None`
-       smart-flows single-key dicts (`relation_colors: {1234: '#fff'}`),
-       which loses the multi-line readability we want for sparse maps.
-    3. Lists are flow-style when ALL items are scalar (so
-       `coordinates: [lon, lat]` and `pattern: [1, 1]` stay one-liners),
-       block-style otherwise (so `trailheads: \\n- name: ...\\n  ...`
-       reads cleanly).
-    """
-
-    pass
-
-
-def _block_str_representer(dumper, data):
-    if isinstance(data, str) and "\n" in data:
-        cleaned = "\n".join(line.rstrip() for line in data.split("\n"))
-        return dumper.represent_scalar("tag:yaml.org,2002:str", cleaned, style="|")
-    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
-
-
-def _block_dict_representer(dumper, data):
-    return dumper.represent_mapping("tag:yaml.org,2002:map", data, flow_style=False)
-
-
-def _smart_list_representer(dumper, data):
-    # All-scalar lists go flow; anything with nested structure goes block.
-    flow = all(_is_scalar(v) for v in data)
-    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=flow)
-
-
-_CleanDumper.add_representer(str, _block_str_representer)
-_CleanDumper.add_representer(dict, _block_dict_representer)
-_CleanDumper.add_representer(list, _smart_list_representer)
-
-
-def format_key(key, value):
-    """Render `key: value` as a list of YAML lines.
-
-    Handles each value shape with the formatting that matches the
-    template's house style:
-    - Scalars (None, bool, number, string) → single line `key: value`
-      with appropriate quoting.
-    - All-scalar lists → flow style `key: [a, b, c]`.
-    - Nested structures (dicts, lists of dicts) → block style.
-    """
-    if _is_scalar(value):
-        return [f"{key}: {_scalar_text(value)}"]
-    if isinstance(value, list) and all(_is_scalar(v) for v in value):
-        items = ", ".join(_scalar_text(v) for v in value)
-        return [f"{key}: [{items}]"]
-    # Nested: dict or list-of-dicts. _CleanDumper's representers
-    # handle the per-node formatting (always block dicts; lists block
-    # unless all-scalar; multi-line strings as `|`).
-    dumped = yaml.dump(
-        {key: value},
-        Dumper=_CleanDumper,
-        sort_keys=False,
-        allow_unicode=True,
-        width=10000,
-        indent=2,
+def _is_commented_continuation(line):
+    if DIVIDER_RE.match(line):
+        return False
+    return bool(
+        COMMENTED_CONTINUATION_RE.match(line) or COMMENTED_LIST_ITEM_RE.match(line)
     )
-    return dumped.rstrip("\n").split("\n")
+
+
+def find_block_end_prod(lines, start):
+    """`find_block_end` for PRODUCTION files.
+
+    Production blocks can contain interior blank lines (e.g. between
+    `trailheads:` entries) and full-line comments; the template never
+    does, and `find_block_end`'s other callers depend on blank lines
+    terminating a block, so that function stays untouched. Here a
+    blank or full-line comment is interior only when the block's own
+    content resumes after it — otherwise it terminates the block.
+    """
+    line = lines[start]
+    commented = line.lstrip().startswith("#")
+
+    after_colon = line.split(":", 1)[1]
+    if re.sub(r"\s+#.*$", "", after_colon).strip():
+        return start + 1
+
+    n = len(lines)
+    i = start + 1
+    while i < n:
+        nxt = lines[i]
+        if commented:
+            if not nxt.strip():
+                j = i
+                while j < n and not lines[j].strip():
+                    j += 1
+                if j < n and _is_commented_continuation(lines[j]):
+                    i = j
+                    continue
+                return i
+            if _is_commented_continuation(nxt):
+                i += 1
+                continue
+            return i
+        else:
+            if nxt.strip() and (
+                nxt[0] in (" ", "\t") or ZERO_INDENT_ITEM_RE.match(nxt)
+            ):
+                i += 1
+                continue
+            if not nxt.strip() or nxt.startswith("#"):
+                j = i
+                while j < n and (not lines[j].strip() or lines[j].startswith("#")):
+                    j += 1
+                if (
+                    j < n
+                    and lines[j].strip()
+                    and (
+                        lines[j][0] in (" ", "\t")
+                        or ZERO_INDENT_ITEM_RE.match(lines[j])
+                    )
+                ):
+                    i = j
+                    continue
+                return i
+            return i
+    return i
+
+
+def _index_production(prod_lines, is_boilerplate):
+    """Classify the production file's lines.
+
+    Returns (consumed, set_blocks, stashes, leading):
+    - consumed:   per-line flags; unconsumed comments feed the
+                  unplaced-comments safety net.
+    - set_blocks: key -> (start, end) line range the curator set.
+    - stashes:    key -> verbatim lines of commented-out alternatives
+                  for keys that are NOT set.
+    - leading:    key -> full-line comments sitting directly above a
+                  set block (they travel with it).
+    """
+    n = len(prod_lines)
+    consumed = [False] * n
+    set_blocks = {}
+    stashes = {}
+    leading = {}
+
+    i = 0
+    while i < n:
+        m = LIVE_KEY_RE.match(prod_lines[i])
+        if m and m.group(1) not in set_blocks:
+            end = find_block_end_prod(prod_lines, i)
+            set_blocks[m.group(1)] = (i, end)
+            for k in range(i, end):
+                consumed[k] = True
+            i = end
+        else:
+            i += 1
+
+    # Stashes must be found before leading comments: a stash's own
+    # continuation lines (`#   - name: Old`) would otherwise be
+    # picked up as leading comments of the block below and then
+    # emitted twice.
+    i = 0
+    while i < n:
+        m = None if consumed[i] else STASH_KEY_RE.match(prod_lines[i])
+        if m and m.group(1) in KEY_NAMES and m.group(1) not in set_blocks:
+            end = find_block_end_prod(prod_lines, i)
+            block = prod_lines[i:end]
+            if all(not l.strip() or is_boilerplate(l) for l in block):
+                # Template residue (the template's own commented
+                # default carried around) — the template re-supplies
+                # it at its canonical position.
+                i = end
+                continue
+            # A key stashed twice keeps both alternatives, in order.
+            stashes.setdefault(m.group(1), []).extend(block)
+            for k in range(i, end):
+                consumed[k] = True
+            i = end
+        else:
+            i += 1
+
+    for key, (start, _end) in set_blocks.items():
+        picked = []
+        i = start - 1
+        while i >= 0:
+            line = prod_lines[i]
+            if not line.strip() or not line.lstrip().startswith("#"):
+                break
+            if not consumed[i]:
+                m = STASH_KEY_RE.match(line)
+                stash_like = bool(m and m.group(1) in KEY_NAMES)
+                if not stash_like and not is_boilerplate(line):
+                    picked.append(i)
+            i -= 1
+        if picked:
+            leading[key] = [prod_lines[k] for k in reversed(picked)]
+            for k in picked:
+                consumed[k] = True
+
+    return consumed, set_blocks, stashes, leading
+
+
+def _assert_same_data(production_path, output_path):
+    """Hard gate: the cleaned file must parse to exactly the same
+    data as the original. Anything else deletes the output and aborts
+    — the tool physically cannot hand back a config that behaves
+    differently."""
+    with open(production_path, encoding="utf-8") as f:
+        original = yaml.safe_load(f)
+    with open(output_path, encoding="utf-8") as f:
+        cleaned = yaml.safe_load(f)
+    if original != cleaned:
+        os.remove(output_path)
+        sys.exit(
+            "ERROR: cleaned output would change parsed values — "
+            "aborted, no file written"
+        )
 
 
 def clean_config(template_path, production_path, output_path):
     with open(template_path, encoding="utf-8") as f:
         template_lines = f.read().splitlines()
     with open(production_path, encoding="utf-8") as f:
-        production = yaml.safe_load(f) or {}
+        prod_lines = f.read().splitlines()
+
+    template_stripped = {l.strip() for l in template_lines if l.strip()}
+
+    def is_boilerplate(line):
+        # A production line the template already supplies (verbatim
+        # modulo indentation) or a section divider — never carried,
+        # the template's own copy wins.
+        s = line.strip()
+        return s in template_stripped or bool(DIVIDER_RE.match(s))
+
+    consumed, set_blocks, stashes, leading = _index_production(
+        prod_lines, is_boilerplate
+    )
 
     output_lines = []
-    seen_keys = set()
+    seen = set()
+    emitted_stashes = set()
     commented_out = set()
     i = 0
     while i < len(template_lines):
         line = template_lines[i]
         key = extract_top_level_key(line)
-        if key is not None and key in production:
-            output_lines.extend(format_key(key, production[key]))
-            seen_keys.add(key)
+        if key is not None and key in set_blocks and key not in seen:
+            seen.add(key)
+            output_lines.extend(leading.get(key, []))
+            s, e = set_blocks[key]
+            output_lines.extend(prod_lines[s:e])
+            i = find_block_end(template_lines, i)
+        elif key is not None and key in stashes and key not in emitted_stashes:
+            # The curator's saved alternative replaces the template's
+            # generic default line for this key.
+            emitted_stashes.add(key)
+            output_lines.extend(stashes[key])
             i = find_block_end(template_lines, i)
         elif key is not None and not line.lstrip().startswith("#"):
             # Template key is LIVE (uncommented — the template's
@@ -250,18 +374,51 @@ def clean_config(template_path, production_path, output_path):
             output_lines.append(line)
             i += 1
 
-    extra = [k for k in production.keys() if k not in seen_keys]
+    extra = [k for k in set_blocks if k not in seen]
     if extra:
         if output_lines and output_lines[-1].strip():
             output_lines.append("")
         output_lines.append("# --- Keys not in template ---")
         for k in extra:
-            output_lines.extend(format_key(k, production[k]))
+            output_lines.extend(leading.get(k, []))
+            s, e = set_blocks[k]
+            output_lines.extend(prod_lines[s:e])
+
+    # Safety net: anything the heuristics couldn't place is carried
+    # at the end — misplaced but kept, never lost.
+    unplaced = []
+    for k, block in stashes.items():
+        if k not in emitted_stashes:
+            unplaced.extend(block)
+    for idx, line in enumerate(prod_lines):
+        if consumed[idx] or not line.strip():
+            continue
+        if not line.lstrip().startswith("#"):
+            continue
+        if is_boilerplate(line):
+            continue
+        unplaced.append(line)
+    if unplaced:
+        if output_lines and output_lines[-1].strip():
+            output_lines.append("")
+        output_lines.append(
+            "# --- Unplaced comments carried from the previous file "
+            "(review/relocate) ---"
+        )
+        output_lines.extend(unplaced)
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(output_lines) + "\n")
 
-    return seen_keys, extra, commented_out
+    _assert_same_data(production_path, output_path)
+
+    return {
+        "set": sorted(seen),
+        "stashed": sorted(emitted_stashes),
+        "commented_out": sorted(commented_out),
+        "extra": extra,
+        "unplaced_comments": len(unplaced),
+    }
 
 
 def main():
@@ -312,17 +469,32 @@ def main():
         base, ext = os.path.splitext(args.production)
         output_path = f"{base}-cleaned{ext or '.yaml'}"
 
-    seen, extra, commented_out = clean_config(args.template, args.production, output_path)
+    summary = clean_config(args.template, args.production, output_path)
     print(f"Wrote {output_path}")
-    print(f"  {len(seen)} key(s) from production matched template positions")
-    if extra:
-        print(f"  {len(extra)} key(s) appended (not in template): {sorted(extra)}")
-    else:
-        print("  No extra keys to append (all production keys matched the template).")
-    if commented_out:
+    if summary["set"]:
         print(
-            f"  {len(commented_out)} live template key(s) not set by production, "
-            f"commented out: {sorted(commented_out)}"
+            f"  {len(summary['set'])} set key(s) spliced at template "
+            f"positions: {summary['set']}"
+        )
+    if summary["stashed"]:
+        print(
+            f"  {len(summary['stashed'])} stashed (commented-out) key(s) "
+            f"carried: {summary['stashed']}"
+        )
+    if summary["commented_out"]:
+        print(
+            f"  {len(summary['commented_out'])} live template key(s) not set "
+            f"by production, commented out: {summary['commented_out']}"
+        )
+    if summary["extra"]:
+        print(
+            f"  {len(summary['extra'])} key(s) appended (not in template): "
+            f"{summary['extra']}"
+        )
+    if summary["unplaced_comments"]:
+        print(
+            f"  {summary['unplaced_comments']} comment line(s) carried to "
+            f"the unplaced-comments section — review and relocate by hand"
         )
 
 

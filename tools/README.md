@@ -80,16 +80,14 @@ comments edited, sections renamed, drift from the template's structure.
 This tool produces a sibling `<input>-cleaned.yaml` that adopts the
 template's structure (section dividers, key ordering, default-value
 documentation comments) while preserving every value the production
-file explicitly set.
+file explicitly set — and every curator comment along with it.
 
 The original file is never modified. Review the cleaned output and
-swap it in manually when satisfied. Two caveats worth knowing before
-swapping: inline comments in the production file (e.g. relation-ID
-annotations like `- 20502171 # Addison Connector`) are NOT carried
-over — the template's comments win — and live template keys the
-production file doesn't set are commented out in the output rather
-than inherited (so a custom-route-only map that omits `relations:`
-never picks up the template's placeholder ID).
+swap it in manually when satisfied. One behaviour worth knowing
+before swapping: live template keys the production file doesn't set
+are commented out in the output rather than inherited (so a
+custom-route-only map that omits `relations:` never picks up the
+template's placeholder ID).
 
 ### Usage
 
@@ -107,32 +105,37 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 
 ### Behaviour
 
-- Walks the template line-by-line. When a top-level key line (commented
-  `# key:` or uncommented `key:`) corresponds to a known config key
-  (sourced from `validate_config.KNOWN_KEYS`), and that key is set in
-  the production file, replaces the line (or its multi-line block) with
-  the production value formatted to the template's house style.
-- Other template lines (section dividers, prose comments, blank lines)
-  pass through verbatim.
+- Set keys are spliced, not re-serialized: the production file's own
+  lines for each key it sets are copied verbatim into the template's
+  position for that key (key lines matched against
+  `validate_config.KNOWN_KEYS`). Inline comments (`- 20502171 #
+  Addison Connector`), comment lines inside a block, and the
+  curator's own formatting all survive by construction.
+- Full-line comments sitting directly above a set key travel with it.
+- A commented-out known-key block (a stashed alternative like
+  `# forced_labels: routes` or a whole `#trailheads:` block) replaces
+  the template's generic `# key: default` line for that key, so saved
+  alternatives keep their place instead of being flattened back to
+  the default.
+- Other template lines (section dividers, prose comments, commented
+  defaults for unset keys, blank lines) pass through verbatim, so
+  every supported option stays visible at its default.
 - Production keys with no corresponding template line are appended at
   the end under a `# --- Keys not in template ---` header. Catches drift
   in either direction (key the template forgot, or key the curator
   added that the template doesn't model, usually a sign the
   template needs updating too).
-- Inline comments in the production file (e.g. `accent_color: auto  #
-  logo is B/W`) are NOT preserved. The template's structure wins for
-  layout; production's value wins for content.
-
-### Output formatting
-
-The output adopts the template's house style: block-literal `|` for multi-line
-strings, block-style dicts, and inline lists for all-scalar arrays
-(`coordinates: [lon, lat]`, `pattern: [1, 1]`).
+- Comments the placement heuristics can't attach anywhere (e.g. a
+  commented-out chunk trailing below a set block) are appended under a
+  `# --- Unplaced comments carried from the previous file
+  (review/relocate) ---` header — misplaced but kept, never lost.
+  Relocate them by hand while reviewing the output.
 
 ### Verification
 
-The cleaned output parses to an identical Python dict as the original
-(verifiable with `python -c "import yaml; print(yaml.safe_load(open('a'))
-== yaml.safe_load(open('b')))"`), passes `validate_config.py`, and
-builds successfully via `build.py`. Any value drift means the cleaner
-mishandled something; file an issue.
+After writing, the tool re-parses both files and compares: if the
+cleaned output would parse to different data than the original, it
+deletes the output and exits non-zero. The gate is always on — the
+tool cannot hand back a config that behaves differently. The output
+should also pass `validate_config.py` and build via `build.py`; any
+gate failure means the cleaner mishandled something, file an issue.
