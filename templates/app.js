@@ -6995,9 +6995,13 @@ function setupFabLabels() {
     // Routes-panel discovery label — only when the panel is COLLAPSED.
     // The expanded card is self-evident (header says "Routes", the rows
     // show colour + name), so a label would be noise; the collapsed
-    // chip is the form that needs naming. Anchored to the panel
-    // container (clicks bubble to it, so the mounted loop's dismiss
-    // fires on any panel tap); initRoutePanel has already settled
+    // chip is the form that needs naming. Mounted INSIDE the chip
+    // button — same pattern as the FABs above — so a tap on the label
+    // bubbles into the chip's click handler and expands the panel (a
+    // label parked on the panel wrapper looked identical but swallowed
+    // the tap: the expand handler lives on the chip, not the wrapper).
+    // The dismiss listener still anchors on the panel container, which
+    // chip clicks bubble through. initRoutePanel has already settled
     // .is-collapsed by the time we run. "Route key" names the function
     // (the card header's "Routes" names the content); it deliberately
     // under-claims — POI/difficulty symbology lives in the Options
@@ -7008,13 +7012,15 @@ function setupFabLabels() {
     // live — the route-panel-collapsed listener below names the chip
     // the moment it appears.
     const panel = document.getElementById("route-panel");
-    const panelUsable = panel && !panel.classList.contains("hidden");
+    const panelChip = document.getElementById("route-panel-chip");
+    const panelUsable = panel && panelChip
+        && !panel.classList.contains("hidden");
     const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
         label.textContent = "Route key";
         label.setAttribute("aria-hidden", "true");
-        panel.appendChild(label);
+        panelChip.appendChild(label);
         mounted.push({ btn: panel, label });
     };
     if (panelUsable && panel.classList.contains("is-collapsed")) {
