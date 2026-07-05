@@ -1465,7 +1465,10 @@ function computeDecorations() {
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
     };
-    if (CONFIG.showRoutes !== false) {
+    // Route name labels — gated per-route by routeLabelAllowed (which
+    // reflects the current label mode); the muted event-mode network
+    // stays unlabelled there.
+    {
         const routeAgg = new Map();   // routeId -> { n, longest }
         for (const way of ways) {
             const rids = (way.sharedRoutes && way.sharedRoutes.length)
@@ -1884,7 +1887,7 @@ let basemapMode = "default"; // "default" or "custom:<id>"
 // and the segmented control is hidden, same as event mode. Distinct
 // from defaultLabels (which seeds the initial value but lets the
 // rider override via Options). Validated at build time so a config
-// can't force a mode that contradicts show_routes / show_trails.
+// can't force a mode that contradicts show_trails.
 let labelMode = CONFIG.eventModeActive
     ? "routes"
     : (CONFIG.forcedLabels
@@ -3045,13 +3048,13 @@ function _joinHumanList(items) {
 }
 
 // Build the Search row description from what's actually present on
-// this map. Routes/trails are gated by CONFIG.showRoutes/showTrails;
-// POI types come from CONFIG.poiCounts (populated at build time
-// from pois.geojson). Avoids the previous claim that every map has
-// "(parking, water, toilets, trailheads)" regardless of reality.
+// this map. Trails are gated by CONFIG.showTrails; every map has
+// routes (a geometry source is required). POI types come from
+// CONFIG.poiCounts (populated at build time from pois.geojson).
+// Avoids the previous claim that every map has "(parking, water,
+// toilets, trailheads)" regardless of reality.
 function _welcomeSearchDescription() {
-    const targets = [];
-    if (CONFIG.showRoutes !== false) targets.push("routes");
+    const targets = ["routes"];
     if (CONFIG.showTrails !== false) targets.push("trails");
 
     // Specific POI types — order roughly follows the rhythm of a
@@ -3083,16 +3086,13 @@ function _welcomeSearchDescription() {
 }
 
 // Build the list of categories the search box actually returns,
-// based on the same gates renderResults() uses (CONFIG.showRoutes,
-// CONFIG.showTrails, CONFIG.poiCounts). Returns an array of human
-// labels (e.g. ["trails", "places"]) so callers can compose either
-// the comma-form used by the placeholder or the human-list form
-// used by aria-labels. Empty array means the search overlay would
-// have nothing to show — defensive only; the FAB shouldn't appear
-// in that configuration.
+// based on the same gates renderResults() uses (CONFIG.showTrails,
+// CONFIG.poiCounts; routes are always present). Returns an array of
+// human labels (e.g. ["routes", "trails", "places"]) so callers can
+// compose either the comma-form used by the placeholder or the
+// human-list form used by aria-labels.
 function _searchTargets() {
-    const targets = [];
-    if (CONFIG.showRoutes !== false) targets.push("routes");
+    const targets = ["routes"];
     if (CONFIG.showTrails !== false) targets.push("trails");
     const counts = CONFIG.poiCounts || {};
     const hasPois = !!(counts.parking || counts.trailhead || counts.hub
@@ -3151,21 +3151,10 @@ function buildWelcomeControlsHint() {
     // The Search row teaches the bottom-right corner: search is the
     // verb a first-visit rider needs taught (the key rows explain
     // themselves — colour + name + tap), so the row keeps the
-    // magnifier icon and "Search" name, with the key mentioned in
-    // the description when this map will actually show key rows
-    // (panel_mode: search maps get the plain search button, no key).
-    // That check runs against static CONFIG (total configured
-    // routes, featured-only in event mode, show_routes gate) because
-    // the welcome modal is built before the route index and
-    // visibleRoutes exist — season filtering is ignored, which is
-    // close enough for orientation copy.
-    let panelHasKeyRows = false;
-    if (CONFIG.panelMode !== "search" && CONFIG.showRoutes !== false) {
-        const routes = Object.values(CONFIG.routes || {});
-        const listable = CONFIG.eventModeActive
-            ? routes.filter((r) => r.featured) : routes;
-        panelHasKeyRows = listable.length >= 1;
-    }
+    // magnifier icon and "Search" name, with the key mentioned in the
+    // description. Every map has a key now (a geometry source is
+    // required, so there's always ≥1 route), so the key sentence is
+    // unconditional.
     const rows = [
         { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
             desc: "Track your position on the map." },
@@ -3174,10 +3163,9 @@ function buildWelcomeControlsHint() {
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
-            desc: _welcomeSearchDescription() + (panelHasKeyRows
-                ? " The key above it pairs each route's colour with"
-                  + " its name — tap one to highlight that route."
-                : "") },
+            desc: _welcomeSearchDescription()
+                + " The key above it pairs each route's colour with"
+                + " its name — tap one to highlight that route." },
     ];
 
     // GPX download FAB — event maps with event_mode.gpx only.
@@ -6055,45 +6043,36 @@ function hideHighlightChip() {
 // (+ stats); previously that mapping was only discoverable by
 // tapping a route on the map.
 //
-// Container forms, resolved by rebuildRoutePanel (mutually
-// exclusive), selected by CONFIG.panelMode — the panel_mode YAML key,
-// named for what it switches between: the routes panel vs the plain
-// search button.
-//   key card     — ≥1 listable route and panel_mode isn't "search"
-//                  (even one row earns its place: it keys the line's
-//                  colour to its name and makes search obvious)
+// The panel is always present — it's the map's key. Only two forms
+// exist, resolved by rebuildRoutePanel + initRoutePanel:
+//   key card     — header + key rows + Search button. The default.
+//                  A zero-row map (only reachable via an empty season
+//                  bucket) still renders the card: header + Search
+//                  button, no rows.
 //   .is-collapsed— a compact round list-icon button, FAB-styled to
 //                  match the top-right stack (docked alternative to
 //                  the card; rider-toggled, persisted per-map as
-//                  LS "mtb.routePanel" = "key" | "chip")
-//   .is-searchonly — no listable routes (or panel_mode: "search"):
-//                  search must stay reachable, so the corner is a
-//                  round icon-only magnifier button — visually the
-//                  pre-panel Search FAB
-//   .hidden      — the finder would be empty too (no routes, trails,
-//                  or places): no corner control at all
+//                  LS "mtb.routePanelExpanded" = true | false).
+// The `hidden` class in the markup only suppresses an empty card
+// during the boot data load; rebuildRoutePanel clears it once rows
+// (or an honest empty card) are ready.
 //
-// Boot state under "auto": expanded at ≤ PANEL_EXPANDED_MAX_ROUTES
-// rows (a card that small costs nothing), chip above that.
-// panel_mode: "routes" forces expanded regardless of count, for
-// curators whose map IS the key. (An early standalone-legend draft
-// hid itself entirely on many-route maps, but the production counts —
-// RAMBA 11, Shelden 14 — were exactly the confusing-loops maps that
-// motivated the key, and the chip is cheap enough to keep.) The
-// rider's stored docked-state choice beats either default on later
-// visits; the find state is never persisted — no map should boot
-// into an open search.
-const PANEL_EXPANDED_MAX_ROUTES = 5;
+// Boot docked state: the rider's stored boolean wins; otherwise a
+// viewport-aware default (routePanelDefaultCollapsed) — expanded when
+// the card would fit within PANEL_MAX_VIEWPORT_FRACTION of the
+// viewport, chip when it would swamp the screen (RAMBA's 11 rows on a
+// phone). Computed once at boot; resize/rotate never yanks the card
+// away, and the rider's explicit toggle always wins afterward. The
+// find state is never persisted — no map should boot into an open
+// search.
+const PANEL_MAX_VIEWPORT_FRACTION = 1 / 3;
 
 // The rows the key would show right now: routes visible under the
 // rider's current season/emergency toggles (visibleRoutes — same
 // gate the map itself renders by), minus non-featured routes on
 // event maps (matching the label restriction in
-// labelsVisibleForRoute). Nothing when show_routes: false — a map
-// that hides routes from the finder shouldn't key them either.
-// routeIndex is already sorted by name.
+// labelsVisibleForRoute). routeIndex is already sorted by name.
 function panelListableRoutes() {
-    if (CONFIG.showRoutes === false) return [];
     return routeIndex.filter((r) => {
         if (!visibleRoutes.has(r.id)) return false;
         if (CONFIG.eventModeActive && !r.featured) return false;
@@ -6101,50 +6080,27 @@ function panelListableRoutes() {
     });
 }
 
-// (Re)build the key rows and resolve which form the panel takes.
-// Called from applyVisibilityChange() so season/emergency toggles
-// update the key in the same breath as the map — a key row for a
-// hidden route (or a missing row for a shown one) would be worse
-// than no key. Safe to call before initRoutePanel has wired the
-// expand/collapse buttons: it only touches rows + the form classes.
+// (Re)build the key rows. Called from applyVisibilityChange() so
+// season/emergency toggles update the key in the same breath as the
+// map — a key row for a hidden route (or a missing row for a shown
+// one) would be worse than no key. Safe to call before initRoutePanel
+// has wired the expand/collapse buttons: it only touches rows.
 function rebuildRoutePanel() {
     const wrap = document.getElementById("route-panel");
     const list = document.getElementById("route-panel-list");
     if (!wrap || !list) return;
 
-    const rows = panelListableRoutes();
-    // Key rows show for ANY listable route — even a single row does
-    // real key work (names the coloured line, shows distance, taps
-    // to fit) and keeps the corner consistent across maps. And since
-    // every map is built from route relations / custom routes /
-    // event routes (the validator requires a geometry source), zero
-    // listable routes only happens by curator choice
-    // (show_routes: false, panel_mode: "search") or a season bucket
-    // with nothing in it.
-    const keyRows = CONFIG.panelMode !== "search" && rows.length >= 1;
-    // The corner vanishes entirely only when the finder would be
-    // empty too — otherwise its search entry must survive in the
-    // search-button form, since it replaced the Search FAB.
-    const searchable = _searchTargets().length > 0;
-    wrap.classList.toggle("hidden", !keyRows && !searchable);
-    wrap.classList.toggle("is-searchonly", !keyRows && searchable);
-    // Search-button form: the Search button renders as a round
-    // icon-only magnifier FAB — visually the pre-panel Search FAB.
-    // Sharing the .fab class (like the collapsed chip) keeps its
-    // chrome in lockstep with the top-right stack; the in-card
-    // presentation styles are scoped to :not(.is-searchonly) so the
-    // two forms can't fight (see style.css).
-    const searchBtn = document.getElementById("route-panel-search");
-    if (searchBtn) searchBtn.classList.toggle("fab", !keyRows && searchable);
-    if (!keyRows) {
-        // No rows to render, and any stale collapsed state must go —
-        // the search button lives inside the card, which
-        // .is-collapsed would hide.
-        wrap.classList.remove("is-collapsed");
-        list.textContent = "";
-        return;
-    }
+    // The panel is the map's key — always shown. The `hidden` class in
+    // the markup only suppresses an empty card during the boot data
+    // load; clear it now that we have real rows (or an honest empty
+    // card whose Search button still works). Every map is built from a
+    // geometry source (the validator requires one), so zero listable
+    // rows only happens transiently via an empty season bucket — the
+    // card then renders header + Search button with no rows, and the
+    // next season flip repopulates it.
+    wrap.classList.remove("hidden");
 
+    const rows = panelListableRoutes();
     list.textContent = "";
     for (const r of rows) {
         const li = document.createElement("li");
@@ -6153,11 +6109,10 @@ function rebuildRoutePanel() {
         btn.className = "route-panel-row";
         btn.dataset.routeId = r.id;
 
-        const swatch = document.createElement("span");
-        swatch.className = "route-panel-swatch";
-        swatch.style.background = r.color;
-        swatch.setAttribute("aria-hidden", "true");
-        btn.appendChild(swatch);
+        // Dash-aware swatch (shared with finder rows) so a dotted or
+        // two-colour route reads as dashed in the key, not as a solid
+        // bar.
+        btn.appendChild(routeSwatchEl(r, "route-panel-swatch"));
 
         const name = document.createElement("span");
         name.className = "route-panel-row-name";
@@ -6232,32 +6187,54 @@ function initRoutePanel() {
         chip.setAttribute("aria-expanded", String(!collapsed));
     };
 
-    // Boot state: the rider's stored docked-state choice wins;
-    // otherwise expanded for small key lists and for
-    // panel_mode: routes, chip for big ones (see the section comment
-    // for the threshold reasoning). Skipped for the search-button
-    // form — it has no docked states, and applying a stale "chip"
-    // here would hide the button (it lives inside the card). Only
-    // "key"/"chip" are ever stored; the find state is never
+    // Boot state: the rider's stored boolean wins; otherwise the
+    // viewport-aware default (routePanelDefaultCollapsed). Measured
+    // here, BEFORE the first applyCollapsed, so the card is rendered
+    // expanded and its rows are measurable. Only a boolean is ever
+    // stored (true = key card, false = chip); the find state is never
     // persisted.
-    if (!wrap.classList.contains("is-searchonly")) {
-        const stored = LS.get("mtb.routePanel", null);
-        const defaultCollapsed = CONFIG.panelMode !== "routes"
-            && panelListableRoutes().length > PANEL_EXPANDED_MAX_ROUTES;
-        const collapsed = stored === "chip" ? true
-            : stored === "key" ? false
-            : defaultCollapsed;
-        applyCollapsed(collapsed);
-    }
+    const stored = LS.get("mtb.routePanelExpanded", null);
+    const collapsed = stored === true ? false
+        : stored === false ? true
+        : routePanelDefaultCollapsed();
+    applyCollapsed(collapsed);
 
     chip.addEventListener("click", () => {
         applyCollapsed(false);
-        LS.set("mtb.routePanel", "key");
+        LS.set("mtb.routePanelExpanded", true);
     });
     collapseBtn.addEventListener("click", () => {
         applyCollapsed(true);
-        LS.set("mtb.routePanel", "chip");
+        LS.set("mtb.routePanelExpanded", false);
     });
+}
+
+// Viewport-aware boot default when the rider has no stored preference.
+// Expanded costs a card; too tall a card swamps a small screen (RAMBA's
+// 11 rows on a phone). Measure the real DOM — robust to font, colour
+// scheme, and stat availability — and expand only when the card would
+// fit within PANEL_MAX_VIEWPORT_FRACTION of the viewport. The list's
+// 40vh scroll cap still bounds a rider who later expands a big list;
+// this only decides the boot default. Returns true = start collapsed.
+function routePanelDefaultCollapsed() {
+    const card = document.getElementById("route-panel-card");
+    const list = document.getElementById("route-panel-list");
+    if (!card || !list) return false;
+
+    const rowCount = list.children.length;
+    // A row's real rendered height (~26px; varies with font/scheme/
+    // stats). Fall back to a typical value when there are no rows — a
+    // zero-row card is tiny and always fits.
+    const firstRow = list.firstElementChild;
+    const rowHeight = firstRow ? firstRow.offsetHeight : 26;
+    // Card chrome = header + Search button + padding (~70px), derived
+    // from the rendered card so font/padding changes can't drift it.
+    // The list may be scroll-capped at 40vh, but subtracting its
+    // measured height leaves the true chrome either way; the estimate
+    // below then re-adds the FULL (uncapped) row stack.
+    const chrome = card.offsetHeight - list.offsetHeight;
+    const estimated = chrome + rowCount * rowHeight;
+    return estimated > PANEL_MAX_VIEWPORT_FRACTION * window.innerHeight;
 }
 
 // ============================================================
@@ -6290,6 +6267,15 @@ function buildRouteIndex() {
             distanceM: typeof info.distance_m === "number" ? info.distance_m : null,
             elevationGainM: typeof info.elevation_gain_m === "number" ? info.elevation_gain_m : null,
             elevationLossM: typeof info.elevation_loss_m === "number" ? info.elevation_loss_m : null,
+            // Dash fields, copied verbatim so the key/finder swatches
+            // can reuse the on-map dash helpers (isDashed / getDashPattern
+            // / getDashCap / getDashColors) and render dashed routes as
+            // dashed ribbons rather than flat colour bars. dashed is the
+            // pattern array (or absent); dashColors[0] is the dash colour
+            // (already folded into `color` via effectiveRouteColor).
+            dashed: Array.isArray(info.dashed) ? info.dashed : null,
+            dashCap: info.dashCap || null,
+            dashColors: Array.isArray(info.dashColors) ? info.dashColors : null,
         });
     }
     // Sort alphabetically by name (case-insensitive) for the list display.
@@ -6845,9 +6831,7 @@ function setupFabLabels() {
     if (LS.get(FLAG_KEY)) return;
 
     // Mirror the FAB-stack composition (top-right: Locate, Reset,
-    // Options, GPX). No entry for search — the routes panel absorbed
-    // the Search FAB, and the panel is self-labeling (its chip, card
-    // title, and Search row all carry visible text).
+    // Options, GPX).
     const FABS = [
         { id: "toggle-locate",     label: "Locate" },
         { id: "toggle-reset-view", label: "Reset view" },
@@ -6873,6 +6857,27 @@ function setupFabLabels() {
         btn.appendChild(label);
         mounted.push({ btn, label });
     }
+
+    // Routes-panel discovery label. Anchored to the panel CONTAINER
+    // (not the chip) so it shows in both docked forms — the chip is
+    // display:none when the card is up, so a chip-anchored label would
+    // be invisible on an expanded boot. "Route key" names the function
+    // (the card header's "Routes" names the content); it deliberately
+    // under-claims — POI/difficulty symbology lives in the Options
+    // swatches, not here. Shares the .fab-label styling + dismissal so
+    // all discovery cues read as one first-visit moment; a click
+    // anywhere in the panel dismisses (handled by the mounted loop
+    // below, since panel clicks bubble to the container).
+    const panel = document.getElementById("route-panel");
+    if (panel && !panel.classList.contains("hidden")) {
+        const label = document.createElement("span");
+        label.className = "fab-label";
+        label.textContent = "Route key";
+        label.setAttribute("aria-hidden", "true");
+        panel.appendChild(label);
+        mounted.push({ btn: panel, label });
+    }
+
     if (mounted.length === 0) return;
 
     let dismissed = false;
@@ -7028,8 +7033,8 @@ function setupFloatingChrome() {
     // Replace the index.html's hardcoded "routes, trails, and places"
     // strings on the search overlay and its input with labels derived
     // from what this map actually surfaces. Mirrors the gating in
-    // renderResults() so a map with show_routes: false doesn't
-    // promise route results in its placeholder/aria-labels. The
+    // renderResults() so a map with no trails or POIs doesn't promise
+    // those results in its placeholder/aria-labels. The
     // panel's Search button keeps its static "Search" text — it's an
     // honest button, not a preview of the input — but its aria-label
     // carries the full target list for screen readers.
@@ -7176,11 +7181,11 @@ function setupFloatingChrome() {
     // selection — clicking a chip flips it to selected and rebuilds
     // the result list. Default is "all" set at module scope. The
     // "Trails" chip is hidden when the map has no trails configured;
-    // same for "Routes". The "Places" chip is hidden when no POIs
-    // exist. "All" stays visible whenever ≥1 of the others does.
+    // the "Places" chip is hidden when no POIs exist. The "Routes"
+    // chip always shows (every map has routes). "All" stays visible
+    // whenever ≥1 of the others does.
     const searchFiltersEl = document.getElementById("search-filters");
     if (searchFiltersEl) {
-        const showRoutes = CONFIG.showRoutes !== false;
         const showTrails = CONFIG.showTrails !== false;
         const hasPois = poiIndex && poiIndex.length > 0;
         const chipFilters = searchFiltersEl
@@ -7188,8 +7193,7 @@ function setupFloatingChrome() {
         for (const chip of chipFilters) {
             const f = chip.dataset.filter;
             // Hide chips whose category has no data
-            if ((f === "route" && !showRoutes) ||
-                (f === "trail" && !showTrails) ||
+            if ((f === "trail" && !showTrails) ||
                 (f === "poi" && !hasPois)) {
                 chip.classList.add("hidden");
                 continue;
@@ -7739,19 +7743,13 @@ function setupFloatingChrome() {
         watchSystemColorScheme();
     }
 
-    // ----- Show Routes / Show Trails gating -----
+    // ----- Show Trails gating -----
     //
-    // Hide the Finder section when neither routes nor trails are
-    // configured to show; drop Labels options that match disabled
-    // sections; hide the whole Labels row when "None" would be the
-    // only choice.
-    const showRoutes = CONFIG.showRoutes !== false;
+    // Drop the Trails Labels option when trails are hidden. Routes are
+    // always present (a geometry source is required), so the Finder
+    // section and the Routes label option always stay — no "both off"
+    // case remains.
     const showTrails = CONFIG.showTrails !== false;
-
-    const finderSection = document.getElementById("finder-section");
-    if (finderSection && !showRoutes && !showTrails) {
-        finderSection.classList.add("hidden");
-    }
 
     // ----- Map options: labels + basemap -----
     // Labels are a segmented control (Routes / Trails / None) rather
@@ -7773,23 +7771,16 @@ function setupFloatingChrome() {
         // locks to whatever the curator chose), no need to rig up
         // handlers or sync state.
     } else if (labelGroup) {
-        // Drop buttons that map to disabled sections.
-        if (!showRoutes) {
-            const btn = labelGroup.querySelector('[data-value="routes"]');
-            if (btn) btn.remove();
-        }
+        // Drop the Trails button when trails are hidden. Routes always
+        // show, so the Routes and None buttons always remain — the row
+        // never collapses to None-only.
         if (!showTrails) {
             const btn = labelGroup.querySelector('[data-value="trails"]');
             if (btn) btn.remove();
         }
         const buttons = Array.from(labelGroup.querySelectorAll(".opt-segmented-btn"));
         const available = buttons.map((b) => b.dataset.value);
-        // If both section flags are off, "None" is the only choice —
-        // hide the whole row (and force labelMode off).
-        if (!showRoutes && !showTrails) {
-            if (labelField) labelField.classList.add("hidden");
-            labelMode = "none";
-        } else if (!available.includes(labelMode)) {
+        if (!available.includes(labelMode)) {
             // Persisted labelMode refers to a removed option; coerce
             // to the first available.
             labelMode = available[0] || "none";
@@ -8046,7 +8037,6 @@ function rebuildFinderList() {
 
     const input = document.getElementById("finder-input");
     const query = (input && input.value || "").trim().toLowerCase();
-    const showRoutes = CONFIG.showRoutes !== false;
     const showTrails = CONFIG.showTrails !== false;
 
     list.innerHTML = "";
@@ -8061,7 +8051,7 @@ function rebuildFinderList() {
     // is the default and includes every kind. Per-kind chip
     // restricts to just that kind.
     const filter = currentSearchFilter || "all";
-    const includeRoutes = (filter === "all" || filter === "route") && showRoutes;
+    const includeRoutes = (filter === "all" || filter === "route");
     const includeTrails = (filter === "all" || filter === "trail") && showTrails;
     const includePois = (filter === "all" || filter === "poi");
 
@@ -8329,6 +8319,61 @@ function routeStatsText(r) {
     return parts.join(" · ");
 }
 
+// Shared route-swatch builder for the key rows (rebuildRoutePanel) and
+// the finder rows (makeRouteRow), so the two lists can never disagree
+// about how a route's line is drawn. Plain routes get the flat colour
+// bar; dashed routes get a mini inline SVG ribbon that reuses the
+// on-map dash semantics (isDashed / getDashPattern / getDashCap /
+// getDashColors) — a two-colour underlay beneath a dashed top line,
+// with dots falling out of a [0, N] pattern + round cap. `className`
+// is the caller's own swatch class (.route-panel-swatch or
+// .finder-row-swatch), which the .is-dashed CSS variant widens for the
+// SVG. Scale is for legibility, not fidelity: on the map dasharray
+// units are line-widths (~4px here), so a [4,4] cycle at ×4 would be
+// wider than the whole swatch and still read solid — scale ×2 and
+// widen the swatch (~18px) so at least one dash-gap cycle shows.
+function routeSwatchEl(r, className) {
+    if (!isDashed(r)) {
+        const swatch = document.createElement("span");
+        swatch.className = className;
+        swatch.style.background = r.color;
+        swatch.setAttribute("aria-hidden", "true");
+        return swatch;
+    }
+
+    const NS = "http://www.w3.org/2000/svg";
+    const W = 18, H = 8, y = H / 2, sw = 4;
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", className + " is-dashed");
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("aria-hidden", "true");
+
+    const line = (stroke, dashArray, cap) => {
+        const el = document.createElementNS(NS, "line");
+        el.setAttribute("x1", "0");
+        el.setAttribute("y1", String(y));
+        el.setAttribute("x2", String(W));
+        el.setAttribute("y2", String(y));
+        el.setAttribute("stroke", stroke);
+        el.setAttribute("stroke-width", String(sw));
+        if (cap) el.setAttribute("stroke-linecap", cap);
+        if (dashArray) el.setAttribute("stroke-dasharray", dashArray);
+        return el;
+    };
+
+    const dashColors = getDashColors(r);
+    // Two-colour dash: solid second colour underlay, dashed first on top
+    // (r.color already resolves to dashColors[0] via effectiveRouteColor).
+    if (dashColors && dashColors.length >= 2) {
+        svg.appendChild(line(dashColors[1], null, getDashCap(r)));
+    }
+    const dashArray = getDashPattern(r).map((n) => n * 2).join(" ");
+    svg.appendChild(line(r.color, dashArray, getDashCap(r)));
+    return svg;
+}
+
 function makeRouteRow(r) {
     const row = document.createElement("button");
     row.type = "button";
@@ -8336,10 +8381,7 @@ function makeRouteRow(r) {
     row.setAttribute("role", "option");
     row.dataset.routeId = r.id;
 
-    const swatch = document.createElement("span");
-    swatch.className = "finder-row-swatch";
-    swatch.style.background = r.color;
-    swatch.setAttribute("aria-hidden", "true");
+    const swatch = routeSwatchEl(r, "finder-row-swatch");
 
     const name = document.createElement("span");
     name.className = "finder-row-name";
@@ -8382,10 +8424,8 @@ function makeTrailRow(t, visibleRouteIds) {
     row.appendChild(name);
 
     // Parent route names (only those currently visible). Truncate to 2 plus
-    // an "+N more" tail for readability. Suppressed entirely when
-    // show_routes: false — routes aren't a surfaced concept on the
-    // map then, so naming them under each trail is misleading clutter.
-    const parents = (CONFIG.showRoutes === false) ? [] : t.routeIds
+    // an "+N more" tail for readability.
+    const parents = t.routeIds
         .filter((rid) => visibleRouteIds.has(rid))
         .map((rid) => CONFIG.routes[rid] && CONFIG.routes[rid].name)
         .filter(Boolean);

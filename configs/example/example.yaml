@@ -38,7 +38,6 @@ clipped_relations:
 # show_drinking_water: true
 # show_terrain: true
 # show_difficulty: true
-# show_routes: true
 # show_trails: true
 # show_direction_arrows: true
 # suppress_basemap_path_labels: false

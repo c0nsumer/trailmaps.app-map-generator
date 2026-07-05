@@ -78,11 +78,11 @@ CONFIG_SPEC = [
     # keeping the filter useful. The Features peek toggle auto-hides
     # if no feature POI passes this check.
     ("poi_proximity_m", "poiProximityMeters", 50),
-    # UI gates for the Finder + Labels dropdown. Some systems have no
-    # curated routes (trails only) or treat routes and trails as the
-    # same set; turning one off hides the matching Finder section and
-    # Labels option.
-    ("show_routes", "showRoutes", True),
+    # UI gate for the Finder + Labels dropdown. Where routes and trails
+    # overlap so heavily that listing both adds noise, turning trails
+    # off hides the Trails Finder section and the Trails Labels option.
+    # (Routes are always surfaced — a geometry source is required, so
+    # every map has a key.)
     ("show_trails", "showTrails", True),
     # Build-time data gate for the direction-arrow layer. When False,
     # no arrows are placed on any oneway trail and the Options toggle
@@ -100,8 +100,7 @@ CONFIG_SPEC = [
     # Labels mode lock. When set ("routes" / "trails" / "none"), the
     # Labels segmented control is hidden in Options and the rider's
     # persisted choice is ignored. Validated at build time against
-    # show_routes / show_trails so the lock can't contradict the
-    # surfaced sections.
+    # show_trails so the lock can't contradict a hidden section.
     # Default "" (empty string) rather than None — None is the
     # "required key" sentinel for inject_config_into_template's loop;
     # the runtime check is `CONFIG.forcedLabels ? lock : free` which
@@ -171,21 +170,6 @@ CONFIG_SPEC = [
     # where the curator wants no share affordance (e.g. private/
     # family maps); leave true for community/public maps.
     ("share_button", "shareButton", True),
-    # What the bottom-right corner control is: the routes panel (key
-    # rows: swatch + name + stats per route, tap to highlight, with a
-    # Search button pinned at the bottom) or the plain round search
-    # button. "auto" (default) picks the routes panel whenever the
-    # map has ANY listable route — every map has ≥1 (the validator
-    # requires a geometry source), so in practice the search button
-    # appears only via show_routes: false or a season bucket with
-    # nothing in it. The panel boots expanded for small route counts
-    # and collapsed to a round list-icon button for large ones.
-    # "routes" forces the expanded boot state regardless of count;
-    # "search" is the search button only, no key rows. Count
-    # thresholds live in the runtime (initRoutePanel,
-    # templates/app.js) since "listable" depends on the rider's
-    # season/emergency toggles.
-    ("panel_mode", "panelMode", "auto"),
     # Marker colours (kept per user request; some systems have
     # branded marker palettes aligned with their trail colours).
     # parking/trailhead/feature colours flow to CSS custom

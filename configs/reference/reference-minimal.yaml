@@ -39,7 +39,6 @@ relations:
 # show_drinking_water: true
 # show_terrain: true
 # show_difficulty: true
-# show_routes: true
 # show_trails: true
 # show_direction_arrows: true
 # suppress_basemap_path_labels: false
@@ -71,7 +70,6 @@ relations:
 # url_hash: false
 # distance_units: mi
 # share_button: true
-# panel_mode: auto
 
 # --- Marker and accent colours ---
 # marker_color: "#795548"

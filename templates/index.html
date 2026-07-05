@@ -259,13 +259,13 @@
          tap through to highlightRoute. The Search row pinned at the
          card's bottom expands into the full search overlay — the finder
          is the panel's expanded state, not a separate destination.
-         Docked states are a .is-collapsed class flip (both live in the
-         DOM); which form the corner takes at boot — key card (any
-         listable route), chip, a round search button (.is-searchonly:
-         no listable routes or panel_mode: search), or nothing (finder
-         would be empty too) — is decided by rebuildRoutePanel()/
-         initRoutePanel() from CONFIG.panelMode plus the
-         listable-route count. -->
+         The panel is the map's key and always shows — only two docked
+         forms exist, a .is-collapsed class flip (both live in the DOM):
+         key card or round list-icon chip. The boot form is decided by
+         initRoutePanel() (rider's stored boolean, else a viewport-aware
+         default). The `hidden` class below only suppresses an empty
+         card during the boot data load; rebuildRoutePanel() clears it
+         once the rows are ready. -->
     <div id="route-panel" class="route-panel hidden">
         <!-- Collapsed state: a round icon-only FAB matching the
              top-right stack (shared .fab class keeps the chrome in
@@ -293,11 +293,7 @@
             <!-- The finder's front door — an honest button (bordered
                  pill, centered "Search"), not a fake input: in a card
                  this small a pretend field reads ambiguously, and the
-                 real input greets the rider inside the overlay. In the
-                 search-button form (.is-searchonly) rebuildRoutePanel
-                 adds the .fab class and CSS hides the text span, so
-                 this same element renders as a round icon-only
-                 magnifier — visually the pre-panel Search FAB. The
+                 real input greets the rider inside the overlay. The
                  aria-label is rewritten at boot with the map's actual
                  search targets; aria-pressed is maintained by the
                  shared setOverlayOpen() plumbing, like the old FAB. -->
@@ -721,7 +717,7 @@
     <!-- Welcome modal — first-visit only. Reuses about-modal styling for
          consistency (same backdrop + content card + close button). The
          body is built by app.js so the per-map title (CONFIG.title) and
-         features (gated by show_routes / show_trails / share_button /
+         features (gated by show_trails / share_button /
          pwa_install_prompt) are reflected in the copy. -->
     <div id="welcome-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
         <div class="about-modal-backdrop"></div>

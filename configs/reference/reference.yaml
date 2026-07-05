@@ -134,9 +134,6 @@ relations:
 # Generate IMBA difficulty symbols; auto-hidden if no way carries mtb:scale:imba.
 # show_difficulty: true
 
-# Show the Finder's Routes section and the Routes label mode.
-# show_routes: true
-
 # Show the Finder's Trails section and the Trails label mode.
 # show_trails: true
 
@@ -230,24 +227,14 @@ relations:
 # Show the "Share this view" row in the Options overlay.
 # share_button: true
 
-# What the bottom-right corner control is: the routes panel or the plain
-# search button. The routes panel is a key card listing each visible route as
-# a colour swatch + name + stats (tap a row to highlight it), with a Search
-# button pinned at the bottom that opens the full finder; the search button
-# alone is a round magnifier button opening the same finder. Search is always
-# reachable either way. "Listable" routes follow the rider's season /
-# emergency toggles, and event maps list featured routes only.
-#   auto (default) — routes panel whenever the map has any listable route —
-#                    even one row keys the line's colour to its name and
-#                    makes search obvious. Expanded at 1-5 routes, collapsed
-#                    to a round list-icon button at 6+; the rider's
-#                    expand/collapse choice persists per map and beats this
-#                    default. The search button appears only when no route
-#                    is listable (show_routes: false, or a season bucket
-#                    with nothing in it).
-#   routes         — routes panel, starting expanded regardless of count.
-#   search         — search button only; no key rows.
-# panel_mode: auto
+# The bottom-right corner always shows the routes panel — the map's key. It
+# lists each visible route as a colour swatch + name + stats (tap a row to
+# highlight it), with a Search button pinned at the bottom that opens the full
+# finder. "Listable" routes follow the rider's season / emergency toggles, and
+# event maps list featured routes only. The panel boots expanded or collapsed
+# to a round list-icon button depending on how many rows there are and whether
+# the card would swamp the viewport; the rider's expand/collapse choice
+# persists per map and beats that default. There is no config knob.
 
 # ============================================================
 # Marker and accent colours

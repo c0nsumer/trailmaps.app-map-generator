@@ -110,7 +110,6 @@ KNOWN_KEYS = {
     "show_drinking_water": bool,
     "show_terrain": bool,
     "show_difficulty": bool,
-    "show_routes": bool,
     "show_trails": bool,
     "show_direction_arrows": bool,
     "suppress_basemap_path_labels": bool,
@@ -125,12 +124,6 @@ KNOWN_KEYS = {
     "show_route_elevation": bool,
     "distance_units": str,
     "share_button": bool,
-    # What the bottom-right corner control is: "auto" (default — the
-    # routes panel when the map has 2+ listable routes, the search
-    # button otherwise), "routes" (routes panel, boots expanded
-    # regardless of count), "search" (search button only, no key
-    # rows). Enum-checked in _validate_enums.
-    "panel_mode": str,
     # User-supplied feature data
     "trailheads": list,
     "parking": list,
@@ -228,7 +221,6 @@ HANDLED_SPECIALLY = {
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
-VALID_PANEL_MODES = {"auto", "routes", "search"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
     "sunday",
@@ -383,17 +375,11 @@ def _validate_enums(report, config):
         if v not in VALID_LABELS:
             report.err("forced_labels", f"must be one of {sorted(VALID_LABELS)}, got {v!r}")
         else:
-            # Cross-check against show_routes / show_trails — locking
-            # the rider into a labels mode whose underlying section is
-            # hidden would render no labels at all and surface no UI
-            # to recover. Catch at build time.
-            if v == "routes" and config.get("show_routes") is False:
-                report.err(
-                    "forced_labels",
-                    "'routes' is invalid when show_routes: false "
-                    "— route labels can't render. Use 'trails' or "
-                    "'none', or remove show_routes: false.",
-                )
+            # Cross-check against show_trails — locking the rider into
+            # the trails labels mode when trails are hidden would render
+            # no labels at all and surface no UI to recover. Catch at
+            # build time. (Routes are always present, so 'routes' never
+            # needs this guard.)
             if v == "trails" and config.get("show_trails") is False:
                 report.err(
                     "forced_labels",
@@ -411,12 +397,6 @@ def _validate_enums(report, config):
         report.err(
             "distance_units",
             f"must be one of {sorted(VALID_DISTANCE_UNITS)}, got {config['distance_units']!r}",
-        )
-
-    if "panel_mode" in config and config["panel_mode"] not in VALID_PANEL_MODES:
-        report.err(
-            "panel_mode",
-            f"must be one of {sorted(VALID_PANEL_MODES)}, got {config['panel_mode']!r}",
         )
 
     if (

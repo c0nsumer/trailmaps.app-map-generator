@@ -1200,6 +1200,21 @@ body {
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
+/* Dashed / dotted / two-colour routes swap the flat bar for an SVG
+ * ribbon (built by routeSwatchEl, which adds .is-dashed) so the key
+ * and finder don't misrepresent a dashed line as a solid one. Wider
+ * and a touch taller than the solid bar so at least one dash-gap cycle
+ * is legible; the SVG paints its own line, so strip the bar's fill,
+ * radius, and outline. Shared by both lists — one rule, one look. */
+.finder-row-swatch.is-dashed,
+.route-panel-swatch.is-dashed {
+    width: 18px;
+    height: 8px;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
 .finder-row-trail-mark {
     display: inline-block;
     width: 14px;
@@ -3235,15 +3250,12 @@ body.modal-open .gpx-overlay.is-open {
  *   (default)       key card: header + rows + Search row
  *   .is-collapsed   compact round list-icon button (shared .fab
  *                   chrome, matching the top-right stack)
- *   .is-searchonly  round icon-only magnifier button (no listable
- *                   routes, or panel_mode: search — no key rows,
- *                   but search must stay reachable; visually the
- *                   pre-panel Search FAB it replaced)
- *   .hidden         nothing (the finder would be empty too)
- * All forms stay in the DOM — state changes are class flips, not
- * rebuilds. z-index matches the FAB stack (5, below open overlays),
- * and the panel joins the FABs' hide-under-overlay rule above; for
- * the search overlay that fade doubles as the v1 expand transition. */
+ * The `.hidden` class only suppresses the card during the boot data
+ * load — the panel is the map's key and always shows once ready. Both
+ * forms stay in the DOM — state changes are class flips, not rebuilds.
+ * z-index matches the FAB stack (5, below open overlays), and the
+ * panel joins the FABs' hide-under-overlay rule above; for the search
+ * overlay that fade doubles as the v1 expand transition. */
 .route-panel {
     position: fixed;
     right: calc(12px + env(safe-area-inset-right, 0));
@@ -3253,29 +3265,6 @@ body.modal-open .gpx-overlay.is-open {
 
 .route-panel.is-collapsed .route-panel-card { display: none; }
 .route-panel:not(.is-collapsed) .route-panel-chip { display: none; }
-
-/* Search-button form: the card sheds its chrome entirely and the
- * Search button alone renders as a round icon-only magnifier FAB
- * (the .fab class is added by rebuildRoutePanel) — visually the
- * pre-panel Search FAB, so panel_mode: search restores the old UI
- * rather than introducing a third style. The in-card button rules
- * below are scoped to :not(.is-searchonly), so .fab's geometry
- * applies unopposed; only the text span (hidden) and the glyph
- * (whose width/height attributes are sized for the in-card row)
- * need adjusting here. */
-.route-panel.is-searchonly .route-panel-header,
-.route-panel.is-searchonly .route-panel-list { display: none; }
-.route-panel.is-searchonly .route-panel-card {
-    background: none;
-    border: none;
-    box-shadow: none;
-    padding: 0;
-}
-.route-panel.is-searchonly .route-panel-search span { display: none; }
-.route-panel.is-searchonly .route-panel-search svg {
-    width: 22px;
-    height: 22px;
-}
 
 /* Collapsed chip — a round icon-only button sharing the .fab class
  * (see index.html), so the docked panel matches the top-right stack
@@ -3361,7 +3350,9 @@ body.modal-open .gpx-overlay.is-open {
 
 /* Same swatch recipe as .finder-row-swatch — a short line segment,
  * i.e. a miniature of the route ribbon itself. Own class so the two
- * lists can diverge without cross-file surprises. */
+ * lists can diverge without cross-file surprises. Dashed routes swap
+ * this flat bar for an SVG ribbon (routeSwatchEl adds .is-dashed);
+ * see the shared dashed-swatch rule near .finder-row-swatch. */
 .route-panel-swatch {
     display: inline-block;
     width: 14px;
@@ -3390,9 +3381,8 @@ body.modal-open .gpx-overlay.is-open {
  * button (bordered pill, centered label, full text colour) rather
  * than a fake input: in a card this small a pretend field reads
  * ambiguously, and the real input greets the rider inside the
- * overlay. Scoped to :not(.is-searchonly) so the search-button
- * form's .fab chrome applies unopposed. */
-.route-panel:not(.is-searchonly) .route-panel-search {
+ * overlay. */
+.route-panel-search {
     display: flex;
     align-items: center;
     justify-content: center;

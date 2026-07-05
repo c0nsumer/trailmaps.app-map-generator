@@ -40,6 +40,7 @@ Both files stay in identical key order, so you can diff them at any time and use
   - [Output](#output)
 - [Route buckets](#route-buckets)
 - [Custom routes (full guide)](#custom-routes-full-guide)
+- [Routes panel](#routes-panel)
 - [Trail finder](#trail-finder)
 - [Trail difficulty](#trail-difficulty)
 - [Direction arrows](#direction-arrows)
@@ -207,8 +208,7 @@ automatically when the underlying data or sprite is absent.
 | `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Drinking Water toggle auto-hides when none were found. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted. |
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
-| `show_routes` | No | `true` | When false, hides the Finder's Routes section and the Routes label mode. Use for maps with no curated routes. |
-| `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). With both `show_routes` and `show_trails` false, the Finder and the Labels control disappear. |
+| `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden, even if `direction_arrows` is in `forced_visible` (this gate wins). The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (custom base layers unaffected). |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighbourhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
@@ -240,8 +240,8 @@ See [Direction arrows](#direction-arrows) for the full model.
 |-----|----------|---------|-------------|
 | `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms: omitted / empty list (everything off; riders opt in via Options); `"all"` (every supported layer on); list of layer names (only those layers on). Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage` and overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows` (or use `"all"`) or list it in `forced_visible`; the build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
 | `forced_visible` | No | `[]` | Layers rendered ON regardless of `localStorage` or `default_visible`, with their toggle hidden so the rider cannot turn them off. Same forms and layer names as `default_visible`. Use for safety-critical layers (`direction_arrows` on flow trails) or any layer that must always show. Subordinate to the `show_*` gates: a layer suppressed by `show_X: false`, or with no data, has nothing to force on. |
-| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"` so a fresh visit produces a clean map with the rider opting into labels via the Labels segmented control. The in-UI select reflects `show_routes` / `show_trails`; options for hidden categories are removed. |
-| `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"routes"` with `show_routes: false`, or `"trails"` with `show_trails: false`). |
+| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"` so a fresh visit produces a clean map with the rider opting into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
+| `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`). |
 | `default_color_scheme` | No | `"light"` | First-visit colour scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colours are scheme-independent. |
 | `invert_logo_dark` | No | `true` | Whether the brand logo auto-inverts in dark mode. The default suits monochrome and limited-palette logos; set `false` when the logo is colourful or photographic and inverting it looks wrong. |
 | `map_dim_on_highlight` | No | `true` | When a route or trail is highlighted (via Finder tap or in-map click), dim every non-highlighted route / trail. Name labels stay visible so connecting trails can still be read for wayfinding. Set `false` to keep the rest of the network at full saturation. |
@@ -250,7 +250,8 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honour any hash on page load: enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
 | `distance_units` | No | `"mi"` | Units for **all** distance and elevation values. `"mi"`: miles for distance, feet for elevation gain. `"km"`: kilometres for distance, metres for elevation gain. Affects render-time formatting only. |
 | `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view and any active highlight — a route, a trail, or a place (a single POI, a name group, or a whole POI category) selected from the Finder — as a deep-link URL and offers it via the native share sheet (mobile) or clipboard (desktop); opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
-| `panel_mode` | No | `"auto"` | What the bottom-right corner control is: the **routes panel** (a key card listing each visible route as a colour swatch + name + stats, with a **Search** button pinned at its bottom that opens the search overlay) or the plain round **search button** (icon-only magnifier, visually the classic Search button, opening the same overlay). Search is always reachable either way. Key rows: tapping one highlights that route, exactly like tapping it in the Finder, and tapping the highlighted row again clears it; "listable" routes follow the rider's season / emergency toggles, respect `show_routes: false`, and event maps list featured routes only. `"auto"` picks the routes panel whenever the map has **any** listable route (even one row keys the line's colour to its name and makes search obvious) — starting expanded at 1–5 routes and collapsed to a compact round list-icon button at 6+ — and falls back to the search button only when nothing is listable (`show_routes: false`, or a season bucket with no routes; every map has at least one route overall, since a geometry source is required). `"routes"` starts the panel expanded regardless of count. `"search"` is the search button only, no key rows. The rider's expand / collapse choice persists per-map and beats the auto default. Row stats follow `show_route_distance` / `show_route_elevation` and `distance_units`. |
+
+The bottom-right routes panel — the map's key — has no config knob; see [Routes panel](#routes-panel) below.
 
 ### Marker and accent colours
 
@@ -464,6 +465,33 @@ Custom routes are indistinguishable from OSM routes in every runtime behaviour:
 - If `trail_name_field` points at per-segment names, those trails also appear in
   the **Trails** section of the finder and can be highlighted individually.
 
+## Routes panel
+
+The bottom-right corner always shows the **routes panel** — the map's key.
+There is no config knob: every map gets it (a geometry source is required, so
+there is always at least one route). It lists every currently-visible route as
+a colour swatch + name + optional stats, with a **Search** button pinned at the
+bottom that opens the [finder](#trail-finder) — the finder is the panel's
+expanded search state.
+
+- **The swatch keys the line.** It reuses the route's own on-map style — a
+  solid bar for solid routes, a dashed / dotted / two-colour ribbon for dashed
+  ones (see [Dash patterns](#dash-patterns)) — so a same-shaped coloured loop
+  is tellable apart straight from the key. The finder's route rows use the
+  identical swatch.
+- **The rows mirror what's visible**, following the rider's season / emergency
+  toggles exactly like the finder; event maps list featured routes only.
+- **Tapping a row** highlights that route (tap again to clear) — the same
+  behaviour as a finder route row.
+- **Row stats** follow `show_route_distance` / `show_route_elevation` and
+  `distance_units`.
+- **Boot state.** The panel opens either as the key card or as a compact round
+  list-icon chip, chosen by how many rows there are and whether the card would
+  swamp the viewport (roughly, it starts expanded when the card would fit
+  within a third of the screen height, chip otherwise). The rider's expand /
+  collapse choice then persists per-map (`mtb.routePanelExpanded`) and beats
+  that default. A first-visit **Route key** label points the panel out.
+
 ## Trail finder
 
 The Search overlay (opened via the routes panel's **Search** row at
@@ -492,8 +520,10 @@ TRAILS
   mode with Emergency off, you see summer routes and the trails that belong to
   them. Toggle Emergency on and emergency routes / trails appear in the list.
   Switch to Winter mode and the list live-refilters to winter content.
-- **Route rows** show a coloured swatch in the route's own colour plus the name.
-  OSM and custom routes appear together, indistinguishable in behaviour.
+- **Route rows** show a swatch in the route's own on-map style (solid, or a
+  dashed / dotted / two-colour ribbon for dashed routes — the same swatch the
+  routes panel uses) plus the name. OSM and custom routes appear together,
+  indistinguishable in behaviour.
 - **Trail rows** show the trail name and the parent route(s) underneath.
 - **Tapping a row** highlights it on the map (glow + stroke in the route's own
   colour for routes, or amber for trails), pans / zooms to its extent, collapses
@@ -1097,7 +1127,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
-| `mtb.routePanel` | `"key"` or `"chip"`: the routes panel's docked state — expanded key card or minimized chip. Only these two are stored; the open search overlay is never persisted |
+| `mtb.routePanelExpanded` | Boolean: the routes panel's docked state — `true` = expanded key card, `false` = minimized chip. Only set on an explicit rider toggle; the open search overlay is never persisted |
 
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.
