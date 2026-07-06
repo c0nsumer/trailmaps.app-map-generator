@@ -63,6 +63,26 @@ def _server_name(url):
     return url.split("/")[2]
 
 
+def _write_cache(cache_path, data):
+    """Write a cache file atomically (temp sibling + os.replace).
+
+    A plain json.dump straight onto the cache path meant a Ctrl-C or
+    crash mid-write left truncated JSON that crashed every subsequent
+    build until the file was hunted down and deleted by hand. The
+    rename makes the file either complete or absent, and the guarded
+    read in query() cleans up anything that predates this fix.
+    """
+    tmp = cache_path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, cache_path)
+    except OSError as e:
+        console.warn(f"could not write Overpass cache {cache_path}: {e}")
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 class EmptyResponseError(Exception):
     """Raised when a server returns valid JSON but with no elements."""
 
@@ -149,16 +169,27 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             else:
                 hours = age.seconds // 3600
                 age_str = f"{hours}h ago" if hours > 0 else "just now"
-            with open(cp, encoding="utf-8") as f:
-                cached = json.load(f)
             try:
-                _check_snapshot_freshness(cached, "cache")
-            except StaleSnapshotError as e:
-                console.info(f"Discarding stale cache ({date_str}): {e}")
-                os.remove(cp)
+                with open(cp, encoding="utf-8") as f:
+                    cached = json.load(f)
+            except (OSError, ValueError) as e:
+                # Truncated/corrupt cache file (e.g. written before cache
+                # writes were atomic). Delete it and fall through to a
+                # fresh fetch — a bad cache entry must never wedge builds.
+                console.warn(f"Discarding unreadable cache ({type(e).__name__}): {cp}")
+                try:
+                    os.remove(cp)
+                except OSError:
+                    pass
             else:
-                console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
-                return cached
+                try:
+                    _check_snapshot_freshness(cached, "cache")
+                except StaleSnapshotError as e:
+                    console.info(f"Discarding stale cache ({date_str}): {e}")
+                    os.remove(cp)
+                else:
+                    console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
+                    return cached
     else:
         cp = None
 
@@ -207,8 +238,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
                     console.info("Continuing with empty data; downstream may produce an empty map.")
                     _check_snapshot_freshness(data, server)
                     if cp:
-                        with open(cp, "w", encoding="utf-8") as f:
-                            json.dump(data, f)
+                        _write_cache(cp, data)
                     return data
                 raise EmptyResponseError(
                     f"0 elements returned (attempt {empty_attempts}/"
@@ -220,8 +250,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             console.info(f"Response from {server} ({len(data.get('elements', []))} elements)")
 
             if cp:
-                with open(cp, "w", encoding="utf-8") as f:
-                    json.dump(data, f)
+                _write_cache(cp, data)
 
             return data
         except (EmptyResponseError, StaleSnapshotError, PartialResponseError) as e:
