@@ -1042,24 +1042,6 @@ const OVERVIEW_LABEL_MAX_ZOOM = LABEL_CROSSOVER_ZOOM + 1;
 // if per-trail overview labels prove too cluttered.
 const POINT_LABELS_IN_TRAILS_MODE = true;
 
-// ---- Repeated overview point labels ----
-// Below the line-label crossover each route/trail used to get exactly
-// ONE point label on the whole map (on its longest way). Zoomed past
-// overview, that label was usually off-viewport — visibly unlabelled
-// trails through the z13-16 band, and the crossover can't come down to
-// fill it (line labels at z14 drew over the dense icon field; see the
-// POINT_LABEL_MAX_ZOOM comment). These rungs repeat each name along the
-// entity's ways instead, aiming for one label per
-// ~LABEL_PT_TARGET_SPACING_PX of screen at each zoom so a name is in
-// view wherever the entity is. First rung two stops above the map
-// minimum (at true overview, one label per entity is right); last rung
-// one stop under the point-label layers' maxzoom (a rung gating in AT
-// the maxzoom could never render).
-const LABEL_PT_TARGET_SPACING_PX = 700;
-const LABEL_PT_CADENCE_FLOOR_M = 400; // never repeat a name denser than this
-const LABEL_PT_LADDER = decorCadenceLadder(LABEL_PT_TARGET_SPACING_PX,
-    LABEL_PT_CADENCE_FLOOR_M, CONFIG.minZoom + 2, OVERVIEW_LABEL_MAX_ZOOM - 1);
-
 // Endpoint key for way-connectivity matching. OSM-derived way geometry
 // shares exact node coordinates at junctions; rounding to ~0.1 m guards
 // against float drift from any upstream processing.
@@ -1367,12 +1349,10 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 //   Pass 1.5 — run-tier overview markers: arrows and diamonds spaced
 //              along each connected run, placed first so detail-tier
 //              markers can't double up on them
-//   Pass 1.7 — overview point labels (loop/trail names pinned on the
-//              trail: one guaranteed per entity, repeated along its ways
-//              per LABEL_PT_LADDER; placed AFTER the run-tier markers so
-//              those keep priority, reserves footprints so the ladder
-//              rungs below deconflict around them; maxzoom hands to
-//              line labels)
+//   Pass 1.7 — overview point labels (one loop/trail name pinned on the
+//              trail; placed AFTER the run-tier markers so those keep
+//              priority, reserves its footprint so the per-way/sweep tiers
+//              below deconflict around it; maxzoom hands to line labels)
 //   Pass 2   — per-way mandatory diamonds (2 per applicable way) so
 //              even short trails get difficulty markings
 //   Pass 3   — density ladder: one diamond sweep + one arrow sweep per
@@ -1489,12 +1469,9 @@ function computeDecorations() {
             shared_routes: w.sharedRoutes,
         }));
 
-    // ---- Pass 1.7: overview point labels — one guaranteed name per
-    //      visible route, and (trails mode) per named trail, pinned ON the
-    //      trail at a low-clutter point on its longest way, then repeated
-    //      along the entity's ways per the LABEL_PT_LADDER rungs so
-    //      mid-zoom viewports away from the guaranteed label still see
-    //      the name. Placed AFTER the run-tier overview
+    // ---- Pass 1.7: overview point labels — one name per visible route, and
+    //      (trails mode) per named trail, pinned ON the trail at a low-clutter
+    //      point on its longest way. Placed AFTER the run-tier overview
     //      markers above so those sparse, zoomed-out arrows/diamonds keep
     //      priority and aren't starved, but BEFORE the per-way and sweep
     //      tiers below, whose markers it reserves a footprint against so they
@@ -1514,7 +1491,7 @@ function computeDecorations() {
         // with zoom, biting hardest at z15-16 where the tiers are densest.
         const r = Math.min(120, 45 + text.length * 6);
         const pt = chooseOnPathLabelPoint(way, placed, r);
-        if (!pt) return null;
+        if (!pt) return;
         decorations.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
@@ -1526,89 +1503,43 @@ function computeDecorations() {
             }, extraProps),
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
-        return pt;
-    };
-    // Repeat an entity's name along its ways per the LABEL_PT_LADDER
-    // rungs, so a mid-zoom viewport that has scrolled away from the
-    // single rung-0 label above still sees the name. Same footprint
-    // reservation as emitOverviewLabel (the icon rungs placed later
-    // deconflict around the text); `accepted` keeps same-name labels at
-    // least a rung-cadence apart, with finer rungs slotting between
-    // coarser ones, and MapLibre's text collision drops any residual
-    // overlap between different names at render time.
-    const repeatOverviewLabels = (text, entityWays, seedPt, extraProps) => {
-        const r = Math.min(120, 45 + text.length * 6);
-        const accepted = seedPt ? [[seedPt.lng, seedPt.lat]] : [];
-        const farEnough = (lng, lat, d) => {
-            for (const p of accepted) {
-                if (haversineMeters(lng, lat, p[0], p[1]) < d) return false;
-            }
-            return true;
-        };
-        for (const rung of LABEL_PT_LADDER) {
-            for (const w of entityWays) {
-                const n = Math.round(w.totalLength / rung.cadenceM);
-                for (let k = 1; k <= n; k++) {
-                    const pt = pointAtArcLength(w.segments, w.totalLength,
-                        w.totalLength * k / (n + 1));
-                    if (!pt) continue;
-                    if (!farEnough(pt.lng, pt.lat, rung.cadenceM)) continue;
-                    if (placedCollides(pt.lng, pt.lat, r, placed)) continue;
-                    decorations.push({
-                        type: "Feature",
-                        geometry: { type: "Point",
-                            coordinates: [pt.lng, pt.lat] },
-                        properties: Object.assign({
-                            min_zoom: rung.minZoom,
-                            text: text,
-                            symbol_sort_key: -Math.round(w.totalLength),
-                            shared_routes: w.sharedRoutes,
-                        }, extraProps),
-                    });
-                    placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
-                    accepted.push([pt.lng, pt.lat]);
-                }
-            }
-        }
     };
     // Route name labels — gated per-route by routeLabelAllowed (which
     // reflects the current label mode); the muted event-mode network
     // stays unlabelled there.
     {
-        const routeAgg = new Map();   // routeId -> { longest, ways }
+        const routeAgg = new Map();   // routeId -> { n, longest }
         for (const way of ways) {
             const rids = (way.sharedRoutes && way.sharedRoutes.length)
                 ? way.sharedRoutes : [way.routeId];
             for (const rid of rids) {
                 if (!visibleRoutes.has(rid)) continue;
                 let agg = routeAgg.get(rid);
-                if (!agg) { agg = { longest: way, ways: [] }; routeAgg.set(rid, agg); }
-                agg.ways.push(way);
+                if (!agg) { agg = { n: 0, longest: way }; routeAgg.set(rid, agg); }
+                agg.n++;
                 if (way.totalLength > agg.longest.totalLength) agg.longest = way;
             }
         }
         for (const [rid, agg] of routeAgg) {
             if (!routeLabelAllowed(rid)) continue;
             const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
-            if (!name) continue;
-            const props = { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid };
-            const seed = emitOverviewLabel(name, agg.longest, props);
-            repeatOverviewLabels(name, agg.ways, seed, props);
+            if (!name || agg.n === 0) continue;
+            emitOverviewLabel(name, agg.longest,
+                { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid });
         }
     }
     if (POINT_LABELS_IN_TRAILS_MODE && CONFIG.showTrails !== false) {
-        const trailAgg = new Map();   // trailName -> { longest, ways }
+        const trailLongest = new Map();   // trailName -> longest way
         for (const way of ways) {
             if (!way.trailName) continue;
-            let agg = trailAgg.get(way.trailName);
-            if (!agg) { agg = { longest: way, ways: [] }; trailAgg.set(way.trailName, agg); }
-            agg.ways.push(way);
-            if (way.totalLength > agg.longest.totalLength) agg.longest = way;
+            const cur = trailLongest.get(way.trailName);
+            if (!cur || way.totalLength > cur.totalLength) {
+                trailLongest.set(way.trailName, way);
+            }
         }
-        for (const [tname, agg] of trailAgg) {
-            const props = { kind: KIND.TRAIL_LABEL_PT, trail_name: tname };
-            const seed = emitOverviewLabel(tname, agg.longest, props);
-            repeatOverviewLabels(tname, agg.ways, seed, props);
+        for (const [tname, way] of trailLongest) {
+            emitOverviewLabel(tname, way,
+                { kind: KIND.TRAIL_LABEL_PT, trail_name: tname });
         }
     }
 
