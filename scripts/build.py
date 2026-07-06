@@ -36,6 +36,7 @@ sys.path.insert(0, SCRIPTS_DIR)
 import console
 from cache_signatures import (
     _bbox_signature,
+    _clear_signature,
     _load_signature,
     _pmtiles_needs_regen,
     _save_signature,
@@ -165,7 +166,13 @@ def _minify_assets(output_dir):
 def download_vendor_libs(output_dir, cache_dir):
     """Download CDN dependencies to vendor/ for offline use.
 
-    Downloads are cached in cache/vendor/ so subsequent builds skip the fetch.
+    Downloads are cached in cache/vendor/ so subsequent builds skip the
+    fetch. The cache filename embeds a hash of the source URL — the
+    version lives only in the URL, so a bare-filename cache key meant a
+    VENDOR_LIBS version bump silently kept shipping the previously
+    cached library to every map until someone happened to --force.
+    Bumping a version now misses the cache naturally, and the stale
+    variant is cleaned up after the new one downloads.
     """
     vendor_cache = os.path.join(cache_dir, "vendor")
     vendor_dst = os.path.join(output_dir, "vendor")
@@ -174,7 +181,8 @@ def download_vendor_libs(output_dir, cache_dir):
 
     downloaded = 0
     for filename, url in VENDOR_LIBS.items():
-        cached = os.path.join(vendor_cache, filename)
+        url_tag = hashlib.sha256(url.encode()).hexdigest()[:8]
+        cached = os.path.join(vendor_cache, f"{filename}.{url_tag}")
         dst = os.path.join(vendor_dst, filename)
 
         if not os.path.exists(cached):
@@ -184,6 +192,15 @@ def download_vendor_libs(output_dir, cache_dir):
             with open(cached, "wb") as f:
                 f.write(resp.content)
             downloaded += 1
+            # Drop cache entries for other versions of this lib (and the
+            # legacy un-tagged filename from before the URL-keyed cache).
+            for stale in os.listdir(vendor_cache):
+                if (
+                    stale.startswith(filename)
+                    and stale != f"{filename}.{url_tag}"
+                    and (stale == filename or stale[len(filename)] == ".")
+                ):
+                    os.remove(os.path.join(vendor_cache, stale))
 
         shutil.copy2(cached, dst)
 
@@ -375,13 +392,14 @@ PRECOMPRESS_MIN_BYTES = 1024
 
 def _is_build_only_artifact(rel_path):
     """True for files generated only for the build's own bookkeeping that must
-    never reach the server: signature sidecars (.sig) and the pre-enrichment
-    geometry base (.src.geojson). Dropped from the SW hash/precache AND skipped
-    by precompression — otherwise a `.src.geojson.gz` would slip past the rsync
-    `*.src.geojson` exclude. Keep in sync with the --exclude list in
-    tools/build_and_deploy.sh.
+    never reach the server: signature sidecars (.sig), the pre-enrichment
+    geometry base (.src.geojson), and in-progress atomic-write temp files
+    (.tmp — a hard-killed pmtiles extract can leave one behind). Dropped from
+    the SW hash/precache AND skipped by precompression — otherwise a
+    `.src.geojson.gz` would slip past the rsync `*.src.geojson` exclude. Keep
+    in sync with the --exclude list in tools/build_and_deploy.sh.
     """
-    return rel_path.endswith(".sig") or rel_path.endswith(".src.geojson")
+    return rel_path.endswith((".sig", ".src.geojson", ".tmp"))
 
 
 def precompress_assets(output_dir):
@@ -1273,6 +1291,9 @@ def main(argv=None):
                 console.step(f"Basemap: regenerating ({reason})")
 
             def _do_basemap():
+                # Old sidecar first: it vouched for the previous file and
+                # must not survive to vouch for an interrupted regen.
+                _clear_signature(basemap_path)
                 fetch_basemap(config, basemap_path)
                 _save_signature(basemap_path, basemap_sig)
 
@@ -1293,8 +1314,25 @@ def main(argv=None):
                 console.step(f"Terrain: regenerating ({reason})")
 
             def _do_terrain():
+                # Old sidecar first: it vouched for the previous file and
+                # must not survive to vouch for an interrupted regen.
+                _clear_signature(terrain_path)
                 if fetch_terrain(config, terrain_path):
                     _save_signature(terrain_path, terrain_sig)
+                elif os.path.exists(terrain_path):
+                    # Terrain failure is soft (the build continues and the
+                    # runtime's HEAD-probe disables hillshade when the file
+                    # is absent) — but regen was triggered because the
+                    # PREVIOUS file no longer matches this build's
+                    # bbox/zoom. Fetches are atomic, so what's on disk is
+                    # that stale wrong-extent file; leaving it would ship
+                    # it with exit code 0 and precache it on every phone.
+                    os.remove(terrain_path)
+                    console.warn(
+                        "terrain regen failed; removed the previous "
+                        "terrain.pmtiles (wrong extent) — hillshade is "
+                        "disabled until a build fetches terrain successfully"
+                    )
 
             fetch_tasks.append(("terrain", _do_terrain))
         else:
