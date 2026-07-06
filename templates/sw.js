@@ -71,14 +71,22 @@ self.addEventListener("install", (event) => {
 async function backgroundPrecache() {
     // Sequential cache.add (not cache.addAll) so we trickle through
     // the connection one request at a time, leaving bandwidth for
-    // foreground MapLibre fetches. cache: "reload" bypasses the
-    // browser HTTP cache — Caddy serves most assets with
-    // max-age=86400, so without this flag a fresh SW could end up
-    // caching yesterday's bytes for up to 24 h post-deploy.
+    // foreground MapLibre fetches. cache: "no-cache" forces
+    // revalidation against the server via conditional GET — Caddy
+    // serves most assets with max-age=86400, so the default fetch
+    // could blindly cache yesterday's HTTP-cached bytes for up to
+    // 24 h post-deploy. Revalidation gives the same freshness
+    // guarantee as the old cache: "reload" but lets UNCHANGED files
+    // answer 304 and fill from the browser's HTTP cache instead of
+    // re-downloading: a new CACHE_VERSION re-precaches everything,
+    // and before this only a one-line app.js change made every
+    // installed rider re-pull the full ~20-35 MB build (PMTiles
+    // included) over the network on each deploy. Same posture as the
+    // fetch handler below.
     const cache = await caches.open(CACHE_NAME);
     for (const url of SW_CONFIG.PRECACHE_URLS) {
         try {
-            await cache.add(new Request(url, { cache: "reload" }));
+            await cache.add(new Request(url, { cache: "no-cache" }));
         } catch (e) {
             // Best-effort. A single failed asset (network blip,
             // stale URL after deploy, etc.) shouldn't abort the

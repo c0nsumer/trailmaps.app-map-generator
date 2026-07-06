@@ -553,7 +553,25 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultTrailDash"] = False
         config_obj["defaultTrailCap"] = "round"
 
-    config_obj["buildDate"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # buildDate answers "when did the app code last change", shown in
+    # the About modal next to dataDate ("when was OSM last fetched").
+    # Derived from the newest template-source mtime — NOT datetime.now():
+    # a wall-clock stamp made every rebuild produce different app.js
+    # bytes, which bust the content-hashed CACHE_VERSION and forced
+    # every installed rider through full cache eviction + re-precache
+    # (up to ~30 MB) after deploys that changed nothing. With an
+    # input-derived stamp, a no-op rebuild is byte-identical.
+    templates_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "templates")
+    template_mtimes = [
+        os.path.getmtime(p)
+        for name in ("app.js", "index.html", "style.css", "sw.js")
+        if os.path.isfile(p := os.path.join(templates_dir, name))
+    ]
+    config_obj["buildDate"] = (
+        datetime.fromtimestamp(max(template_mtimes)).strftime("%Y-%m-%d %H:%M")
+        if template_mtimes
+        else ""
+    )
     config_obj["dataDate"] = config.get("_data_date", "")
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
     # Build-time scan for trail-property gates that surface Options
