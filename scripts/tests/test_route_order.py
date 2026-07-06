@@ -489,6 +489,30 @@ def test_ramba_regression():
     assert order  # not empty
 
 
+def test_previous_order_wins_score_ties():
+    """Rebuild stability: among equal-score orderings, the previous
+    build's order is reproduced byte-for-byte instead of drifting to a
+    different but equally-optimal one. (This seeding path was dead in
+    production for a while — build.py now feeds previous_order from
+    the prior build's expanded output — so pin it here.)"""
+    routes = ["100", "200", "300"]
+    # No adjacencies → every ordering scores 0 → pure tiebreak.
+    order, _, _ = compute_route_order(routes, [])
+    assert order == ["100", "200", "300"]  # first build: natural sort
+    prev = ["300", "100", "200"]
+    order, _, _ = compute_route_order(routes, [], previous_order=prev)
+    assert order == prev
+    # Departed routes drop, new ones append by natural sort.
+    order, _, _ = compute_route_order(
+        routes, [], previous_order=["300", "999", "100", "200"]
+    )
+    assert order == ["300", "100", "200"]
+    order, _, _ = compute_route_order(
+        routes + ["50"], [], previous_order=prev
+    )
+    assert order == ["300", "100", "200", "50"]
+
+
 # ---------------------------------------------------------------------------
 # Self-runner fallback (no pytest required)
 # ---------------------------------------------------------------------------

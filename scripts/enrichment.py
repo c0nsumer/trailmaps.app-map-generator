@@ -383,6 +383,11 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     from route_order import compute_route_orders
 
     routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
+    # routeOrders / corridorBaselines are injected by build.py from the
+    # PREVIOUS build's expanded output (the canonical base never carries
+    # them — it's snapshotted pre-enrichment). They seed the optimizers
+    # below for rebuild stability and are overwritten (or popped) before
+    # this build's output is written.
     previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
     previous_baselines = (trails_geojson.get("metadata") or {}).get("corridorBaselines")
 

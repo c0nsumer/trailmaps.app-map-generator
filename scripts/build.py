@@ -942,6 +942,27 @@ def main(argv=None):
     # trails.src.geojson and always re-expand FROM it. All reuse / fingerprint
     # / content-guard logic keys off the base file, never the expanded output.
     trails_src_path = os.path.join(output_dir, "trails.src.geojson")
+
+    # Rebuild-stability seed: the previous build's EXPANDED output is
+    # the only place its shipped routeOrders / corridorBaselines
+    # survive (trails.src.geojson is snapshotted pre-enrichment, before
+    # they exist). Read them now — before a refetch overwrites the file
+    # — and inject them into the fresh base below, so enrichment's
+    # optimizers can reproduce an unchanged topology's ordering
+    # byte-for-byte and move as few routes as possible when topology
+    # does change. First build (or unreadable output): unseeded, as
+    # before.
+    stability_seed = {}
+    if os.path.exists(trails_path):
+        try:
+            with open(trails_path, encoding="utf-8") as f:
+                prev_meta = json.load(f).get("metadata") or {}
+            for key in ("routeOrders", "corridorBaselines"):
+                if prev_meta.get(key):
+                    stability_seed[key] = prev_meta[key]
+        except (OSError, ValueError):
+            pass  # corrupt/partial previous output — build unseeded
+
     auto_refetch_reason = None
     if not (args.force or args.trails or not os.path.exists(trails_src_path)):
         # Base cache exists; refetch only if the config inputs changed or the
@@ -977,6 +998,13 @@ def main(argv=None):
                 + "\ntrails-content="
                 + (_trails_content_hash(trails_src_path) or ""),
             )
+
+    # Seed enrichment's route-order / corridor-baseline optimizers with
+    # the previous build's results (read above, before any refetch).
+    # setdefault: the base never carries these keys, but if that ever
+    # changes the base wins.
+    for key, val in stability_seed.items():
+        trails_geojson.setdefault("metadata", {}).setdefault(key, val)
 
     # Record the data date from the BASE file's modification time (the moment
     # OSM was last fetched), including local-time HH:MM so the About modal can
