@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import console
 import requests
@@ -28,7 +28,14 @@ OVERPASS_API = "https://overpass-api.de/api/interpreter"
 USER_AGENT = "mtb-map-framework (+https://nuxx.net)"
 
 MAX_RETRIES = 10
-REQUEST_TIMEOUT = 120  # seconds per HTTP request
+# Client-side timeout per HTTP request. MUST be >= the largest server-side
+# [timeout:N] any caller's query grants itself (currently 300 in
+# fetch_trails' bulk ways query) — the server budget is meaningless if the
+# client hangs up first. When these disagreed (120 client vs 300 server), a
+# legitimately slow query on a large map was killed client-side, retried
+# 10x with each retry restarting the server-side work from scratch, then
+# failed the build after ~35 minutes.
+REQUEST_TIMEOUT = 310  # seconds per HTTP request
 
 # Backoff schedule between retries, in seconds. Ramps up to ~2 min and
 # then plateaus, so a stuck server gets steady polling without the gap
@@ -121,11 +128,11 @@ def _check_snapshot_freshness(data, server):
     try:
         # Overpass formats: "2026-04-19T13:46:35Z"
         osm_base = datetime.strptime(osm_base_str, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
+            tzinfo=UTC
         )
     except ValueError:
         return  # unrecognised format — don't reject on parse failure
-    lag = datetime.now(timezone.utc) - osm_base
+    lag = datetime.now(UTC) - osm_base
     if lag > MAX_OSM_BASE_LAG:
         raise StaleSnapshotError(
             f"snapshot is {lag.days}d{lag.seconds // 3600}h behind "

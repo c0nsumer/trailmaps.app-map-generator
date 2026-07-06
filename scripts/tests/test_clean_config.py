@@ -21,7 +21,6 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
 from clean_config import _assert_same_data, clean_config  # noqa: E402
 
-
 TEMPLATE = """\
 # --- Identity ---
 name: My Trails
@@ -237,3 +236,18 @@ def test_cleaning_is_idempotent(tmp_path):
     clean_config(str(tmpl), str(prod), str(out1))
     clean_config(str(tmpl), str(out1), str(out2))
     assert out1.read_text(encoding="utf-8") == out2.read_text(encoding="utf-8")
+
+
+def test_gate_deletes_output_when_reparse_fails(tmp_path):
+    """The equality gate must also hold when the cleaned output doesn't
+    even PARSE (e.g. block reordering moved a YAML alias above its
+    anchor). This used to escape as an unhandled ComposerError traceback
+    with the broken *-cleaned.yaml left on disk."""
+    prod = tmp_path / "prod.yaml"
+    prod.write_text("a: 1\n", encoding="utf-8")
+    out = tmp_path / "out.yaml"
+    out.write_text("bbox: *b\npan_bbox: &b [1, 2]\n", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        _assert_same_data(str(prod), str(out))
+    assert "not valid YAML" in str(exc.value)
+    assert not out.exists()

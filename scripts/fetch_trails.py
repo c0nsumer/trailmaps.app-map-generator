@@ -119,6 +119,19 @@ out body;
     data = overpass_query(query, cache_dir, label="relations", require_elements=True)
     all_rels = _parse_relations(data)
 
+    # Surface input IDs the response didn't contain. Without this, a
+    # route relation deleted upstream in OSM (or a typo'd ID) silently
+    # vanished from the map on the next refetch — the only signal was
+    # the aggregate "Found N relation(s)" count. The local-file path
+    # warns per missing ID (osm_parser.py); keep the two in lockstep.
+    for rid in all_input_ids:
+        if rid not in all_rels:
+            console.warn(
+                f"Relation {rid} not returned by Overpass — deleted "
+                f"upstream, or a typo in the config? Its route will be "
+                f"missing from the map."
+            )
+
     # Detect super-relations among the inputs. A super-relation has
     # type=relation members that we ALSO fetched (via rel(r)). If a
     # parent has no fetched relation children, it's treated as a leaf.

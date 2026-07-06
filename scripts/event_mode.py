@@ -96,10 +96,16 @@ def _apply_event_mode_to_custom_routes(config):
         for entry in inline_routes:
             if isinstance(entry, dict) and not entry.get("oneway"):
                 entry["oneway"] = "yes"
-        existing_forced = list(config.get("forced_visible") or [])
-        if existing_forced != "all" and "direction_arrows" not in existing_forced:
-            existing_forced.append("direction_arrows")
-            config["forced_visible"] = existing_forced
+        # forced_visible: "all" already covers direction_arrows — and
+        # list() on the STRING would explode it into
+        # ['a','l','l','direction_arrows'], corrupting the config (the
+        # injector's == "all" check then misses and every genuinely
+        # forced layer silently un-forces).
+        if config.get("forced_visible") != "all":
+            existing_forced = list(config.get("forced_visible") or [])
+            if "direction_arrows" not in existing_forced:
+                existing_forced.append("direction_arrows")
+                config["forced_visible"] = existing_forced
 
     # Fold inline event_mode.routes into top-level custom_routes.
     # Validator already checked id-uniqueness across both lists, so

@@ -891,8 +891,9 @@ def copy_templates(config, output_dir, trails_geojson):
                 ("--on-accent-dark", _accent_palette.get("onDark")),
             ):
                 if _av_val:
-                    accent_js += "d.style.setProperty(%s,%s);" % (
-                        json.dumps(_av_name), json.dumps(_av_val))
+                    accent_js += (
+                        f"d.style.setProperty({json.dumps(_av_name)},{json.dumps(_av_val)});"
+                    )
             # The runtime stores LS values JSON-stringified (see
             # LS.set in app.js: setItem(..., JSON.stringify(value))),
             # so a stored "dark" preference is on disk as the
@@ -1136,13 +1137,19 @@ def copy_assets(config, output_dir):
     fonts_src = os.path.join(project_root, "assets", "fonts")
     copy_trimmed_fonts(output_dir, fonts_src)
 
-    # Sprites — only copy the version referenced by app.js
+    # Sprites — only copy the version referenced by app.js. Parse the
+    # version from the TEMPLATE source (templates/app.js), not the
+    # output dir: copy_assets runs before copy_templates (a hard
+    # ordering constraint — see the call site in build.py), so the
+    # output's app.js at this point is the PREVIOUS build's. Reading it
+    # meant one broken deploy after every sprite-version bump: v4
+    # sprites copied alongside an app.js referencing v5.
     sprites_src = os.path.join(project_root, "assets", "sprites")
     sprites_dst = os.path.join(output_dir, "sprites")
-    app_js_path = os.path.join(output_dir, "app.js")
+    app_js_template = os.path.join(project_root, "templates", "app.js")
     sprite_version = None
-    if os.path.exists(app_js_path):
-        with open(app_js_path, encoding="utf-8") as f:
+    if os.path.exists(app_js_template):
+        with open(app_js_template, encoding="utf-8") as f:
             m = re.search(r"sprites/(v\d+)/", f.read())
             if m:
                 sprite_version = m.group(1)

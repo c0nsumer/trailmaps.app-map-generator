@@ -262,7 +262,7 @@ def _index_production(prod_lines, is_boilerplate):
         if m and m.group(1) in KEY_NAMES and m.group(1) not in set_blocks:
             end = find_block_end_prod(prod_lines, i)
             block = prod_lines[i:end]
-            if all(not l.strip() or is_boilerplate(l) for l in block):
+            if all(not line.strip() or is_boilerplate(line) for line in block):
                 # Template residue (the template's own commented
                 # default carried around) — the template re-supplies
                 # it at its canonical position.
@@ -304,8 +304,21 @@ def _assert_same_data(production_path, output_path):
     differently."""
     with open(production_path, encoding="utf-8") as f:
         original = yaml.safe_load(f)
-    with open(output_path, encoding="utf-8") as f:
-        cleaned = yaml.safe_load(f)
+    try:
+        with open(output_path, encoding="utf-8") as f:
+            cleaned = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        # The reordering produced output that doesn't even PARSE (e.g.
+        # an anchor's alias moved above its definition). This used to
+        # escape as an unhandled traceback with the broken *-cleaned
+        # file left on disk — directly contradicting the module's
+        # guarantee. Same posture as the inequality path: delete, abort.
+        os.remove(output_path)
+        sys.exit(
+            f"ERROR: cleaned output is not valid YAML ({e}) — "
+            "aborted, no file written. (Anchors/aliases reordered "
+            "across blocks are a known cause.)"
+        )
     if original != cleaned:
         os.remove(output_path)
         sys.exit(
@@ -320,7 +333,7 @@ def clean_config(template_path, production_path, output_path):
     with open(production_path, encoding="utf-8") as f:
         prod_lines = f.read().splitlines()
 
-    template_stripped = {l.strip() for l in template_lines if l.strip()}
+    template_stripped = {line.strip() for line in template_lines if line.strip()}
 
     def is_boilerplate(line):
         # A production line the template already supplies (verbatim

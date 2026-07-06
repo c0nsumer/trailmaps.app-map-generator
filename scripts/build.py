@@ -20,7 +20,7 @@ import shutil
 import sys
 from datetime import datetime
 
-if sys.version_info < (3, 11):
+if sys.version_info < (3, 11):  # noqa: UP036 — runtime gate FOR older Pythons
     sys.exit(
         f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
         "See README.md / docs/building.md."
@@ -526,6 +526,22 @@ def load_config(config_path):
                 if isinstance(entry, dict) and "file" in entry:
                     entry["file"] = _resolve(entry["file"])
 
+    # Per-relation override dicts accept quoted YAML keys ("1234567") —
+    # the validator explicitly blesses int-coercible strings — but the
+    # injector looks routes up by INT key, so a quoted key used to
+    # produce a clean, warning-free build with the override silently
+    # dropped (and event mode's synthesized background entries could
+    # clobber a string-keyed explicit color). Coerce digit-string keys
+    # once, here, before anything consumes them. Non-coercible keys are
+    # left alone for validate_config to reject with a proper message.
+    for key in ("relation_colors", "dashed_relations", "relation_names"):
+        d = config.get(key)
+        if isinstance(d, dict):
+            config[key] = {
+                (int(k) if isinstance(k, str) and k.lstrip("-").isdigit() else k): v
+                for k, v in d.items()
+            }
+
     # Stash the config's directory in case downstream code wants it
     # (error messages, future relative-path fields), and the YAML's own
     # path so template_inject can fold its mtime into buildDate (a YAML
@@ -558,7 +574,13 @@ def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001,
 
     for feature in trails_geojson.get("features", []):
         coords = feature.get("geometry", {}).get("coordinates", [])
-        for lon, lat in coords:
+        # Index rather than unpack: the GeoJSON spec allows a third
+        # (elevation) element per position, and GPX→GeoJSON converters
+        # commonly emit it — custom-route geometry is baked in verbatim,
+        # so `for lon, lat in coords` crashed on any curator route file
+        # carrying elevations.
+        for pos in coords:
+            lon, lat = pos[0], pos[1]
             min_lon = min(min_lon, lon)
             min_lat = min(min_lat, lat)
             max_lon = max(max_lon, lon)
@@ -992,14 +1014,12 @@ def main(argv=None):
         needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
-    if args.force or args.trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
-        if auto_refetch_reason:
-            console.step(f"Trails: refetching ({auto_refetch_reason})")
-        trails_geojson = fetch_trails(config, trails_path, cache_dir)
+    def _fetch_and_snapshot():
         # Snapshot the canonical base BEFORE enrichment expands it in place,
         # so the next build re-expands from clean geometry instead of
         # re-enriching (and destroying) the expanded output. Copied after
         # fetch_trails succeeds so a partial/aborted fetch leaves no base.
+        fetched = fetch_trails(config, trails_path, cache_dir)
         shutil.copyfile(trails_path, trails_src_path)
         _save_signature(
             trails_src_path,
@@ -1007,18 +1027,36 @@ def main(argv=None):
             + "\ntrails-content="
             + (_trails_content_hash(trails_src_path) or ""),
         )
+        return fetched
+
+    if args.force or args.trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
+        if auto_refetch_reason:
+            console.step(f"Trails: refetching ({auto_refetch_reason})")
+        trails_geojson = _fetch_and_snapshot()
     else:
         console.step(f"Trails: reusing base {trails_src_path}")
-        with open(trails_src_path, encoding="utf-8") as f:
-            trails_geojson = json.load(f)
-        # Backfill the sidecar for a base written before content-guarding.
-        if _load_signature(trails_src_path) is None:
-            _save_signature(
-                trails_src_path,
-                _trails_fetch_fingerprint(config)
-                + "\ntrails-content="
-                + (_trails_content_hash(trails_src_path) or ""),
-            )
+        try:
+            with open(trails_src_path, encoding="utf-8") as f:
+                trails_geojson = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # A truncated base with no sidecar (a first build killed
+            # between the snapshot copy and the signature save) used to
+            # be an unrecoverable crash loop: the content-guard only
+            # fires when a sidecar exists, so every rerun died on this
+            # bare json.load until the user knew to pass --trails.
+            # Match the content-guard philosophy: a bad base is never
+            # reused — refetch.
+            console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
+            trails_geojson = _fetch_and_snapshot()
+        else:
+            # Backfill the sidecar for a base written before content-guarding.
+            if _load_signature(trails_src_path) is None:
+                _save_signature(
+                    trails_src_path,
+                    _trails_fetch_fingerprint(config)
+                    + "\ntrails-content="
+                    + (_trails_content_hash(trails_src_path) or ""),
+                )
 
     # Seed enrichment's route-order / corridor-baseline optimizers with
     # the previous build's results (read above, before any refetch).
@@ -1047,44 +1085,6 @@ def main(argv=None):
     config["_has_clip_endpoints"] = os.path.exists(
         os.path.join(output_dir, "clip_endpoints.geojson")
     )
-
-    # Count POI features by type so the runtime can render an
-    # accurate Welcome modal Search line (e.g. "Find ... places
-    # (parking, toilets)" instead of always claiming every POI
-    # type exists). Two sources: pois.geojson for OSM-fetched POIs
-    # (toilets, drinking water, trail markers, OSM-tagged features
-    # and trailheads), AND the curator-supplied parking /
-    # trailheads YAML lists which the runtime renders as separate
-    # markers. Both are user-visible POIs from the rider's
-    # perspective, so both should count toward the Search line.
-    pois_path = os.path.join(output_dir, "pois.geojson")
-    poi_counts = {}
-    if os.path.exists(pois_path):
-        try:
-            with open(pois_path, encoding="utf-8") as f:
-                pois_data = json.load(f)
-            for feat in pois_data.get("features", []):
-                ptype = (feat.get("properties") or {}).get("poi_type")
-                if not ptype:
-                    continue
-                poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
-        except (OSError, json.JSONDecodeError) as exc:
-            console.warn(f"could not count pois.geojson: {exc}")
-    # Curator-supplied YAML lists (gated by their show_* flags so
-    # we don't credit hidden ones).
-    if config.get("show_parking", True):
-        yaml_pk = config.get("parking") or []
-        if yaml_pk:
-            poi_counts["parking"] = poi_counts.get("parking", 0) + len(yaml_pk)
-    if config.get("show_trailheads", True):
-        yaml_th = config.get("trailheads") or []
-        if yaml_th:
-            poi_counts["trailhead"] = poi_counts.get("trailhead", 0) + len(yaml_th)
-    if config.get("show_hubs", True):
-        yaml_hb = config.get("hubs") or []
-        if yaml_hb:
-            poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
-    config["_poi_counts"] = poi_counts
 
     # Accent palette: stash the resolved 4-value palette (light + dark
     # shades, each with its on-accent text colour) so
@@ -1257,6 +1257,47 @@ def main(argv=None):
     else:
         fetch_pois(config, pois_path, cache_dir)
     console.blank()
+
+    # Count POI features by type so the runtime can render an
+    # accurate Welcome modal Search line (e.g. "Find ... places
+    # (parking, toilets)" instead of always claiming every POI
+    # type exists). Two sources: pois.geojson for OSM-fetched POIs
+    # (toilets, drinking water, trail markers, OSM-tagged features
+    # and trailheads), AND the curator-supplied parking /
+    # trailheads YAML lists which the runtime renders as separate
+    # markers. Both are user-visible POIs from the rider's
+    # perspective, so both should count toward the Search line.
+    #
+    # MUST run below the fetch_pois call above — this block used to
+    # sit before Step 2, reading the PREVIOUS build's pois.geojson:
+    # zero counts on a first build, one-build-stale counts after.
+    poi_counts = {}
+    if os.path.exists(pois_path):
+        try:
+            with open(pois_path, encoding="utf-8") as f:
+                pois_data = json.load(f)
+            for feat in pois_data.get("features", []):
+                ptype = (feat.get("properties") or {}).get("poi_type")
+                if not ptype:
+                    continue
+                poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
+        except (OSError, json.JSONDecodeError) as exc:
+            console.warn(f"could not count pois.geojson: {exc}")
+    # Curator-supplied YAML lists (gated by their show_* flags so
+    # we don't credit hidden ones).
+    if config.get("show_parking", True):
+        yaml_pk = config.get("parking") or []
+        if yaml_pk:
+            poi_counts["parking"] = poi_counts.get("parking", 0) + len(yaml_pk)
+    if config.get("show_trailheads", True):
+        yaml_th = config.get("trailheads") or []
+        if yaml_th:
+            poi_counts["trailhead"] = poi_counts.get("trailhead", 0) + len(yaml_th)
+    if config.get("show_hubs", True):
+        yaml_hb = config.get("hubs") or []
+        if yaml_hb:
+            poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
+    config["_poi_counts"] = poi_counts
 
     # Steps 3+4: Fetch basemap + terrain in parallel.
     #
