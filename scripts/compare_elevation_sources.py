@@ -7,14 +7,15 @@ sources at the SAME points, runs both through the SAME smoothing +
 threshold pipeline, and prints a side-by-side comparison.
 
 Why this exists:
-  We currently use opentopodata.org's free SRTM30m endpoint for
-  per-route elevation stats. SRTM30m is ~25 yr old global 30m DEM.
-  USGS 3DEP serves multi-resolution lidar-derived data: 1m where
-  available (most of the US, including all UP MI counties), falling
-  through 10m and 30m. Switching to 3DEP would in principle give
-  better numbers in lidar-covered areas — but "better" is a hypothesis
-  to validate, not assume. This script produces the data that lets
-  the migration decision be made on evidence rather than analysis.
+  Production originally used opentopodata.org's free SRTM30m endpoint
+  for per-route elevation stats (~25 yr old global 30m DEM). USGS 3DEP
+  serves multi-resolution lidar-derived data: 1m where available (most
+  of the US, including all UP MI counties), falling through 10m and
+  30m. This script produced the evidence for the 2026-04 migration to
+  3DEP (see compute_route_stats.py's docstring); it's kept for
+  re-validating that call — e.g. for maps outside lidar coverage, or
+  if a third source ever becomes a candidate. opentopodata is now the
+  comparison baseline, not the production source.
 
 What it CAN tell you:
   - Whether the two sources agree within X% per route
@@ -37,9 +38,9 @@ Usage:
   # Compare every built map
   python scripts/compare_elevation_sources.py --all
 
-  # Override sampling/smoothing/threshold params (defaults match the
-  # production compute_route_stats values)
-  python scripts/compare_elevation_sources.py --all --spacing 50 --smoothing 3 --threshold 2.0
+  # Override sampling/smoothing/threshold params (defaults are imported
+  # from the production compute_route_stats constants)
+  python scripts/compare_elevation_sources.py --all --spacing 50 --smoothing 5 --threshold 2.0
 
   # Limit to one source (useful for tuning one side without re-running both)
   python scripts/compare_elevation_sources.py --config configs/example/example.yaml --source 3dep
@@ -87,7 +88,10 @@ import yaml
 # the elevation data, not the sampling.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compute_route_stats import (  # noqa: E402
+    ELEVATION_NOISE_THRESHOLD_M,
+    ELEVATION_SMOOTH_WINDOW,
     MAX_SAMPLES_PER_ROUTE,
+    SAMPLE_INTERVAL_M,
     _coords_for_route,
     _haversine_m,
     _subsample_route,
@@ -97,7 +101,7 @@ from compute_route_stats import (  # noqa: E402
 # Constants
 # ----------------------------------------------------------------------
 
-# OpenTopoData (current production source)
+# OpenTopoData (former production source; now the comparison baseline)
 OPENTOPO_URL = "https://api.opentopodata.org/v1/srtm30m"
 OPENTOPO_BATCH = 100
 OPENTOPO_TIMEOUT = 30
@@ -826,14 +830,26 @@ def main():
     parser.add_argument(
         "--trails", help="Override trails.geojson path (default: build/<slug>/trails.geojson)"
     )
+    # Defaults track the production compute_route_stats constants so a
+    # bare invocation compares what the build actually ships; pass
+    # overrides to explore hypothetical tunings.
     parser.add_argument(
-        "--spacing", type=float, default=50.0, help="Sample spacing in meters (default: 50)"
+        "--spacing",
+        type=float,
+        default=float(SAMPLE_INTERVAL_M),
+        help=f"Sample spacing in meters (default: production {SAMPLE_INTERVAL_M})",
     )
     parser.add_argument(
-        "--smoothing", type=int, default=3, help="Smoothing window size in samples (default: 3)"
+        "--smoothing",
+        type=int,
+        default=ELEVATION_SMOOTH_WINDOW,
+        help=f"Smoothing window size in samples (default: production {ELEVATION_SMOOTH_WINDOW})",
     )
     parser.add_argument(
-        "--threshold", type=float, default=2.0, help="Noise threshold in meters (default: 2.0)"
+        "--threshold",
+        type=float,
+        default=float(ELEVATION_NOISE_THRESHOLD_M),
+        help=f"Noise threshold in meters (default: production {ELEVATION_NOISE_THRESHOLD_M})",
     )
     parser.add_argument(
         "--source",

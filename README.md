@@ -175,6 +175,7 @@ visits, each key prefixed with the map's slug (for example,
 - `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.colorScheme`: "light", "dark", or "auto"
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
+- `mtb.routePanelExpanded`: boolean (routes panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
 
 Nothing else is stored. No identifiers, no geolocation traces, no analytics

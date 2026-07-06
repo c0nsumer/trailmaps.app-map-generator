@@ -46,8 +46,8 @@ REQUIRED_KEYS = {"name", "slug", "title"}
 # check" (handled by a custom validator below). Using tuples for "any of".
 #
 # Keep this list in sync with:
-#   - scripts/build.py CONFIG_SPEC
-#   - scripts/build.py inject_config_into_template() custom-logic block
+#   - scripts/template_inject.py CONFIG_SPEC
+#   - scripts/template_inject.py inject_config_into_template() custom-logic block
 #   - scripts/fetch_trails.py / fetch_pois.py / fetch_basemap.py /
 #     fetch_terrain.py / generate_icons.py config.get() lookups
 KNOWN_KEYS = {

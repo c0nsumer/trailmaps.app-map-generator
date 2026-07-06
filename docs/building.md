@@ -223,17 +223,18 @@ Validation is fast and catches every YAML / value error in one pass
 before any expensive fetch or build work starts. The validator
 checks:
 
-- Top-level key spelling against `KNOWN_KEYS` (suggests close matches
-  for typos).
+- Top-level key spelling against `KNOWN_KEYS`, and nested-dict keys
+  against each block's allowed set (both suggest close matches for
+  typos).
 - Value types and allowed enums (`default_labels`, `color_by`,
   `distance_units`, `default_color_scheme`, `reverse_days` tokens,
-  custom-route geometry types, etc.).
+  etc.).
 - Asset file existence (`logo:`, `icon:`, `osm_file:`,
   `custom_routes[].geometry`).
 - Custom-route bucket sanity (at least one of summer / winter /
   emergency must be true; ID must not collide with any OSM relation
   ID in the config).
-- Slug must equal the parent folder name and match `[a-z0-9_-]+`.
+- Slug format: must match `[a-z0-9_-]+`.
 
 ## Re-aligning a production config: clean_config.py
 
