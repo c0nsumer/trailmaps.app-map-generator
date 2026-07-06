@@ -674,9 +674,25 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     config. Writes ``distance_m``, ``elevation_gain_m``, and
     ``elevation_loss_m`` (when available) into ``metadata.routes[<id>]``.
     Returns True if anything was attached (caller writes back to disk).
+
+    MUST run on canonical (pre-subway-expansion) geometry. The
+    multi-mode subway pass replaces each truncated host feature with
+    one full-length variant per active mode, all carrying the same
+    ``route_id`` — computing on that output counts host geometry once
+    per mode (a 4-mode map inflated one route ~4x). Guarded below.
     """
     want_distance = bool(config.get("show_route_distance"))
     want_elevation = bool(config.get("show_route_elevation"))
+
+    for f in trails_geojson.get("features") or []:
+        props = f.get("properties") or {}
+        if props.get("isStub") or props.get("_subwayHostVariant"):
+            raise ValueError(
+                "compute_and_attach called on subway-expanded geometry "
+                "(found isStub/_subwayHostVariant features). Stats must "
+                "be computed on the canonical base or every multi-mode "
+                "host route is counted once per mode."
+            )
 
     metadata = trails_geojson.setdefault("metadata", {})
     routes = metadata.setdefault("routes", {})

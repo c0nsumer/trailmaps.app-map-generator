@@ -14,7 +14,7 @@ import sys
 import console
 
 
-def _enrich_trails_geojson(config, trails_geojson, project_root):
+def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None):
     """Enrich trails.geojson in-place with bucket flags + custom routes.
 
     Runs after trails have been fetched (or loaded from cache). It:
@@ -355,6 +355,22 @@ def _enrich_trails_geojson(config, trails_geojson, project_root):
             changed = True
         if props.pop("_subwayHasVariants", None) is not None:
             changed = True
+
+    # ----- Per-route distance / elevation stats -----
+    # Computed HERE — after custom routes are appended and any prior
+    # expansion has been stripped/restored above, but BEFORE the subway
+    # pass below — so stats always run on canonical geometry. The
+    # multi-mode subway pass REPLACES each truncated host feature with
+    # one full-length variant per active mode, every variant carrying
+    # the same route_id, so computing stats on the expanded output
+    # counted host geometry once per mode (RAMBA's Ranger Loop reported
+    # 3639 m for a 2804 m route; a 4-mode map inflated one route ~4x).
+    # compute_and_attach guards this invariant and refuses to run on
+    # expanded geometry.
+    from compute_route_stats import compute_and_attach
+
+    if compute_and_attach(trails_geojson, config, cache_dir):
+        changed = True
 
     # ---- Compute route ordering per visible mode ----------------
     # The MLNCM (Metro-Line Node Crossing Minimization) optimizer in

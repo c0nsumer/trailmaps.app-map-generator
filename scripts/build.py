@@ -1102,10 +1102,13 @@ def main(argv=None):
             )
 
     # Enrich trails.geojson with the three non-exclusive bucket flags
-    # (summer/winter/emergency) on every route, and append any
-    # user-defined custom_routes. Idempotent — safe to re-run against
-    # a cached trails.geojson that's already been enriched.
-    enriched = _enrich_trails_geojson(config, trails_geojson, project_root)
+    # (summer/winter/emergency) on every route, append any user-defined
+    # custom_routes, and compute per-route distance/elevation stats
+    # (inside enrichment, on canonical geometry BEFORE the subway pass
+    # expands it — see compute_and_attach's docstring). Idempotent —
+    # safe to re-run against a cached trails.geojson that's already
+    # been enriched.
+    enriched = _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir)
 
     # Event-mode arrow restriction: when event_mode.direction_arrows is
     # true, the runtime would render arrows on every OSM-tagged oneway
@@ -1115,14 +1118,6 @@ def main(argv=None):
     # Runs AFTER enrichment so featured custom routes' features (which
     # carry the curator's intended `oneway: "yes"`) are present.
     arrows_restricted = _apply_event_mode_to_feature_oneway(config, trails_geojson)
-
-    # Compute per-route distance/elevation stats if either gate is on.
-    # Runs after enrichment so custom_routes are included in the totals.
-    # compute_route_stats also handles cleanup when a previously-enabled
-    # gate has been turned off (strips stale fields). Idempotent.
-    from compute_route_stats import compute_and_attach as compute_route_stats
-
-    stats_changed = compute_route_stats(trails_geojson, config, cache_dir)
 
     # Always (re)write the expanded trails.geojson. It is the render output,
     # regenerated from the base on every build, so it must reflect this
@@ -1149,8 +1144,6 @@ def main(argv=None):
                 else ""
             )
         )
-    if stats_changed:
-        bits.append("route stats")
     if arrows_restricted:
         bits.append("event-mode arrow restriction")
     if bits:
