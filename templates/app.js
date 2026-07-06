@@ -1620,9 +1620,34 @@ function computeDecorations() {
 // Refresh the trail-decorations source. Cheap to recompute (~ms for
 // most maps); called on initial load, route-visibility change, marker
 // proximity change, and day-tick (when reverseRoutesToday flips).
+// updateDecorationsSource — schedule a decoration recompute.
+// computeDecorations() is the expensive pass (50-200 ms on dense maps:
+// 4-pass placement + collision-checked label clipping), and callers
+// legitimately overlap: applyVisibilityChange() alone reaches here
+// twice per toggle (updateTrailDisplay + updateMarkerProximity). Two
+// mechanisms keep it to one real pass:
+//
+//   - Boot gate: the FIRST pass is deferred to map.once("idle") (see
+//     loadTrails) so basemap + trail lines paint before the placer
+//     runs. Calls arriving earlier (setupFloatingChrome →
+//     applyVisibilityChange runs inside style.load, before that idle)
+//     are dropped — they used to run the placer 2-3× synchronously
+//     on the critical path, defeating the documented deferral.
+//   - rAF coalescing: after boot, back-to-back calls within one frame
+//     collapse into a single recompute on the next frame. State reads
+//     (visibleRoutes, obstacle cache, toggles) happen inside the rAF
+//     callback, so the pass always sees the final state of the burst.
+let _decorationsReady = false;   // flipped by loadTrails' map.once("idle")
+let _decorationsScheduled = false;
+
 function updateDecorationsSource() {
-    const src = map.getSource("trail-decorations");
-    if (src) src.setData(computeDecorations());
+    if (!_decorationsReady || _decorationsScheduled) return;
+    _decorationsScheduled = true;
+    requestAnimationFrame(() => {
+        _decorationsScheduled = false;
+        const src = map.getSource("trail-decorations");
+        if (src) src.setData(computeDecorations());
+    });
 }
 
 // Add the four decor layers — kind-filtered with a tier gate
@@ -4112,7 +4137,14 @@ async function loadTrails() {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
-    map.once("idle", () => updateDecorationsSource());
+    // Open the boot gate and run the first pass. Earlier calls (e.g.
+    // setupFloatingChrome's applyVisibilityChange inside style.load)
+    // were dropped by the gate — this is the single first pass, off
+    // the first-paint critical path. See updateDecorationsSource.
+    map.once("idle", () => {
+        _decorationsReady = true;
+        updateDecorationsSource();
+    });
 
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
@@ -5041,6 +5073,9 @@ function rebuildVisibleRoutesSet() {
 
 function applyVisibilityChange() {
     rebuildVisibleRoutesSet();
+    // The Finder's in-scope POI cache keys off visibleRoutes — drop it
+    // before rebuildFinderList (below) repopulates against the new set.
+    invalidateFinderPoiScope();
     updateTrailDisplay();
     updateMarkerProximity();
     rebuildFinderList();
@@ -5427,6 +5462,27 @@ function highlightTrail(trailName) {
     syncRoutePanelActiveRow();
 }
 
+// Pending deferred-popup state for the single-POI highlight path.
+// highlightPoi arms BOTH a moveend listener and a 1200 ms safety
+// timeout to open the popup after the fly-to; whichever fires first
+// must disarm the other, and REPLACING the highlight must disarm
+// both. Without this, tapping POI A then POI B within ~1.2 s let A's
+// still-armed timer (or its moveend listener catching B's fly-to)
+// reopen A's popup beside B's highlight.
+let _poiPopupTimer = null;
+let _poiPopupMoveHandler = null;
+
+function _cancelPendingPoiPopup() {
+    if (_poiPopupTimer !== null) {
+        clearTimeout(_poiPopupTimer);
+        _poiPopupTimer = null;
+    }
+    if (_poiPopupMoveHandler) {
+        map.off("moveend", _poiPopupMoveHandler);
+        _poiPopupMoveHandler = null;
+    }
+}
+
 // highlightPoi — single POI highlight. Hands off to highlightPoiSet
 // (which does the pan/zoom + persistent ring + chip), then opens the
 // marker's popup once the camera settles so the rider gets the info
@@ -5442,21 +5498,20 @@ function highlightPoi(p) {
     _poiHighlightRef = p.uid || null;
 
     // Defer popup until the flyTo finishes so the popup positions
-    // correctly relative to its new screen position.
+    // correctly relative to its new screen position. One-shot with a
+    // safety timeout in case moveend doesn't fire; opening via either
+    // path disarms the other (see _cancelPendingPoiPopup).
     const marker = findPoiMarker(p);
     if (marker && typeof marker.getPopup === "function") {
         const popup = marker.getPopup();
         if (popup) {
-            const onMoveEnd = () => {
-                map.off("moveend", onMoveEnd);
+            const openOnce = () => {
+                _cancelPendingPoiPopup();
                 if (!popup.isOpen()) marker.togglePopup();
             };
-            map.on("moveend", onMoveEnd);
-            // Safety timeout in case moveend doesn't fire.
-            setTimeout(() => {
-                map.off("moveend", onMoveEnd);
-                if (!popup.isOpen()) marker.togglePopup();
-            }, 1200);
+            _poiPopupMoveHandler = openOnce;
+            map.on("moveend", openOnce);
+            _poiPopupTimer = setTimeout(openOnce, 1200);
         }
     }
 }
@@ -5656,6 +5711,27 @@ function _isPoiInSearchScope(p) {
     if (!_PROXIMITY_TYPES.has(p.type)) return true;
     return distanceToVisibleTrails(p.lng, p.lat)
         <= _proximityThresholdForType(p.type);
+}
+
+// Cached in-scope POI list for the Finder. The scope test walks every
+// visible feature's every segment per POI (distanceToVisibleTrails),
+// and rebuildFinderList used to recompute it on EVERY keystroke and
+// chip tap — millions of point-to-segment calls per input event on a
+// large map, tens to hundreds of ms of typing jank on a phone. The
+// set only actually changes when the visible-route set does, so
+// compute lazily and invalidate on visibility change / POI reload
+// (see invalidateFinderPoiScope callers).
+let _finderPoiScopeCache = null;
+
+function invalidateFinderPoiScope() {
+    _finderPoiScopeCache = null;
+}
+
+function finderPoisInScope() {
+    if (!_finderPoiScopeCache) {
+        _finderPoiScopeCache = poiIndex.filter(_isPoiInSearchScope);
+    }
+    return _finderPoiScopeCache;
 }
 
 function _markerArrayForType(type) {
@@ -5877,6 +5953,11 @@ function setPoiHighlightData(pois) {
 function highlightPoiSet(pois, label) {
     if (!pois || !pois.length) return;
 
+    // Disarm the previous highlight's deferred popup (moveend +
+    // safety timer) BEFORE this set replaces it — otherwise the old
+    // timer fires mid/post-transition and reopens the old popup next
+    // to the new highlight.
+    _cancelPendingPoiPopup();
     // Close any popup left open on the *previous* highlighted POIs
     // before the set is overwritten — otherwise a stale info card from
     // the prior search lingers beside the new one (the chip only ever
@@ -5961,7 +6042,10 @@ function clearPoiHighlight() {
     _poiHighlightRef = null;
     if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
     // A stale info card from the prior search must not outlive its
-    // highlight — close it before we drop the set.
+    // highlight — disarm the deferred popup (or it would re-open one
+    // up to 1.2 s AFTER the clear) and close any open card before we
+    // drop the set.
+    _cancelPendingPoiPopup();
     closeHighlightedPoiPopups();
     _highlightedPois = [];
     const src = map.getSource(POI_HIGHLIGHT_SOURCE);
@@ -6419,6 +6503,9 @@ function buildPoiIndex() {
         });
     }
     poiIndex.sort((a, b) => a.name.localeCompare(b.name));
+    // poiIndex was rebuilt from scratch — the Finder's cached in-scope
+    // subset points at the old entries.
+    invalidateFinderPoiScope();
 }
 
 // Display label for each POI type when the OSM feature has no name.
@@ -8189,8 +8276,9 @@ function rebuildFinderList() {
     // category but might still want to find a specific item by name);
     // selecting one force-mounts the type's markers with a chip note.
     // Proximity-hidden POIs are excluded — the curator's auto-filter
-    // says they're not relevant to any visible trail.
-    const inScopePois = poiIndex.filter(_isPoiInSearchScope);
+    // says they're not relevant to any visible trail. Cached — the
+    // proximity scan is far too expensive to run per keystroke.
+    const inScopePois = finderPoisInScope();
     const matchedPois = !includePois ? []
         : (query ? inScopePois.filter((p) => {
             const name = p.name.toLowerCase();
@@ -8701,9 +8789,15 @@ function poiSwatchContent(el, type) {
 // Trail interactions (hover, click)
 // ============================================================
 function setupInteractions() {
+    // Every POI marker type belongs in this guard: a tap on a marker
+    // chip that sits on a trail line must not bubble into the map-wide
+    // click handler below and open the trail popup underneath the
+    // marker the rider just tapped. toilet/water/hub were missing.
     let parkingPopupOpen = false;
     for (const marker of [...trailMarkerMarkers,
                           ...parkingMarkers, ...trailheadMarkers,
+                          ...hubMarkers, ...toiletMarkers,
+                          ...drinkingWaterMarkers,
                           ...featureMarkers, ...eventPoiMarkers]) {
         marker.getElement().addEventListener("click", () => {
             parkingPopupOpen = true;
@@ -9245,6 +9339,17 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     // script.
     navigator.serviceWorker.register("sw.js").then(watchForSwUpdate)
         .catch((e) => console.warn("SW update watcher: registration failed", e));
+
+    // Nudge the active SW to resume an unfinished background precache.
+    // The browser can terminate the worker mid-precache (Chrome ~30 s
+    // idle, Safari sooner) and `install` never re-fires for that
+    // version — without this ping a rider could keep a permanently
+    // truncated offline cache (UI assets present, multi-MB PMTiles
+    // missing) until the next deploy. The SW's handler is a no-op
+    // one cache.match once the precache-complete sentinel is written.
+    navigator.serviceWorker.ready.then((reg) => {
+        if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
+    }).catch(() => { /* no active SW — nothing to resume */ });
 }
 
 // ============================================================
@@ -9718,6 +9823,23 @@ function updateLocationIndicator() {
 //     the caller's secondary action (e.g. "Later") already provides a
 //     labelled dismiss; adding ✕ on top would be a redundant third
 //     dismiss with an inconsistent visual treatment.
+// A persistent toast displaced by a TRANSIENT one is stashed here and
+// re-shown once the transient dismisses. There's a single #map-toast
+// element, so without this any passing hint (geolocate error, copy
+// confirmation, "outside the area" nudge) destroyed the SW-update
+// toast's Reload/Later buttons — and since the update check runs once
+// per page load, the prompt was gone for the session (a real cost on
+// a field device whose "next launch" may be offline). A NEW persistent
+// toast replaces the stash — latest persistent wins.
+let _displacedPersistentToast = null;
+
+function _restoreDisplacedToast() {
+    if (!_displacedPersistentToast) return;
+    const [msg, dOpts] = _displacedPersistentToast;
+    _displacedPersistentToast = null;
+    showToast(msg, dOpts);
+}
+
 function showToast(message, opts) {
     opts = opts || {};
     const persistent = !!opts.persistent;
@@ -9730,6 +9852,14 @@ function showToast(message, opts) {
         el.className = "map-toast";
         document.body.appendChild(el);
     }
+    // Displacement bookkeeping — see _displacedPersistentToast above.
+    if (persistent) {
+        _displacedPersistentToast = null;
+    } else if (el._persistent && el.classList.contains("visible")) {
+        _displacedPersistentToast = el._toastArgs;
+    }
+    el._persistent = persistent;
+    el._toastArgs = [message, opts];
     // Cancel any pending auto-dismiss from a prior toast call.
     clearTimeout(el._timeout);
     el._timeout = null;
@@ -9799,6 +9929,8 @@ function showToast(message, opts) {
         el._timeout = setTimeout(() => {
             el.classList.remove("visible");
             el.classList.add("hidden");
+            // Bring back a persistent toast this transient displaced.
+            _restoreDisplacedToast();
         }, timeoutMs);
     }
 }
@@ -9814,6 +9946,11 @@ function dismissToast() {
     el._timeout = null;
     el.classList.remove("visible");
     el.classList.add("hidden");
+    // If the dismissed toast was a transient that displaced a
+    // persistent one, restore it. Dismissing the persistent itself
+    // (action button / ×) finds the stash empty — showToast cleared
+    // it when the persistent was displayed.
+    _restoreDisplacedToast();
 }
 
 // ============================================================
