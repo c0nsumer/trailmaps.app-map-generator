@@ -25,6 +25,7 @@ import sys
 import cli
 import console
 import yaml
+from pmtiles_util import extract, find_pmtiles_cli
 
 # Mapterhorn (Protomaps terrain) — pre-built Terrarium-encoded RGB PMTiles
 # This is the simpler alternative to building from SRTM
@@ -34,21 +35,6 @@ MAPTERHORN_URL = "https://download.mapterhorn.com/planet.pmtiles"
 def load_config(config_path):
     with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
-
-
-def find_pmtiles_cli():
-    """Find the pmtiles CLI binary."""
-    path = shutil.which("pmtiles")
-    if path:
-        return path
-    for candidate in [
-        os.path.expanduser("~/go/bin/pmtiles"),
-        "/usr/local/bin/pmtiles",
-        "/opt/homebrew/bin/pmtiles",
-    ]:
-        if os.path.isfile(candidate):
-            return candidate
-    return None
 
 
 def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
@@ -67,36 +53,15 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     # Pad bbox for terrain (need surrounding context for hillshade edge tiles)
     pad = 0.05
     padded = [bbox[0] - pad, bbox[1] - pad, bbox[2] + pad, bbox[3] + pad]
-    bbox_str = f"{padded[0]},{padded[1]},{padded[2]},{padded[3]}"
 
     terrain_url = os.environ.get("MAPTERHORN_URL", MAPTERHORN_URL)
 
-    cmd = [
-        pmtiles_cli,
-        "extract",
-        terrain_url,
-        output_path,
-        f"--bbox={bbox_str}",
-        f"--maxzoom={maxzoom}",
-    ]
-
-    console.info(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        console.error("pmtiles extract failed:")
-        console.info(f"stdout: {result.stdout}")
-        console.info(f"stderr: {result.stderr}")
-        return False
-
-    if result.stdout:
-        console.info(f"{result.stdout.strip()}")
-    if result.stderr:
-        for line in result.stderr.strip().split("\n"):
-            if line.strip():
-                console.info(f"{line.strip()}")
-
-    return os.path.exists(output_path)
+    # Atomic (via pmtiles_util.extract): a failed/interrupted extract
+    # can't leave a partial terrain.pmtiles at the deploy path. That
+    # matters more here than for the basemap — terrain failure is
+    # NON-fatal (build.py continues without hillshade), so a partial
+    # file wouldn't stop the build and would be precached and shipped.
+    return extract(pmtiles_cli, terrain_url, output_path, padded, maxzoom)
 
 
 def build_from_srtm(bbox, output_path, maxzoom=12):
@@ -176,14 +141,18 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         console.error(f"rio rgbify failed: {result.stderr}")
         return False
 
-    # Step 4: Package as PMTiles
+    # Step 4: Package as PMTiles. Atomic for the same reason as the
+    # Mapterhorn path: write to a .tmp sibling and rename into place
+    # only on success, so a failure here can't leave a partial archive
+    # at the deploy path.
     console.info("Packaging as PMTiles...")
+    tmp_path = output_path + ".tmp"
     result = subprocess.run(
         [
             "rio",
             "pmtiles",
             terrarium_path,
-            output_path,
+            tmp_path,
             "--format",
             "PNG",
             "--resampling",
@@ -194,9 +163,12 @@ def build_from_srtm(bbox, output_path, maxzoom=12):
         capture_output=True,
         text=True,
     )
-    if result.returncode != 0:
+    if result.returncode != 0 or not os.path.exists(tmp_path):
         console.error(f"rio pmtiles failed: {result.stderr}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
         return False
+    os.replace(tmp_path, output_path)
 
     # Cleanup cache
     shutil.rmtree(cache_dir, ignore_errors=True)

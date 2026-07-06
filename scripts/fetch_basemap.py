@@ -10,8 +10,6 @@ directly; the ``__main__`` CLI exists only for standalone debugging.
 """
 
 import os
-import shutil
-import subprocess
 import sys
 from datetime import date, timedelta
 
@@ -19,6 +17,7 @@ import cli
 import console
 import requests
 import yaml
+from pmtiles_util import extract, find_pmtiles_cli
 
 PROTOMAPS_BUILD_BASE = "https://build.protomaps.com"
 # How many days back to search for an available build
@@ -54,24 +53,6 @@ def find_latest_protomaps_build():
             continue
     console.warn(f"No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
     console.info("Check https://maps.protomaps.com/builds/ for available builds.")
-    return None
-
-
-def find_pmtiles_cli():
-    """Find the pmtiles CLI binary."""
-    path = shutil.which("pmtiles")
-    if path:
-        return path
-
-    # Check common install locations
-    for candidate in [
-        os.path.expanduser("~/go/bin/pmtiles"),
-        "/usr/local/bin/pmtiles",
-        "/opt/homebrew/bin/pmtiles",
-    ]:
-        if os.path.isfile(candidate):
-            return candidate
-
     return None
 
 
@@ -116,40 +97,14 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    bbox_str = f"{padded_bbox[0]},{padded_bbox[1]},{padded_bbox[2]},{padded_bbox[3]}"
-
-    cmd = [
-        pmtiles_cli,
-        "extract",
-        planet,
-        output_path,
-        f"--bbox={bbox_str}",
-        f"--maxzoom={maxzoom}",
-    ]
-
-    console.info(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        console.error("pmtiles extract failed:")
-        console.info(f"stdout: {result.stdout}")
-        console.info(f"stderr: {result.stderr}")
+    # Atomic: extracts to a .tmp sibling and renames into place only on
+    # success, so a failed/interrupted extract can't leave a partial
+    # basemap.pmtiles for the service-worker sweep to precache and ship.
+    if not extract(pmtiles_cli, planet, output_path, padded_bbox, maxzoom):
         sys.exit(1)
 
-    if result.stdout:
-        console.info(f"{result.stdout.strip()}")
-    if result.stderr:
-        # pmtiles outputs progress to stderr
-        for line in result.stderr.strip().split("\n"):
-            if line.strip():
-                console.info(f"{line.strip()}")
-
-    if os.path.exists(output_path):
-        size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
-    else:
-        console.error(f"Output file not created: {output_path}")
-        sys.exit(1)
+    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

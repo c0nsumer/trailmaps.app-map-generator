@@ -40,6 +40,22 @@ def _save_signature(output_path, signature):
         console.warn(f"could not write {_signature_path(output_path)}: {e}")
 
 
+def _clear_signature(output_path):
+    """Remove the sidecar. Call at the START of a regen, before any
+    fetching: a signature must only ever vouch for the file the SAME
+    run wrote. Without this, an interrupted regen could leave the
+    previous build's sidecar next to whatever state the interruption
+    left behind — e.g. the user deletes basemap.pmtiles to force a
+    refetch (sidecar remains), the regen dies, and the next build sees
+    file-plus-matching-sig and accepts it indefinitely."""
+    try:
+        os.remove(_signature_path(output_path))
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        console.warn(f"could not remove {_signature_path(output_path)}: {e}")
+
+
 def _trails_fetch_fingerprint(config):
     """Stable hash of every config key fetch_trails() consumes. When
     this changes between builds, the cached trails.geojson is stale
