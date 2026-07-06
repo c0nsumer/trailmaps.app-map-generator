@@ -47,9 +47,9 @@ anchor pinned by the tests.
 Mode awareness mirrors route_order: one baseline map per visible mode.
 """
 
-import re
 from collections import defaultdict
 
+from geodesy import natural_key as _natural_key
 from route_order import build_corridor_adjacencies, enumerate_modes
 
 # Drift weight (lambda). Small so movement dominates; only a tiebreaker
@@ -74,13 +74,6 @@ _MAX_DRIFT = 0.5
 # Coordinate-descent iteration cap. Converges in well under this at our
 # scale; the cap is only a runaway backstop.
 _MAX_ITER = 100
-
-
-def _natural_key(s):
-    """Numeric-aware natural sort, matching route_order / app.js."""
-    s = str(s)
-    parts = re.split(r"(\d+)", s)
-    return tuple((0, int(p)) if p.isdigit() else (1, p) for p in parts if p)
 
 
 def _rank_sorted(routes, rank):

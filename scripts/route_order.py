@@ -51,41 +51,11 @@ References
 """
 
 import random
-import re
 from collections import defaultdict
 
 import console
-
-
-def _natural_key(s):
-    """Numeric-aware natural-sort matching app.js ``ROUTE_ID_COMPARE``.
-
-    Split route ID into runs of digits / non-digits and emit each as
-    a ``(type_marker, value)`` pair: ``(0, int)`` for digit runs,
-    ``(1, str)`` for non-digit runs. The type marker ensures sorting
-    works on MIXED-TYPE id lists (e.g. OSM relation ids like
-    ``"12345678"`` alongside custom event-mode ids like
-    ``"event_stage_1"``) — without it, Python 3 raises
-    ``TypeError`` when comparing ``int`` with ``str`` in tuple
-    element-wise comparison.
-
-    Sort behaviour:
-      ``"1"`` < ``"2"`` < ``"10"``      (numeric order within digit runs)
-      ``"123"`` < ``"foo"``             (digit runs sort before strings)
-      ``"foo123"`` < ``"foo456"``       (numeric order within prefix-grouped digits)
-    """
-    s = str(s)
-    parts = re.split(r"(\d+)", s)
-    return tuple((0, int(p)) if p.isdigit() else (1, p) for p in parts if p)
-
-
-def _coord_key(coord, precision=7):
-    """Hashable junction-node key, robust to floating-point wobble.
-
-    Identical to ``parallel_routes._coord_key`` so adjacency detection
-    here matches subway-style transition detection.
-    """
-    return (round(coord[0], precision), round(coord[1], precision))
+from geodesy import coord_key as _coord_key
+from geodesy import natural_key as _natural_key
 
 
 def build_corridor_adjacencies(features, visible_routes=None):

@@ -48,6 +48,9 @@ Caveats:
 import math
 from collections import defaultdict
 
+from geodesy import coord_key as _coord_key
+from geodesy import natural_key as _natural_key
+
 # Number of micro-features per transition zone. Higher = smoother
 # fade AND tighter tangent matching at the endpoints (which is what
 # eliminates the "spike" artifact at corner junctions — see notes
@@ -107,39 +110,6 @@ def _shared_set_signature(shared_routes):
     if shared_routes is None:
         return ()
     return tuple(sorted(str(x) for x in shared_routes))
-
-
-def _natural_key(s):
-    """Numeric-aware natural-sort key matching app.js's
-    ROUTE_ID_COMPARE: split into runs of digits / non-digits, convert
-    digit runs to ints so "1", "2", "10" sort numerically.
-
-    Each part is emitted as a ``(type_marker, value)`` pair: ``(0, int)``
-    for digit runs, ``(1, str)`` for non-digit runs. The type marker is
-    what keeps sorting valid on MIXED-TYPE id lists (e.g. OSM relation
-    ids like ``"12345678"`` together with custom event-mode ids like
-    ``"event_stage_1"``); without it, Python 3 raises ``TypeError``
-    when tuple comparison reaches an ``int`` vs ``str`` element.
-    """
-    s = str(s)
-    parts = []
-    cur = ""
-    cur_is_digit = None
-    for ch in s:
-        if ch.isdigit():
-            if cur_is_digit is False:
-                parts.append((1, cur))
-                cur = ""
-            cur_is_digit = True
-        else:
-            if cur_is_digit is True:
-                parts.append((0, int(cur)))
-                cur = ""
-            cur_is_digit = False
-        cur += ch
-    if cur:
-        parts.append((0, int(cur)) if cur_is_digit else (1, cur))
-    return tuple(parts)
 
 
 def _offset_index_for_route(route_id, shared_routes, route_order=None, baselines=None):
@@ -206,12 +176,6 @@ def _interp_along_segment(p_a, p_b, fraction):
         p_a[0] + (p_b[0] - p_a[0]) * fraction,
         p_a[1] + (p_b[1] - p_a[1]) * fraction,
     ]
-
-
-def _coord_key(coord, precision=7):
-    """Hashable key for a [lon, lat] coordinate. Round to ~1 cm to
-    absorb float-equality wobble at junction nodes."""
-    return (round(coord[0], precision), round(coord[1], precision))
 
 
 def _meters_unit_to_degree_delta(unit_meters, magnitude_meters, latitude):
