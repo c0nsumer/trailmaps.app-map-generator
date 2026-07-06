@@ -5,9 +5,11 @@
 #   ruff check scripts/ tools/ map_generator/
 #   ruff format scripts/ tools/ map_generator/
 
-# requirements.txt targets Python 3.9–3.14; pin the floor so pyupgrade
-# (UP) never rewrites to syntax that breaks 3.9.
-target-version = "py39"
+# Match the project floor (pyproject.toml requires-python = ">=3.11",
+# enforced at runtime by map_generator/__main__.py) so pyupgrade (UP)
+# can apply 3.10/3.11 modernizations. Was py39 with a stale comment
+# claiming a 3.9 floor that predated the Linux Stage-1 work.
+target-version = "py311"
 line-length = 100
 
 extend-exclude = [
@@ -29,6 +31,10 @@ extend-exclude = [
 select = ["E", "F", "I", "UP", "B"]
 ignore = [
     "E501", # line too long — many deliberate long URLs / f-strings
+    # Pairwise-window zips — zip(line, line[1:]) for consecutive-vertex
+    # walks — are pervasive and deliberately unequal-length; annotating
+    # every one with strict=False is noise without a correctness win.
+    "B905",
 ]
 
 [lint.per-file-ignores]

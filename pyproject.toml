@@ -3,8 +3,12 @@
 # not installed as a distribution — so this file exists mainly to declare the
 # Python floor to pip and tooling. Dependencies remain pinned in
 # requirements.txt for reproducible builds.
+#
+# The version is static (not `dynamic = ["version"]`): a dynamic field with
+# no [tool.setuptools.dynamic] source makes `pip install .` fail under the
+# default setuptools backend, and someone WILL try that on a fresh checkout.
 [project]
 name = "map-generator"
+version = "0.1.0"
 description = "Static MTB trail-map generator (MapLibre + PMTiles)"
 requires-python = ">=3.11"
-dynamic = ["version"]
