@@ -35,7 +35,12 @@ import yaml
 # deliberately NOT listed here — it's enforced separately by
 # _validate_geometry_source below, which accepts ANY of the three so a
 # race/event or route-only map can ship a GeoJSON route with no OSM relations.
-REQUIRED_KEYS = {"name", "slug"}
+# `title` is required because the build hard-reads config["title"]
+# (template_inject CONFIG_SPEC and build.py's dry-run summary) — without
+# it here, a name+slug-only config passed validation and then died with
+# a raw KeyError, including on the orchestrator's contracted
+# `build.py <config> --dry-run` path.
+REQUIRED_KEYS = {"name", "slug", "title"}
 
 # All known top-level keys with expected Python types. None means "no type
 # check" (handled by a custom validator below). Using tuples for "any of".
@@ -524,6 +529,37 @@ def _validate_geometry(report, config):
             pass  # already reported as a type error above
 
 
+def _reject_unknown_keys(report, where, mapping, allowed):
+    """Reject unknown keys in a nested dict, with a did-you-mean hint.
+
+    Every nested dict the injector consumes must run through this (or
+    an equivalent bespoke check): the confirmed validator holes all
+    shared one signature — a nested block gained consumers without
+    gaining unknown-key rejection, so a typo'd sub-key (`colour`,
+    `reverse_day`) produced a clean, warning-free build with the
+    curator's override silently dropped (or worse, misinterpreted).
+    """
+    for k in mapping.keys():
+        if k in allowed:
+            continue
+        suggestions = difflib.get_close_matches(str(k), sorted(allowed), n=2)
+        hint = (
+            f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
+            if suggestions
+            else ""
+        )
+        report.err(f"{where}.{k}", f"unknown key; allowed: {sorted(allowed)}{hint}")
+
+
+def _is_dash_pattern(p):
+    """True for a valid line-dash pattern: a non-empty list of numbers."""
+    return (
+        isinstance(p, list)
+        and len(p) > 0
+        and all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in p)
+    )
+
+
 def _validate_colors(report, config):
     color_keys = (
         "marker_color",
@@ -535,6 +571,9 @@ def _validate_colors(report, config):
         "trailhead_color",
         "trailhead_text_color",
         "trailhead_border_color",
+        "hub_color",
+        "hub_text_color",
+        "hub_border_color",
         "feature_color",
         "feature_ring_color",
     )
@@ -552,8 +591,25 @@ def _validate_colors(report, config):
             if not _is_color(dtc):
                 report.err("default_trail_color", f"not a valid color: {dtc!r}")
         elif isinstance(dtc, dict):
+            # The dict form's full shape is consumed by the injector
+            # (color / pattern / cap → CONFIG.defaultTrail*). All three
+            # need validating — a typo'd `colour:` used to sail through
+            # and silently yield the default gray.
+            _reject_unknown_keys(
+                report, "default_trail_color", dtc, {"color", "pattern", "cap"}
+            )
             if "color" in dtc and not _is_color(dtc["color"]):
                 report.err("default_trail_color.color", f"not a valid color: {dtc['color']!r}")
+            if "pattern" in dtc and not _is_dash_pattern(dtc["pattern"]):
+                report.err(
+                    "default_trail_color.pattern",
+                    f"must be a list of numbers (e.g. [2, 2]), got {dtc['pattern']!r}",
+                )
+            if "cap" in dtc and dtc["cap"] not in ("butt", "round", "square"):
+                report.err(
+                    "default_trail_color.cap",
+                    f"must be one of [butt, round, square], got {dtc['cap']!r}",
+                )
 
     rc = config.get("relation_colors")
     if isinstance(rc, dict):
@@ -661,15 +717,26 @@ def _validate_weekdays(report, config):
             )
         else:
             for rid, spec in per_route.items():
+                where = f"direction_schedule.per_route[{rid}]"
                 if not isinstance(spec, dict):
-                    report.err(
-                        f"direction_schedule.per_route[{rid}]",
-                        f"expected dict, got {type(spec).__name__}",
-                    )
+                    report.err(where, f"expected dict, got {type(spec).__name__}")
                     continue
+                # Unknown keys AND a missing reverse_days are both
+                # errors here — worse than inert: the injector records
+                # any per_route entry as an override, and an entry whose
+                # reverse_days didn't parse becomes an EMPTY override,
+                # which is the documented mechanism for opting a route
+                # OUT of the system-wide schedule. A `reverse_day:` typo
+                # used to silently disable arrow reversal for the route.
+                _reject_unknown_keys(report, where, spec, {"reverse_days"})
                 if "reverse_days" in spec:
-                    _check_days(
-                        f"direction_schedule.per_route[{rid}].reverse_days", spec["reverse_days"]
+                    _check_days(f"{where}.reverse_days", spec["reverse_days"])
+                else:
+                    report.err(
+                        where,
+                        "missing reverse_days (use `reverse_days: []` to "
+                        "explicitly opt this route out of the system-wide "
+                        "schedule)",
                     )
     # Reject unknown sibling keys so typos surface (e.g. someone
     # writing `routes:` instead of `per_route:`).
@@ -690,16 +757,31 @@ def _validate_dashed_relations(report, config):
                 if not isinstance(n, (int, float)) or isinstance(n, bool):
                     report.err(f"{where}[{i}]", f"dash pattern values must be numbers, got {n!r}")
         elif isinstance(spec, dict):
-            if "pattern" in spec:
-                p = spec["pattern"]
-                if not isinstance(p, list) or not all(
-                    isinstance(n, (int, float)) and not isinstance(n, bool) for n in p
-                ):
-                    report.err(f"{where}.pattern", f"must be a list of numbers, got {p!r}")
+            # `colors` is documented (docs/configuration.md
+            # "Alternating-colour dashes") and consumed by the injector
+            # (dashColors) but used to be entirely unvalidated — a
+            # string value or typo'd key flowed straight to the runtime.
+            _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
+            if "pattern" in spec and not _is_dash_pattern(spec["pattern"]):
+                report.err(
+                    f"{where}.pattern", f"must be a list of numbers, got {spec['pattern']!r}"
+                )
             if "cap" in spec and spec["cap"] not in ("butt", "round", "square"):
                 report.err(
                     f"{where}.cap", f"must be one of [butt, round, square], got {spec['cap']!r}"
                 )
+            if "colors" in spec:
+                c = spec["colors"]
+                if (
+                    not isinstance(c, list)
+                    or not (1 <= len(c) <= 2)
+                    or not all(_is_color(x) for x in c)
+                ):
+                    report.err(
+                        f"{where}.colors",
+                        f"must be a list of 1-2 valid colors "
+                        f"(e.g. ['#000000', '#ffffff']), got {c!r}",
+                    )
         else:
             report.err(where, f"expected list or dict, got {type(spec).__name__}")
 

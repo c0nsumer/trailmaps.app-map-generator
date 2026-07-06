@@ -192,6 +192,55 @@ def test_event_gpx_missing_file_rejected():
     assert any("file not found" in e for e in errors), errors
 
 
+# ---------------------------------------------------------------------------
+# Nested-dict sub-schemas (the 2026-07 QA review's confirmed validator holes:
+# each of these passed invalid input cleanly before)
+# ---------------------------------------------------------------------------
+
+
+def test_title_required():
+    cfg = dict(BASE)
+    del cfg["title"]
+    errors, _ = validate_config(cfg)
+    assert any("title" in e for e in errors), errors
+
+
+def test_hub_colors_validated():
+    assert any("hub_color" in e for e in _errors(hub_color="#zzzzzz"))
+    assert any("hub_text_color" in e for e in _errors(hub_text_color="#zzzzzz"))
+    assert any("hub_border_color" in e for e in _errors(hub_border_color="#zzzzzz"))
+
+
+def test_default_trail_color_dict_shape_validated():
+    errs = _errors(default_trail_color={"colour": "#123456", "pattern": "2 2", "cap": "rond"})
+    assert any("default_trail_color.colour" in e and "'color'" in e for e in errs), errs
+    assert any("default_trail_color.pattern" in e for e in errs), errs
+    assert any("default_trail_color.cap" in e for e in errs), errs
+    assert (
+        _errors(default_trail_color={"color": "#123456", "pattern": [2, 2], "cap": "round"}) == []
+    )
+
+
+def test_per_route_spec_shape_validated():
+    errs = _errors(direction_schedule={"per_route": {123: {"reverse_day": ["monday"]}}})
+    assert any("reverse_day" in e and "did you mean" in e for e in errs), errs
+    # A spec whose reverse_days didn't parse becomes an EMPTY override
+    # (disabling reversal for the route) — so its absence is an error...
+    assert any("missing reverse_days" in e for e in errs), errs
+    # ...while an explicit empty list is the documented opt-out.
+    assert _errors(direction_schedule={"per_route": {123: {"reverse_days": []}}}) == []
+
+
+def test_dashed_relations_dict_shape_validated():
+    errs = _errors(dashed_relations={456: {"pattern": [4, 2], "colors": "#000000", "colurs": 1}})
+    assert any("colurs" in e for e in errs), errs
+    assert any("dashed_relations[456].colors" in e for e in errs), errs
+    assert (
+        _errors(dashed_relations={456: {"pattern": [4, 2], "colors": ["#000000", "#ffffff"]}})
+        == []
+    )
+
+
 if __name__ == "__main__":
     import traceback
 
