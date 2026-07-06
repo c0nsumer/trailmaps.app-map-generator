@@ -65,7 +65,7 @@ def _parse_relations(data):
     return relations
 
 
-def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None):
+def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=False):
     """Fetch relation metadata for every entry in `relation_ids` and
     `clipped_ids` in a single Overpass query.
 
@@ -116,7 +116,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None):
 ({" ".join(parts)});
 out body;
 """
-    data = overpass_query(query, cache_dir, label="relations", require_elements=True)
+    data = overpass_query(query, cache_dir, label="relations", require_elements=True, refresh=refresh)
     all_rels = _parse_relations(data)
 
     # Surface input IDs the response didn't contain. Without this, a
@@ -178,7 +178,7 @@ out body;
     return members, clipped, expansions
 
 
-def fetch_all_ways_bulk(relation_ids, cache_dir=None):
+def fetch_all_ways_bulk(relation_ids, cache_dir=None, refresh=False):
     """Fetch ways for all relations in a single Overpass query using foreach.
 
     Uses Overpass's foreach to iterate over relations server-side, emitting
@@ -200,7 +200,7 @@ foreach -> .rel(
   out geom;
 );
 """
-    data = overpass_query(query, cache_dir, label="ways", require_elements=True)
+    data = overpass_query(query, cache_dir, label="ways", require_elements=True, refresh=refresh)
 
     # Parse the flat element list.  The foreach emits a relation element
     # (with just an id) followed by its member ways, then the next relation, etc.
@@ -639,8 +639,13 @@ def _write_empty_trails(output_path, map_name):
     return geojson
 
 
-def fetch_trails(config_or_path, output_path, cache_dir="cache"):
-    """Main entry point: fetch trails and write GeoJSON."""
+def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
+    """Main entry point: fetch trails and write GeoJSON.
+
+    ``refresh=True`` (build.py --force) bypasses cached Overpass
+    responses for this map's queries without touching the shared
+    cache directory's other entries.
+    """
     config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
     source_ids = list(config.get("relations") or [])
     if not source_ids:
@@ -725,7 +730,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
         # Stage A: Fetch all relation metadata in a single query
         console.step("Stage A: Fetching relation metadata...")
         members, clipped_relations, super_relation_expansions = fetch_all_relations(
-            relation_ids, clipped_relation_ids, cache_dir
+            relation_ids, clipped_relation_ids, cache_dir, refresh=refresh
         )
         _log_expansions("expanded", super_relation_expansions)
 
@@ -749,7 +754,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
 
         # Stage B: Fetch ways for all relations in a single bulk query
         console.step(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
-        all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir)
+        all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir, refresh=refresh)
         _log_way_counts(relations, all_ways)
 
     # Apply winter_relations config override (marks relations as winter

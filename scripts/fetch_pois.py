@@ -27,7 +27,7 @@ from geodesy import haversine_m
 from overpass import query as overpass_query
 
 
-def fetch_pois_from_osm(bbox, cache_dir=None):
+def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
     """Fetch trail-relevant POI nodes from Overpass API.
 
     Categories collected:
@@ -60,7 +60,7 @@ def fetch_pois_from_osm(bbox, cache_dir=None):
 );
 out center;
 """
-    return overpass_query(q, cache_dir, label="POIs")
+    return overpass_query(q, cache_dir, label="POIs", refresh=refresh)
 
 
 def _dedup_osm_pois(features):
@@ -78,13 +78,17 @@ def _dedup_osm_pois(features):
     stacks on top of the first). Same logic catches the rarer
     pure-mapper-error case of two coincident nodes.
 
-    Two POIs are duplicates iff they share the same poi_type AND
-    their coordinates are within 10m haversine distance. Different
-    types at the same location are NOT collapsed (a parking +
-    trailhead at the same coords is a legitimate pattern). When
-    collapsing, the surviving feature inherits the first non-empty
-    value seen for each property (so a tagged-once name doesn't get
-    lost to its untagged twin).
+    Two POIs are duplicates iff they share the same poi_type, the type
+    is one where the double-tagging pattern actually occurs (toilets /
+    drinking_water — the building-footprint amenities), AND their
+    coordinates are within 10m haversine distance. Other types are
+    never collapsed: distinct guideposts genuinely stand <10m apart at
+    junction clusters, and merging them dropped their individual ref
+    numbers. Different types at the same location are also NOT
+    collapsed (a parking + trailhead at the same coords is a
+    legitimate pattern). When collapsing, the surviving feature
+    inherits the first non-empty value seen for each property (so a
+    tagged-once name doesn't get lost to its untagged twin).
 
     The 10m threshold catches the building-center-vs-node-coord
     offset (typically 0–5m) without merging genuinely-distinct
@@ -96,12 +100,19 @@ def _dedup_osm_pois(features):
     curator sees the OSM data structure surfacing up.
     """
     DEDUP_M = 10.0
+    # Only the building-footprint amenities exhibit the way+node
+    # double-tagging pattern. Everything else (trail_marker, feature)
+    # can legitimately have distinct instances <10m apart.
+    DEDUP_TYPES = {"toilet", "drinking_water"}
     out = []
     collapsed = 0
     for f in features:
         ptype = f["properties"].get("poi_type")
         lng, lat = f["geometry"]["coordinates"]
         merged_into = None
+        if ptype not in DEDUP_TYPES:
+            out.append(f)
+            continue
         for existing in out:
             if existing["properties"].get("poi_type") != ptype:
                 continue
@@ -326,8 +337,13 @@ def build_pois_geojson(
     return {"type": "FeatureCollection", "features": features}
 
 
-def fetch_pois(config_or_path, output_path, cache_dir="cache"):
-    """Main entry point: fetch POIs and write GeoJSON."""
+def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
+    """Main entry point: fetch POIs and write GeoJSON.
+
+    ``refresh=True`` (build.py --force) bypasses cached Overpass
+    responses for this map's queries without touching the shared
+    cache directory's other entries.
+    """
     config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
     bbox = config["bbox"]
     config_parking = config.get("parking", [])
@@ -354,7 +370,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache"):
         parsed = parse_osm_file(osm_file)
         osm_data = extract_guideposts(parsed, bbox)
     else:
-        osm_data = fetch_pois_from_osm(bbox, cache_dir)
+        osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh)
 
     # Count by type — guideposts + emergency access points are merged
     # into a single "markers" bucket.

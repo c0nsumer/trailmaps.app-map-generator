@@ -140,7 +140,7 @@ def _check_snapshot_freshness(data, server):
         )
 
 
-def query(query_str, cache_dir=None, label="", require_elements=False):
+def query(query_str, cache_dir=None, label="", require_elements=False, refresh=False):
     """Execute an Overpass API query with caching and retry.
 
     Hits the canonical overpass-api.de endpoint with a progressive backoff
@@ -157,6 +157,11 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
             that should always return results (e.g. relation lookups). Leave
             False for queries that may legitimately return nothing (e.g.
             POIs in an area with none).
+        refresh: If True, skip reading any cached response (the fresh
+            result still overwrites the cache entry). This is how
+            `build.py --force` re-fetches ONE map's data — the cache
+            directory is shared by every map, so deleting it wholesale
+            would throw away the other maps' responses (and it used to).
 
     Returns:
         Parsed JSON response from the Overpass API.
@@ -167,7 +172,10 @@ def query(query_str, cache_dir=None, label="", require_elements=False):
         os.makedirs(cache_dir, exist_ok=True)
         h = hashlib.md5(query_str.encode()).hexdigest()[:12]
         cp = os.path.join(cache_dir, f"overpass_{h}.json")
-        if os.path.exists(cp):
+        if refresh:
+            if os.path.exists(cp):
+                console.info(f"Bypassing cached response (refresh requested): {cp}")
+        elif os.path.exists(cp):
             mtime = os.path.getmtime(cp)
             age = datetime.now() - datetime.fromtimestamp(mtime)
             date_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")

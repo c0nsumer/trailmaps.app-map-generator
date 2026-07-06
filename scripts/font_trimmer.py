@@ -119,7 +119,10 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
                 console.info(f"Scanned {count} basemap tiles")
             finally:
                 mm.close()
-    except (FileNotFoundError, OSError) as e:
+    except (FileNotFoundError, OSError, ValueError) as e:
+        # ValueError: mmap refuses zero-byte files ("cannot mmap an empty
+        # file") — a truncated/failed basemap fetch shouldn't crash the
+        # font scan; fall through with whatever chars we have (none).
         console.warn(f"Could not read basemap for font scan: {e}")
     return chars
 

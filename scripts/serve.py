@@ -31,16 +31,30 @@ class RangeRequestHandler(SimpleHTTPRequestHandler):
         if not range_header:
             return super().send_head()
 
-        # Parse Range: bytes=start-end
+        # Parse Range: bytes=start-end. Three RFC 7233 forms:
+        #   bytes=a-b   → explicit span
+        #   bytes=a-    → from a to EOF
+        #   bytes=-n    → SUFFIX: the LAST n bytes (not 0-n, which is
+        #                 how this used to mis-parse it)
         try:
             range_spec = range_header.strip().split("=")[1]
             parts = range_spec.split("-")
             file_size = os.path.getsize(path)
 
-            start = int(parts[0]) if parts[0] else 0
-            end = int(parts[1]) if parts[1] else file_size - 1
+            if not parts[0] and parts[1]:
+                # Suffix form: last n bytes.
+                start = max(file_size - int(parts[1]), 0)
+                end = file_size - 1
+            else:
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if parts[1] else file_size - 1
             end = min(end, file_size - 1)
             length = end - start + 1
+            if length <= 0 or start >= file_size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.end_headers()
+                return None
 
             f = open(path, "rb")
             f.seek(start)

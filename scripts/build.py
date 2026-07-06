@@ -851,7 +851,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
     parser.add_argument(
-        "--force", action="store_true", help="Force re-fetch all data (including Overpass cache)"
+        "--force",
+        action="store_true",
+        help="Force re-fetch this map's data (bypasses its cached Overpass "
+        "responses; other maps' shared-cache entries are untouched)",
     )
     parser.add_argument(
         "--trails",
@@ -966,10 +969,11 @@ def main(argv=None):
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # --force clears the Overpass response cache so data is re-fetched from OSM
-    if args.force and os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir)
-        console.step(f"Cleared Overpass cache: {cache_dir}")
+    # --force re-fetches this map's data by bypassing cached Overpass
+    # responses (refresh flag on the fetch calls below). The cache
+    # directory itself is left alone: it's SHARED across every map
+    # (plus the vendor-lib and accent-derivation caches), so the old
+    # rmtree here threw away all the other maps' responses too.
 
     console.step(f"Building map: {config['title']}")
     console.step(f"Output: {output_dir}")
@@ -1019,7 +1023,7 @@ def main(argv=None):
         # so the next build re-expands from clean geometry instead of
         # re-enriching (and destroying) the expanded output. Copied after
         # fetch_trails succeeds so a partial/aborted fetch leaves no base.
-        fetched = fetch_trails(config, trails_path, cache_dir)
+        fetched = fetch_trails(config, trails_path, cache_dir, refresh=args.force)
         shutil.copyfile(trails_path, trails_src_path)
         _save_signature(
             trails_src_path,
@@ -1255,7 +1259,7 @@ def main(argv=None):
         with open(pois_path, "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
-        fetch_pois(config, pois_path, cache_dir)
+        fetch_pois(config, pois_path, cache_dir, refresh=args.force)
     console.blank()
 
     # Count POI features by type so the runtime can render an
