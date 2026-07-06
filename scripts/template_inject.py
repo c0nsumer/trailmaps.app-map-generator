@@ -20,7 +20,7 @@ from font_trimmer import copy_trimmed_fonts
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
-from validate_config import DEFAULT_VISIBLE_LAYERS
+from validate_config import DEFAULT_VISIBLE_LAYERS, VALID_DAYS, match_day_token
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -271,30 +271,17 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #
     # Relations are just the grouping handle here — relations themselves don't
     # have direction; their member ways do.
-    VALID_WEEKDAYS = {"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}
-    # Parity tokens extend the vocabulary: a route with `reverse_days:
-    # [even_days]` flips 180° on any even calendar date (2, 4, 6 …); `odd_days`
-    # is the mirror. These are evaluated at runtime the same way weekday tokens
-    # are — any match in the list triggers reversal — so mixing them is fine
-    # ("today is Monday OR today is even"), though most users will use one form
-    # or the other. The canonical snake_case forms are what gets emitted into
-    # CONFIG.directionSchedules; short forms like "even" or "odd" are accepted
-    # for author convenience.
-    VALID_PARITY = {"even_days", "odd_days"}
-    VALID_DAYS = VALID_WEEKDAYS | VALID_PARITY
+    #
+    # Day-token vocabulary (weekdays + even_days/odd_days parity tokens,
+    # accept-prefix matching, canonical snake_case emitted into
+    # CONFIG.directionSchedules) is shared with the validator via
+    # validate_config.match_day_token — single source of truth, so the
+    # injector can't accept a token the validator rejects or vice versa.
 
     def _normalise_days(days_in, error_label):
         days_norm = []
         for d in days_in or []:
-            dl = str(d).strip().lower()
-            match = next(
-                (
-                    full
-                    for full in VALID_DAYS
-                    if full == dl or (len(dl) >= 3 and full.startswith(dl))
-                ),
-                None,
-            )
+            match = match_day_token(d)
             if match is None:
                 sys.exit(
                     f"ERROR: {error_label} contains unknown day token {d!r}; "

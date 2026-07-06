@@ -240,11 +240,31 @@ VALID_DAYS = {
     "friday",
     "saturday",
     # Parity tokens: reverse on even or odd calendar dates
-    # (getDate()%2). Must stay in sync with build.py's VALID_DAYS
-    # and app.js todaysReverseRoutes().
+    # (getDate()%2). Must stay in sync with app.js
+    # todaysReverseRoutes().
     "even_days",
     "odd_days",
 }
+
+
+def match_day_token(token):
+    """Resolve a day token to its canonical form, or None if unknown.
+
+    Accepts the full token or any unambiguous prefix of length >= 3
+    ("mon" → "monday", "even" → "even_days"). Single source of truth
+    for the accept-prefix rule — template_inject._normalise_days
+    consumes this too, so the validator and the injector can't drift.
+    """
+    tl = str(token).strip().lower()
+    return next(
+        (full for full in VALID_DAYS if full == tl or (len(tl) >= 3 and full.startswith(tl))),
+        None,
+    )
+
+
+# Line-cap vocabulary shared by every dash-style dict (default_trail_color,
+# dashed_relations[..], event_mode.background_style).
+VALID_LINE_CAPS = {"butt", "round", "square"}
 
 HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 # Colors can also be CSS named colors. We don't enumerate the full set —
@@ -560,6 +580,24 @@ def _is_dash_pattern(p):
     )
 
 
+def _check_lonlat(report, where, c):
+    """Shared [lon, lat] coordinate-pair check (shape + world-range).
+    Used by every point-shaped config entry (trailheads / parking /
+    hubs / event_mode.pois)."""
+    if not (
+        isinstance(c, list)
+        and len(c) == 2
+        and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in c)
+    ):
+        report.err(where, f"must be [lon, lat] numbers, got {c!r}")
+        return
+    lon, lat = c
+    if not -180 <= lon <= 180:
+        report.err(where, f"longitude must be in [-180,180]: {lon}")
+    if not -90 <= lat <= 90:
+        report.err(where, f"latitude must be in [-90,90]: {lat}")
+
+
 def _validate_colors(report, config):
     color_keys = (
         "marker_color",
@@ -605,10 +643,10 @@ def _validate_colors(report, config):
                     "default_trail_color.pattern",
                     f"must be a list of numbers (e.g. [2, 2]), got {dtc['pattern']!r}",
                 )
-            if "cap" in dtc and dtc["cap"] not in ("butt", "round", "square"):
+            if "cap" in dtc and dtc["cap"] not in VALID_LINE_CAPS:
                 report.err(
                     "default_trail_color.cap",
-                    f"must be one of [butt, round, square], got {dtc['cap']!r}",
+                    f"must be one of {sorted(VALID_LINE_CAPS)}, got {dtc['cap']!r}",
                 )
 
     rc = config.get("relation_colors")
@@ -662,24 +700,16 @@ def _validate_relation_id_dicts(report, config):
 
 
 def _validate_weekdays(report, config):
-    """Validate any reverse_days lists. Mirrors build.py's normalise_days()
-    accept-prefix logic so the validator agrees with the runtime."""
+    """Validate any reverse_days lists. Shares match_day_token() with
+    template_inject._normalise_days so the validator agrees with the
+    injector's accept-prefix logic by construction."""
 
     def _check_days(where, days):
         if not isinstance(days, list):
             report.err(where, f"reverse_days must be a list, got {type(days).__name__}")
             return
         for d in days:
-            dl = str(d).strip().lower()
-            match = next(
-                (
-                    full
-                    for full in VALID_DAYS
-                    if full == dl or (len(dl) >= 3 and full.startswith(dl))
-                ),
-                None,
-            )
-            if match is None:
+            if match_day_token(d) is None:
                 report.err(where, f"unknown day token {d!r}; valid: {sorted(VALID_DAYS)}")
 
     # Legacy-key migration error. The previous schema split the
@@ -740,10 +770,7 @@ def _validate_weekdays(report, config):
                     )
     # Reject unknown sibling keys so typos surface (e.g. someone
     # writing `routes:` instead of `per_route:`).
-    allowed = {"reverse_days", "per_route"}
-    for k in ds.keys():
-        if k not in allowed:
-            report.err(f"direction_schedule.{k}", f"unknown key; allowed: {sorted(allowed)}")
+    _reject_unknown_keys(report, "direction_schedule", ds, {"reverse_days", "per_route"})
 
 
 def _validate_dashed_relations(report, config):
@@ -766,9 +793,9 @@ def _validate_dashed_relations(report, config):
                 report.err(
                     f"{where}.pattern", f"must be a list of numbers, got {spec['pattern']!r}"
                 )
-            if "cap" in spec and spec["cap"] not in ("butt", "round", "square"):
+            if "cap" in spec and spec["cap"] not in VALID_LINE_CAPS:
                 report.err(
-                    f"{where}.cap", f"must be one of [butt, round, square], got {spec['cap']!r}"
+                    f"{where}.cap", f"must be one of {sorted(VALID_LINE_CAPS)}, got {spec['cap']!r}"
                 )
             if "colors" in spec:
                 c = spec["colors"]
@@ -810,21 +837,7 @@ def _validate_point_lists(report, config):
             if "coordinates" not in item:
                 report.err(where, "missing required 'coordinates' [lon, lat]")
             else:
-                c = item["coordinates"]
-                if not (
-                    isinstance(c, list)
-                    and len(c) == 2
-                    and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in c)
-                ):
-                    report.err(f"{where}.coordinates", f"must be [lon, lat] numbers, got {c!r}")
-                else:
-                    lon, lat = c
-                    if not -180 <= lon <= 180:
-                        report.err(
-                            f"{where}.coordinates", f"longitude must be in [-180,180]: {lon}"
-                        )
-                    if not -90 <= lat <= 90:
-                        report.err(f"{where}.coordinates", f"latitude must be in [-90,90]: {lat}")
+                _check_lonlat(report, f"{where}.coordinates", item["coordinates"])
             if "name" in item and not isinstance(item["name"], str):
                 report.err(f"{where}.name", f"must be a string, got {type(item['name']).__name__}")
 
@@ -863,9 +876,7 @@ def _validate_additional_logos(report, config):
                 f"{where}.invert_dark",
                 f"expected bool, got {type(entry['invert_dark']).__name__}",
             )
-        unknown = set(entry) - {"path", "invert_dark"}
-        if unknown:
-            report.err(where, f"unknown key(s) {sorted(unknown)}; allowed: path, invert_dark")
+        _reject_unknown_keys(report, where, entry, {"path", "invert_dark"})
 
 
 def _validate_paths(report, config, config_dir):
@@ -1111,28 +1122,24 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
             )
 
     # Reject unknown keys in the custom route entry (catch typos).
-    allowed = {
-        "id",
-        "name",
-        "color",
-        "geometry",
-        "summer",
-        "winter",
-        "emergency",
-        "dashed",
-        "description",
-        "trail_name_field",
-        "oneway",
-    }
-    for k in entry.keys():
-        if k not in allowed:
-            suggestions = difflib.get_close_matches(k, allowed, n=2)
-            hint = (
-                f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
-                if suggestions
-                else ""
-            )
-            report.err(f"{where}.{k}", f"unknown key in custom route entry{hint}")
+    _reject_unknown_keys(
+        report,
+        where,
+        entry,
+        {
+            "id",
+            "name",
+            "color",
+            "geometry",
+            "summer",
+            "winter",
+            "emergency",
+            "dashed",
+            "description",
+            "trail_name_field",
+            "oneway",
+        },
+    )
 
 
 def _validate_custom_routes(report, config):
@@ -1205,6 +1212,35 @@ def _validate_accent_color(report, config):
         report.err("accent_color", f"must be a 6-digit hex (e.g. '#FF5733') or 'auto', got {val!r}")
 
 
+def _check_layer_list(report, key, val):
+    """Shared shape check for the two layer-visibility keys
+    (default_visible / forced_visible): the literal string "all" or a
+    list of layer names validated against DEFAULT_VISIBLE_LAYERS with a
+    fuzzy suggestion on typos, so a misspelled "parkings" doesn't
+    silently produce a map with no parking visible.
+    """
+    if isinstance(val, str):
+        if val != "all":
+            report.err(key, f"string form must be 'all', got {val!r}")
+        return
+    if not isinstance(val, list):
+        report.err(key, f"expected list or 'all', got {type(val).__name__}")
+        return
+    seen = set()
+    for i, item in enumerate(val):
+        if not isinstance(item, str):
+            report.err(f"{key}[{i}]", f"expected string, got {type(item).__name__}")
+            continue
+        if item not in DEFAULT_VISIBLE_LAYERS:
+            suggestions = difflib.get_close_matches(item, DEFAULT_VISIBLE_LAYERS, n=2)
+            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
+            report.err(f"{key}[{i}]", f"unknown layer name {item!r}{hint}")
+            continue
+        if item in seen:
+            report.warn(f"{key}[{i}]", f"{item!r} listed more than once")
+        seen.add(item)
+
+
 def _validate_default_visible(report, config):
     """Validate the optional `default_visible` key.
 
@@ -1213,34 +1249,10 @@ def _validate_default_visible(report, config):
       - the literal string "all": every supported layer defaults to ON
       - list of layer names: those layers default to ON; everything
         else defaults to OFF
-
-    Layer names are validated against DEFAULT_VISIBLE_LAYERS with a
-    fuzzy suggestion on typos so a misspelled "parkings" doesn't
-    silently produce a map with no parking visible.
     """
     val = config.get("default_visible")
-    if val is None:
-        return
-    if isinstance(val, str):
-        if val != "all":
-            report.err("default_visible", f"string form must be 'all', got {val!r}")
-        return
-    if not isinstance(val, list):
-        report.err("default_visible", f"expected list or 'all', got {type(val).__name__}")
-        return
-    seen = set()
-    for i, item in enumerate(val):
-        if not isinstance(item, str):
-            report.err(f"default_visible[{i}]", f"expected string, got {type(item).__name__}")
-            continue
-        if item not in DEFAULT_VISIBLE_LAYERS:
-            suggestions = difflib.get_close_matches(item, DEFAULT_VISIBLE_LAYERS, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"default_visible[{i}]", f"unknown layer name {item!r}{hint}")
-            continue
-        if item in seen:
-            report.warn(f"default_visible[{i}]", f"{item!r} listed more than once")
-        seen.add(item)
+    if val is not None:
+        _check_layer_list(report, "default_visible", val)
 
 
 def _validate_renamed_keys(report, config):
@@ -1262,9 +1274,7 @@ def _validate_renamed_keys(report, config):
 def _validate_forced_visible(report, config):
     """Validate the optional `forced_visible` key.
 
-    Same shape as `default_visible`: list of layer names, or the
-    literal string "all". Layer names are validated against the same
-    DEFAULT_VISIBLE_LAYERS set with fuzzy typo suggestions.
+    Same shape as `default_visible` (shared _check_layer_list).
 
     Semantics differ from default_visible: a layer named in
     forced_visible is rendered with its toggle hidden — the rider has
@@ -1289,28 +1299,8 @@ def _validate_forced_visible(report, config):
         )
 
     val = config.get("forced_visible")
-    if val is None:
-        return
-    if isinstance(val, str):
-        if val != "all":
-            report.err("forced_visible", f"string form must be 'all', got {val!r}")
-        return
-    if not isinstance(val, list):
-        report.err("forced_visible", f"expected list or 'all', got {type(val).__name__}")
-        return
-    seen = set()
-    for i, item in enumerate(val):
-        if not isinstance(item, str):
-            report.err(f"forced_visible[{i}]", f"expected string, got {type(item).__name__}")
-            continue
-        if item not in DEFAULT_VISIBLE_LAYERS:
-            suggestions = difflib.get_close_matches(item, DEFAULT_VISIBLE_LAYERS, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"forced_visible[{i}]", f"unknown layer name {item!r}{hint}")
-            continue
-        if item in seen:
-            report.warn(f"forced_visible[{i}]", f"{item!r} listed more than once")
-        seen.add(item)
+    if val is not None:
+        _check_layer_list(report, "forced_visible", val)
 
 
 def _validate_welcome(report, config):
@@ -1342,12 +1332,7 @@ def _validate_welcome(report, config):
             f"must be a boolean, got {type(welcome['show_controls_hint']).__name__}",
         )
     # Catch typos in welcome's sub-keys.
-    allowed = {"title", "body", "show_controls_hint"}
-    for k in welcome:
-        if k not in allowed:
-            suggestions = difflib.get_close_matches(k, allowed, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"welcome.{k}", f"unknown key in welcome{hint}")
+    _reject_unknown_keys(report, "welcome", welcome, {"title", "body", "show_controls_hint"})
 
 
 def _validate_about(report, config):
@@ -1401,7 +1386,6 @@ def _validate_about(report, config):
 
 
 _BACKGROUND_STYLE_ALLOWED = {"color", "pattern", "cap"}
-_BACKGROUND_STYLE_VALID_CAPS = {"butt", "round", "square"}
 
 
 def _validate_event_mode(report, config):
@@ -1435,12 +1419,12 @@ def _validate_event_mode(report, config):
         return
 
     # Reject unknown sub-keys.
-    allowed = {"routes", "featured", "background_style", "direction_arrows", "pois", "poi_color", "gpx"}
-    for k in em:
-        if k not in allowed:
-            suggestions = difflib.get_close_matches(k, allowed, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"event_mode.{k}", f"unknown key in event_mode{hint}")
+    _reject_unknown_keys(
+        report,
+        "event_mode",
+        em,
+        {"routes", "featured", "background_style", "direction_arrows", "pois", "poi_color", "gpx"},
+    )
 
     routes = em.get("routes")
     featured = em.get("featured")
@@ -1549,30 +1533,22 @@ def _validate_event_mode(report, config):
         if not isinstance(bg, dict):
             report.err("event_mode.background_style", f"expected dict, got {type(bg).__name__}")
         else:
-            for k in bg:
-                if k not in _BACKGROUND_STYLE_ALLOWED:
-                    suggestions = difflib.get_close_matches(k, _BACKGROUND_STYLE_ALLOWED, n=2)
-                    hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-                    report.err(f"event_mode.background_style.{k}", f"unknown key{hint}")
+            _reject_unknown_keys(
+                report, "event_mode.background_style", bg, _BACKGROUND_STYLE_ALLOWED
+            )
             if "color" in bg and not _is_color(bg["color"]):
                 report.err(
                     "event_mode.background_style.color", f"not a valid color: {bg['color']!r}"
                 )
-            if "pattern" in bg:
-                p = bg["pattern"]
-                if (
-                    not isinstance(p, list)
-                    or not p
-                    or not all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in p)
-                ):
-                    report.err(
-                        "event_mode.background_style.pattern",
-                        f"must be a non-empty list of numbers, got {p!r}",
-                    )
-            if "cap" in bg and bg["cap"] not in _BACKGROUND_STYLE_VALID_CAPS:
+            if "pattern" in bg and not _is_dash_pattern(bg["pattern"]):
+                report.err(
+                    "event_mode.background_style.pattern",
+                    f"must be a non-empty list of numbers, got {bg['pattern']!r}",
+                )
+            if "cap" in bg and bg["cap"] not in VALID_LINE_CAPS:
                 report.err(
                     "event_mode.background_style.cap",
-                    f"must be one of {sorted(_BACKGROUND_STYLE_VALID_CAPS)}, got {bg['cap']!r}",
+                    f"must be one of {sorted(VALID_LINE_CAPS)}, got {bg['cap']!r}",
                 )
 
     # direction_arrows: optional bool. When true, inline event_mode.routes
@@ -1600,23 +1576,10 @@ def _validate_event_mode(report, config):
                 if not isinstance(name, str) or not name:
                     report.err(f"{where}.name", "required: non-empty string")
                 # coordinates required: [lon, lat]
-                coords = entry.get("coordinates")
-                if not (
-                    isinstance(coords, list)
-                    and len(coords) == 2
-                    and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in coords)
-                ):
-                    report.err(
-                        f"{where}.coordinates", f"required: [lon, lat] numbers, got {coords!r}"
-                    )
+                if "coordinates" not in entry:
+                    report.err(f"{where}.coordinates", "required: [lon, lat] numbers")
                 else:
-                    lon, lat = coords
-                    if not -180 <= lon <= 180:
-                        report.err(
-                            f"{where}.coordinates", f"longitude must be in [-180,180]: {lon}"
-                        )
-                    if not -90 <= lat <= 90:
-                        report.err(f"{where}.coordinates", f"latitude must be in [-90,90]: {lat}")
+                    _check_lonlat(report, f"{where}.coordinates", entry["coordinates"])
                 # description optional string
                 if "description" in entry and not isinstance(entry["description"], str):
                     report.err(
@@ -1624,12 +1587,7 @@ def _validate_event_mode(report, config):
                         f"must be string, got {type(entry['description']).__name__}",
                     )
                 # Reject unknown keys in entry.
-                allowed_pkeys = {"name", "coordinates", "description"}
-                for k in entry.keys():
-                    if k not in allowed_pkeys:
-                        suggestions = difflib.get_close_matches(k, allowed_pkeys, n=2)
-                        hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-                        report.err(f"{where}.{k}", f"unknown key in event POI{hint}")
+                _reject_unknown_keys(report, where, entry, {"name", "coordinates", "description"})
 
     # poi_color: optional CSS color (hex or named). Default: deep red.
     pc = em.get("poi_color")
@@ -1676,12 +1634,7 @@ def _validate_event_gpx(report, gpx):
         report.err("event_mode.gpx", f"expected dict, got {type(gpx).__name__}")
         return
 
-    allowed = {"routes"}
-    for k in gpx:
-        if k not in allowed:
-            suggestions = difflib.get_close_matches(k, allowed, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"event_mode.gpx.{k}", f"unknown key in event_mode.gpx{hint}")
+    _reject_unknown_keys(report, "event_mode.gpx", gpx, {"routes"})
 
     routes = gpx.get("routes")
     if not isinstance(routes, list) or not routes:
@@ -1703,13 +1656,12 @@ def _validate_event_gpx(report, gpx):
             report.err(f"{where}.name", "required: non-empty string")
 
         source_keys = (_GPX_SOURCE_KEYS_IMPLEMENTED | _GPX_SOURCE_KEYS_RESERVED) & entry.keys()
-        for k in entry.keys():
-            if k == "name" or k in source_keys:
-                continue
-            all_known = {"name"} | _GPX_SOURCE_KEYS_IMPLEMENTED | _GPX_SOURCE_KEYS_RESERVED
-            suggestions = difflib.get_close_matches(k, all_known, n=2)
-            hint = f" (did you mean: {', '.join(suggestions)}?)" if suggestions else ""
-            report.err(f"{where}.{k}", f"unknown key in gpx route entry{hint}")
+        _reject_unknown_keys(
+            report,
+            where,
+            entry,
+            {"name"} | _GPX_SOURCE_KEYS_IMPLEMENTED | _GPX_SOURCE_KEYS_RESERVED,
+        )
 
         reserved = source_keys & _GPX_SOURCE_KEYS_RESERVED
         if reserved:
