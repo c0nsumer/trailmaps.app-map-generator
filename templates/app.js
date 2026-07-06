@@ -931,8 +931,9 @@ function collectCanonicalWays() {
 // see them in collision checks.
 function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                             decorations, placedIndex, extraPropsFn) {
+    // Arrows never come through here — they're placed by
+    // placeArrowTierAlongChains, which builds its features directly.
     const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
-                 : (kind === KIND.ARROW)   ? DECOR_RADIUS_M.arrow
                  :                           DECOR_RADIUS_M.label;
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
@@ -2003,7 +2004,7 @@ let _followUserOnGeolocate = false;
 // opaque `Cannot read property of undefined` somewhere downstream.
 const REQUIRED_CONFIG_KEYS = [
     "name", "slug", "title",
-    "bbox", "panBbox", "center",
+    "bbox", "panBbox",
     "minZoom", "maxZoom",
     "routes",
 ];
@@ -9543,17 +9544,6 @@ function formatDistance(meters) {
     return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
 }
 
-// Elevation gain formatter — meters → ft for "mi" units, kept in m for
-// "km" units. The mixed convention matches what riders in each system
-// actually expect (US trail maps quote "412 ft of climbing"; European
-// maps quote "126 m").
-function formatElevation(meters) {
-    if (CONFIG.distanceUnits === "km") {
-        return `${Math.round(meters)} m`;
-    }
-    return `${Math.round(meters * 3.28084)} ft`;
-}
-
 // Compact paired gain/loss display for route stats. Either or both
 // values may be null (unknown / not computed). Returns "" if neither
 // is present so the caller can omit the elevation portion entirely.
@@ -9788,21 +9778,12 @@ function updateLocationIndicator() {
 // ============================================================
 // Toast notifications
 // ============================================================
-// Show a toast. Three forms:
+// Show a toast. Two forms:
 //
 //   showToast("message")           — transient hint; auto-dismisses after 4s.
 //                                    The default for off-screen indicator
 //                                    nudges, geolocation errors, copy
 //                                    confirmations, etc.
-//
-//   showToast("message", {         — auto-dismiss with an action button.
-//       timeoutMs: 15000,            Used by the SW-update toast (B.7) so
-//       actions: [                   the user has time to read and decide
-//           {label: "Reload",        about the action; the toast still
-//            onClick: fn,            fades on its own if ignored.
-//            primary: true},
-//       ],
-//   })
 //
 //   showToast("message", {         — persistent: stays until an action
 //       persistent: true,            button (or the auto-✕ fallback) is
@@ -9920,18 +9901,12 @@ function showToast(message, opts) {
     el.classList.add("visible");
 
     if (!persistent) {
-        // Default 4s for transient hints; callers can pass timeoutMs
-        // for longer dismissal — used by the SW-update toast (B.7)
-        // which needs ~15s so the user has time to read and decide
-        // about the Reload action.
-        const timeoutMs = typeof opts.timeoutMs === "number"
-            ? opts.timeoutMs : 4000;
         el._timeout = setTimeout(() => {
             el.classList.remove("visible");
             el.classList.add("hidden");
             // Bring back a persistent toast this transient displaced.
             _restoreDisplacedToast();
-        }, timeoutMs);
+        }, 4000);
     }
 }
 

@@ -196,8 +196,9 @@ BUILD_ONLY_KEYS = {
     "basemap_maxzoom",  # consumed by fetch_basemap.py
     "terrain_maxzoom",  # consumed by fetch_terrain.py
     # User-supplied points consumed by fetch_pois.py and baked into
-    # pois.geojson; the runtime reads pois.geojson, not CONFIG.trailheads /
-    # CONFIG.hubs.
+    # pois.geojson; the runtime reads pois.geojson, not CONFIG.parking /
+    # CONFIG.trailheads / CONFIG.hubs.
+    "parking",
     "trailheads",
     "hubs",
     # Build output destination
@@ -273,9 +274,6 @@ HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 # and a typo like "wite" would render as transparent at the browser, not
 # crash the build. The hex check above is the high-value catch.
 NAMED_COLOR_RE = re.compile(r"^[a-zA-Z]+$")
-
-# Valid GeoJSON geometry types for custom_routes.
-VALID_CUSTOM_GEOMETRY_TYPES = {"LineString", "MultiLineString"}
 
 
 # ----------------------------------------------------------------------

@@ -480,17 +480,6 @@ body::after {
     }
 }
 
-/* Invisible placeholder used by rows that don't have a colored
- * swatch (currently just the Labels row) — preserves the
- * 28px-of-left-indent that every other row gets from its swatch, so
- * the label text aligns vertically across the whole "What to show"
- * section even on rows without an icon. */
-.layer-swatch-placeholder {
-    flex: 0 0 auto;
-    width: 28px;
-    height: 28px;
-}
-
 .opt-toggle-row .layer-swatch {
     flex: 0 0 auto;
     width: 28px;
@@ -556,23 +545,6 @@ body::after {
 .opt-toggle-row[aria-pressed="false"] .opt-toggle-row-label,
 .opt-toggle-row[data-multi-off="true"] .opt-toggle-row-label {
     color: #6a6a6a;
-}
-
-/* Season toggle never shows the off-slash treatment — it cycles
- * between Summer and Winter, never "off." */
-/* Season pill — same visual weight as the on/off pill, but its text
- * content is set inline by app.js (Summer ↔ Winter) rather than via
- * the ::after pseudo-element. */
-.season-pill {
-    flex: 0 0 auto;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 3px 10px;
-    border-radius: 999px;
-    background: var(--accent);
-    color: var(--on-accent);
 }
 
 /* ----- Segmented-pill (Labels: Routes / Trails / None) ------------
@@ -669,25 +641,6 @@ body::after {
     padding: 4px 0;
 }
 
-.opt-row-stacked {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-}
-
-.opt-row-help {
-    font-size: 12px;
-    color: var(--sheet-text-muted);
-    line-height: 1.35;
-    margin: 0 4px;
-}
-
-.opt-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
 /* ----- Field rows (Labels / Basemap selects in Options overlay) ---- */
 .opt-row-field {
     justify-content: space-between;
@@ -734,11 +687,6 @@ body::after {
  * regardless of the per-scheme --pill-bg token. Removed wholesale.) */
 
 /* ----- Action rows (Install / About) ------------------------------- */
-.opt-section-action {
-    border-top: 1px solid var(--sheet-divider);
-    padding: 4px 0;
-}
-
 .opt-action-row {
     display: flex;
     align-items: center;
@@ -2910,18 +2858,6 @@ body.fabs-labeled .fab-label {
 .search-clear-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
-}
-
-.search-overlay-cancel {
-    flex: 0 0 auto;
-    background: none;
-    border: none;
-    color: var(--accent);
-    font: inherit;
-    font-size: 15px;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 8px 4px;
 }
 
 .search-overlay-filters {

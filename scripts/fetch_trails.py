@@ -226,7 +226,7 @@ foreach -> .rel(
     return all_ways
 
 
-def build_way_to_relations_map(relations, all_ways):
+def build_way_to_relations_map(all_ways):
     """Build a mapping of way_id -> set of relation_ids that use it."""
     way_relations = defaultdict(set)
     for rel_id, ways in all_ways.items():
@@ -291,7 +291,6 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
     # opposing oneway values (yes / -1 / reversible / no) stay separate
     # features so each retains its own digitisation order.
     way_signatures = {}
-    way_names = {}
     for way_id, way in ways_dict.items():
         sig = tuple(sorted(relation_ids_set.get(way_id, set())))
         name = way.get("tags", {}).get("name", "")
@@ -303,7 +302,6 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
         # vocabulary: "" | "yes" | "no" | "-1" | "reversible".
         oneway = _resolve_oneway(way.get("tags", {}))
         way_signatures[way_id] = (sig, name, imba, oneway)
-        way_names[way_id] = name
 
     # Merge consecutive ways with the same signature (relations + name + difficulty + oneway)
     visited = set()
@@ -769,7 +767,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             relations[rel_id]["seasonal"] = "winter"
 
     # Build way-to-relations mapping
-    way_relations = build_way_to_relations_map(relations, all_ways)
+    way_relations = build_way_to_relations_map(all_ways)
     shared_count = sum(1 for wids in way_relations.values() if len(wids) > 1)
     console.info(f"{shared_count} ways are shared by multiple relations")
 

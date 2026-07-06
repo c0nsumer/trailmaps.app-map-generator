@@ -194,14 +194,12 @@ CONFIG_SPEC = [
     # When true, surface PWA install affordances on platforms that
     # support them (Chrome's mini-infobar + our custom Install button
     # via beforeinstallprompt; iOS Safari Add-to-Home-Screen
-    # instructions). Default false because not every map wants install
-    # promotion (e.g. a personal/family map). When false, the
+    # instructions). Default true; set false for maps that don't want
+    # install promotion (e.g. a personal/family map). When false, the
     # beforeinstallprompt handler is not registered at all — silencing
     # Chrome's "page must call prompt()" warning — and the custom
     # Install button is hidden everywhere.
     ("pwa_install_prompt", "pwaInstallPrompt", True),
-    # User-supplied
-    ("parking", "parking", []),
 ]
 
 

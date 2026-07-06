@@ -170,13 +170,6 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         if isinstance(sr, list) and any(isinstance(x, int) for x in sr):
             props["shared_routes"] = [str(x) for x in sr]
             changed = True
-        # Endpoint-cluster features carry route_ids (plural) + a
-        # pipe-delimited string for MapLibre `in` filters; stringify
-        # the array too.
-        rids = props.get("route_ids")
-        if isinstance(rids, list) and any(isinstance(x, int) for x in rids):
-            props["route_ids"] = [str(x) for x in rids]
-            changed = True
 
     # ----- Append custom-route features and metadata -----
     custom_routes = config.get("custom_routes") or []
