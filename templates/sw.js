@@ -68,6 +68,18 @@ self.addEventListener("install", (event) => {
     backgroundPrecache();
 });
 
+// Sentinel cache entry marking "every PRECACHE_URL is in this cache".
+// Written only after a verification pass at the end of a full
+// backgroundPrecache run; its absence means the precache was cut
+// short and must resume. Never requested by the page, so the fetch
+// handler can't serve it to anyone.
+const PRECACHE_DONE_URL = "__precache-complete__";
+
+// Re-entrancy guard: install / activate / page pings can overlap
+// (e.g. a RESUME_PRECACHE message arriving while the install-time
+// run is mid-list) — one runner at a time is enough.
+let _precacheRunning = false;
+
 async function backgroundPrecache() {
     // Sequential cache.add (not cache.addAll) so we trickle through
     // the connection one request at a time, leaving bandwidth for
@@ -83,17 +95,51 @@ async function backgroundPrecache() {
     // installed rider re-pull the full ~20-35 MB build (PMTiles
     // included) over the network on each deploy. Same posture as the
     // fetch handler below.
-    const cache = await caches.open(CACHE_NAME);
-    for (const url of SW_CONFIG.PRECACHE_URLS) {
-        try {
-            await cache.add(new Request(url, { cache: "no-cache" }));
-        } catch (e) {
-            // Best-effort. A single failed asset (network blip,
-            // stale URL after deploy, etc.) shouldn't abort the
-            // rest of the precache. Log so it's visible in DevTools
-            // when debugging offline coverage gaps.
-            console.warn("SW backgroundPrecache failed:", url, e);
+    //
+    // RESUMABLE: the browser is free to terminate this worker while
+    // the fire-and-forget loop is still trickling (Chrome ~30 s idle,
+    // Safari sooner), and `install` never re-fires for the same SW
+    // version — the multi-MB .pmtiles at the tail of PRECACHE_URLS
+    // were the most likely casualties, leaving a rider with UI assets
+    // cached but no tile archives at the trailhead. So the run is
+    // idempotent (already-cached URLs are skipped) and re-triggered
+    // from three places: install (here), activate, and a
+    // RESUME_PRECACHE ping the page sends on every load. Only after a
+    // verification pass confirms every URL is present is the
+    // completion sentinel written, which makes subsequent triggers a
+    // single cache.match.
+    if (_precacheRunning) return;
+    _precacheRunning = true;
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        if (await cache.match(PRECACHE_DONE_URL)) return;
+        for (const url of SW_CONFIG.PRECACHE_URLS) {
+            try {
+                if (await cache.match(url)) continue; // resume: already cached
+                await cache.add(new Request(url, { cache: "no-cache" }));
+            } catch (e) {
+                // Best-effort. A single failed asset (network blip,
+                // stale URL after deploy, etc.) shouldn't abort the
+                // rest of the precache. Log so it's visible in DevTools
+                // when debugging offline coverage gaps.
+                console.warn("SW backgroundPrecache failed:", url, e);
+            }
         }
+        // Mark complete only when every URL is really present — a
+        // failed add above must leave the sentinel absent so the next
+        // trigger retries the gaps.
+        let complete = true;
+        for (const url of SW_CONFIG.PRECACHE_URLS) {
+            if (!(await cache.match(url))) {
+                complete = false;
+                break;
+            }
+        }
+        if (complete) {
+            await cache.put(PRECACHE_DONE_URL, new Response("1"));
+        }
+    } finally {
+        _precacheRunning = false;
     }
 }
 
@@ -109,6 +155,12 @@ async function backgroundPrecache() {
 self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "SKIP_WAITING") {
         self.skipWaiting();
+    }
+    // Page pings this on every load (see the SW-registration block in
+    // app.js) so a precache cut short by worker termination resumes.
+    // Near-free once complete: one cache.match against the sentinel.
+    if (event.data && event.data.type === "RESUME_PRECACHE") {
+        backgroundPrecache();
     }
 });
 
@@ -128,6 +180,11 @@ self.addEventListener("activate", (event) => {
             )
             .then(() => self.clients.claim())
     );
+    // Resume any precache the install-time run didn't finish (the
+    // worker may have been terminated mid-list while this version sat
+    // waiting). Fire-and-forget OUTSIDE waitUntil — activation must
+    // not block on a ~20 MB background fill.
+    backgroundPrecache();
 });
 
 // ============================================================
