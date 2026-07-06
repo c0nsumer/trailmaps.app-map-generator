@@ -527,9 +527,12 @@ def load_config(config_path):
                     entry["file"] = _resolve(entry["file"])
 
     # Stash the config's directory in case downstream code wants it
-    # (error messages, future relative-path fields). Name-spaced with an
-    # underscore so it doesn't collide with user-supplied keys.
+    # (error messages, future relative-path fields), and the YAML's own
+    # path so template_inject can fold its mtime into buildDate (a YAML
+    # edit is an app change from the rider's perspective). Name-spaced
+    # with an underscore so they don't collide with user-supplied keys.
     config["_config_dir"] = config_dir
+    config["_config_path"] = os.path.abspath(config_path)
 
     return config
 

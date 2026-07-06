@@ -553,23 +553,36 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultTrailDash"] = False
         config_obj["defaultTrailCap"] = "round"
 
-    # buildDate answers "when did the app code last change", shown in
+    # buildDate answers "when did this map's app last change", shown in
     # the About modal next to dataDate ("when was OSM last fetched").
-    # Derived from the newest template-source mtime — NOT datetime.now():
-    # a wall-clock stamp made every rebuild produce different app.js
-    # bytes, which bust the content-hashed CACHE_VERSION and forced
-    # every installed rider through full cache eviction + re-precache
-    # (up to ~30 MB) after deploys that changed nothing. With an
-    # input-derived stamp, a no-op rebuild is byte-identical.
+    # "This map's app" is the engine templates PLUS the map's own build
+    # inputs — the config YAML and the assets it references — so a
+    # curator editing a title or swapping a logo sees the change
+    # reflected in About even though no engine code changed. OSM data
+    # is deliberately NOT an input here: that's dataDate's job (an
+    # osm_file edit triggers a refetch, which moves dataDate via the
+    # src snapshot's mtime).
+    #
+    # Derived from input mtimes — NOT datetime.now(): a wall-clock
+    # stamp made every rebuild produce different app.js bytes, which
+    # bust the content-hashed CACHE_VERSION and forced every installed
+    # rider through full cache eviction + re-precache (up to ~30 MB)
+    # after deploys that changed nothing. With an input-derived stamp,
+    # a no-op rebuild is byte-identical.
     templates_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "templates")
-    template_mtimes = [
-        os.path.getmtime(p)
+    date_inputs = [
+        os.path.join(templates_dir, name)
         for name in ("app.js", "index.html", "style.css", "sw.js")
-        if os.path.isfile(p := os.path.join(templates_dir, name))
+    ]
+    date_inputs += [config.get("_config_path"), config.get("logo"), config.get("icon")]
+    date_inputs += [(e or {}).get("path") for e in config.get("additional_logos") or []]
+    date_inputs += [(e or {}).get("geometry") for e in config.get("custom_routes") or []]
+    input_mtimes = [
+        os.path.getmtime(p) for p in date_inputs if isinstance(p, str) and os.path.isfile(p)
     ]
     config_obj["buildDate"] = (
-        datetime.fromtimestamp(max(template_mtimes)).strftime("%Y-%m-%d %H:%M")
-        if template_mtimes
+        datetime.fromtimestamp(max(input_mtimes)).strftime("%Y-%m-%d %H:%M")
+        if input_mtimes
         else ""
     )
     config_obj["dataDate"] = config.get("_data_date", "")
