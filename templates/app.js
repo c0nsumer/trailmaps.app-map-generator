@@ -5318,9 +5318,14 @@ function anyModalOpen() {
 // is active. (Overlays are excluded from anyModalOpen(), so the wash
 // stays on behind a Search sheet — the highlighted route still reads.)
 function refreshSpotlightDim() {
-    if (!map || !map.getLayer("dim-tint")) return;
+    if (!map) return;
     const on = highlightDimActive() && !anyModalOpen();
-    map.setPaintProperty("dim-tint", "background-opacity", on ? SCRIM_OPACITY : 0);
+    // Guard the layer, not the whole function: the body class must stay
+    // in sync even when dim-tint is momentarily absent (style rebuild),
+    // or a stale .has-spotlight would leave every overlay scrimless.
+    if (map.getLayer("dim-tint")) {
+        map.setPaintProperty("dim-tint", "background-opacity", on ? SCRIM_OPACITY : 0);
+    }
     document.body.classList.toggle("has-spotlight", on);
 }
 
@@ -9095,9 +9100,17 @@ function rebuildBasemapLayers() {
     const base = getBaseUrl();
     const currentStyle = map.getStyle();
 
-    // Collect non-basemap layers (trails, hillshade, highlights, etc.)
+    // Collect non-basemap layers (trails, hillshade, highlights, etc.).
+    // The type check drops the basemap flavor's own background layer —
+    // background layers carry no `source`, so the source check can't
+    // catch it — but OUR dim-tint spotlight wash (added by loadTrails)
+    // is also a background layer and must survive the rebuild: it is
+    // never re-added afterwards, and refreshSpotlightDim() needs it.
     const overlayLayers = currentStyle.layers.filter(
-        (l) => l.source !== "basemap" && l.id !== "custom-raster" && l.type !== "background"
+        (l) =>
+            l.source !== "basemap" &&
+            l.id !== "custom-raster" &&
+            (l.type !== "background" || l.id === "dim-tint")
     );
 
     let baseLayers;
