@@ -30,7 +30,7 @@ exists, has been redacted, or is currently unreachable from Overpass.
   replacement and update the YAML.
 - **If the relation exists but Overpass returns 0 elements**: the
   relation may have been split or the geometry coverage moved. Try a
-  fresh `--force` run to bypass any cached error response.
+  fresh `--refresh-trails` run to bypass any cached error response.
 - **Last resort**: snapshot the relation's data into a local `.osm`
   XML file and switch to `osm_file: osm.osm` (see
   [Local .osm file support](building.md#local-osm-file-support) in
@@ -59,7 +59,7 @@ The basemap and terrain PMTiles are cached by output path, and bbox
 changes normally invalidate them automatically. If a stale tile set
 persists:
 
-- Run with `--force` to clear all caches and re-extract from
+- Run with `--refresh` to bypass the caches and re-extract from
   scratch.
 - Or delete `build/<slug>/basemap.pmtiles` and
   `build/<slug>/terrain.pmtiles` manually, then re-run without
@@ -149,11 +149,11 @@ Expected times (typical):
 
 - First-ever build of a new map: 5 to 10 min (downloads basemap,
   terrain, sprites).
-- Re-build with cached data, no `--force`: under 30 seconds.
+- Re-build with cached data, no `--refresh`: under 30 seconds.
 - Build with `show_route_elevation: true` and a fresh cache: extra
   ~30 sec to 2 min for USGS 3DEP API calls (one batch per route at
   25m sampling; auto-retries transient 502s).
-- `--force` on a large map: 10 to 20 min.
+- `--refresh` on a large map: 10 to 20 min.
 
 If a build takes much longer, the slowest steps are usually terrain
 extraction (Mapterhorn HTTP fetches over a wide bbox) and Overpass

@@ -40,7 +40,7 @@ Options:
   --build-only       Build but skip deploy
   --deploy-only      Deploy existing builds without rebuilding
   --validate-only    Only run config validation (no fetch/build/deploy)
-  --force            Pass --force to build.py (re-fetch all data)
+  --refresh          Pass --refresh to build.py (re-fetch all remote data)
   --dry-run          Show what would happen; don't build or transfer
   --dest <ssh-path>  Override deploy destination
                      (default: \$TRAILMAPS_DEPLOY_DEST env var;
@@ -56,7 +56,7 @@ Examples:
   $(basename "$0") ramba                # one map
   $(basename "$0") --build-only ramba dte
   $(basename "$0") --validate-only      # lint every config
-  $(basename "$0") --dry-run --force ramba
+  $(basename "$0") --dry-run --refresh ramba
 EOF
 }
 
@@ -66,7 +66,7 @@ DEPLOY=true
 VALIDATE_ONLY=false
 DRY_RUN=false
 SKIP_SSH_CHECK=false
-FORCE=""
+REFRESH=""
 DEPLOY_DEST="$DEFAULT_DEPLOY_DEST"
 configs=()
 build_extra_args=()
@@ -84,7 +84,8 @@ while [ $# -gt 0 ]; do
         --build-only)    DEPLOY=false ;;
         --deploy-only)   BUILD=false ;;
         --validate-only) VALIDATE_ONLY=true; BUILD=false; DEPLOY=false ;;
-        --force)         FORCE="--force" ;;
+        # --force is the deprecated spelling; build.py prints the note.
+        --refresh|--force) REFRESH="--refresh" ;;
         --dry-run)       DRY_RUN=true ;;
         --dest)          shift; DEPLOY_DEST="${1:?--dest needs a value}" ;;
         --dest=*)        DEPLOY_DEST="${arg#--dest=}" ;;
@@ -276,11 +277,11 @@ for name in "${configs[@]}"; do
         # pass `-- --no-minify` after the slug list:
         #   ./tools/build_and_deploy.sh --build-only ramba -- --no-minify
         if $DRY_RUN; then
-            echo "[dry-run] $PYTHON scripts/build.py $config_file $FORCE ${build_extra_args[*]:-}"
+            echo "[dry-run] $PYTHON scripts/build.py $config_file $REFRESH ${build_extra_args[*]:-}"
         else
             # The "${arr[@]+...}" expansion is the standard workaround for
             # nounset (set -u) tripping on empty arrays in older Bash.
-            if ! "${PYTHON}" scripts/build.py "$config_file" $FORCE \
+            if ! "${PYTHON}" scripts/build.py "$config_file" $REFRESH \
                     "${build_extra_args[@]+"${build_extra_args[@]}"}"; then
                 echo "ERROR: Build failed for ${name}" >&2
                 failed+=("$name")

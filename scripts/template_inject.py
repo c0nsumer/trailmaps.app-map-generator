@@ -364,7 +364,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Validate oneway=reversible features against the resolved schedules.
     # fetch_trails.py performs the same check against raw OSM data, but it
     # only runs when the GeoJSON is being (re)built. A "config-only" rebuild
-    # — `build.py <config>` without --trails/--force — reuses the cached
+    # — `build.py <config>` without --refresh-trails — reuses the cached
     # GeoJSON and would otherwise skip the check. We re-validate here so the
     # build always fails when a reversible way has no schedule covering it,
     # regardless of whether trails were refetched this run.
@@ -433,7 +433,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
                 lines.append(f"         ... and {len(unscheduled) - 20} more")
             if unscheduled_no_wayids:
                 lines.append("")
-                lines.append("       Tip: rerun with --trails to refresh the cached")
+                lines.append("       Tip: rerun with --refresh-trails to refresh the cached")
                 lines.append("       GeoJSON; new builds include OSM way IDs so this")
                 lines.append("       message will list specific ways.")
             sys.exit("\n".join(lines))

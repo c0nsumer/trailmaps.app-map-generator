@@ -69,7 +69,7 @@ def _trails_fetch_fingerprint(config):
     a custom route doesn't require an Overpass refetch.
 
     File-path-based inputs (osm_file) hash the path string only, not
-    file content; the curator's --trails flag remains the explicit
+    file content; the curator's --refresh-trails flag remains the explicit
     tool when a file's contents change without the path changing.
     """
     inputs = {

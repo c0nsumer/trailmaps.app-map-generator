@@ -642,7 +642,7 @@ def _write_empty_trails(output_path, map_name):
 def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     """Main entry point: fetch trails and write GeoJSON.
 
-    ``refresh=True`` (build.py --force) bypasses cached Overpass
+    ``refresh=True`` (build.py --refresh / --refresh-trails) bypasses cached Overpass
     responses for this map's queries without touching the shared
     cache directory's other entries.
     """

@@ -103,7 +103,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         # Keep the OSM-source `seasonal` field as-is. It's the upstream
         # input that `is_winter` reads above, so deleting it would make
         # this function non-idempotent: a rebuild that reuses an existing
-        # trails.geojson (no --trails / --force) would see `seasonal`
+        # trails.geojson (no --refresh-trails) would see `seasonal`
         # already gone from the previous enrichment pass and miscompute
         # `is_winter` for every OSM-tagged winter relation.
 
@@ -115,7 +115,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # rebuild: the expanded trails.geojson is regenerated from the
     # pristine trails.src.geojson base (which keeps the OSM names) on
     # every build, so adding, changing, or REMOVING an override never
-    # needs a --trails refetch. Runs before the subway-style pass so
+    # needs a --refresh-trails refetch. Runs before the subway-style pass so
     # stub features inherit the overridden route_name. Custom routes
     # are unaffected (string IDs; they name themselves in YAML).
     relation_names = {str(k): v for k, v in (config.get("relation_names") or {}).items()}

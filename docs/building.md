@@ -64,29 +64,39 @@ finish in under 30 seconds.
 
 ```bash
 python scripts/build.py configs/example/example.yaml                 # Full build (uses caches)
-python scripts/build.py configs/example/example.yaml --force          # Re-fetch everything (clears Overpass cache)
-python scripts/build.py configs/example/example.yaml --trails         # Re-fetch trail data from OSM (uses Overpass cache)
+python scripts/build.py configs/example/example.yaml --refresh        # Re-fetch all remote data (OSM, basemap, terrain)
+python scripts/build.py configs/example/example.yaml --refresh-trails # Re-fetch trail data from OSM
+python scripts/build.py configs/example/example.yaml --refresh-pois   # Re-fetch POI data from OSM
 python scripts/build.py configs/example/example.yaml --no-terrain     # Skip terrain tile generation
 python scripts/build.py configs/example/example.yaml --no-basemap     # Skip basemap extraction
 python scripts/build.py configs/example/example.yaml --dry-run        # Validate + print the plan, write nothing
 ```
 
-- `--force` clears the Overpass API response cache (`cache/`) and
-  re-fetches all data from OSM, re-extracts basemap and terrain
+Remote data never updates on its own: cached responses are used
+regardless of age, so an unflagged rebuild is fully offline and
+reproducible. Picking up OSM edits is always an explicit act via the
+`--refresh` flags. (Config edits still trigger the relevant re-fetch
+automatically — changed relation IDs re-fetch trails, a changed bbox
+re-extracts tiles.)
+
+- `--refresh` re-fetches all of this map's remote data: trails and
+  POIs from Overpass (bypassing its cached responses; other maps'
+  shared-cache entries are untouched), plus basemap and terrain
   tiles.
-- `--trails` re-runs the trail data pipeline (`fetch_trails.py`) but
-  reuses cached Overpass API responses if available. Useful when you
-  want to refresh trail geometry or pick up an OSM edit. NOT
+- `--refresh-trails` re-fetches trail data from Overpass. Useful when
+  you want to refresh trail geometry or pick up an OSM edit. NOT
   required for YAML-only changes: per-route style overrides
   (`dashed_relations`, `relation_colors`, `winter_relations`,
   `summer_relations`, `custom_routes`, `event_mode.routes`,
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
-- POIs are rebuilt on every build (no flag needed). Edits to
-  `parking:`, `trailheads:`, `event_mode.pois`, and the related
-  colour overrides flow through `fetch_pois.py` on each invocation.
-  The OSM portion still hits the Overpass cache internally so the
-  always-on rebuild stays sub-second.
+- `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
+  drinking water, attractions) from Overpass. NOT required for
+  YAML-only changes: `parking:`, `trailheads:`, `event_mode.pois`,
+  and the related colour overrides flow through `fetch_pois.py` on
+  every build automatically.
+- `--force` and `--trails` are deprecated spellings of `--refresh`
+  and `--refresh-trails`; they still work but print a note.
 - `--no-terrain` and `--no-basemap` skip the corresponding tile
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.
@@ -108,7 +118,7 @@ The basemap extraction automatically detects the latest available
 there's no URL to update by hand. You can override this by setting
 the `PROTOMAPS_PLANET_URL` environment variable.
 
-Flags can be combined: `--trails --no-basemap --no-terrain`
+Flags can be combined: `--refresh-trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching
 tiles.
 
@@ -116,11 +126,11 @@ tiles.
 
 - First-ever build of a new map: 5 to 10 min (downloads basemap,
   terrain, sprites).
-- Re-build with cached data, no `--force`: under 30 seconds.
+- Re-build with cached data, no `--refresh`: under 30 seconds.
 - Build with `show_route_elevation: true` and a fresh cache: extra
   ~30 sec to 2 min for USGS 3DEP API calls (one batch per route at
   25m sampling; auto-retries transient 502s).
-- `--force` on a large map: 10 to 20 min.
+- `--refresh` on a large map: 10 to 20 min.
 
 If a build takes much longer, the slowest steps are usually terrain
 extraction (Mapterhorn HTTP fetches over a wide bbox) and Overpass
@@ -167,7 +177,7 @@ patterns:
 ./tools/build_and_deploy.sh --build-only example
 
 # Re-fetch all data and rebuild
-./tools/build_and_deploy.sh --force example
+./tools/build_and_deploy.sh --refresh example
 
 # Pass extra flags through to build.py
 ./tools/build_and_deploy.sh example -- --no-basemap --no-terrain
@@ -287,20 +297,19 @@ ls -la cache/
 To update the cached OSM data (e.g. after trail edits in
 OpenStreetMap):
 
-- **`--force`** clears the entire `cache/` directory and re-fetches
-  all Overpass data from scratch. Also re-extracts basemap and
-  terrain tiles.
-- **`--trails`** re-runs the trail data pipeline (`fetch_trails.py`).
-  Reuses existing cached Overpass responses if present; only fetches
-  data that isn't already cached. POIs are rebuilt on every build
-  regardless of this flag.
+- **`--refresh`** re-fetches all of this map's remote data: trail
+  and POI queries bypass their cached Overpass responses (other
+  maps' shared-cache entries are untouched), and basemap and
+  terrain tiles are re-extracted.
+- **`--refresh-trails`** re-fetches just the trail data from
+  Overpass.
+- **`--refresh-pois`** re-fetches just the OSM POI data from
+  Overpass.
 
-To force a full refresh of just trail data, delete the relevant cache
-files manually and run with `--trails`:
+To refresh trail data without touching tiles:
 
 ```bash
-rm cache/overpass_*.json
-python scripts/build.py configs/example/example.yaml --trails --no-basemap --no-terrain
+python scripts/build.py configs/example/example.yaml --refresh-trails --no-basemap --no-terrain
 ```
 
 ### Build and data dates

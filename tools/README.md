@@ -44,8 +44,8 @@ with a clear hint if neither is set.
 # Deploy only (skip build, use existing output)
 ./tools/build_and_deploy.sh --deploy-only ramba
 
-# Force re-fetch all data (passes --force to build.py)
-./tools/build_and_deploy.sh --force ramba
+# Re-fetch all remote data (passes --refresh to build.py)
+./tools/build_and_deploy.sh --refresh ramba
 
 # Pass extra flags to build.py after a -- separator
 ./tools/build_and_deploy.sh ramba -- --no-basemap --no-terrain
@@ -59,7 +59,7 @@ with a clear hint if neither is set.
 | `--build-only` | Build but skip deploy |
 | `--deploy-only` | Deploy existing builds without rebuilding |
 | `--validate-only` | Run config validation, no fetch/build/deploy |
-| `--force` | Pass `--force` to `build.py` (re-fetch all OSM and basemap data) |
+| `--refresh` | Pass `--refresh` to `build.py` (re-fetch all OSM and tile data) |
 | `--dry-run` | Show what would happen; don't build or transfer |
 | `--dest <ssh-path>` | Override deploy destination (default: `$TRAILMAPS_DEPLOY_DEST`) |
 | `--skip-ssh-check` | Skip the pre-flight SSH connectivity probe |

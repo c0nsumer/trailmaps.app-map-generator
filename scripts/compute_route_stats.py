@@ -424,7 +424,7 @@ def _hash_coords(coords_with_breaks):
     gain/loss algorithm itself — invalidates the cache cleanly. If an
     input were missing from the key, a change to it would silently
     keep returning old gain/loss numbers from cached files until the
-    next --force rebuild. (The noise threshold WAS missing once; the
+    next --refresh rebuild. (The noise threshold WAS missing once; the
     2m → 1m retune only produced correct numbers because it coincided
     with a spacing change.)
 

@@ -61,7 +61,9 @@ EMPTY_RETRY_LIMIT = 2
 # raising any error — they'll cheerfully serve a stale snapshot. If a
 # response is older than this threshold, treat the mirror as unhealthy and
 # fall through to the next one. 24h is generous; the main mirror is usually
-# within minutes of upstream.
+# within minutes of upstream. Applies to LIVE responses only — cached
+# responses are served regardless of age (re-querying is explicit, via
+# the --refresh flags).
 MAX_OSM_BASE_LAG = timedelta(hours=24)
 
 
@@ -159,7 +161,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             POIs in an area with none).
         refresh: If True, skip reading any cached response (the fresh
             result still overwrites the cache entry). This is how
-            `build.py --force` re-fetches ONE map's data — the cache
+            `build.py --refresh` re-fetches ONE map's data — the cache
             directory is shared by every map, so deleting it wholesale
             would throw away the other maps' responses (and it used to).
 
@@ -197,14 +199,13 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                 except OSError:
                     pass
             else:
-                try:
-                    _check_snapshot_freshness(cached, "cache")
-                except StaleSnapshotError as e:
-                    console.info(f"Discarding stale cache ({date_str}): {e}")
-                    os.remove(cp)
-                else:
-                    console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
-                    return cached
+                # No freshness check here: a readable cache entry is served
+                # regardless of age, so an unflagged rebuild is fully
+                # offline and reproducible. Re-querying OSM is an explicit
+                # act (--refresh / --refresh-trails / --refresh-pois), not
+                # a side effect of the cache aging past a threshold.
+                console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
+                return cached
     else:
         cp = None
 
@@ -284,6 +285,6 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
     if last_error is not None:
         console.info(f"  last error: {type(last_error).__name__}: {last_error}")
     console.step("\n  The server may be overloaded. Try again in a few minutes.")
-    console.info("Tip: Re-run with --trails instead of --force to reuse any")
+    console.info("Tip: Re-run without the --refresh flags to reuse any")
     console.info("cached responses from earlier successful queries.\n")
     sys.exit(1)

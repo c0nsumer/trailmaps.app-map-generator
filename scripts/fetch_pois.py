@@ -340,7 +340,7 @@ def build_pois_geojson(
 def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     """Main entry point: fetch POIs and write GeoJSON.
 
-    ``refresh=True`` (build.py --force) bypasses cached Overpass
+    ``refresh=True`` (build.py --refresh / --refresh-pois) bypasses cached Overpass
     responses for this map's queries without touching the shared
     cache directory's other entries.
     """

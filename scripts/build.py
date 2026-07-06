@@ -6,8 +6,8 @@ and copies assets to produce a deployable static site.
 
 Usage:
     python scripts/build.py configs/example/example.yaml
-    python scripts/build.py configs/example/example.yaml --force
-    python scripts/build.py configs/example/example.yaml --trails
+    python scripts/build.py configs/example/example.yaml --refresh
+    python scripts/build.py configs/example/example.yaml --refresh-trails
     python scripts/build.py configs/example/example.yaml --no-terrain
 """
 
@@ -644,7 +644,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 # Fix: write a small `<output_path>.sig` sidecar whenever a PMTiles is
 # generated, containing the (bbox, maxzoom) tuple that produced it. On
 # subsequent builds, regenerate when the sidecar is missing or doesn't
-# match the requested signature. `--force` still wipes everything; this
+# match the requested signature. `--refresh` still wipes everything; this
 # just turns "different bbox now" from a silent staleness bug into an
 # automatic rebuild.
 
@@ -850,17 +850,36 @@ def apply_default_brand(config, project_root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
+    # Remote data never updates on its own — cached responses are served
+    # regardless of age, so an unflagged rebuild is offline and
+    # reproducible. The --refresh family is the only way to pull fresh
+    # data for an unchanged config (config edits still trigger the
+    # relevant re-fetch automatically via fingerprints/signatures).
     parser.add_argument(
-        "--force",
+        "--refresh",
         action="store_true",
-        help="Force re-fetch this map's data (bypasses its cached Overpass "
-        "responses; other maps' shared-cache entries are untouched)",
+        help="Re-fetch all of this map's remote data: trails and POIs "
+        "from Overpass (bypasses its cached responses; other maps' "
+        "shared-cache entries are untouched), plus basemap and terrain "
+        "tiles.",
     )
     parser.add_argument(
-        "--trails",
+        "--refresh-trails",
         action="store_true",
-        help="Re-fetch trail data from OSM (uses Overpass cache). POIs are rebuilt on every build regardless of this flag.",
+        help="Re-fetch trail data from Overpass (bypasses cached responses).",
     )
+    parser.add_argument(
+        "--refresh-pois",
+        action="store_true",
+        help="Re-fetch POI data from Overpass (bypasses cached responses). "
+        "Config-defined POIs (parking, trailheads, hubs) are rebuilt on "
+        "every build regardless.",
+    )
+    # Deprecated spellings, kept because the engine is public and older
+    # scripts may pass them. Hidden from --help; mapped onto the
+    # --refresh flags (with a note) right after parsing.
+    parser.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--trails", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--no-basemap", action="store_true", help="Skip basemap extraction")
     parser.add_argument(
@@ -918,6 +937,13 @@ def main(argv=None):
 
     console.set_verbosity(quiet=args.quiet)
 
+    if args.force:
+        console.note("--force is deprecated; use --refresh")
+        args.refresh = True
+    if args.trails:
+        console.note("--trails is deprecated; use --refresh-trails")
+        args.refresh_trails = True
+
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
 
@@ -969,7 +995,7 @@ def main(argv=None):
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # --force re-fetches this map's data by bypassing cached Overpass
+    # --refresh re-fetches this map's data by bypassing cached Overpass
     # responses (refresh flag on the fetch calls below). The cache
     # directory itself is left alone: it's SHARED across every map
     # (plus the vendor-lib and accent-derivation caches), so the old
@@ -1011,7 +1037,8 @@ def main(argv=None):
             pass  # corrupt/partial previous output — build unseeded
 
     auto_refetch_reason = None
-    if not (args.force or args.trails or not os.path.exists(trails_src_path)):
+    refresh_trails = args.refresh or args.refresh_trails
+    if not (refresh_trails or not os.path.exists(trails_src_path)):
         # Base cache exists; refetch only if the config inputs changed or the
         # base file was modified out from under us (content-guard). A missing
         # sidecar is a legacy backfill, not a refetch.
@@ -1023,7 +1050,7 @@ def main(argv=None):
         # so the next build re-expands from clean geometry instead of
         # re-enriching (and destroying) the expanded output. Copied after
         # fetch_trails succeeds so a partial/aborted fetch leaves no base.
-        fetched = fetch_trails(config, trails_path, cache_dir, refresh=args.force)
+        fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
         shutil.copyfile(trails_path, trails_src_path)
         _save_signature(
             trails_src_path,
@@ -1033,7 +1060,7 @@ def main(argv=None):
         )
         return fetched
 
-    if args.force or args.trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
+    if refresh_trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
         if auto_refetch_reason:
             console.step(f"Trails: refetching ({auto_refetch_reason})")
         trails_geojson = _fetch_and_snapshot()
@@ -1259,7 +1286,7 @@ def main(argv=None):
         with open(pois_path, "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
-        fetch_pois(config, pois_path, cache_dir, refresh=args.force)
+        fetch_pois(config, pois_path, cache_dir, refresh=args.refresh or args.refresh_pois)
     console.blank()
 
     # Count POI features by type so the runtime can render an
@@ -1334,8 +1361,8 @@ def main(argv=None):
         post_messages.append("Basemap: Skipped (--no-basemap)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(basemap_path, basemap_bbox, basemap_maxzoom)
-        if args.force or needs_regen:
-            if not args.force and reason:
+        if args.refresh or needs_regen:
+            if not args.refresh and reason:
                 console.step(f"Basemap: regenerating ({reason})")
 
             def _do_basemap():
@@ -1357,8 +1384,8 @@ def main(argv=None):
         post_messages.append("Terrain: Skipped (--no-terrain)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(terrain_path, terrain_bbox, terrain_maxzoom)
-        if args.force or needs_regen:
-            if not args.force and reason:
+        if args.refresh or needs_regen:
+            if not args.refresh and reason:
                 console.step(f"Terrain: regenerating ({reason})")
 
             def _do_terrain():
