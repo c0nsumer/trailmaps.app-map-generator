@@ -44,16 +44,29 @@ Why USGS 3DEP (replaced opentopodata.org SRTM30m, 2026-04):
   samples — non-US trails get ``elevation_*_m`` omitted from
   trails.geojson, and the runtime renders the route without stats.
 
-Sampling tuned to the noise threshold (the two are coupled):
-  - 25m horizontal spacing × 1m per-delta threshold detects every
-    grade ≥4%. Going denser without lowering threshold rejects
-    real mid-grade climbing signal; lowering threshold below
-    lidar's ~0.5m noise floor lets noise back in.
+Gain/loss algorithm — anchor-based hysteresis (the "total ascent"
+scheme GPS head units use):
+  - Track an anchor elevation; when the smoothed profile moves ≥1m
+    away from the anchor in either direction, commit the ENTIRE
+    movement to gain or loss and re-anchor. Sub-band noise
+    oscillation never commits; a long gentle grade accumulates and
+    commits once it clears the band — so any detectable grade is
+    counted regardless of sampling density, and closed loops
+    converge to gain ≈ loss (they're the same terrain). The
+    previous per-delta threshold DISCARDED sub-threshold movement,
+    which made gain/loss diverge on loops whenever one direction
+    was steep and the other gentle.
+  - Route segments are chained end-to-end (oriented and joined at
+    shared OSM nodes) before sampling, so a closed loop is measured
+    as one continuous traversal instead of dozens of disconnected
+    pieces — elevation change hidden across segment breaks was the
+    other source of gain/loss divergence on loops.
   - 3-point centered moving average (75m window at 25m spacing)
     flattens lidar's residual noise without smoothing real climbs
-    (which are typically ≥100m horizontal).
-  - 1m noise threshold matches lidar bare-earth's actual vertical
-    accuracy. Was 2m for SRTM30m's noisier output.
+    (which are typically ≥100m horizontal). The window never reaches
+    across a segment-break marker.
+  - 1m hysteresis band matches lidar bare-earth's actual vertical
+    accuracy (σ ≈ 0.3-0.5m). Was 2m for SRTM30m's noisier output.
 
 Failure modes (all non-fatal):
   - 3DEP API error / timeout              → log warning, skip
@@ -150,25 +163,15 @@ USGS_3DEP_URL = (
 USGS_3DEP_BATCH = 2000  # service hard limit per request
 USGS_3DEP_TIMEOUT = 60  # service can be slow under load
 
-# Sampling spacing tuned to the (sampling × threshold) coupling. The
-# noise threshold is per-adjacent-sample-delta; sampling spacing
-# determines what minimum grade is detectable. With a 1m threshold:
+# Horizontal sampling spacing. 25m resolves every terrain feature a
+# rider would notice while keeping API request counts modest.
 #
-#     min_grade = threshold / spacing
-#     50m spacing → 2% grade detectable
-#     30m spacing → 3.3% grade detectable
-#     25m spacing → 4% grade detectable
-#     10m spacing → 10% grade detectable
-#     5m  spacing → 20% grade detectable
-#
-# At 25m we capture every grade ≥4%, which covers the range a rider
-# would describe as "climbing." Gentler than 4% reads as "rolling" and
-# being filtered out is fine. Going denser than 25m with a 1m
-# threshold systematically rejects mid-grade climbing signal — every
-# per-sample delta on a 4% climb falls below threshold and gets
-# treated as noise, so a long gentle climb sums to zero gain. (This
-# is *coupled*: dense sampling requires proportionally smaller
-# threshold, but smaller threshold falls below the lidar noise floor.)
+# Under the anchor-based hysteresis accumulator (see
+# _gain_loss_from_samples) spacing and the noise band are DECOUPLED:
+# a gentle grade accumulates across samples until it clears the band,
+# so denser sampling no longer rejects mid-grade climbing signal the
+# way the old per-delta threshold did. Spacing now only trades API
+# cost against horizontal resolution.
 SAMPLE_INTERVAL_M = 25
 
 # Hard cap on samples per route — bounds API cost on long routes. At
@@ -185,13 +188,14 @@ MAX_SAMPLES_PER_ROUTE = 2000
 # to disable smoothing.
 ELEVATION_SMOOTH_WINDOW = 3
 
-# Minimum elevation delta between (post-smoothing) adjacent samples to
-# count as real climbing. Below this, the delta is treated as DEM
-# noise and ignored. Lidar bare-earth output has a vertical noise SD of
-# ~0.3-0.5m in good terrain; thresholding at 1m rejects noise while
-# preserving real climbs. Was 2m for the noisier SRTM30m source. See
-# SAMPLE_INTERVAL_M for the (spacing × threshold) coupling that
-# determines the minimum detectable grade.
+# Hysteresis band for the anchor-based gain/loss accumulator (see
+# _gain_loss_from_samples): the smoothed profile must move this far
+# from the current anchor before the movement commits to gain or
+# loss. Lidar bare-earth output has a vertical noise SD of ~0.3-0.5m
+# in good terrain; a 1m band rejects noise oscillation while letting
+# real grades of any steepness accumulate and commit. Was 2m for the
+# noisier SRTM30m source. Part of the elevation cache key — tuning it
+# invalidates cached results cleanly.
 ELEVATION_NOISE_THRESHOLD_M = 1.0
 
 # Inter-request delay across the entire build (not just within a single
@@ -260,6 +264,75 @@ def _subsample_segment(line, target_interval_m, max_samples):
         pos += step
     out.append(line[-1])
     return out
+
+
+def _chain_segments(coord_lines):
+    """Orient and join segments whose endpoints touch into continuous
+    chains, minimizing the number of segment-break markers downstream.
+
+    OSM relations don't order their member ways, so
+    ``_coords_for_route`` returns a route as tens of segments in
+    arbitrary order and arbitrary direction — a closed loop typically
+    arrives as many disconnected pieces. Every remaining break hides
+    the elevation change between two samples that ARE physically
+    connected on the ground, and those hidden deltas don't cancel
+    between gain and loss (they telescope only if segments happen to
+    chain in traversal order). Measured on RAMBA's Ranger Loop (a
+    closed loop, 9 segments): unchained gain/loss was 10/35 m —
+    chained, the loop closes and gain equals loss.
+
+    Greedy: seed a chain from the first unused segment, then repeatedly
+    absorb any unused segment one of whose endpoints coincides with
+    either end of the chain (reversing the segment as needed).
+    Segments are only ever from ONE route, so a join is always a
+    physically walkable continuation — at a junction shared by more
+    than two of the route's segments, whichever continuation is
+    absorbed first is still real terrain, and the leftover branch
+    seeds its own chain. Deterministic: input order drives seeding
+    and absorption.
+
+    Endpoint matching is exact to 7 decimals (~1 cm) — segments from
+    the same OSM way/node share coordinates bit-for-bit, so this is a
+    node-identity check, not a proximity heuristic (two trails passing
+    1 m apart must NOT join).
+
+    Returns a new list of chains; input lines are not mutated.
+    Degenerate (< 2 point) segments are dropped — they contribute no
+    deltas.
+    """
+
+    def _ckey(pt):
+        return (round(pt[0], 7), round(pt[1], 7))
+
+    segs = [list(line) for line in coord_lines if len(line) >= 2]
+    used = [False] * len(segs)
+    chains = []
+    for i in range(len(segs)):
+        if used[i]:
+            continue
+        used[i] = True
+        chain = list(segs[i])
+        extended = True
+        while extended:
+            extended = False
+            for j in range(len(segs)):
+                if used[j]:
+                    continue
+                s = segs[j]
+                if _ckey(chain[-1]) == _ckey(s[0]):
+                    chain.extend(s[1:])
+                elif _ckey(chain[-1]) == _ckey(s[-1]):
+                    chain.extend(reversed(s[:-1]))
+                elif _ckey(chain[0]) == _ckey(s[-1]):
+                    chain[:0] = s[:-1]
+                elif _ckey(chain[0]) == _ckey(s[0]):
+                    chain[:0] = reversed(s[1:])
+                else:
+                    continue
+                used[j] = True
+                extended = True
+        chains.append(chain)
+    return chains
 
 
 def _subsample_route(coord_lines, target_interval_m, max_samples):
@@ -344,16 +417,25 @@ def _hash_coords(coords_with_breaks):
     we cache is gain-given-this-exact-sampling, and segment breaks
     affect the computed gain.
 
-    The hash ALSO includes the three sampling-pipeline constants
-    (SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE, ELEVATION_SMOOTH_WINDOW)
-    so a curator tuning any of them invalidates the cache cleanly. If
-    those constants weren't part of the key, a tuning change would
-    silently keep returning old gain/loss numbers from cached files
-    until the next --force rebuild.
+    The hash ALSO includes every constant the computed result depends
+    on (SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE,
+    ELEVATION_SMOOTH_WINDOW, ELEVATION_NOISE_THRESHOLD_M) plus an
+    algorithm version token, so tuning any constant — or changing the
+    gain/loss algorithm itself — invalidates the cache cleanly. If an
+    input were missing from the key, a change to it would silently
+    keep returning old gain/loss numbers from cached files until the
+    next --force rebuild. (The noise threshold WAS missing once; the
+    2m → 1m retune only produced correct numbers because it coincided
+    with a spacing change.)
+
+    algo=2: anchor-based hysteresis accumulator + break-preserving
+    smoothing (replaced per-delta thresholding, which discarded
+    sub-threshold movement and made gain/loss diverge on loops).
     """
     h = hashlib.sha1()
     h.update(
-        f"si={SAMPLE_INTERVAL_M},mx={MAX_SAMPLES_PER_ROUTE},sw={ELEVATION_SMOOTH_WINDOW}||".encode()
+        f"algo=2,si={SAMPLE_INTERVAL_M},mx={MAX_SAMPLES_PER_ROUTE},"
+        f"sw={ELEVATION_SMOOTH_WINDOW},nt={ELEVATION_NOISE_THRESHOLD_M}||".encode()
     )
     for item in coords_with_breaks:
         if item is None:
@@ -475,23 +557,28 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
 
         # Response shape: {"samples": [{"locationId": 0, "value":
         # "287.5", "resolution": 1}, ...]}. Order may not match input
-        # order; sort by locationId before splicing back in. ``value``
-        # is a STRING (or "NoData" for out-of-coverage points).
-        samples = result_data.get("samples") or []
-        samples_sorted = sorted(samples, key=lambda s: int(s.get("locationId", 0)))
-
-        for j, s in enumerate(samples_sorted):
-            global_idx = i + j
-            if global_idx >= len(valid_coords):
-                break  # defensive — shouldn't happen
+        # order, and the service may OMIT a point entirely (it already
+        # returns "NoData" for out-of-coverage points, so an omission
+        # is an irregularity we defend against rather than a documented
+        # mode). Place each sample by its locationId — an enumeration
+        # index would silently shift every elevation after a gap onto
+        # the wrong coordinate, corrupting the whole profile. Omitted
+        # points simply stay None (missing sample). ``value`` is a
+        # STRING (or "NoData").
+        for s in result_data.get("samples") or []:
+            try:
+                local_idx = int(s.get("locationId"))
+            except (TypeError, ValueError):
+                continue  # malformed sample — leave its point missing
+            if not (0 <= local_idx < len(batch)):
+                continue  # defensive — id outside this batch
             value = s.get("value")
             if value is None or value == "NoData":
-                elev_for_valid[global_idx] = None
-            else:
-                try:
-                    elev_for_valid[global_idx] = float(value)
-                except (TypeError, ValueError):
-                    elev_for_valid[global_idx] = None
+                continue  # elev_for_valid entry stays None
+            try:
+                elev_for_valid[i + local_idx] = float(value)
+            except (TypeError, ValueError):
+                pass  # unparseable value — leave point missing
 
     # Splice the elevation results back in, preserving break-marker
     # positions so the gain-from-samples computation sees both the
@@ -510,12 +597,20 @@ def _smooth_elevations(elevations, window):
     output) before differencing, which is the single biggest source
     of inflated elevation-gain numbers. A k-point average reduces
     noise variance by ~1/k while preserving any signal that spans
-    more than `window` samples (~15 m at the default 5 m sampling × 3-
-    point window) — covers every real-world MTB feature.
+    more than `window` samples (~75 m at the default 25 m sampling ×
+    3-point window) — covers every real-world MTB feature.
 
-    Preserves None values (samples 3DEP couldn't resolve)
-    rather than averaging them as zero. Endpoints use whatever window
-    fits inside the array.
+    None values are hard boundaries, at any window size:
+      - A None stays None. Segment-break markers and unresolved
+        samples must survive smoothing, or _gain_loss_from_samples
+        computes a delta across two points that aren't physically
+        connected. (An earlier version filled a lone None with the
+        average of its neighbors, silently bridging every segment
+        break.)
+      - The window never reaches ACROSS a None: samples on opposite
+        sides of a break are disconnected terrain and must not blend.
+
+    Endpoints (of the array or of a segment) use whatever window fits.
     """
     if window <= 1 or len(elevations) <= 2:
         return list(elevations)
@@ -523,54 +618,82 @@ def _smooth_elevations(elevations, window):
     n = len(elevations)
     out = []
     for i in range(n):
-        lo = max(0, i - half)
-        hi = min(n, i + half + 1)
-        vals = [v for v in elevations[lo:hi] if v is not None]
-        if not vals:
+        if elevations[i] is None:
             out.append(None)
-        else:
-            out.append(sum(vals) / len(vals))
+            continue
+        vals = [elevations[i]]
+        for j in range(i - 1, max(0, i - half) - 1, -1):  # walk left to break
+            if elevations[j] is None:
+                break
+            vals.append(elevations[j])
+        for j in range(i + 1, min(n, i + half + 1)):  # walk right to break
+            if elevations[j] is None:
+                break
+            vals.append(elevations[j])
+        out.append(sum(vals) / len(vals))
     return out
 
 
 def _gain_loss_from_samples(elevations):
-    """Compute (gain, loss) across consecutive samples in one pass.
+    """Compute (gain, loss) with an anchor-based hysteresis accumulator
+    — the "total ascent" scheme GPS head units use.
 
-    Pipeline: smooth → difference → threshold → split positives from
-    negatives. The threshold is symmetric: any delta with magnitude
-    below ELEVATION_NOISE_THRESHOLD_M is treated as noise and dropped
-    in BOTH directions; remaining deltas are accumulated as gain
-    (positive) or loss (absolute value of negative). This preserves
-    the directional asymmetry that lets the runtime show ``↑X / ↓Y``
-    while applying the same noise rejection to both.
+    Pipeline: smooth → accumulate against an anchor. The anchor is the
+    last committed elevation; when the profile moves at least
+    ELEVATION_NOISE_THRESHOLD_M away from it in either direction, the
+    ENTIRE movement commits to gain or loss and the anchor jumps to
+    the current sample. Noise oscillating inside the band never
+    commits; a long gentle grade accumulates across samples and
+    commits once it clears the band — so gain/loss capture grades of
+    any steepness, independent of sampling density.
 
-    Why both: for loops gain ≈ loss, but for one-way routes the
+    The previous algorithm thresholded each per-sample delta and
+    DISCARDED sub-threshold movement (the anchor still advanced every
+    sample). On a closed loop that climbs steeply and descends
+    gently, the climb deltas cleared the threshold while the descent
+    deltas individually fell under it and vanished — riders saw
+    ↑big / ↓small on a loop where true gain must equal true loss.
+    Hysteresis is symmetric by construction, so loops converge to
+    gain ≈ loss.
+
+    Why report both: for loops gain ≈ loss, but for one-way routes the
     asymmetry tells the rider whether they're looking at mostly
     climbing or mostly descending — without us having to claim we
     know which direction the route is intended to be ridden (we
     don't; OSM doesn't carry that signal for MTB relations).
 
-    None samples (where 3DEP didn't return an elevation, e.g. a
-    coordinate outside US coverage) reset the running comparison so
-    we don't compute a fake delta across the gap.
+    None samples (segment-break markers, and points 3DEP couldn't
+    resolve) reset the anchor so no movement is committed across a
+    gap — those points aren't physically connected terrain.
 
-    Returns ``(gain_m, loss_m)`` as integer meters, both ≥ 0.
+    Returns ``(gain_m, loss_m)`` as integer meters, both ≥ 0 — or
+    ``None`` if no two connected valid samples existed (e.g. every
+    sample was out-of-coverage NoData). Callers must treat None as
+    "no data", NOT as a flat route: attaching (0, 0) would make a
+    no-data route indistinguishable from a genuinely flat one.
     """
     smoothed = _smooth_elevations(elevations, ELEVATION_SMOOTH_WINDOW)
     gain = 0.0
     loss = 0.0
-    prev = None
+    anchor = None
+    saw_connected_pair = False
     for e in smoothed:
         if e is None:
-            prev = None
+            anchor = None
             continue
-        if prev is not None:
-            delta = e - prev
-            if delta >= ELEVATION_NOISE_THRESHOLD_M:
-                gain += delta
-            elif -delta >= ELEVATION_NOISE_THRESHOLD_M:
-                loss += -delta
-        prev = e
+        if anchor is None:
+            anchor = e
+            continue
+        saw_connected_pair = True
+        delta = e - anchor
+        if delta >= ELEVATION_NOISE_THRESHOLD_M:
+            gain += delta
+            anchor = e
+        elif -delta >= ELEVATION_NOISE_THRESHOLD_M:
+            loss += -delta
+            anchor = e
+    if not saw_connected_pair:
+        return None
     return round(gain), round(loss)
 
 
@@ -599,7 +722,7 @@ def compute_elevations(trails_geojson, cache_dir):
 
     for route_id in routes.keys():
         rid_str = str(route_id)
-        coord_lines = _coords_for_route(features, rid_str)
+        coord_lines = _chain_segments(_coords_for_route(features, rid_str))
         if not coord_lines:
             continue
         sampled = _subsample_route(coord_lines, SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE)
@@ -614,12 +737,17 @@ def compute_elevations(trails_geojson, cache_dir):
                     cached = json.load(fh)
                 # Require BOTH fields for a cache hit. Old-format
                 # entries (gain only) get treated as cache miss and
-                # refetched.
+                # refetched. A cached null gain marks a known no-data
+                # route (every sample NoData — e.g. non-US terrain):
+                # honor it by omitting stats, without re-asking the
+                # API on every build.
                 if (
                     isinstance(cached, dict)
                     and "elevation_gain_m" in cached
                     and "elevation_loss_m" in cached
                 ):
+                    if cached["elevation_gain_m"] is None:
+                        continue
                     out[rid_str] = (
                         int(cached["elevation_gain_m"]),
                         int(cached["elevation_loss_m"]),
@@ -634,8 +762,19 @@ def compute_elevations(trails_geojson, cache_dir):
 
         try:
             elevations = _fetch_elevations_batched(sampled, log_prefix=f"route {rid_str}: ")
-            gain, loss = _gain_loss_from_samples(elevations)
-            out[rid_str] = (gain, loss)
+            gain_loss = _gain_loss_from_samples(elevations)
+            if gain_loss is None:
+                # No two connected valid samples (e.g. non-US route,
+                # every point NoData). Omit stats — the runtime renders
+                # the route without them — and cache the no-data marker
+                # so the next build doesn't re-ask the API. Attaching
+                # (0, 0) here would show "↑0 / ↓0" for a route we know
+                # nothing about.
+                console.warn(f"route {rid_str}: no usable elevation data; stats omitted")
+                gain, loss = None, None
+            else:
+                gain, loss = gain_loss
+                out[rid_str] = (gain, loss)
             try:
                 with open(cache_path, "w", encoding="utf-8") as fh:
                     json.dump(
