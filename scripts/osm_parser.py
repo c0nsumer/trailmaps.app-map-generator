@@ -73,12 +73,18 @@ def parse_osm_file(osm_path):
     return nodes, ways, relations
 
 
-def _relation_info(rel):
-    """Extract the standard relation info dict from a parsed relation."""
-    tags = rel["tags"]
+def relation_info(rel_id, tags):
+    """The standard six-field relation info dict every downstream stage
+    consumes (merging, GeoJSON building, enrichment).
+
+    Single source of truth for BOTH fetch paths: this module's
+    local-.osm extraction and fetch_trails.py's Overpass parsing build
+    their entries through here, so the shape can't drift between them
+    (the missing-relation warning drifted exactly this way once).
+    """
     return {
-        "id": rel["id"],
-        "name": tags.get("name", f"Route {rel['id']}"),
+        "id": rel_id,
+        "name": tags.get("name", f"Route {rel_id}"),
         # None when OSM has no colour tag — runtime layered fallback:
         # relation_colors → default_trail_color → #808080 build-time default.
         "colour": tags.get("colour"),
@@ -86,6 +92,35 @@ def _relation_info(rel):
         "route": tags.get("route", ""),
         "seasonal": tags.get("seasonal", ""),
     }
+
+
+def detect_super_expansions(input_ids, relations):
+    """Find which input IDs are super-relations, one level deep.
+
+    A super-relation has at least one type=relation member that is
+    itself present in ``relations`` (the available set — parsed .osm
+    file or Overpass response). Members pointing at relations we don't
+    have fall through to the leaf path: we can't render what we don't
+    have. A super-relation containing another super treats the inner
+    one as a leaf.
+
+    Returns {parent_id: [child_id, ...]} for the inputs that expanded;
+    empty when every input is a leaf. Shared by both fetch paths so
+    the expansion rule can't drift.
+    """
+    expansions = {}
+    for rel_id in input_ids:
+        rel = relations.get(rel_id)
+        if not rel:
+            continue
+        child_ids = [
+            m["ref"]
+            for m in rel.get("members", [])
+            if m["type"] == "relation" and m["ref"] in relations
+        ]
+        if child_ids:
+            expansions[rel_id] = child_ids
+    return expansions
 
 
 def extract_source_relations(parsed, relation_ids):
@@ -117,26 +152,15 @@ def extract_source_relations(parsed, relation_ids):
     """
     _nodes, _ways, relations = parsed
 
+    expansions = detect_super_expansions(relation_ids, relations)
+
     result = {}
-    expansions = {}
     for rel_id in relation_ids:
-        rel = relations.get(rel_id)
-        if not rel:
+        if rel_id not in relations:
             console.warn(f"Relation {rel_id} not found in .osm file")
             continue
-        # A super-relation has at least one type=relation member that
-        # also exists in the parsed set. (Members pointing at relations
-        # outside the .osm file fall through to the leaf path — we
-        # can't render what we don't have.)
-        child_ids = [
-            m["ref"] for m in rel["members"] if m["type"] == "relation" and m["ref"] in relations
-        ]
-        if child_ids:
-            expansions[rel_id] = child_ids
-            for cid in child_ids:
-                result[cid] = _relation_info(relations[cid])
-        else:
-            result[rel_id] = _relation_info(rel)
+        for resolved in expansions.get(rel_id) or [rel_id]:
+            result[resolved] = relation_info(resolved, relations[resolved]["tags"])
 
     return result, expansions
 

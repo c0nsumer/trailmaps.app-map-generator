@@ -24,6 +24,13 @@ import console
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
 from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
+from osm_parser import (
+    detect_super_expansions,
+    extract_source_relations,
+    extract_ways,
+    parse_osm_file,
+    relation_info,
+)
 from overpass import query as overpass_query
 
 
@@ -42,26 +49,19 @@ def _expand_through_supers(relation_ids, expansions):
 def _parse_relations(data):
     """Parse relation elements from an Overpass response into a dict.
 
-    `members` is preserved on each entry (not just tags) so super-
-    relation expansion can identify type=relation member references.
-    The original Overpass `out tags;` directive omits members; the
-    caller must use `out body;` (or equivalent) to include them.
+    Entries are the shared six-field info dict (osm_parser.relation_info
+    — same shape as the local-.osm path) plus `members`, preserved so
+    super-relation expansion can identify type=relation member
+    references. The original Overpass `out tags;` directive omits
+    members; the caller must use `out body;` (or equivalent) to
+    include them.
     """
     relations = {}
     for element in data.get("elements", []):
         if element["type"] == "relation":
-            tags = element.get("tags", {})
-            relations[element["id"]] = {
-                "id": element["id"],
-                "members": element.get("members", []),
-                "name": tags.get("name", f"Route {element['id']}"),
-                # None when OSM has no colour tag — runtime layered fallback:
-                # relation_colors → default_trail_color → #808080 build-time default.
-                "colour": tags.get("colour"),
-                "ref": tags.get("ref", ""),
-                "route": tags.get("route", ""),
-                "seasonal": tags.get("seasonal", ""),
-            }
+            info = relation_info(element["id"], element.get("tags", {}))
+            info["members"] = element.get("members", [])
+            relations[element["id"]] = info
     return relations
 
 
@@ -132,19 +132,11 @@ out body;
                 f"missing from the map."
             )
 
-    # Detect super-relations among the inputs. A super-relation has
-    # type=relation members that we ALSO fetched (via rel(r)). If a
-    # parent has no fetched relation children, it's treated as a leaf.
-    expansions = {}
-    for parent_id in all_input_ids:
-        parent = all_rels.get(parent_id)
-        if not parent:
-            continue
-        child_ids = [
-            m["ref"] for m in parent["members"] if m["type"] == "relation" and m["ref"] in all_rels
-        ]
-        if child_ids:
-            expansions[parent_id] = child_ids
+    # Detect super-relations among the inputs (shared rule with the
+    # local-.osm path). A super-relation has type=relation members that
+    # we ALSO fetched (via rel(r)). If a parent has no fetched relation
+    # children, it's treated as a leaf.
+    expansions = detect_super_expansions(all_input_ids, all_rels)
 
     # Resolve each input list: replace super-parents with their
     # children, leave leaves alone. A relation that appears in BOTH
@@ -701,8 +693,6 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             console.info(f"  {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
 
     if osm_file:
-        from osm_parser import extract_source_relations, extract_ways, parse_osm_file
-
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
@@ -729,17 +719,6 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             _log_expansions("clipped", clipped_expansions)
             _log_relation_list(clipped_relations, clipped=True)
             relations.update(clipped_relations)
-
-        # Expand winter sets through the super-relation map BEFORE
-        # tagging, so a curator listing one super-relation in
-        # `winter_relations` propagates seasonal=winter to every child
-        # route. Same logic applies in build.py for summer/emergency
-        # bucket flags via the persisted expansion mapping.
-        winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
-
-        for rel_id in winter_relation_ids:
-            if rel_id in relations:
-                relations[rel_id]["seasonal"] = "winter"
 
         console.step(f"Stage B: Extracting ways for {len(relations)} relations...")
         all_ways = extract_ways(parsed, list(relations.keys()))
@@ -770,20 +749,24 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache"):
             _log_relation_list(clipped_relations, clipped=True)
             relations.update(clipped_relations)
 
-        # Apply winter_relations config override (marks relations as winter
-        # even if they don't have seasonal=winter in OSM). Expand super-
-        # relations through the fetch-time expansion map so the seasonal
-        # tag propagates to every child route — the parent itself is
-        # gone (replaced by children in `relations`).
-        winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
-        for rel_id in winter_relation_ids:
-            if rel_id in relations:
-                relations[rel_id]["seasonal"] = "winter"
-
         # Stage B: Fetch ways for all relations in a single bulk query
         console.step(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
         all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir)
         _log_way_counts(relations, all_ways)
+
+    # Apply winter_relations config override (marks relations as winter
+    # even if they don't have seasonal=winter in OSM). Expand through
+    # the fetch-time super-relation map BEFORE tagging, so a curator
+    # listing one super-relation in `winter_relations` propagates
+    # seasonal=winter to every child route — the parent itself is gone
+    # (replaced by children in `relations`). Same logic applies in
+    # build.py for summer/emergency bucket flags via the persisted
+    # expansion mapping. Shared by both fetch paths — this block used
+    # to be maintained twice.
+    winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
+    for rel_id in winter_relation_ids:
+        if rel_id in relations:
+            relations[rel_id]["seasonal"] = "winter"
 
     # Build way-to-relations mapping
     way_relations = build_way_to_relations_map(relations, all_ways)
