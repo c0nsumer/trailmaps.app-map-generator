@@ -16,7 +16,7 @@ route joins or leaves a corridor. On dense shared networks (RAMBA),
 real route crossings — the dominant visual defect (casings flipping
 sides, jerking when a route branches off). LOOM ordering
 (``route_order.py``) already drives real crossings to zero; this module
-removes the breathing the LOOM flip metric never modelled.
+removes the breathing the LOOM flip metric never modeled.
 
 Model
 =====

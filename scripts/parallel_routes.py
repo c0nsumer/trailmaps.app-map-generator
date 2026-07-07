@@ -19,7 +19,7 @@ into the geometry of a single bezier-curve stub at z14's pixel scale.
 That approach worked at z14 but rendered the stub 5–20× too far from
 the corridor at z16–z18 (because corridor offset is paint-time and
 scales with zoom, while baked geometry doesn't), producing the
-"floating squiggles disconnected from the corridor" artefact most
+"floating squiggles disconnected from the corridor" artifact most
 visible on RAMBA at typical close-in viewing zooms.
 
 Why it has to be N micro-features and not a single stub:
@@ -489,7 +489,7 @@ def apply_subway_style(
             ss = [r for r in ss if r in visible_set]
         return ss
 
-    # Group features by route_id so junctions can be analysed
+    # Group features by route_id so junctions can be analyzed
     # per-route (a junction "in route X" only cares about X's
     # adjacent features there, not other routes that pass through
     # the same node). Skip:
@@ -767,7 +767,7 @@ def apply_subway_style(
             span_eff = span_m * shrink
             handle_frac = _BEZIER_HANDLE_FRACTION * shrink
             # Delta-aware cap. The unconditional 1.5m cap previously
-            # used here localised lateral drift nicely for SMALL offset
+            # used here localized lateral drift nicely for SMALL offset
             # shifts (e.g. +1.5 → +1.0 when one route leaves a 4-wide
             # corridor) — those want a tight transition that reads as
             # a clean junction marker, not a slow tilt.
@@ -899,7 +899,7 @@ def apply_subway_style(
                         "imba_difficulty": "",
                         "oneway": "",
                         # Direct offset_index — app.js's
-                        # computeOffsetsAndFilter honours
+                        # computeOffsetsAndFilter honors
                         # the property when isStub is true
                         # instead of recomputing from
                         # shared_routes.
@@ -917,7 +917,7 @@ def apply_subway_style(
             # Without this, corridor B's main rendering would
             # double-up with the transition zone for that
             # first ~10 m, creating visible "wavy thickening"
-            # at the junction (the v1 artefact this fix
+            # at the junction (the v1 artifact this fix
             # addresses).
             #
             # If the same host has multiple transitions on

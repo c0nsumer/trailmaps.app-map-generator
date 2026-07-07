@@ -67,7 +67,7 @@ def _dedup_osm_pois(features):
     """Collapse OSM-derived POIs of the same type within ~10m of each
     other into a single feature.
 
-    Catches the common OSM modelling pattern where the same physical
+    Catches the common OSM modeling pattern where the same physical
     amenity is tagged twice — once as a way (building=yes +
     amenity=toilets, the building footprint, whose Overpass-computed
     center coord we use) AND once as a node (a separate
@@ -162,7 +162,7 @@ def build_pois_geojson(
     so it doesn't appear in counts, search index, or anywhere else
     downstream (not just suppressed from rendering). Backwards-
     compatible default of None means "show everything," matching the
-    historical behaviour for any caller not yet passing config."""
+    historical behavior for any caller not yet passing config."""
     cfg = config or {}
     show_markers = cfg.get("show_markers", True)
     show_features = cfg.get("show_features", True)

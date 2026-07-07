@@ -106,16 +106,16 @@ CONFIG_SPEC = [
     # the runtime check is `CONFIG.forcedLabels ? lock : free` which
     # treats "" as the unset/free state.
     ("forced_labels", "forcedLabels", ""),
-    # Initial colour scheme for first-visit riders. "light" / "dark"
+    # Initial color scheme for first-visit riders. "light" / "dark"
     # / "auto" (auto resolves prefers-color-scheme). Default "light"
-    # preserves existing behaviour for maps that don't opt in. The
+    # preserves existing behavior for maps that don't opt in. The
     # rider can override via the Options Appearance toggle; LS wins
     # over this default on subsequent visits. The build also injects
     # this value into the inline <head> bootstrap script so first
     # paint already has the right scheme set on <html>.
     ("default_color_scheme", "defaultColorScheme", "light"),
     # Whether the brand-img logo should auto-invert in dark mode.
-    # Default true matches historical behaviour; curators with
+    # Default true matches historical behavior; curators with
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark", "invertLogoDark", True),
     ("color_by", "colorBy", "relation"),
@@ -146,7 +146,7 @@ CONFIG_SPEC = [
     # with no glow.
     ("highlight_glow", "highlightGlow", True),
     # When true (the default), MapLibre writes `#zoom/lat/lon` to
-    # the URL hash as the user pans/zooms, and honours any hash on
+    # the URL hash as the user pans/zooms, and honors any hash on
     # page load. Makes views shareable and survives reload, at the
     # cost of leaking last-viewed location in the address bar /
     # screenshots / screen-shares. Set false to drop the hash
@@ -170,9 +170,9 @@ CONFIG_SPEC = [
     # where the curator wants no share affordance (e.g. private/
     # family maps); leave true for community/public maps.
     ("share_button", "shareButton", True),
-    # Marker colours (kept per user request; some systems have
-    # branded marker palettes aligned with their trail colours).
-    # parking/trailhead/feature colours flow to CSS custom
+    # Marker colors (kept per user request; some systems have
+    # branded marker palettes aligned with their trail colors).
+    # parking/trailhead/feature colors flow to CSS custom
     # properties on :root so the peek-bar swatch, the on-map
     # marker, and the popup badge all stay in lockstep.
     ("marker_color", "markerColor", "#795548"),
@@ -238,14 +238,14 @@ def inject_config_into_template(template_content, config, trails_geojson):
     if trails_geojson and "metadata" in trails_geojson:
         routes = trails_geojson["metadata"].get("routes", {})
 
-    # Event-mode pre-pass on the relations side. Synthesises
+    # Event-mode pre-pass on the relations side. Synthesizes
     # relation_colors and dashed_relations entries for every
     # non-featured OSM route so the override loop below applies the
     # background style. No-op when event_mode is absent. Curator's
     # explicit per-relation entries WIN.
     _apply_event_mode_to_relations(config, trails_geojson)
 
-    # Apply route overrides (winter, colour, dash) in a single pass.
+    # Apply route overrides (winter, color, dash) in a single pass.
     # YAML keys keep their original "relation" names since they take OSM
     # relation IDs as input; the values populate route info on the JS side.
     winter_ids = set(config.get("winter_relations") or [])
@@ -442,7 +442,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
         # Custom routes carry their own style + flags (set at enrichment
         # time) and don't participate in the int-keyed OSM overrides.
         if route_info.get("isCustom"):
-            # Still normalise dashed to a concrete value so the runtime
+            # Still normalize dashed to a concrete value so the runtime
             # can assume the field is present.
             if "dashed" not in route_info:
                 route_info["dashed"] = False
@@ -457,7 +457,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
         if route_id in winter_ids:
             route_info["seasonal"] = "winter"
 
-        # Colour override
+        # Color override
         color_override = relation_colors.get(route_id)
         if color_override:
             route_info["colour"] = color_override
@@ -656,7 +656,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Accent palette: resolved at build time (see _accent_palette
     # stash in build.py). The build always produces a 4-value palette —
     # a deep light-mode shade + a lightened dark-mode shade, each with
-    # its best on-accent text colour — from the logo pick / explicit
+    # its best on-accent text color — from the logo pick / explicit
     # hex / framework default. app.js sets the four BASE vars on :root
     # and style.css maps --accent / --on-accent per [data-color-scheme],
     # so the accent reads correctly in both schemes. accentColor (= the
@@ -839,7 +839,7 @@ def copy_templates(config, output_dir, trails_geojson):
             else:
                 content = content.replace("__BRAND_IMG_DIMS__", "")
 
-            # Inline colour-scheme bootstrap script. Runs synchronously
+            # Inline color-scheme bootstrap script. Runs synchronously
             # in <head> BEFORE the stylesheet, so first paint already
             # has the right data-color-scheme attribute on <html> and
             # CSS variables resolve to the correct values without FOUC.
@@ -853,9 +853,9 @@ def copy_templates(config, output_dir, trails_geojson):
             # Accent base vars, baked into the pre-paint bootstrap so the
             # per-map accent is correct on the FIRST frame — before app.js
             # (which carries CONFIG) has downloaded. Without this, a slow
-            # first load paints accent-coloured chrome (notably the
+            # first load paints accent-colored chrome (notably the
             # initial-load progress bar) with style.css's default
-            # --accent-light blue until app.js patches it: a visible colour
+            # --accent-light blue until app.js patches it: a visible color
             # flash. Inline style on <html> beats the stylesheet :root
             # defaults; app.js still sets the same four vars later
             # (idempotent). style.css maps --accent / --on-accent from
@@ -906,7 +906,7 @@ def copy_templates(config, output_dir, trails_geojson):
                 # accent for the resolved scheme on first frame (the
                 # static value in the template is just a fallback;
                 # without this update the status bar would keep the
-                # manifest's light-accent colour until applyColorScheme
+                # manifest's light-accent color until applyColorScheme
                 # runs much later in app.js).
                 "var m=document.querySelector('meta[name=\"theme-color\"]');"
                 "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
@@ -916,10 +916,10 @@ def copy_templates(config, output_dir, trails_geojson):
                 "</script>"
             )
             content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
-            # Static brand-colour substitutions: the theme-color meta
+            # Static brand-color substitutions: the theme-color meta
             # (no-JS fallback — the bootstrap re-points it per scheme
             # on first frame), the Safari pinned-tab mask-icon tint,
-            # and the legacy Windows tile colour all take the light
+            # and the legacy Windows tile color all take the light
             # accent shade. replace() catches every occurrence. No-op
             # when the icons block (which carries all three tags) was
             # stripped for icon-less maps.
@@ -1049,7 +1049,7 @@ def copy_assets(config, output_dir):
         # can substitute them into the brand-img element's HTML
         # width/height attributes (CLS prevention — browsers reserve
         # layout box from these before image bytes arrive). Returns
-        # (None, None) for unrecognised SVGs / Pillow-missing / etc.;
+        # (None, None) for unrecognized SVGs / Pillow-missing / etc.;
         # copy_templates falls back to omitting the attributes in that
         # case, accepting the small CLS risk over emitting wrong dims.
         config["_brand_img_dims"] = process_logo(logo_src, out_path)

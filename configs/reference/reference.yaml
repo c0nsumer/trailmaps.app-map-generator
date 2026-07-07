@@ -82,7 +82,7 @@ relations:
 # pannable area; 0 pins the wall to bbox. Also widens tile extraction.
 # pan_padding: 0.5
 
-# Map centre [lon, lat]; auto-computed from the bbox midpoint if omitted.
+# Map center [lon, lat]; auto-computed from the bbox midpoint if omitted.
 # center: [-87.635, 46.495]
 
 # Initial zoom level.
@@ -98,7 +98,7 @@ relations:
 # basemap_maxzoom: 15
 
 # Max zoom for terrain tile extraction.
-# terrain_maxzoom: 13
+# terrain_maxzoom: 12
 
 # ============================================================
 # Build-time data gates
@@ -163,7 +163,7 @@ relations:
 # Per-route style overrides
 # ============================================================
 
-# Map of relation ID to CSS colour; overrides the OSM colour tag.
+# Map of relation ID to CSS color; overrides the OSM colour= tag.
 # relation_colors: {}
 
 # Map of relation ID to display name; overrides the OSM name tag everywhere
@@ -173,11 +173,11 @@ relations:
 # Map of relation ID to dash config. See docs/configuration.md (Dash patterns).
 # dashed_relations: {}
 
-# Trail line colouring: "relation" (route colour) or "trail" (per-way IMBA palette).
+# Trail line coloring: "relation" (route color) or "trail" (per-way IMBA palette).
 # color_by: relation
 
-# Fallback trail colour, or an object with color / pattern / cap for dashed
-# uncoloured trails.
+# Fallback trail color, or an object with color / pattern / cap for dashed
+# uncolored trails.
 # default_trail_color: "#808080"
 
 # ============================================================
@@ -204,10 +204,10 @@ relations:
 # Lock the label mode and hide the Labels control: "routes", "trails", or "none".
 # forced_labels: trails
 
-# First-visit colour scheme: "light", "dark", or "auto" (follows the OS).
+# First-visit color scheme: "light", "dark", or "auto" (follows the OS).
 # default_color_scheme: light
 
-# Auto-invert the logo in dark mode. Set false for colourful / photographic logos.
+# Auto-invert the logo in dark mode. Set false for colorful / photographic logos.
 # invert_logo_dark: true
 
 # Dim non-highlighted routes / trails when one is highlighted.
@@ -232,7 +232,7 @@ relations:
 # share_button: true
 
 # The bottom-right corner always shows the routes panel — the map's key. It
-# lists each visible route as a colour swatch + name + stats (tap a row to
+# lists each visible route as a color swatch + name + stats (tap a row to
 # highlight it), with a Search button pinned at the bottom that opens the full
 # finder. "Listable" routes follow the rider's season / emergency toggles, and
 # event maps list featured routes only. The panel boots expanded or collapsed
@@ -241,51 +241,51 @@ relations:
 # persists per map and beats that default. There is no config knob.
 
 # ============================================================
-# Marker and accent colours
+# Marker and accent colors
 # ============================================================
 #
-# Each POI type takes three colours: chip fill, glyph, and halo.
+# Each POI type takes three colors: chip fill, glyph, and halo.
 
 # Trail-marker chip fill (merged guideposts + emergency-access points).
 # marker_color: "#795548"
 
-# Trail-marker glyph colour.
+# Trail-marker glyph color.
 # marker_text_color: "white"
 
-# Trail-marker halo colour.
+# Trail-marker halo color.
 # marker_border_color: "white"
 
 # Parking chip fill.
 # parking_color: "#2980b9"
 
-# Parking glyph (P) colour.
+# Parking glyph (P) color.
 # parking_text_color: "white"
 
-# Parking halo colour.
+# Parking halo color.
 # parking_border_color: "white"
 
 # Trailhead chip fill.
 # trailhead_color: "#27ae60"
 
-# Trailhead glyph (TH) colour.
+# Trailhead glyph (TH) color.
 # trailhead_text_color: "white"
 
-# Trailhead halo colour.
+# Trailhead halo color.
 # trailhead_border_color: "white"
 
 # Trail-hub chip fill (hexagonal H chip with an inline name label).
 # hub_color: "#f39c12"
 
-# Trail-hub glyph (H) colour.
+# Trail-hub glyph (H) color.
 # hub_text_color: "white"
 
-# Trail-hub halo colour (a drop-shadow halo that follows the hex silhouette).
+# Trail-hub halo color (a drop-shadow halo that follows the hex silhouette).
 # hub_border_color: "white"
 
-# Feature marker inner dot colour.
+# Feature marker inner dot color.
 # feature_color: "#8e44ad"
 
-# Feature marker outer ring colour.
+# Feature marker outer ring color.
 # feature_ring_color: "#ffffff"
 
 # UI accent: a 6-digit hex or "auto" (logo-derived); resolves to a per-mode

@@ -123,7 +123,7 @@ def _minify_assets(output_dir):
 
     Vendor libs (vendor/*.js) are NOT minified — upstream ships them
     in production form already, and re-minifying risks breaking the
-    upstream's intended behaviour.
+    upstream's intended behavior.
 
     Errors are logged but don't abort the build — the unminified file
     stays in place, so the deploy still ships a working (just larger)
@@ -296,7 +296,7 @@ def generate_service_worker(config, output_dir):
     # Append the multi-MB .pmtiles archives (basemap ~2 MB, terrain up to
     # ~30 MB) at the END of the precache list. backgroundPrecache() walks
     # PRECACHE_URLS sequentially (one cache.add at a time), so whatever
-    # sits early monopolises the link until it finishes. Alphabetical
+    # sits early monopolizes the link until it finishes. Alphabetical
     # order put basemap.pmtiles 3rd and terrain.pmtiles mid-list, ahead of
     # the lightweight UI assets (icons, sprites, glyph PBFs, vendor JS).
     # On a slow first visit that meant tens of seconds of big-file download
@@ -616,7 +616,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 
     `pan_padding=0.5` adds 50% of the greater dimension's extent to each
     side, roughly quadrupling the pannable area. `pan_padding=0` disables
-    the expansion entirely (maxBounds == bbox, the pre-knob behaviour).
+    the expansion entirely (maxBounds == bbox, the pre-knob behavior).
 
     Applies symmetrically in lon/lat so the pan envelope keeps the same
     shape as the source bbox (consistent with `compute_bbox_from_trails`,
@@ -1118,7 +1118,7 @@ def main(argv=None):
     )
 
     # Accent palette: stash the resolved 4-value palette (light + dark
-    # shades, each with its on-accent text colour) so
+    # shades, each with its on-accent text color) so
     # inject_config_into_template can emit them as the CONFIG.accent*
     # vars. resolve_accent_palette handles "auto" (Pillow-based logo
     # derivation, cached per-source-hash as the raw pick), explicit hex,
@@ -1129,7 +1129,7 @@ def main(argv=None):
     # Event-mode pre-pass (no-op when event_mode is absent). Folds
     # event_mode.routes into config["custom_routes"] so they
     # participate in the standard custom-route bake-in below, and
-    # mutates non-featured custom routes' colour / dashed fields to
+    # mutates non-featured custom routes' color / dashed fields to
     # the background style. Also adds `direction_arrows` to
     # `forced_visible` when event_mode.direction_arrows is true,
     # which is why this has to run BEFORE the safety-warning check
@@ -1266,7 +1266,7 @@ def main(argv=None):
     # still hits the Overpass cache internally, so the cost of the
     # always-on rebuild is sub-second on cached maps.
     #
-    # The previous behaviour gated this on `--force` / `--trails` /
+    # The previous behavior gated this on `--force` / `--trails` /
     # missing pois.geojson, which created an asymmetric trap: editing
     # parking lots or event_mode.pois in YAML wouldn't show up until
     # the curator remembered to pass `--trails`. Trails are

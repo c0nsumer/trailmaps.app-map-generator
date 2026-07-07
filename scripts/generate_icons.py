@@ -262,13 +262,13 @@ def generate_manifest(config, output_dir, bg_color=None):
     - The 192 + 512 icon pair is required for a real WebAPK install.
       Without 512, Chrome silently degrades to a bare home-screen
       shortcut and Android shows the package name in the uninstall
-      toast (the "Uninstalled com.android..." behaviour).
+      toast (the "Uninstalled com.android..." behavior).
     """
     name = config.get("name", "Map")
     title = config.get("title", "Trail Map")
     # background_color paints the PWA launch splash. Match it to the icon's
     # detected bleed field (passed from generate_icons) so a full-bleed
-    # coloured icon — e.g. the green placeholder — gets a splash matching
+    # colored icon — e.g. the green placeholder — gets a splash matching
     # its tile instead of a white flash. A transparent/white-backplate logo
     # resolves to the white default, so the common case is unchanged.
     # theme_color paints the installed-WebAPK status bar from launch
@@ -353,7 +353,7 @@ def generate_icons(source_path, output_dir, config):
     # transparent canvas of side = max(w, h)) so any logo aspect
     # ratio can flow through icon generation. The print line is the
     # curator's signal that padding happened — if they want a tighter
-    # crop or a coloured background, they can pre-process the source
+    # crop or a colored background, they can pre-process the source
     # themselves; otherwise this is "good enough" for every variant.
     if img.width != img.height:
         side = max(img.width, img.height)
@@ -372,7 +372,7 @@ def generate_icons(source_path, output_dir, config):
 
     # Detect the icon's bleed field once and feed it to both the maskable
     # tile (so it fills edge-to-edge under any OEM mask) and the manifest
-    # (so the PWA splash background matches a full-bleed coloured icon).
+    # (so the PWA splash background matches a full-bleed colored icon).
     bleed = _detect_bleed_color(img)
     count = generate_png_icons(img, output_dir)
     generate_maskable_icon(img, output_dir, bg_color=bleed)

@@ -783,7 +783,7 @@ def _validate_dashed_relations(report, config):
                     report.err(f"{where}[{i}]", f"dash pattern values must be numbers, got {n!r}")
         elif isinstance(spec, dict):
             # `colors` is documented (docs/configuration.md
-            # "Alternating-colour dashes") and consumed by the injector
+            # "Alternating-color dashes") and consumed by the injector
             # (dashColors) but used to be entirely unvalidated — a
             # string value or typo'd key flowed straight to the runtime.
             _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
@@ -903,7 +903,7 @@ def _validate_paths(report, config, config_dir):
     def _check_path_safe(key, p, full):
         # Absolute paths bypass the traversal check (intentional escape
         # via explicit absolute path is fine). Relative paths must
-        # normalise to a location inside config_dir.
+        # normalize to a location inside config_dir.
         if os.path.isabs(p) or not config_dir:
             return True
         try:
@@ -1192,7 +1192,7 @@ def _validate_accent_color(report, config):
     """Validate the optional `accent_color` key.
 
     Three forms accepted:
-      - omitted: framework default blue (#2980b9)
+      - omitted: framework default blue (#1D6FA5)
       - 6-digit hex string: explicit accent (e.g. "#FF5733")
       - the literal string "auto": derive from the logo at build time
 
@@ -1402,7 +1402,7 @@ def _validate_event_mode(report, config):
                                  # level custom_routes id) or an int
                                  # (matches an OSM relation id present
                                  # somewhere in this config).
-        background_style:        # optional; default is grey dashed.
+        background_style:        # optional; default is gray dashed.
           color: "#888888"
           pattern: [2, 2]
           cap: round

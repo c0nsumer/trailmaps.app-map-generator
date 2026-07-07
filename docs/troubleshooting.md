@@ -49,8 +49,8 @@ non-exclusive Summer / Winter / Emergency buckets (see
 - Check `winter_relations` / `summer_relations` /
   `emergency_access_relations` in your YAML. A route in the wrong
   list won't render under the season the rider expects.
-- For routes you want visible in BOTH seasons, list them in
-  `summer_relations` AND tag them as `seasonal=winter` in OSM (or
+- For routes you want visible in both seasons, list them in
+  `summer_relations` and tag them as `seasonal=winter` in OSM (or
   just put them in `summer_relations` to make them year-round).
 
 ## Bbox or pan_padding changes don't update the basemap
@@ -107,7 +107,7 @@ hours.
 
 The default `pwa_install_prompt: true` registers a
 `beforeinstallprompt` handler so we can show our own Install row in
-the Options overlay. We deliberately do NOT call `preventDefault()`,
+the Options overlay. We deliberately do not call `preventDefault()`,
 which lets Chrome's native mini-infobar appear, but Chrome logs this
 warning anyway because it expects either `preventDefault()` or an
 immediate `prompt()` call. The warning is benign and can be ignored.
@@ -139,9 +139,10 @@ just deployed and refreshed but no toast appears:
 - In DevTools > Application > Service workers, check "Update on
   reload" to force a refetch on every page load. Useful while
   iterating; turn it off in normal browsing.
-- The toast detection only fires when there's a *prior* SW (i.e.
-  this is an UPDATE, not a first install). A fresh browser profile
-  or cleared site data won't trigger it.
+- The toast detection only fires when a *prior* service worker
+  exists, meaning the deploy is an update rather than a first
+  install. A fresh browser profile or cleared site data won't
+  trigger it.
 
 ## Build is slow
 

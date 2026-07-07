@@ -1,7 +1,7 @@
 # Building
 
 How the build pipeline works, the CLI flags it accepts, the caching
-behaviour you can rely on, and the tools that wrap it for everyday
+behavior you can rely on, and the tools that wrap it for everyday
 use. Everything in this document runs on your local machine; for
 hosting the output, see [`deployment.md`](deployment.md).
 
@@ -76,7 +76,7 @@ Remote data never updates on its own: cached responses are used
 regardless of age, so an unflagged rebuild is fully offline and
 reproducible. Picking up OSM edits is always an explicit act via the
 `--refresh` flags. (Config edits still trigger the relevant re-fetch
-automatically — changed relation IDs re-fetch trails, a changed bbox
+automatically: changed relation IDs re-fetch trails, a changed bbox
 re-extracts tiles.)
 
 - `--refresh` re-fetches all of this map's remote data: trails and
@@ -84,16 +84,16 @@ re-extracts tiles.)
   shared-cache entries are untouched), plus basemap and terrain
   tiles.
 - `--refresh-trails` re-fetches trail data from Overpass. Useful when
-  you want to refresh trail geometry or pick up an OSM edit. NOT
+  you want to refresh trail geometry or pick up an OSM edit. Not
   required for YAML-only changes: per-route style overrides
   (`dashed_relations`, `relation_colors`, `winter_relations`,
   `summer_relations`, `custom_routes`, `event_mode.routes`,
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
 - `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
-  drinking water, attractions) from Overpass. NOT required for
+  drinking water, attractions) from Overpass. Not required for
   YAML-only changes: `parking:`, `trailheads:`, `event_mode.pois`,
-  and the related colour overrides flow through `fetch_pois.py` on
+  and the related color overrides flow through `fetch_pois.py` on
   every build automatically.
 - `--force` and `--trails` are deprecated spellings of `--refresh`
   and `--refresh-trails`; they still work but print a note.
@@ -101,7 +101,7 @@ re-extracts tiles.)
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.
 - `--dry-run` validates the config and prints what would be fetched and
-  generated, then exits — no Overpass calls, no tile downloads, no file
+  generated, then exits: no Overpass calls, no tile downloads, no file
   writes.
 - `--output-dir DIR` and `--cache-dir DIR` redirect the build output and
   the data cache away from the repo-relative `build/<slug>/` and `cache/`
@@ -147,14 +147,14 @@ python scripts/serve.py build/example
 ```
 
 This is the fastest way to test changes without a production deploy.
-The server honours Range requests properly so PMTiles work end-to-end.
+The server honors Range requests properly so PMTiles work end-to-end.
 
 ## Convenience wrapper: build_and_deploy.sh
 
 `tools/build_and_deploy.sh` is a convenience wrapper for the common
 SSH/rsync deploy workflow: it validates every config first, then
 builds via `scripts/build.py`, then `rsync`s each map to a remote
-host. It is one way to deploy, not the only one. If you deploy via
+host. It is one of several ways to deploy. If you deploy via
 a different mechanism (S3, Netlify, GitHub Pages, manual upload),
 run `python scripts/build.py <config>` directly and ship the
 resulting `build/<slug>/` tree. The output is production-quality by
@@ -267,7 +267,7 @@ python tools/clean_config.py configs/foo/foo.yaml \
 
 The original file is never modified. Review the cleaned output and
 swap it in manually when satisfied. See
-[`tools/README.md`](../tools/README.md) for behaviour and
+[`tools/README.md`](../tools/README.md) for behavior and
 output-formatting notes.
 
 ## Data cache

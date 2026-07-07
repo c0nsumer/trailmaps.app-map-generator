@@ -206,7 +206,7 @@ def _apply_event_mode_to_feature_oneway(config, trails_geojson):
 def _apply_event_mode_to_relations(config, trails_geojson):
     """Pre-injection event-mode pass.
 
-    Synthesises relation_colors and dashed_relations entries for every
+    Synthesizes relation_colors and dashed_relations entries for every
     non-featured route ID in trails_geojson.metadata.routes. Curator's
     explicit entries WIN: a route already covered by config[
     "relation_colors"] or config["dashed_relations"] is left alone.

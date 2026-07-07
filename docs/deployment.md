@@ -144,8 +144,8 @@ two ways:
   differs, installs the new worker and shows an "Updated map available" toast
   with a Reload button.
 - **Without a refresh**, the browser runs its own update check about every 24
-  hours (a service-worker behaviour, not something the framework schedules), so
-  a left-open tab generally sees the toast within a day of a deploy.
+  hours (standard service-worker behavior, outside the framework's control),
+  so a left-open tab generally sees the toast within a day of a deploy.
 
 A rider who closes and re-opens the map gets the new build on the next launch.
 
@@ -175,10 +175,10 @@ vendor libraries.
    visit after a rebuild, the new service worker installs, re-caches all files,
    and activates immediately. Old caches are automatically cleaned up.
 
-The PWA is transparent: the map works identically in a regular browser tab.
-Offline capability is purely additive.
+The PWA is transparent: the map works identically in a regular browser tab,
+and offline capability layers on top.
 
-### Install affordance behaviour by platform
+### Install affordance behavior by platform
 
 The `pwa_install_prompt` config key controls install promotion:
 
@@ -203,12 +203,12 @@ curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles
 
 The response should include `206 Partial Content` and `Content-Range: bytes
 0-1000/<total>`. If you see `200 OK` with the full body, Range requests are not
-honoured and every tile read will re-fetch the whole archive.
+honored and every tile read will re-fetch the whole archive.
 
 The runtime detects this on first cold load and prints
 `[mtb-map] HTTP Range requests not honored...` to the browser console (DevTools
 to Console) with diagnostic detail. After the service worker caches the full
-file, the warning stops firing (that's correct behaviour, but every new visitor
+file, the warning stops firing (that's correct behavior, but every new visitor
 still pays the slow first-load cost).
 
 ## Open Graph and share previews

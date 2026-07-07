@@ -22,8 +22,8 @@ Elevation Program (3DEP)**, specifically the public
 whichever underlying raster is highest-resolution at each query point:
 
 - **1m lidar-derived bare-earth**: covers most of the US. Bare-earth means
-  vegetation has been removed by lidar processing, so the elevations are ground
-  level, not canopy top.
+  vegetation has been removed by lidar processing, so the elevations reflect
+  the ground rather than the canopy.
 - **10m (1/3 arc-second)**: fallback in areas without lidar.
 - **30m (1 arc-second)**: final fallback. Rare in the contiguous US.
 
@@ -38,14 +38,14 @@ returns `NoData`, and that route's `elevation_*_m` fields are omitted from
 ## How it's computed
 
 For each route, the framework samples 3DEP elevation about every 25 m along the
-route, smooths the profile to remove lidar noise, discards sub-metre changes as
+route, smooths the profile to remove lidar noise, discards sub-meter changes as
 noise, then sums the rises as `gain` and the drops as `loss` (rounded to whole
-metres). The sampling spacing and the noise threshold are tuned together so that
+meters). The sampling spacing and the noise threshold are tuned together so that
 anything a rider would call "climbing" is counted while sensor noise and
 rolling-terrain jitter are not.
 
 The result is stored per route and shown in the rider's chosen units (feet for
-`distance_units: mi`, metres for `distance_units: km`).
+`distance_units: mi`, meters for `distance_units: km`).
 
 ## Why both gain and loss
 
@@ -67,7 +67,7 @@ The framework's elevation numbers reflect the **DEM's interpretation of the
 natural terrain along the centerline of the OSM way**. There are several reasons
 the values may not match what you'd get from a phone or GPS device:
 
-1. **Trail features built BEFORE the lidar acquisition are mostly captured.**
+1. **Trail features built before the lidar acquisition are mostly captured.**
    USGS 3DEP lidar in Michigan was acquired 2015 to 2020 (the MiSAIL statewide
    acquisition). Berms, rollers, tabletops, jump piles, and similar earth-moving
    that existed at acquisition time are typically retained in the bare-earth
@@ -76,15 +76,15 @@ the values may not match what you'd get from a phone or GPS device:
    Coaster style trails really do read with extra vertical from their rollers,
    and the difference vs. the natural-terrain-only number can be substantial.
 
-2. **Trail features built AFTER the lidar acquisition are NOT in the data.** A
+2. **Trail features built after the lidar acquisition are missing.** A
    new flow trail cut into the woods in 2024 won't show in 2017 lidar; the DEM
    still reflects the pre-trail forest floor. The framework can't know which
    bits of trail postdate the lidar.
 
 3. **Sub-meter MTB micro-features are below DEM resolution.** Roots, rock
-   features, log overs, drainage swales smaller than a metre: none of these are
+   features, log overs, drainage swales smaller than a meter: none of these are
    resolved by 1m lidar and certainly not by 10m or 30m fallback. The DEM tells
-   you about the landform at metre scale; it doesn't tell you about the trail
+   you about the landform at meter scale; it doesn't tell you about the trail
    surface at finger and tire scale.
 
 4. **Aliasing on dense small features.** Glacial Hills' kettle moraines are
@@ -96,9 +96,9 @@ the values may not match what you'd get from a phone or GPS device:
    one-way-vs-loop nature.
 
 5. **OSM way geometry.** The DEM gets sampled at the OSM way's centerline. If
-   the way is digitised loosely (typical: 5 to 15m horizontal accuracy for OSM
+   the way is digitized loosely (typical: 5 to 15m horizontal accuracy for OSM
    trail mapping), the sampled elevations are slightly off-trail. On steep
-   cross-slope sections this can introduce errors of several metres per sample.
+   cross-slope sections this can introduce errors of several meters per sample.
    Better OSM geometry produces more accurate elevation.
 
 6. **Routes that aren't true loops.** If an OSM relation isn't actually a closed
@@ -108,7 +108,7 @@ the values may not match what you'd get from a phone or GPS device:
 7. **Why your phone or Strava shows different numbers.** Phone-based and
    bike-computer elevation typically combines GPS-derived horizontal position
    with a barometric altimeter. Barometric data is high-resolution but
-   absolute-pressure-drift-prone; GPS vertical is noisy at the metre scale.
+   absolute-pressure-drift-prone; GPS vertical is noisy at the meter scale.
    Strava and similar apps then post-process aggressively (smoothing, "elevation
    correction" against their own DEM, etc.). Our values are pre-computed from a
    fixed DEM source: they don't depend on any individual rider's device.

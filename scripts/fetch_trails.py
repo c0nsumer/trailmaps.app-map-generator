@@ -289,7 +289,7 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
     # difficulty + oneway tag. Including `oneway` in the signature ensures
     # one-way and two-way ways never merge together, and that ways with
     # opposing oneway values (yes / -1 / reversible / no) stay separate
-    # features so each retains its own digitisation order.
+    # features so each retains its own digitization order.
     way_signatures = {}
     for way_id, way in ways_dict.items():
         sig = tuple(sorted(relation_ids_set.get(way_id, set())))
@@ -315,7 +315,7 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
         full_sig = way_signatures[start_way_id]
         sig, name, imba, oneway = full_sig
         # `reversible` ways have a direction-of-travel (just one that flips by
-        # schedule), so they must not be glued to a neighbour in reversed
+        # schedule), so they must not be glued to a neighbor in reversed
         # orientation any more than `yes`/`-1` ways can.
         is_oneway = oneway in ("yes", "-1", "reversible")
         coords = list(ways_dict[start_way_id]["coords"])
@@ -524,10 +524,10 @@ def build_geojson(relations, all_ways, way_relations):
         merged = merge_consecutive_ways(ways, way_rel_lookup)
 
         for i, segment in enumerate(merged):
-            # Normalise oneway=-1 to oneway=yes with reversed coordinates so
+            # Normalize oneway=-1 to oneway=yes with reversed coordinates so
             # the runtime only ever has to handle a single canonical case for
             # static one-ways. `reversible` is passed through unchanged: its
-            # default arrow direction is the OSM digitisation order, and the
+            # default arrow direction is the OSM digitization order, and the
             # day-of-week schedule (direction_schedule) flips it.
             oneway = segment.get("oneway", "")
             coords = segment["coords"]
@@ -782,7 +782,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # on one of their parent relations (or a system-wide default schedule).
     # Fail the build with a precise list of offending ways otherwise; the
     # framework would otherwise silently render them as static one-ways in
-    # OSM-digitisation order, which is wrong half the time.
+    # OSM-digitization order, which is wrong half the time.
     #
     # Resolution mirrors build.py:
     #   - direction_schedule.reverse_days (non-empty) covers every
@@ -882,7 +882,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     geojson = build_geojson(relations, all_ways, way_relations)
 
     # Stage D: Clip features for clipped_relations to the core trail bbox.
-    # Always initialise the endpoints accumulator so the writer below has a
+    # Always initialize the endpoints accumulator so the writer below has a
     # well-defined value when the map has no clipped relations.
     clip_endpoints = []
     if clipped_relations:

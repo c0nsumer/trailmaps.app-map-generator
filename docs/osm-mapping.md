@@ -20,7 +20,7 @@ one of:
 
 1. The OSM data is wrong or incomplete, so fix it correctly.
 2. The OSM data is fine but the renderer doesn't read that tag, so file an issue
-   (or a PR) on this framework, not a workaround in OSM.
+   (or a PR) on this framework instead of working around it in OSM.
 
 The tags listed here are the ones this renderer happens to consume. They are all
 standard, widely-used OSM tags: there are no custom keys, no `trailmaps:*`
@@ -49,7 +49,7 @@ renderer expands it one level deep at fetch time.
 |---|---|---|
 | [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | name | Route's display name, shown in the search/finder, in tap popups, and as a label on the map when labels are set to "routes." Falls back to `Route <id>` if missing. |
 | [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) | short code | Short reference / number for the route. Surfaced in the finder secondarily; doesn't drive any geometry. |
-| [`colour`](https://wiki.openstreetmap.org/wiki/Key:colour) | line colour | A CSS-compatible colour string (`#RRGGBB`, named colours like `red`, `rgb(...)`, etc.). Falls back to the per-map `default_trail_color` (typically `#808080`) when unset. The hex form is preferred; named colours render but vary slightly between consumers. |
+| [`colour`](https://wiki.openstreetmap.org/wiki/Key:colour) | line color | A CSS-compatible color string (`#RRGGBB`, named colors like `red`, `rgb(...)`, etc.). Falls back to the per-map `default_trail_color` (typically `#808080`) when unset. The hex form is preferred; named colors render but vary slightly between consumers. |
 | [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (e.g. `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere, so set it. |
 | [`seasonal`](https://wiki.openstreetmap.org/wiki/Key:seasonal) | passthrough | Free-text seasonality info; passed through into route metadata. |
 
@@ -68,7 +68,7 @@ thing.
 
 ### Super-relations (multi-loop trail systems)
 
-A trail system that's organised as several named loops or sub-routes under one
+A trail system that's organized as several named loops or sub-routes under one
 umbrella is best mapped as a **super-relation**: a `type=route` relation whose
 members are the individual sub-route relations (each itself `type=route` with
 its own ways). This is standard OSM, the same convention used by long-distance
@@ -118,23 +118,23 @@ and (where appropriate) IMBA / oneway tagging on those ways:
 Each of those is a `type=route` relation in OSM, with the super-relation as its
 parent. Tagging-wise the super-relation carries the umbrella identity
 (`name=DTE Energy Foundation Trail`, plus the area's tagging), and the children
-carry the per-loop colours and names that the rider sees when they highlight a
+carry the per-loop colors and names that the rider sees when they highlight a
 route in the finder.
 
 When you set up a new multi-loop trail system, follow the same shape: one
 super-relation per system, each loop as its own child relation with its own
-colour and name, and ways tagged at the way level.
+color and name, and ways tagged at the way level.
 
 ## Trail-segment (way) tags
 
-These go on the individual ways that the route relation references, not on the
-relation itself.
+These belong on the individual ways that the route relation references rather
+than on the relation itself.
 
 ### Mountain-bike difficulty
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs and (under `color_by: trail`) the trail's line colour. |
+| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs and (under `color_by: trail`) the trail's line color. |
 
 The IMBA-rating scale, condensed:
 
@@ -147,8 +147,8 @@ The IMBA-rating scale, condensed:
 | `4` | double black diamond | Extremely difficult |
 | `5` | double black with orange highlight | Pro-only / extreme features |
 
-Tag the actual difficulty of the segment, not what you wish were on the map. A
-segment without a rating renders as the default trail colour (so it's still
+Tag the segment's actual difficulty rather than what you wish were on the map. A
+segment without a rating renders as the default trail color (so it's still
 visible, just unflagged).
 
 The rider-facing **Difficulty** toggle in Options surfaces automatically
@@ -160,7 +160,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail and drives the share/finder direction-aware behaviour. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
+| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail and drives the share/finder direction-aware behavior. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
 | [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa), the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
@@ -194,9 +194,9 @@ correctly so the data is useful elsewhere:
 
 ## POIs (points of interest)
 
-The framework fetches a small set of POI categories from the **bounding-box of
-the route relations** (Overpass query, not from the relation members
-themselves). They render as markers on the map when the corresponding `show_*`
+The framework fetches a small set of POI categories via an Overpass query over
+the **bounding box of the route relations**, independent of the relations'
+member lists. They render as markers on the map when the corresponding `show_*`
 config gate is on.
 
 | OSM tagging | Category | What this renderer does with it |

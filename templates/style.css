@@ -64,11 +64,11 @@
     /* Faint hairline outline for layer-swatch chips in Options.
      * Light scheme: dark line on a white-ish sheet. Dark scheme:
      * light line on a dark sheet. Both hover at low opacity so the
-     * chip's filled colour does the heavy lifting and the hairline
+     * chip's filled color does the heavy lifting and the hairline
      * just provides a "this is a chip" edge. */
     --swatch-outline: rgba(0, 0, 0, 0.08);
     /* Per-map accent palette. The build derives four base values from
-     * one source colour (logo pick / explicit hex / framework default)
+     * one source color (logo pick / explicit hex / framework default)
      * and app.js sets them on :root at boot (see setPoiColorVars).
      * --accent / --on-accent are then MAPPED from the active pair per
      * scheme, because a single accent can't serve both: a deep shade
@@ -132,7 +132,7 @@
  * LS preference / curator default / OS prefers-color-scheme.
  *
  * Variables not listed here keep their light-theme values — that's how the
- * marker design tokens (size/border/radius) and POI brand colours
+ * marker design tokens (size/border/radius) and POI brand colors
  * survive both schemes. The accent is the exception: it IS overridden
  * below (remapped to its dark shade), since one accent can't serve both
  * schemes — see the :root accent block.
@@ -189,7 +189,7 @@
     box-sizing: border-box;
 }
 
-/* Honour the user's OS-level "Reduce motion" preference (WCAG 2.1
+/* Honor the user's OS-level "Reduce motion" preference (WCAG 2.1
  * SC 2.3.3 — Animation from Interactions). When set, drop animations
  * to near-zero so vestibular-sensitive users don't get vertigo from
  * the locate-button spinner, sheet drag/snap, toast fades, or
@@ -251,11 +251,11 @@ body {
      * canvas fills the viewport precisely without leaving a sub-
      * pixel sliver on any side. Earlier `width: 100%; height: 100%`
      * showed a thin (1-2 px) bright strip on the right edge of the
-     * Pixel 8 PWA, visible as light grey in light mode and stark
+     * Pixel 8 PWA, visible as light gray in light mode and stark
      * white-on-dark in dark mode (because html/body's --page-bg
      * shows through). Using `right: 0; bottom: 0` makes the map
      * size itself from the actual viewport rectangle each frame,
-     * matching MapLibre's resize observer behaviour without depending
+     * matching MapLibre's resize observer behavior without depending
      * on devicePixelRatio rounding or browser-specific 100% inter-
      * pretation in PWA mode.
      *
@@ -417,7 +417,7 @@ body::after {
 /* ----- Options-overlay section headers -----------------------------
  *
  * Uppercase categorical labels in the iOS / macOS Settings style. Not
- * interactive — the older accordion behaviour was removed because the
+ * interactive — the older accordion behavior was removed because the
  * total row count (~14) scrolls comfortably without per-section
  * collapse. The body's row list sits visually as a group under each
  * label. */
@@ -448,7 +448,7 @@ body::after {
  *
  * Layout: swatch on left + label in middle + ON/OFF state on right.
  * Driven by aria-pressed. Wired up by wirePeekToggle() in app.js
- * (the helper kept its peek-era name; behaviour is unchanged). */
+ * (the helper kept its peek-era name; behavior is unchanged). */
 .opt-toggle-row {
     display: flex;
     align-items: center;
@@ -492,7 +492,7 @@ body::after {
      * after 1.5px borders → comfortable). */
     font-size: 13px;
     /* MUST be positioned so the feature-swatch's ::before
-     * coloured-dot pseudo-element AND the off-state ::after diagonal
+     * colored-dot pseudo-element AND the off-state ::after diagonal
      * slash both anchor inside the swatch instead of floating to
      * whatever ancestor happens to be positioned. */
     position: relative;
@@ -514,7 +514,7 @@ body::after {
  * pill (Labels: Routes / Trails / None)".) */
 
 /* Off state on swatches inside Options-overlay toggles — three-cue
- * treatment (transparent fill + grey border + slash). The
+ * treatment (transparent fill + gray border + slash). The
  * `data-multi-off="true"` selector is for multi-option rows whose
  * "off" state isn't a binary aria-pressed=false but a specific
  * value choice (e.g. Labels = "None" → row visually reads as off
@@ -793,8 +793,8 @@ body::after {
 
 .install-btn .install-btn-icon::after {
     /* SVG cross instead of "+" text — most sans-serif glyphs render
-     * the plus with a typographic centre that's above the visual
-     * centre, so flex-centering it makes the badge look top-heavy.
+     * the plus with a typographic center that's above the visual
+     * center, so flex-centering it makes the badge look top-heavy.
      * Pure geometry has no such bias. Inline SVG via background-
      * image keeps the change to one rule and stays crisp at any DPI. */
     content: "";
@@ -840,7 +840,7 @@ body::after {
     /* Faint outer outline. Light scheme: a darker hairline against
      * the white sheet — gives the chip's white border something to
      * contrast against, so it reads as a "white frame around the
-     * coloured interior" the way it does naturally on the map. Dark
+     * colored interior" the way it does naturally on the map. Dark
      * scheme: a lighter hairline against the dark sheet, same role.
      * The token --swatch-outline flips per scheme. Opacity is
      * intentionally low — high enough to perceive an edge, low
@@ -879,8 +879,8 @@ body::after {
 }
 
 /* Direction arrows — chrome indicator (not a sign), so it adapts to
- * colour scheme like the rest of the chrome and mirrors the on-map
- * arrow's fill+halo pairing. Light scheme: light-grey chip with a
+ * color scheme like the rest of the chrome and mirrors the on-map
+ * arrow's fill+halo pairing. Light scheme: light-gray chip with a
  * black arrow + white halo (matches drawArrow's "#000 fill, white
  * halo" on a light basemap; the chip is intentionally NOT pure
  * white so the white halo reads against it the same way it reads
@@ -960,12 +960,12 @@ body::after {
 /* Off state for the hub swatch — match the other swatches' three-
  * cue off treatment exactly. The base .layer-swatch off-state rule
  * already handles the container (transparent background + 1.5 px
- * grey rectangle border + diagonal slash via ::after), so the
+ * gray rectangle border + diagonal slash via ::after), so the
  * container styling is shared with every other swatch. All we
- * need to add is the SVG-content greying: polygon fill goes
- * transparent + stroke goes grey (parallel to the rectangle
- * border's grey), and the "H" letter goes grey. The result
- * matches the framework's "outer hairline rectangle + greyed
+ * need to add is the SVG-content graying: polygon fill goes
+ * transparent + stroke goes gray (parallel to the rectangle
+ * border's gray), and the "H" letter goes gray. The result
+ * matches the framework's "outer hairline rectangle + grayed
  * inner glyph + diagonal slash" pattern, with the hex silhouette
  * playing the role that the "P" or "TH" letter plays in other
  * swatches. */
@@ -980,13 +980,13 @@ body::after {
     fill: #9aa0a6 !important;
 }
 
-/* Labels — chrome indicator (not a sign), so it adapts to colour
+/* Labels — chrome indicator (not a sign), so it adapts to color
  * scheme like the rest of the chrome. Light scheme: white chip
  * with slate tag icon (mirrors how labels render on a light
  * basemap — slate text on white halo). Dark scheme: dark chip
  * with light tag icon (mirrors how labels render on a dark
  * basemap — light text on dark halo). The chip doubles as a
- * tiny "label colour sample" in either mode. */
+ * tiny "label color sample" in either mode. */
 .label-swatch {
     background: var(--label-text-color, #fff);
     color: var(--label-color, #5d6d7e);
@@ -1014,7 +1014,7 @@ body::after {
 }
 
 /* Toilets — neutral slate to read as "facility" without competing
- * with parking blue or trailhead green. Glyph is a stylised standing
+ * with parking blue or trailhead green. Glyph is a stylized standing
  * figure rendered as an SVG inside the swatch. */
 .toilet-swatch {
     background: var(--toilet-color, #6c5ce7);
@@ -1053,7 +1053,7 @@ body::after {
 /* Feature swatch — the chip itself gets the same outer treatment as
  * Parking / Markers / Trailheads: a visible 1.5px border and the
  * subtle dark halo inherited from .layer-swatch base. What it does
- * NOT get is a coloured (purple) chip fill — the space between the
+ * NOT get is a colored (purple) chip fill — the space between the
  * chip's border and the inner dot's white ring stays transparent so
  * the ring actually reads against the sheet background, the way
  * it does against map tiles on the map. The ::before reproduces
@@ -1105,10 +1105,10 @@ body::after {
 }
 
 /* Off-state: the base .opt-toggle-row[aria-pressed="false"]
- * .layer-swatch rule above already greys the chip and draws the
+ * .layer-swatch rule above already grays the chip and draws the
  * slash. Also hollow out the inner ::before shapes (purple dot,
  * black diamond) so they match the outline-only motif instead of
- * staying full-colour. */
+ * staying full-color. */
 /* ----- Finder rows --------------------------------------------------
  * (Pre-search-overlay finder container styles — .finder, .finder-search,
  * .finder-input, .finder-list — removed; the current Search overlay
@@ -1173,12 +1173,12 @@ body::after {
     border-radius: 2px;
     flex-shrink: 0;
     background: #888;
-    /* Subtle outline so light-coloured swatches (e.g. white trail
-     * colours) remain visible against the list's white background. */
+    /* Subtle outline so light-colored swatches (e.g. white trail
+     * colors) remain visible against the list's white background. */
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
-/* Dashed / dotted / two-colour routes swap the flat bar for an SVG
+/* Dashed / dotted / two-color routes swap the flat bar for an SVG
  * ribbon (built by routeSwatchEl, which adds .is-dashed) so the key
  * and finder don't misrepresent a dashed line as a solid one. Wider
  * and a touch taller than the solid bar so at least one dash-gap cycle
@@ -1516,7 +1516,7 @@ body::after {
  * dark mode. Override the background-image with the same path but
  * a light fill, so the (i) glyph stays readable. The path data is
  * identical to vendor's, only the fill='%23f0f0f0' attribute is
- * added to colour the glyph. */
+ * added to color the glyph. */
 [data-color-scheme="dark"] .maplibregl-ctrl-attrib-button {
     background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%23f0f0f0' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E");
 }
@@ -1620,7 +1620,7 @@ body::after {
     /* Allow the 2 px stroke and drop-shadow to extend beyond the
      * polygon's bounding box without being clipped to the SVG element. */
     overflow: visible;
-    /* Soft shadow lifts the chip off the basemap; same colour family
+    /* Soft shadow lifts the chip off the basemap; same color family
      * as .poi-marker's `--poi-marker-map-shadow`. */
     filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.35));
 }
@@ -1636,8 +1636,8 @@ body::after {
     stroke-linejoin: miter;
 }
 
-/* The "H" glyph inside the hex. Centred horizontally via text-anchor;
- * vertical centring is via the explicit y coordinate on the <text>
+/* The "H" glyph inside the hex. Centered horizontally via text-anchor;
+ * vertical centering is via the explicit y coordinate on the <text>
  * element (SVG dominant-baseline is unreliable across browsers).
  * font-family inherits from the page so the H matches the rest of
  * the UI's system font stack rather than dropping to SVG's default
@@ -1846,7 +1846,7 @@ body::after {
 /* Type-coded accent strip on the left edge — visually links the
  * popup back to its marker. 4 px wide, full body height. Uses the
  * same per-type CSS variables that drive marker fill, so curator
- * colour overrides (parking_color, trailhead_color) cascade
+ * color overrides (parking_color, trailhead_color) cascade
  * automatically. The popup-parking / popup-trailhead class is
  * added to the OUTER wrapper (.maplibregl-popup) by MapLibre's
  * Popup.addClassName() — that's why the selectors below pair the
@@ -2010,7 +2010,7 @@ body::after {
  * chrome" with the same blue + white vocabulary.
  *
  * paint-order: stroke is the key trick — by default SVG paints
- * fill first then stroke, so the stroke centres on the path edge
+ * fill first then stroke, so the stroke centers on the path edge
  * (half inside the fill, half outside). Setting paint-order:
  * stroke flips the order: stroke paints first, then fill on top.
  * The fill covers the inner half of the stroke, leaving only the
@@ -2187,7 +2187,7 @@ body::after {
  * Reveal is delayed ~400ms by index.html's inline script so fast/cached
  * loads never flash it, and suppressed while a modal covers the map. Sits
  * UNDER the modals (z=100) and toasts (z=200) — a return-visit rider with
- * a pending SW-update toast sees the bar up top and the toast at centre,
+ * a pending SW-update toast sees the bar up top and the toast at center,
  * no z-order fight. Indeterminate, not a percentage: MapLibre exposes no
  * reliable total for streaming PMTiles, so any percentage would be faked. */
 #map-loading-bar {
@@ -2209,7 +2209,7 @@ body::after {
 
 #map-loading-bar.visible { opacity: 1; }
 
-/* Moving segment — the map's accent colour (--accent, per-map from
+/* Moving segment — the map's accent color (--accent, per-map from
  * CONFIG.accentColor, mapped per scheme), with a glow trail so it reads
  * clearly at a glance. Pinned to the top edge, never covering the map;
  * stays legible over both light and dark basemaps, where the faint track
@@ -2321,7 +2321,7 @@ body::after {
 /* Logo auto-invert in dark mode. JS adds .invert-dark to #brand-img
  * at boot iff CONFIG.invertLogoDark !== false (default true).
  * invert(1) hue-rotate(180deg) flips lightness without flipping
- * hue, so coloured logo elements stay the right hue rather than
+ * hue, so colored logo elements stay the right hue rather than
  * going green→magenta etc. For monochrome logos this is equivalent
  * to plain invert. The drop-shadow is preserved (filter chain
  * reapplies it after the invert). Curators with logos that look
@@ -2462,7 +2462,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
     width: 48px;
     height: 48px;
     border-radius: 24px;
-    /* FAB chrome adapts to the colour scheme via the same sheet
+    /* FAB chrome adapts to the color scheme via the same sheet
      * tokens used by the overlays and chip — on a dark basemap, a
      * dark FAB with a light icon reads as part of the dark UI
      * rather than a bright white spot. */
@@ -2480,21 +2480,21 @@ body:has(.gpx-overlay.is-open) .route-panel {
     /* Positioning context for ::after pseudo-elements (e.g. the
      * locate-state-disabled red strike). Without this, abs-positioned
      * descendants resolve against the .fab-stack ancestor and the
-     * strike lands centred on the whole stack, not on the FAB. */
+     * strike lands centered on the whole stack, not on the FAB. */
     position: relative;
 }
 
 /* Gate hover behind (hover: hover) so it only applies to real pointers
  * (mouse / trackpad). On touch, :hover sticks to the last-tapped element
  * until the next tap elsewhere — which left the Reset View FAB (a
- * momentary action with no pressed/active state to mask it) stuck grey
+ * momentary action with no pressed/active state to mask it) stuck gray
  * after a tap. The stateful FABs (Locate, Search, Options) hid the same
  * latent bug behind their post-tap state/accent fill. Matches the
  * (hover: hover) guard already used on .opt-toggle-row-clickable. */
 @media (hover: hover) {
     .fab:hover {
-        /* --pill-bg is "subtly different from sheet bg" — light grey on
-         * light mode (darker than sheet), darker grey on dark mode
+        /* --pill-bg is "subtly different from sheet bg" — light gray on
+         * light mode (darker than sheet), darker gray on dark mode
          * (lighter than sheet). Replacing the bg outright instead of
          * overlaying because --sheet-hover is translucent and would
          * make the FAB nearly transparent against the map. */
@@ -2516,7 +2516,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
  * Anchored to the right edge of the FAB so it floats out into the
  * map area on the left. The chip is a child node of the FAB button,
  * so clicks on it bubble up to the FAB's existing handlers — the
- * rider can tap the labelled chip OR the icon and either triggers
+ * rider can tap the labeled chip OR the icon and either triggers
  * the same action. The pointing-arrow ::after pseudo-element is a
  * visual cue that the chip is a label attached to the FAB, not a
  * standalone control. The .fab is position: relative (set above) so
@@ -2561,10 +2561,10 @@ body:has(.gpx-overlay.is-open) .route-panel {
 
 /* Right-pointing tail on the chip — speech-bubble style, two layers
  * so the tail's outline visually continues from the chip's border:
- *   ::before is the larger triangle in the border colour
- *   ::after is the slightly smaller triangle in the fill colour,
+ *   ::before is the larger triangle in the border color
+ *   ::after is the slightly smaller triangle in the fill color,
  *   offset back toward the chip by 1.5 px (the chip's border-width)
- *   so the rim of border colour shows on the tail's diagonals.
+ *   so the rim of border color shows on the tail's diagonals.
  * The result reads as "chip with a pointed end" rather than "chip
  * plus floating triangle." */
 .fab-label::before,
@@ -2573,7 +2573,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
     position: absolute;
 }
 .fab-label::before {
-    /* Outer triangle in the border colour. Anchored to the chip's
+    /* Outer triangle in the border color. Anchored to the chip's
      * OUTER top-right and bottom-right corners — `left: calc(100% +
      * 1.5px)` lands at the chip's outer right edge (since the
      * containing block for absolute children is the padding box,
@@ -2591,12 +2591,12 @@ body:has(.gpx-overlay.is-open) .route-panel {
     clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 .fab-label::after {
-    /* Inner triangle in the fill colour. Spans the chip's INNER top
+    /* Inner triangle in the fill color. Spans the chip's INNER top
      * and bottom edges (top: 0, bottom: 0 = inside the chip's
      * border) and starts at the chip's inner right edge (left: 100%
      * which is at the padding right). Sits 1.5 px LEFT of the outer
      * so the chip's fill flows seamlessly into the wedge's fill
-     * while a 1.5 px rim of border colour stays visible along the
+     * while a 1.5 px rim of border color stays visible along the
      * wedge's diagonals. Width 7.5 = ::before width minus the 1.5
      * px the inner is offset by. */
     left: 100%;
@@ -2647,10 +2647,10 @@ body.fabs-labeled .fab-label {
  * on the button cascades into the SVG (.locate-icon, fill=currentColor)
  * via inheritance.
  *
- * Tracking / error / disabled states use semantic colours that read
+ * Tracking / error / disabled states use semantic colors that read
  * fine on both light and dark FAB backgrounds (cyan, salmon, red,
- * mid-grey). The idle "default, not yet tracking" colour adapts to
- * the colour scheme via --sheet-text — dark in light mode, light in
+ * mid-gray). The idle "default, not yet tracking" color adapts to
+ * the color scheme via --sheet-text — dark in light mode, light in
  * dark mode — otherwise the icon would disappear into a dark FAB
  * and read as disabled. */
 
@@ -2715,7 +2715,7 @@ body.fabs-labeled .fab-label {
  * area receives clicks (which the JS interprets as dismissal).
  *
  * Inner .search-overlay-panel: the visible chrome. On mobile a
- * half-sheet anchored to the bottom; on desktop a centred card
+ * half-sheet anchored to the bottom; on desktop a centered card
  * floating above the bottom edge with margin from all four sides.
  * Slides up from the bottom on .is-open. */
 
@@ -2916,7 +2916,7 @@ body.fabs-labeled .fab-label {
  *
  * Same outer/inner structure as the Search overlay so dimming and
  * dismissal behave identically. Mobile: panel fills the viewport
- * (the dim is hidden behind it). Desktop: panel is a centred card
+ * (the dim is hidden behind it). Desktop: panel is a centered card
  * with the dim visible around it. Slides up from the bottom on
  * mobile, fades in on desktop. */
 
@@ -2972,7 +2972,7 @@ body.modal-open .gpx-overlay.is-open {
 
 .options-overlay-panel {
     /* Mobile: fills the viewport. Desktop overrides below cap the
-     * width / height and centre the panel. */
+     * width / height and center the panel. */
     flex: 1 1 auto;
     background: var(--sheet-bg);
     display: flex;
@@ -3167,7 +3167,7 @@ body.modal-open .gpx-overlay.is-open {
 
 /* Off-state hollowing for swatches with ::before fills. Same visual
  * as the row's aria-pressed=false slash treatment: transparent fill
- * + grey border so the toggled-off swatch reads as "outline only." */
+ * + gray border so the toggled-off swatch reads as "outline only." */
 .opt-toggle-row[aria-pressed="false"] .feature-swatch::before {
     background: transparent;
     border: 1.5px solid #9aa0a6;
@@ -3204,11 +3204,11 @@ body.modal-open .gpx-overlay.is-open {
  *
  * The map's one routes surface, docked in the old Search FAB's corner
  * (kept for one-handed thumb reach). The key card pairs each visible
- * route's colour with its name (+ stats) so same-shaped coloured
+ * route's color with its name (+ stats) so same-shaped colored
  * loops are tellable apart at a glance; the Search row pinned at the
  * card's bottom opens the search overlay — the finder is this panel's
  * expanded state, not a separate destination. Chrome adapts to the
- * colour scheme via the same sheet tokens as the FABs / highlight
+ * color scheme via the same sheet tokens as the FABs / highlight
  * chip / overlays.
  *
  * Container states (managed by rebuildRoutePanel / initRoutePanel in
@@ -3234,7 +3234,7 @@ body.modal-open .gpx-overlay.is-open {
 
 /* Collapsed chip — a round icon-only button sharing the .fab class
  * (see index.html), so the docked panel matches the top-right stack
- * exactly: same size, chrome, and colour-scheme behaviour, with no
+ * exactly: same size, chrome, and color-scheme behavior, with no
  * styles to keep in sync here. The display:none swap rules above
  * out-specify .fab's display:inline-flex. */
 
@@ -3344,7 +3344,7 @@ body.modal-open .gpx-overlay.is-open {
 }
 
 /* The finder's front door, pinned under the key rows — an honest
- * button (bordered pill, centered label, full text colour) rather
+ * button (bordered pill, centered label, full text color) rather
  * than a fake input: in a card this small a pretend field reads
  * ambiguously, and the real input greets the rider inside the
  * overlay. */
@@ -3381,14 +3381,14 @@ body.modal-open .gpx-overlay.is-open {
  *
  * Desktop has plenty of horizontal space — full-width overlays
  * leave huge whitespace gutters around what's actually a narrow
- * column of content. Constrain to readable widths and centre.
+ * column of content. Constrain to readable widths and center.
  * ============================================================ */
 
 @media (min-width: 768px) {
-    /* Both overlays: centre the .justify-content axis so the panel
-     * lands centred horizontally. (Vertical alignment is set per
+    /* Both overlays: center the .justify-content axis so the panel
+     * lands centered horizontally. (Vertical alignment is set per
      * overlay — search stays bottom-anchored, options stays
-     * vertically-centred.) */
+     * vertically-centered.) */
     .search-overlay,
     .options-overlay,
     .gpx-overlay {
@@ -3426,7 +3426,7 @@ body.modal-open .gpx-overlay.is-open {
         margin-bottom: 24px;
     }
 
-    /* Options panel — vertically-centred card. Override
+    /* Options panel — vertically-centered card. Override
      * justify-content on the overlay so it doesn't get pushed to
      * the bottom. */
     .options-overlay {
@@ -3482,7 +3482,7 @@ body.modal-open .gpx-overlay.is-open {
 
 /* Meta label sits right-aligned next to the name. Use auto-margin
  * to push it to the row's right edge — same visual rhythm as the
- * route row's stats span. Inherits font/colour from .finder-row-meta. */
+ * route row's stats span. Inherits font/color from .finder-row-meta. */
 .finder-row-poi .finder-row-meta {
     flex: 0 0 auto;
     margin-left: auto;

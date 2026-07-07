@@ -1,8 +1,8 @@
-"""Colour math and accent-colour derivation for the build pipeline.
+"""Color math and accent-color derivation for the build pipeline.
 
 Pure WCAG helpers (relative luminance, contrast ratio, hex<->rgb, HSL
 darken/lighten) plus the logo-derived accent resolution. Extracted from
-build.py so the colour logic is independently testable and the
+build.py so the color logic is independently testable and the
 orchestrator stays lean. ``resolve_accent_palette`` is the only entry
 point the build needs; the rest are internal helpers.
 """
@@ -18,7 +18,7 @@ def _relative_luminance(rgb):
     """WCAG relative luminance for an (r, g, b) triple in 0–255.
 
     Used by the accent-color contrast warning + the auto-darken loop
-    in derive_accent. Formula from WCAG 2.x; sRGB linearisation +
+    in derive_accent. Formula from WCAG 2.x; sRGB linearization +
     Rec. 709 luma weights.
     """
 
@@ -31,7 +31,7 @@ def _relative_luminance(rgb):
 
 
 def _contrast_ratio(rgb_a, rgb_b):
-    """WCAG contrast ratio between two colours."""
+    """WCAG contrast ratio between two colors."""
     la = _relative_luminance(rgb_a)
     lb = _relative_luminance(rgb_b)
     lighter, darker = max(la, lb), min(la, lb)
@@ -55,7 +55,7 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_
 
     Walks lightness down in small steps. With sat_boost > 0, also nudges
     saturation up each step so a deepened accent reads vivid rather than
-    muddy-grey (Task 7 vividness); contrast is re-checked every iteration,
+    muddy-gray (Task 7 vividness); contrast is re-checked every iteration,
     so a saturation change that lowers luminance just costs another step.
     Bails after a fixed number of iterations to avoid pathological inputs
     spinning forever.
@@ -78,11 +78,11 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_
 
 
 def derive_accent(image_path):
-    """Pick a single accent colour from a raster logo.
+    """Pick a single accent color from a raster logo.
 
     Algorithm: thumbnail to 100×100 for speed, walk every pixel,
     discard near-white / near-black / desaturated / transparent
-    contributions, pick the most common surviving colour. Returns
+    contributions, pick the most common surviving color. Returns
     a (r, g, b) triple or None if no candidate qualifies (caller
     falls back to the framework default).
 
@@ -120,10 +120,10 @@ def derive_accent(image_path):
         mx, mn = max(r, g, b), min(r, g, b)
         if mx == 0:
             continue
-        # Skip desaturated (looks grey, not branding)
+        # Skip desaturated (looks gray, not branding)
         if (mx - mn) / mx < 0.20:
             continue
-        # Quantise to nearest 8 to consolidate near-identical pixels
+        # Quantize to nearest 8 to consolidate near-identical pixels
         key = (r & 0xF8, g & 0xF8, b & 0xF8)
         counts[key] = counts.get(key, 0) + 1
     if not counts:
@@ -148,10 +148,10 @@ _DARK_SHEET_BG = (28, 28, 30)
 # Vividness tuning (Task 7), applied only on the "auto" light shade.
 # Deepen past the AA floor and gently saturate while darkening so an
 # auto-derived accent that would otherwise sit right at 4.5 reads vivid
-# rather than muddy-grey. Hues whose raw pick already clears the target
+# rather than muddy-gray. Hues whose raw pick already clears the target
 # are returned unchanged, and explicit hex / framework default skip this
 # entirely (used verbatim). Tunable: raising the target deepens light
-# mode further; the sat boost keeps the deepened colour from greying out.
+# mode further; the sat boost keeps the deepened color from graying out.
 _LIGHT_TARGET_CONTRAST = 5.5   # vs white; deepen past the 4.5 AA floor
 _LIGHT_SAT_BOOST = 0.015       # saturation nudge per darken step
 
@@ -185,7 +185,7 @@ def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
 
 
 def _best_text_color(accent_rgb):
-    """Return the on-accent text colour (#fff or the near-black token)
+    """Return the on-accent text color (#fff or the near-black token)
     with the higher WCAG contrast against the given accent fill. Deep
     accents → white; light accents → near-black, the way Material/iOS
     flip on-primary in dark themes."""
@@ -239,7 +239,7 @@ def resolve_accent_palette(config, project_root, cache_dir):
     pills want a DARK accent, while links / focus rings on the dark
     sheet want a LIGHT accent. So we derive a deep light-mode shade and
     a lightened dark-mode shade from one base, plus the best on-accent
-    text colour for each; style.css maps the active pair by
+    text color for each; style.css maps the active pair by
     [data-color-scheme]. Always returns a palette (never None): the
     unset / failed-derivation cases fall back to the framework default.
 
@@ -270,8 +270,8 @@ def _resolve_accent_base(config, project_root, cache_dir):
     legibility (True only for the "auto" pixel-pick — explicit hex and
     the framework default are trusted verbatim so light mode is
     unchanged); is_default flags the framework-default fallback (unset,
-    or "auto" that couldn't produce a colour) so the caller can skip the
-    low-contrast warning for a colour the curator didn't pick.
+    or "auto" that couldn't produce a color) so the caller can skip the
+    low-contrast warning for a color the curator didn't pick.
     """
     raw = config.get("accent_color")
     if raw is None:
@@ -291,7 +291,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
     pre-contrast-adjustment — so the palette can be recomputed cheaply
     on every build without re-walking the image, and so palette-math
     changes never need a cache-version bump. Returns None (with a
-    warning) when no raster source exists or no colour qualifies.
+    warning) when no raster source exists or no color qualifies.
     """
     logo_p = config.get("logo") or ""
     icon_p = config.get("icon") or ""
@@ -359,8 +359,8 @@ def _warn_low_contrast_palette(palette):
     sheet, the dark shade vs the dark sheet (#1c1c1e).
 
     Each shade only ever renders in its own scheme, so — unlike the old
-    single-colour check — we no longer test one value against both
-    backgrounds. The on-accent text colour is picked for max contrast by
+    single-color check — we no longer test one value against both
+    backgrounds. The on-accent text color is picked for max contrast by
     construction, so only the foreground-on-sheet role (links / focus
     rings) needs a warning.
     """

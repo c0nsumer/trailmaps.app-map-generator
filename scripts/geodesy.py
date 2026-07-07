@@ -19,7 +19,7 @@ accuracy floor of any trail-scale measurement we care about.
 import math
 import re
 
-# Mean Earth radius in metres. Matches the convention used by every
+# Mean Earth radius in meters. Matches the convention used by every
 # Python script in the build pipeline. Off by ~0.1% from the WGS84
 # equatorial radius (templates/app.js:EARTH_RADIUS_M = 6378137) — the
 # inconsistency is intentional and irrelevant at trail scales.
@@ -27,7 +27,7 @@ EARTH_R_M = 6371000.0
 
 
 def haversine_m(lng1, lat1, lng2, lat2):
-    """Great-circle distance between two (lng, lat) points, in metres.
+    """Great-circle distance between two (lng, lat) points, in meters.
 
     Standard haversine formula; accuracy ~0.5% over distances up to
     a few thousand km, well within the trail-scale tolerance the
@@ -53,7 +53,7 @@ def natural_key(s):
     ``TypeError`` when comparing ``int`` with ``str`` in tuple
     element-wise comparison.
 
-    Sort behaviour:
+    Sort behavior:
       ``"1"`` < ``"2"`` < ``"10"``      (numeric order within digit runs)
       ``"123"`` < ``"foo"``             (digit runs sort before strings)
       ``"foo123"`` < ``"foo456"``       (numeric order within prefix-grouped digits)

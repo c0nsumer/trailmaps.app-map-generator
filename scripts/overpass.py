@@ -133,7 +133,7 @@ def _check_snapshot_freshness(data, server):
             tzinfo=UTC
         )
     except ValueError:
-        return  # unrecognised format — don't reject on parse failure
+        return  # unrecognized format — don't reject on parse failure
     lag = datetime.now(UTC) - osm_base
     if lag > MAX_OSM_BASE_LAG:
         raise StaleSnapshotError(

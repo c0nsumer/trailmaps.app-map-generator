@@ -1,7 +1,7 @@
 """Shared YAML config loader for fetch_trails and fetch_pois.
 
 Both scripts can be run standalone (outside the full build.py
-pipeline) and need the same minimal path-resolution behaviour for
+pipeline) and need the same minimal path-resolution behavior for
 ``osm_file:`` so a relative path in the YAML resolves against the
 config's directory. Previously copy-pasted across both scripts; now
 lives here as the single source of truth.

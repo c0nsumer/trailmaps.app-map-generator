@@ -184,13 +184,13 @@ def _pmtiles_needs_regen(output_path, bbox, maxzoom):
 #       Pre-enrichment. Folds event_mode.routes into config["custom_
 #       routes"] (so they participate in the geometry bake-in inside
 #       _enrich_trails_geojson) and overrides non-featured custom
-#       routes' colour and dashed fields with the background style.
+#       routes' color and dashed fields with the background style.
 #
 #   _apply_event_mode_to_relations(config, trails_geojson)
 #       Pre-injection. After enrichment has populated the trails.geojson
-#       routes metadata, this pass synthesises relation_colors and
+#       routes metadata, this pass synthesizes relation_colors and
 #       dashed_relations entries for every non-featured OSM route.
 #       Curator's explicit per-route entries always win.
 #
-# Background style default (when omitted): grey dashed.
+# Background style default (when omitted): gray dashed.
 # ----------------------------------------------------------------------

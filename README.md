@@ -1,8 +1,8 @@
 # trailmaps.app Map Generator
 
 This framework generates static mountain bike trail maps from OpenStreetMap data
-and other open data sets. These are static HTML+CSS+JS which can be self-hosted
-without databases, are offline-capable (including installable as PWAs).
+and other open data sets. Each map is plain HTML, CSS, and JavaScript that can
+be self-hosted without a database, works offline, and can be installed as a PWA.
 
 Each map is described by a single YAML file, then the build pipeline fetches
 trail data from OSM, extracts regional basemap and terrain tiles, bundles every
@@ -15,7 +15,7 @@ This is the framework that generates most of the maps at
 ## Screenshot
 ![Bloomer + Clinton River Oaks Map as of 2026-Jul-05](docs/screenshots/screenshot_bloomer_2026-jul-05.png?raw=true
 "Bloomer + Clinton River Oaks Map as of 2026-Jul-05") *Bloomer + Clinton River
-Oaks Map as of 2026-May-12*
+Oaks Map as of 2026-Jul-05*
 
 ## Map / Generator Features
 
@@ -29,22 +29,20 @@ Oaks Map as of 2026-May-12*
   the routes panel (bottom-right):
   - Locate: show the user's position from the device GNSS sensors.
   - Reset View: return to the map's initial framing.
-  - Options: toggle labels, colour scheme, season, and POI layers; install the
+  - Options: toggle labels, color scheme, season, and POI layers; install the
     PWA; open About.
-  - Routes panel: the route key, and — via its Search row — find POIs,
-    parking, toilets, trails, and routes on the map.
+  - Routes panel: a collapsible key pairing each route's color with its name
+    and stats. Tap a row to highlight that route, or use its Search row to find
+    routes, trails, and POIs on the map.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
-- Routes panel: a collapsible bottom-right key pairing each route's colour
-  with its name and stats — tap a row to highlight that route — with the
-  search overlay docked behind its Search row.
 - Trail markers, trailheads, parking, features, toilets, drinking water as
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.
-- Light and dark colour schemes; per-map accent colour (manual or auto-derived
+- Light and dark color schemes; per-map accent color (manual or auto-derived
   from the logo); per-map branding via a logo and icon, plus optional secondary
   event / sponsor logos stacked under the primary.
-- Summer and Winter Modes: Main intention is to show trails that are groomed for
-  winter use.
+- Summer and Winter modes, so systems with groomed winter routes can present
+  each season's network separately.
 
 ## Stack
 
@@ -79,7 +77,7 @@ python scripts/serve.py build/example
 A first-ever build of a new map takes ~5 to 10 minutes (downloads basemap,
 terrain, sprites). Subsequent rebuilds with cached data finish in under 30
 seconds. See [`docs/building.md`](docs/building.md) for the full pipeline, CLI
-flags, and caching behaviour.
+flags, and caching behavior.
 
 The build can also be invoked as a package, which lets the caller redirect
 output and cache to arbitrary paths without touching the config file:
@@ -123,15 +121,15 @@ separate private orchestrator that drives this engine as a CLI tool.
    exactly). Copy
    [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
    into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and a
-   geometry source — usually `relations:` (a non-empty list of OSM relation IDs;
-   each entry may be a leaf route relation or a super-relation), or, for a
-   route-only / event map, `custom_routes` / `event_mode.routes` instead.
-   Uncomment and adjust any other keys you want to customise.
+   geometry source. This is usually `relations:` (a non-empty list of OSM
+   relation IDs; each entry may be a leaf route relation or a super-relation);
+   a route-only or event map can use `custom_routes` / `event_mode.routes`
+   instead. Uncomment and adjust any other keys you want to customize.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the same
    `configs/<slug>/` folder and reference them by bare filename (e.g.
    `logo: logo.webp`, `icon: icon.png`). Either key alone is fine; the framework
-   uses one as a fallback for the other — except that an SVG logo can't be
-   rasterised into icons, so set `icon:` to a PNG/WebP if your logo is an SVG.
+   uses one as a fallback for the other. The exception is SVG logos, which
+   can't be rasterized into icons, so set `icon:` to a PNG/WebP in that case.
 4. Run `python scripts/build.py configs/<slug>/<slug>.yaml` to generate the
    output.
 5. Deploy `build/<slug>/` to your server. See
@@ -150,7 +148,7 @@ is useful to copy to start a new map.
 |---|---|
 | [`docs/configuration.md`](docs/configuration.md) | Full YAML config reference. Every key, every accepted value, and deep dives on route buckets, custom routes, direction schedules, dash patterns, the About / Welcome modals, base layers, logo / icon assets, and privacy posture. |
 | [`docs/building.md`](docs/building.md) | Build pipeline: prerequisites, CLI flags, the `build_and_deploy.sh` and `clean_config.py` helpers, the data cache, local `.osm` file support, vendor bundling, font trimming, and the project layout. |
-| [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behaviour by platform, PMTiles Range requests, Open Graph share previews. |
+| [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behavior by platform, PMTiles Range requests, Open Graph share previews. |
 | [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation: the data source, why both gain and loss are shown, accuracy caveats, and why the numbers won't match Strava or a GPS. |
 | [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
 | [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
@@ -162,7 +160,7 @@ This framework is entirely client-side: there are no cookies, no analytics, no
 server-side tracking, and no third-party scripts. The map renders from your own
 static server, and all visitor interactions stay in the browser.
 
-The app uses `localStorage` to persist purely-functional UI preferences across
+The app uses `localStorage` to persist a small set of functional UI preferences across
 visits, each key prefixed with the map's slug (for example,
 `<slug>.mtb.colorScheme`):
 
@@ -192,13 +190,13 @@ And yes, this was developed using Anthropic's Claude.
 
 This project depends on the work of many open-source projects and public data
 sources. Each is credited in the in-app About modal of every generated map, and
-their licences and origins are listed here:
+their licenses and origins are listed here:
 
-| Component | Used for | Licence |
+| Component | Used for | License |
 |---|---|---|
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Trail data, basemap source data | ODbL 1.0 |
 | [Protomaps](https://protomaps.com) (basemap tiles + JS) | Self-hosted vector basemap delivery | BSD-3-Clause (code), CC0 + ODbL (data) |
-| [Mapterhorn](https://mapterhorn.com) | Terrain DEM aggregation (USGS 3DEP, EU-DEM, JAXA AW3D30) | Public-domain inputs aggregated under permissive licence |
+| [Mapterhorn](https://mapterhorn.com) | Terrain DEM aggregation (USGS 3DEP, EU-DEM, JAXA AW3D30) | Public-domain inputs aggregated under permissive license |
 | [USGS 3D Elevation Program (3DEP)](https://www.usgs.gov/3d-elevation-program) | Per-route elevation profiles | Public domain (US government work) |
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
 | [PMTiles](https://github.com/protomaps/PMTiles) | Single-file tile archive format and JS reader | BSD-3-Clause |

@@ -36,7 +36,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
       warns about relation_names / relation_colors keys that match no
       fetched route (typo guard).
     - Loads each ``custom_routes`` entry's GeoJSON file, validates geometry
-      type (LineString / MultiLineString only), normalises features into
+      type (LineString / MultiLineString only), normalizes features into
       the shape fetch_trails.py emits (one LineString per feature), and
       appends them to ``features``. Custom-route metadata entries are added
       to metadata.routes with bucket flags declared inline in the config.
@@ -136,7 +136,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # An override keyed by a relation that isn't on the map is silently
     # inert (relation_names above no-ops; relation_colors is looked up
     # per fetched route at injection time), so surface it here. Runs
-    # before event mode synthesises relation_colors entries in
+    # before event mode synthesizes relation_colors entries in
     # template_inject, so only the curator's own keys are checked. A
     # super-relation parent is a special case: it was expanded into its
     # children at fetch time, so point the curator at those IDs.
@@ -158,7 +158,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # The runtime treats route ids as opaque strings everywhere (so
     # OSM relation ids and custom string ids coexist in the same
     # filter expressions). fetch_trails.py emits OSM ids as ints;
-    # custom routes already emit strings. Normalise both here so the
+    # custom routes already emit strings. Normalize both here so the
     # downstream JSON has a single consistent type.
     for feat in trails_geojson["features"]:
         props = feat.setdefault("properties", {})
@@ -241,7 +241,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
             if not coords:
                 sys.exit(f"ERROR: custom_routes[{cid!r}].geometry feature {i}: empty coordinates")
 
-            # Normalise MultiLineString into separate LineString features
+            # Normalize MultiLineString into separate LineString features
             # (matches fetch_trails.py's per-segment shape).
             linestrings = coords if gtype == "MultiLineString" else [coords]
 

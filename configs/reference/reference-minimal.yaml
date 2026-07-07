@@ -27,7 +27,7 @@ relations:
 # min_zoom: 10
 # max_zoom: 18
 # basemap_maxzoom: 15
-# terrain_maxzoom: 13
+# terrain_maxzoom: 12
 
 # --- Build-time data gates ---
 # show_markers: true
@@ -72,7 +72,7 @@ relations:
 # distance_units: mi
 # share_button: true
 
-# --- Marker and accent colours ---
+# --- Marker and accent colors ---
 # marker_color: "#795548"
 # marker_text_color: "white"
 # marker_border_color: "white"
