@@ -166,9 +166,10 @@ function applyMapPaintForScheme(scheme) {
     // Highlight silhouettes. The TRAIL outline is a constant scheme-
     // contrasting silhouette (black on the light basemap, white on dark).
     // The ROUTE outline is luminance-matched to the highlighted route's
-    // own color (highlightOutlineForColor) so a dark/black route keeps a
-    // readable edge under the wash; re-applied here so a scheme toggle
-    // mid-highlight doesn't reset it to the scheme silhouette.
+    // own color, or the scheme silhouette for single-color dashed routes
+    // (see routeHighlightOutlineColor); re-applied here so a scheme
+    // toggle mid-highlight recomputes it (the dashed case follows the
+    // scheme, the rest keep their stroke-contrast pick).
     if (map.getLayer("trail-highlight-outline")) {
         map.setPaintProperty("trail-highlight-outline", "line-color", t.highlightOutline);
     }
@@ -176,7 +177,7 @@ function applyMapPaintForScheme(scheme) {
         const routeInfo = highlight && highlight.kind === "route"
             ? CONFIG.routes[highlight.key] : null;
         map.setPaintProperty("route-highlight-outline", "line-color",
-            routeInfo ? highlightOutlineForColor(effectiveRouteColor(routeInfo))
+            routeInfo ? routeHighlightOutlineColor(routeInfo)
                 : t.highlightOutline);
     }
     if (map.getLayer("decor-arrow")) {
@@ -5389,6 +5390,28 @@ function highlightOutlineForColor(color) {
     return lum < 0.5 ? "#ffffff" : "#000000";
 }
 
+// Outline silhouette for a highlighted ROUTE. Normally the stroke-
+// contrast pick above, with one exception: single-color dashed routes.
+// Their dash gaps expose the outline, so it doubles as the dash
+// BACKGROUND; stroke-contrast would flip that background light/dark
+// per route color (dark-blue dashes on white, yellow dashes on black),
+// reading as inconsistent styling between routes. Those routes use the
+// constant scheme-contrasting silhouette instead (black on the light
+// basemap, white on dark, same token as the trail outline), so every
+// single-color dashed highlight shares one background per scheme.
+// Two-color dashes fill their gaps with the underlay and solid strokes
+// cover the outline's interior entirely, both keep stroke-contrast.
+// Callers: highlightRoute() on selection, applyMapPaintForScheme() on
+// a scheme toggle mid-highlight.
+function routeHighlightOutlineColor(info) {
+    const dashColors = getDashColors(info);
+    if (isDashed(info) && !(dashColors && dashColors.length >= 2)) {
+        const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+        return t.highlightOutline;
+    }
+    return highlightOutlineForColor(effectiveRouteColor(info));
+}
+
 function highlightRoute(routeId) {
     const info = CONFIG.routes[routeId];
     if (!info) return;
@@ -5426,12 +5449,14 @@ function highlightRoute(routeId) {
         }
     }
     // Outline silhouette: luminance-matched to this route's color so a
-    // dark/black route keeps a readable light edge under the wash (see
-    // highlightOutlineForColor). Set before the filter activates the
-    // layer, same flash-prevention ordering as the stroke above.
+    // dark/black route keeps a readable light edge under the wash, or
+    // the scheme silhouette for single-color dashed routes whose gaps
+    // expose it as the dash background (see routeHighlightOutlineColor).
+    // Set before the filter activates the layer, same flash-prevention
+    // ordering as the stroke above.
     if (map.getLayer("route-highlight-outline")) {
         map.setPaintProperty("route-highlight-outline", "line-color",
-            highlightOutlineForColor(color));
+            routeHighlightOutlineColor(info));
     }
     // Dash identity: the stroke mirrors the route's own dash pattern
     // and cap so a dashed relation still reads as dashed while
