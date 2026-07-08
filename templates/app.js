@@ -4472,9 +4472,23 @@ async function loadTrails() {
     //             "edge" reads consistently in both states. Initial
     //             #000 here is a fail-safe; real highlights overwrite
     //             on every selection.
+    //   underlay: same width as the stroke, invisible (opacity 0) for
+    //             most routes. For a two-color dashed route (`colors:
+    //             [A, B]`) highlightRoute() paints it B and raises the
+    //             opacity so the dash gaps show B, mirroring the
+    //             trail-fill2 underlay in the unhighlighted rendering.
     //   stroke:   opaque, painted with the route's native color by
     //             highlightRoute(). Width ~2× the unhighlighted fill so
     //             the highlight reads as "this route, scaled up."
+    //             Dashed routes keep their dash pattern here (set per
+    //             selection by highlightRoute()); single-color dash
+    //             gaps show the outline silhouette beneath, so the
+    //             ribbon stays a continuous selected band with the
+    //             dash identity riding on top. The outline itself
+    //             can't be dashed: line-dasharray is measured in
+    //             line-widths, so the wider outline can't keep its
+    //             dashes aligned with the stroke (same reason the
+    //             casing suppresses dashes, see the casing comment).
     // line-color-transition: { duration: 0 } on every highlight layer.
     // MapLibre's default line-color transition is 300ms; without
     // overriding it, every setPaintProperty('line-color', ...) on a
@@ -4519,6 +4533,24 @@ async function loadTrails() {
             "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
             "line-opacity": 1,
+            "line-offset": makeOffsetExpr(),
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+    });
+    map.addLayer({
+        id: "route-highlight-underlay",
+        type: "line",
+        source: "trails",
+        filter: NONE_FILTER_ROUTE,
+        paint: {
+            "line-color": "#000",
+            "line-color-transition": { duration: 0 },
+            // Hidden by default; highlightRoute() raises the opacity
+            // only for two-color dashed routes. Transition duration 0
+            // for the same flash-avoidance reason as line-color.
+            "line-opacity": 0,
+            "line-opacity-transition": { duration: 0 },
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
             "line-offset": makeOffsetExpr(),
         },
         layout: { "line-cap": "round", "line-join": "round" },
@@ -5149,7 +5181,7 @@ function updateTrailDisplay() {
 // ============================================================
 // Highlight system
 // ============================================================
-// Layer groups, per highlight kind the ribbon is up to three stacked
+// Layer groups, per highlight kind the ribbon is up to four stacked
 // line layers that share one filter (set / cleared together):
 //   glow (optional): soft amber aura beneath everything; constant
 //            color, opaque core + blur. Gated by highlight_glow, the
@@ -5161,10 +5193,15 @@ function updateTrailDisplay() {
 //            keeps a readable edge under the wash; for trails it's the
 //            scheme-contrasting silhouette (black on light, white on
 //            dark).
+//   underlay (routes only): stroke-width layer that highlightRoute()
+//            paints with a two-color dashed route's second color so
+//            dash gaps show it, hidden (opacity 0) otherwise.
 //   stroke:  recolored per highlight via setPaintProperty, the route's
 //            native color (chip + ribbon agree on identity), or the
 //            framework's "highlighter yellow" #FFEC00 for trails (which
-//            span multiple routes, so no single native color).
+//            span multiple routes, so no single native color). Dashed
+//            routes carry their dash pattern + cap here too, set per
+//            selection by highlightRoute().
 //
 // History: an earlier four-layer sandwich (outline + blurred glow +
 // stroke + white core) lived here. The white core was dropped for good
@@ -5175,6 +5212,7 @@ function updateTrailDisplay() {
 const ROUTE_HIGHLIGHT_LAYERS = [
     "route-highlight-glow",
     "route-highlight-outline",
+    "route-highlight-underlay",
     "route-highlight-stroke",
 ];
 const TRAIL_HIGHLIGHT_LAYERS = [
@@ -5308,13 +5346,13 @@ function applyDimState() {
     updateMarkerDimState();
 }
 
-// sRGB relative luminance (0 = black, 1 = white) of any CSS color.
-// Uses a 1×1 canvas so it resolves hex, rgb(), and named colors (an
-// OSM `colour` tag can be any of these) without a bespoke parser; an
-// unparseable value leaves the prior valid fill (#000) → treated as
-// dark. Cheap: called once per route highlight / scheme toggle.
+// sRGB channels (0-255) of any CSS color. Uses a 1×1 canvas so it
+// resolves hex, rgb(), and named colors (an OSM `colour` tag can be
+// any of these) without a bespoke parser; an unparseable value leaves
+// the prior valid fill (#000) → treated as dark. Cheap: called once
+// per route highlight / scheme toggle.
 let _lumCtx = null;
-function relativeLuminance(cssColor) {
+function parseColorRgb(cssColor) {
     if (!_lumCtx) {
         const c = document.createElement("canvas");
         c.width = c.height = 1;
@@ -5324,7 +5362,7 @@ function relativeLuminance(cssColor) {
     _lumCtx.fillStyle = cssColor;   // invalid input keeps the prior value
     _lumCtx.fillRect(0, 0, 1, 1);
     const [r, g, b] = _lumCtx.getImageData(0, 0, 1, 1).data;
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return [r, g, b];
 }
 
 // Highlight-outline color for a route painted in `color`. The ribbon is
@@ -5336,8 +5374,19 @@ function relativeLuminance(cssColor) {
 // black outline vanished into it along with the black stroke. Contrast
 // against the stroke instead and the ribbon always has a readable edge,
 // on either basemap and at any wash level.
+//
+// Greys are special-cased. `gray` (#808080) has luminance 0.502, just
+// over the binary threshold, so it used to draw a BLACK outline: a grey
+// stroke framed in black on the black spotlight wash, nothing popped.
+// Low-chroma colors in the middle luminance band (the grey family) get
+// the white silhouette instead, so a grey route reads as grey riding a
+// bright band. Saturated colors keep the plain luminance split.
 function highlightOutlineForColor(color) {
-    return relativeLuminance(color) < 0.5 ? "#ffffff" : "#000000";
+    const [r, g, b] = parseColorRgb(color);
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
+    if (chroma < 0.15 && lum >= 0.35 && lum <= 0.65) return "#ffffff";
+    return lum < 0.5 ? "#ffffff" : "#000000";
 }
 
 function highlightRoute(routeId) {
@@ -5383,6 +5432,34 @@ function highlightRoute(routeId) {
     if (map.getLayer("route-highlight-outline")) {
         map.setPaintProperty("route-highlight-outline", "line-color",
             highlightOutlineForColor(color));
+    }
+    // Dash identity: the stroke mirrors the route's own dash pattern
+    // and cap so a dashed relation still reads as dashed while
+    // highlighted. getDashPattern returns [1, 0] (solid) for
+    // non-dashed routes, so switching from a dashed selection to a
+    // solid one resets cleanly. Dash units are line-widths, so at the
+    // stroke's ~2× width the dashes render ~2× longer than the
+    // unhighlighted fill: "this route, scaled up." Gaps show the
+    // outline silhouette (or the two-color underlay below), keeping
+    // the ribbon a continuous selected band.
+    if (map.getLayer("route-highlight-stroke")) {
+        const dashCap = isDashed(info) ? getDashCap(info) : "round";
+        map.setPaintProperty("route-highlight-stroke", "line-dasharray",
+            getDashPattern(info));
+        map.setLayoutProperty("route-highlight-stroke", "line-cap", dashCap);
+        map.setLayoutProperty("route-highlight-stroke", "line-join",
+            dashCap === "square" ? "miter" : "round");
+    }
+    // Two-color dash underlay: paint the second color into the dash
+    // gaps, mirroring the trail-fill2 underlay in the unhighlighted
+    // rendering. Hidden (opacity 0) for everything else.
+    if (map.getLayer("route-highlight-underlay")) {
+        const dashColors = getDashColors(info);
+        const hasUnderlay = !!(dashColors && dashColors.length >= 2);
+        map.setPaintProperty("route-highlight-underlay", "line-color",
+            hasUnderlay ? dashColors[1] : "#000");
+        map.setPaintProperty("route-highlight-underlay", "line-opacity",
+            hasUnderlay ? 1 : 0);
     }
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
