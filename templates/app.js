@@ -5382,11 +5382,21 @@ function parseColorRgb(cssColor) {
 // Low-chroma colors in the middle luminance band (the grey family) get
 // the white silhouette instead, so a grey route reads as grey riding a
 // bright band. Saturated colors keep the plain luminance split.
-function highlightOutlineForColor(color) {
+//
+// isGreyFamilyColor is split out because routeHighlightOutlineColor
+// applies the same exception to its scheme-silhouette pick for
+// single-color dashed routes.
+function isGreyFamilyColor(color) {
     const [r, g, b] = parseColorRgb(color);
     const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
-    if (chroma < 0.15 && lum >= 0.35 && lum <= 0.65) return "#ffffff";
+    return chroma < 0.15 && lum >= 0.35 && lum <= 0.65;
+}
+
+function highlightOutlineForColor(color) {
+    if (isGreyFamilyColor(color)) return "#ffffff";
+    const [r, g, b] = parseColorRgb(color);
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     return lum < 0.5 ? "#ffffff" : "#000000";
 }
 
@@ -5401,11 +5411,18 @@ function highlightOutlineForColor(color) {
 // single-color dashed highlight shares one background per scheme.
 // Two-color dashes fill their gaps with the underlay and solid strokes
 // cover the outline's interior entirely, both keep stroke-contrast.
+// Grey-family strokes (isGreyFamilyColor) override the scheme pick and
+// always take white: the light scheme's black silhouette put grey
+// dashes on a black band under the black spotlight wash, murky, the
+// same failure the grey special case exists to fix. Grey connectors
+// are by far the common single-color dashed case, so in practice
+// these routes read consistently anyway.
 // Callers: highlightRoute() on selection, applyMapPaintForScheme() on
 // a scheme toggle mid-highlight.
 function routeHighlightOutlineColor(info) {
     const dashColors = getDashColors(info);
     if (isDashed(info) && !(dashColors && dashColors.length >= 2)) {
+        if (isGreyFamilyColor(effectiveRouteColor(info))) return "#ffffff";
         const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
         return t.highlightOutline;
     }
