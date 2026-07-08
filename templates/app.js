@@ -5486,6 +5486,15 @@ function highlightRoute(routeId) {
         label: info.name,
         color,
         stats: indexEntry ? routeStatsText(indexEntry) : "",
+        // Dash fields for the chip swatch, built from CONFIG directly
+        // (mirroring buildRouteIndex) rather than indexEntry so the
+        // chip renders correctly even if routeIndex isn't built yet.
+        route: {
+            color,
+            dashed: Array.isArray(info.dashed) ? info.dashed : null,
+            dashCap: info.dashCap || null,
+            dashColors: Array.isArray(info.dashColors) ? info.dashColors : null,
+        },
     });
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
@@ -6211,14 +6220,34 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note }) {
+function showHighlightChip({ label, color, stats, note, route }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
     const labelEl = chip.querySelector(".highlight-chip-label");
     const statsEl = chip.querySelector(".highlight-chip-stats");
     const noteEl = chip.querySelector(".highlight-chip-note");
-    if (swatch) swatch.style.background = color;
+    // Swatch: rebuilt on every call. `route` (optional) carries the
+    // dash fields (color / dashed / dashCap / dashColors); a dashed
+    // route swaps the flat dot for the same mini-SVG ribbon the key
+    // and finder rows use (routeSwatchEl), so the chip can't
+    // misrepresent a dashed line as solid. Everything else (solid
+    // routes, trails, POIs) gets a plain dot in `color`. Rebuilding
+    // rather than mutating means a trail/POI highlight following a
+    // dashed route gets its dot back without SVG-vs-span special
+    // cases.
+    if (swatch) {
+        let next;
+        if (route && isDashed(route)) {
+            next = routeSwatchEl(route, "highlight-chip-swatch");
+        } else {
+            next = document.createElement("span");
+            next.className = "highlight-chip-swatch";
+            next.setAttribute("aria-hidden", "true");
+            next.style.background = color;
+        }
+        swatch.replaceWith(next);
+    }
     if (labelEl) labelEl.textContent = label;
     // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
     // routeStatsText(), empty string or missing means hide the span
@@ -8592,14 +8621,15 @@ function routeStatsText(r) {
     return parts.join(" · ");
 }
 
-// Shared route-swatch builder for the key rows (rebuildRoutePanel) and
-// the finder rows (makeRouteRow), so the two lists can never disagree
+// Shared route-swatch builder for the key rows (rebuildRoutePanel),
+// the finder rows (makeRouteRow), and the highlight chip
+// (showHighlightChip), so the three surfaces can never disagree
 // about how a route's line is drawn. Plain routes get the flat color
 // bar; dashed routes get a mini inline SVG ribbon, a two-color
 // underlay beneath a dashed top line, round pills for a [0, N] pattern.
-// `className` is the caller's own swatch class (.route-panel-swatch or
-// .finder-row-swatch), which the .is-dashed CSS variant widens for the
-// SVG.
+// `className` is the caller's own swatch class (.route-panel-swatch,
+// .finder-row-swatch, or .highlight-chip-swatch), which the .is-dashed
+// CSS variant widens for the SVG.
 //
 // The ribbon renders for LEGIBILITY, not map-space fidelity. Naively
 // scaling the config pattern into the SVG breaks two ways at swatch

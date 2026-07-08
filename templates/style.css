@@ -1179,18 +1179,22 @@ body::after {
 }
 
 /* Dashed / dotted / two-color routes swap the flat bar for an SVG
- * ribbon (built by routeSwatchEl, which adds .is-dashed) so the key
- * and finder don't misrepresent a dashed line as a solid one. Wider
- * and a touch taller than the solid bar so at least one dash-gap cycle
- * is legible; the SVG paints its own line, so strip the bar's fill,
- * radius, and outline. Shared by both lists — one rule, one look. */
+ * ribbon (built by routeSwatchEl, which adds .is-dashed) so the key,
+ * finder, and highlight chip don't misrepresent a dashed line as a
+ * solid one. Wider and a touch taller than the solid bar so at least
+ * one dash-gap cycle is legible; the SVG paints its own line, so strip
+ * the bar's fill, radius, and outline (border: none clears the chip
+ * dot's white ring; the list swatches have no border, so it's a no-op
+ * there). Shared by all three surfaces — one rule, one look. */
 .finder-row-swatch.is-dashed,
-.route-panel-swatch.is-dashed {
+.route-panel-swatch.is-dashed,
+.highlight-chip-swatch.is-dashed {
     width: 18px;
     height: 8px;
     background: none;
     border-radius: 0;
     box-shadow: none;
+    border: none;
 }
 
 .finder-row-trail-mark {
