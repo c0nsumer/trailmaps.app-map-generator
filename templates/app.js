@@ -4568,6 +4568,15 @@ async function loadTrails() {
             // this with effectiveRouteColor(info) on every selection.
             "line-color": "#ffb700",
             "line-color-transition": { duration: 0 },
+            // line-dasharray is a cross-faded property with a default
+            // 300ms transition: without this override, switching from a
+            // dashed selection to a solid one (or between dash patterns)
+            // crossfades the old pattern into the new over 300ms, and
+            // since the new route's filter lands immediately, the new
+            // route renders with the OLD dashes fading out (e.g. a solid
+            // route flashing dashed for a beat). Duration 0 snaps the
+            // pattern so the filter only ever exposes the target dash.
+            "line-dasharray-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
             "line-opacity": 1,
             "line-offset": makeOffsetExpr(),
