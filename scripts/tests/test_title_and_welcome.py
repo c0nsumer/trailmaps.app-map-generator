@@ -93,6 +93,26 @@ def test_title_emitted_unbranded(tmp_path):
     assert 'name="twitter:title" content="My Trails Map"' in html
 
 
+def test_app_js_never_writes_document_title():
+    """The <title> element's build-time value must be the only writer.
+
+    app.js used to run `document.title = CONFIG.title` at init, which was
+    a no-op while the element and CONFIG.title were always the same
+    string. Once a deployer post-processes a brand tail onto the element
+    (trailmaps.app appends " | trailmaps.app" in inject-og-meta.py), that
+    runtime write silently strips it the moment the app boots: the tab
+    briefly shows the branded title, then loses it. Field-hit 2026-07-10.
+    If a runtime title write is ever genuinely needed, it must preserve
+    the element's existing tail rather than overwrite from CONFIG."""
+    app_js_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "templates", "app.js"
+    )
+    with open(app_js_path, encoding="utf-8") as f:
+        app_js = f.read()
+    writes = re.findall(r"^(?!\s*//).*document\.title\s*=", app_js, re.MULTILINE)
+    assert writes == [], f"app.js writes document.title: {writes}"
+
+
 def test_title_containing_a_backslash_escape_survives_substitution(tmp_path):
     """A plain re.sub replacement string would read `\\1` as a group ref."""
     copy_templates({**BASE, "title": r"Back\1slash Map"}, str(tmp_path), dict(TRAILS))

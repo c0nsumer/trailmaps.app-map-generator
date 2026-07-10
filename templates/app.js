@@ -2935,8 +2935,14 @@ async function init() {
         }
     });
 
-    // Update page title
-    document.title = CONFIG.title;
+    // The page title is NOT set here. copy_templates substitutes
+    // CONFIG.title into the <title> element at build time, and a
+    // deploying site may post-process a brand tail onto it (the
+    // trailmaps.app orchestrator appends " | trailmaps.app" in
+    // inject-og-meta.py). A runtime `document.title = CONFIG.title`
+    // would silently clobber that the moment the app boots (it did,
+    // until 2026-07-10), so the element's build-time value must stay
+    // the only writer.
 
     // About This Map modal
     initAbout();
