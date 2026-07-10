@@ -35,12 +35,13 @@ import yaml
 # deliberately NOT listed here — it's enforced separately by
 # _validate_geometry_source below, which accepts ANY of the three so a
 # race/event or route-only map can ship a GeoJSON route with no OSM relations.
-# `title` is required because the build hard-reads config["title"]
-# (template_inject CONFIG_SPEC and build.py's dry-run summary) — without
-# it here, a name+slug-only config passed validation and then died with
-# a raw KeyError, including on the orchestrator's contracted
-# `build.py <config> --dry-run` path.
-REQUIRED_KEYS = {"name", "slug", "title"}
+# `title` is NOT required: build.load_config derives it as "{name} Map"
+# whenever the key is absent, so a name+slug config reaches the
+# hard-reads downstream (template_inject CONFIG_SPEC, build.py's dry-run
+# summary) with a title already in hand. `title` survives as an optional
+# curated override for maps whose page/share title carries information
+# the derivation can't ("Custer's Last Stand Route Map").
+REQUIRED_KEYS = {"name", "slug"}
 
 # All known top-level keys with expected Python types. None means "no type
 # check" (handled by a custom validator below). Using tuples for "any of".
@@ -55,6 +56,7 @@ KNOWN_KEYS = {
     "name": str,
     "slug": str,
     "title": str,
+    "title_suffix": str,
     # Map view / geometry
     "bbox": list,
     "pan_bbox": list,
@@ -167,6 +169,11 @@ KNOWN_KEYS = {
 # for the value. The drift lint (`assert_spec_coverage`) accepts these as
 # legitimate omissions.
 BUILD_ONLY_KEYS = {
+    # Site-wide brand suffix appended to the <title> element only
+    # (template_inject.copy_templates). Deliberately absent from
+    # og:title, the in-app brand, and the PWA manifest name, so it
+    # never reaches the runtime CONFIG.
+    "title_suffix",
     # OSM data fetching (fetch_trails.py, fetch_pois.py, osm_parser.py)
     "osm_file",
     "relations",

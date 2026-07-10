@@ -619,13 +619,35 @@ def inject_config_into_template(template_content, config, trails_geojson):
         else {}
     )
     config_obj["about"] = config.get("about") or None
-    # Welcome modal config: pass through unchanged. Three forms
-    # accepted: omitted (None → framework default), false (modal
-    # suppressed), or a dict with title/body/show_controls_hint.
-    # Distinguish "explicitly false" from "omitted" — `or` would
-    # collapse both to None, which the runtime would interpret as
-    # "use defaults" and still show the modal.
-    config_obj["welcome"] = config.get("welcome") if "welcome" in config else None
+    # Welcome modal config. Three forms accepted: omitted (None →
+    # framework default), false (modal suppressed), or a dict with
+    # title/body/show_controls_hint. Distinguish "explicitly false"
+    # from "omitted" — `or` would collapse both to None, which the
+    # runtime would interpret as "use defaults" and still show the
+    # modal.
+    #
+    # The map's description is authored ONCE, at about.description, and
+    # the Welcome body defaults to it. These were separate keys that
+    # curators hand-copied between, so they drifted. `welcome.body`
+    # survives as an optional override for maps whose first-visit text
+    # genuinely differs from the About text (an event map's "course
+    # opens at 9am" belongs in Welcome, not About).
+    welcome = config.get("welcome") if "welcome" in config else None
+    if welcome is not False:
+        # Copy rather than mutate: `config` is reused by the caller
+        # (copy_assets ran before us and buildDate reads it after).
+        resolved = dict(welcome) if isinstance(welcome, dict) else {}
+        about_description = (config.get("about") or {}).get("description")
+        has_description = isinstance(about_description, str) and about_description.strip()
+        if not resolved.get("body") and has_description:
+            # Verbatim, not stripped: the runtime splits on blank lines
+            # to build paragraphs, exactly as the About modal does.
+            resolved["body"] = about_description
+        # An empty dict means "nothing configured" — emit None so the
+        # runtime takes the framework default rather than an object
+        # that says nothing.
+        welcome = resolved or None
+    config_obj["welcome"] = welcome
     # default_visible: list of layer names that default to ON for
     # first-visit riders. Three accepted YAML forms:
     #   - omitted: empty list (everything off)
@@ -752,10 +774,24 @@ def copy_templates(config, output_dir, trails_geojson):
 
         # Process HTML template
         if filename == "index.html":
-            # Dynamic page title
+            # Dynamic page title. `title` is resolved by build.load_config
+            # ("{name} Map" unless the curator overrode it); `title_suffix`
+            # is the deploying site's brand tail (trailmaps.app sets
+            # " | trailmaps.app"). The suffix lands ONLY here — og:title
+            # carries no brand because og:site_name already does, and the
+            # in-app brand + PWA manifest name would just be repeating the
+            # domain the rider is already on. Default empty so the engine
+            # stays unbranded for other consumers.
+            page_title = (config.get("title") or config.get("name") or "Trail Map") + (
+                config.get("title_suffix") or ""
+            )
             content = re.sub(
                 r"<title>.*?</title>",
-                f"<title>{config['title']}</title>",
+                # Callable replacement: a title containing a backslash
+                # escape (\1, \g) would be read as a group reference in
+                # a plain replacement string. Bound as a default arg so
+                # it captures this iteration's value, not the loop var.
+                lambda _m, _t=page_title: f"<title>{_t}</title>",
                 content,
             )
 

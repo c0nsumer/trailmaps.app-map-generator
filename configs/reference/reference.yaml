@@ -14,8 +14,17 @@ name: My Trails
 # path. Must match the folder holding this YAML.
 slug: my-trails
 
-# Full page title (browser tab, PWA install dialog).
-title: "My Trails Map"
+# Optional. Full title for the browser tab, share cards, in-app brand, and PWA
+# install dialog. Omit it and the build derives "{name} Map". Set it only where
+# a curated string carries information the derivation can't (a race course, a
+# route map). Don't end `name` in " Map" — the derivation would double it.
+# title: "My Trails Map"
+
+# Optional. Brand tail appended to the <title> element ONLY — never to the
+# share-card title (og:site_name already names the site), the in-app brand, or
+# the PWA manifest. Site-wide, so it's normally set by whatever deploys the
+# map rather than authored per map. Default: none.
+# title_suffix: " | example.org"
 
 # ============================================================
 # Data sources
@@ -375,6 +384,11 @@ relations:
 
 # First-visit modal. Omit for the default hint, false to suppress, or a dict
 # with optional title / body / show_controls_hint.
+#
+# `body` defaults to `about.description` — the map is described once, in About,
+# and the Welcome modal reuses it. Set `body` only when the first-visit text
+# should differ from the About text (an event map's "course opens at 9am"
+# belongs in Welcome, not About).
 # welcome:
 #   title: ""
 #   body: |

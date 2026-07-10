@@ -245,20 +245,38 @@ def generate_manifest(config, output_dir, bg_color=None):
     - `name` (full app name) shows in the install prompt and the
       uninstall confirmation toast.
     - `short_name` shows under the home-screen icon.
-    - `id` is omitted intentionally — Chrome falls back to start_url
-      as the identity. An earlier version pinned `id` to a slug-rooted
-      absolute path (`/<slug>/`) anticipating a future deploy move
-      from `/test/<slug>/` to `/<slug>/`, but that put the id OUTSIDE
-      the manifest's scope (which resolves to `/test/<slug>/` via
-      start_url). Per Chrome's installability docs, an id outside
-      scope "may report an installability warning" — and field-test
-      on Pixel 8 confirmed that Chrome was suppressing install
-      prompts entirely. Defaulting id to start_url means the identity
-      changes if/when we move the deploy path, orphaning existing
-      installs (riders see Install prompt for the "new" app, end up
-      with two; manual cleanup of the old one). That one-time
-      migration cost is the right trade for installability working
-      today.
+    - `id` is omitted intentionally, and adding one is a trap. Chrome
+      falls back to start_url as the identity, which resolves to
+      `/<slug>/` from this manifest's location. Two ways of pinning it
+      explicitly have been considered; both are wrong:
+
+      1. `"id": "/<slug>/"` (slug-rooted absolute path). Shipped once,
+         back when maps deployed under `/test/<slug>/`, anticipating a
+         later move to `/<slug>/`. That put the id OUTSIDE the
+         manifest's scope (`../` resolved to `/test/<slug>/`). Per
+         Chrome's installability docs an id outside scope "may report
+         an installability warning", and a field test on a Pixel 8
+         confirmed Chrome was suppressing install prompts entirely.
+         Maps now deploy at `/<slug>/` (see the website repo's
+         deploy.sh), so that specific conflict is gone. The failure
+         mode is not: a wrong id produces no build error, only riders
+         who quietly stop seeing the install prompt.
+      2. `"id": "../"` looks like it would echo start_url. It does not.
+         Per the manifest spec a relative id is parsed against the
+         ORIGIN of start_url, not against the manifest URL, so `../`
+         resolves to the origin root: shared by every map, and
+         different from today's default. It would fork every existing
+         install and collide all maps onto one identity.
+         https://www.w3.org/TR/appmanifest/#id-member
+
+      Leaving id absent keeps identity pinned to start_url, which is
+      already stable at `/<slug>/`. Nothing is lost by waiting: if
+      start_url or this manifest's own path ever moves, that same
+      commit must add `"id"` set to the OLD resolved start_url (e.g.
+      `"/<slug>/"`) and verify the value lands inside the resolved
+      scope. Adding it then preserves existing installs exactly as
+      well as adding it now would have, which is precisely what the
+      id member exists for.
     - The 192 + 512 icon pair is required for a real WebAPK install.
       Without 512, Chrome silently degrades to a bare home-screen
       shortcut and Android shows the package name in the uninstall

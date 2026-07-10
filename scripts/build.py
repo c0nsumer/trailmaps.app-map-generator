@@ -542,6 +542,27 @@ def load_config(config_path):
                 for k, v in d.items()
             }
 
+    # Title derivation. `name` is the one authored identity string; the
+    # page / share / brand title is "{name} Map" unless the curator
+    # supplies an explicit `title` override (worth it only where the
+    # curated string carries information the derivation can't, e.g.
+    # "Custer's Last Stand Route Map"). Resolved once here so every
+    # downstream reader — template_inject's og:title and brand title,
+    # generate_icons' manifest name, build.py's own log lines — sees
+    # the same string without repeating the fallback.
+    #
+    # `title_suffix` is NOT folded in: it belongs to the <title> element
+    # alone (see copy_templates), never to og:title, the brand, or the
+    # manifest.
+    #
+    # A name already ending in " Map" would derive "… Map Map". The
+    # deploying orchestrator's pre-validate forbids such names; the
+    # engine does not second-guess a curator who wants that string.
+    if not config.get("title"):
+        name = config.get("name")
+        if isinstance(name, str) and name.strip():
+            config["title"] = f"{name.strip()} Map"
+
     # Stash the config's directory in case downstream code wants it
     # (error messages, future relative-path fields), and the YAML's own
     # path so template_inject can fold its mtime into buildDate (a YAML

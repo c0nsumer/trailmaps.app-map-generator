@@ -94,11 +94,10 @@ The shortest valid config. Every key not shown takes the framework default:
 ```yaml
 name: My Trails
 slug: mytrails
-title: "My Trails Map"
 relations: [12425503]
 ```
 
-`name`, `slug`, and `title` are always required. Beyond those, a config needs
+`name` and `slug` are always required. Beyond those, a config needs
 **at least one geometry source**: `relations`, `custom_routes`, or
 `event_mode.routes`. The example above uses `relations` (an OSM trail system); a
 route-only map (e.g. a race course with no surrounding network) can instead
@@ -119,7 +118,8 @@ into the same folder, and reference them by bare filename in the config.
 |-----|----------|---------|-------------|
 | `name` | Yes | : | Short name used in build logs and as the PWA icon label on mobile home screens. |
 | `slug` | Yes | : | URL-safe identifier. Used for the map's config folder (`configs/<slug>/`), the build output directory (`build/<slug>/`), and the deploy destination subdirectory. Must match `[a-z0-9_-]+` and match the folder name holding the YAML. |
-| `title` | Yes | : | Full page title shown in browser tab and PWA install dialogs. |
+| `title` | No | `"{name} Map"` | Full title used for the browser tab, share-card `og:title`, the in-app brand, and the PWA install dialog. Derived from `name` when omitted; set it only where a curated string carries information the derivation can't (a race course, a route map). Because the derivation appends " Map", a `name` that already ends in " Map" would double it. |
+| `title_suffix` | No | none | Brand tail appended to the `<title>` element **only**. It never reaches `og:title` (`og:site_name` already names the site), the in-app brand, or the PWA manifest. Site-wide rather than per-map, so it is normally set by whatever deploys the map: trailmaps.app sets `" \| trailmaps.app"`, yielding `<title>My Trails Map \| trailmaps.app</title>`. |
 
 ### Data sources
 
@@ -325,7 +325,7 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). Dismissal persists per-map in `localStorage`. |
+| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` defaults to `about.description`, so the map is described once and both modals reuse it; set `body` only when the first-visit text should differ from the About text (an event map's "course opens at 9am" belongs in Welcome, not About). Dismissal persists per-map in `localStorage`. |
 
 ### Output
 

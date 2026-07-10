@@ -1,7 +1,8 @@
 # --- Identity ---
 name: My Trails
 slug: my-trails
-title: "My Trails Map"
+# title: "My Trails Map"           # optional; derived as "{name} Map"
+# title_suffix: " | example.org"   # appended to <title> only
 
 # --- Data sources ---
 relations:

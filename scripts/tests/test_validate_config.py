@@ -198,11 +198,18 @@ def test_event_gpx_missing_file_rejected():
 # ---------------------------------------------------------------------------
 
 
-def test_title_required():
+def test_title_optional():
+    # `title` is an optional override; build.load_config derives
+    # "{name} Map" when it is absent.
     cfg = dict(BASE)
     del cfg["title"]
     errors, _ = validate_config(cfg)
-    assert any("title" in e for e in errors), errors
+    assert errors == [], errors
+
+
+def test_title_suffix_accepted_and_type_checked():
+    assert validate_config({**BASE, "title_suffix": " | example.org"})[0] == []
+    assert any("title_suffix" in e for e in _errors(title_suffix=123))
 
 
 def test_hub_colors_validated():
