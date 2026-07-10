@@ -775,16 +775,12 @@ def copy_templates(config, output_dir, trails_geojson):
         # Process HTML template
         if filename == "index.html":
             # Dynamic page title. `title` is resolved by build.load_config
-            # ("{name} Map" unless the curator overrode it); `title_suffix`
-            # is the deploying site's brand tail (trailmaps.app sets
-            # " | trailmaps.app"). The suffix lands ONLY here — og:title
-            # carries no brand because og:site_name already does, and the
-            # in-app brand + PWA manifest name would just be repeating the
-            # domain the rider is already on. Default empty so the engine
-            # stays unbranded for other consumers.
-            page_title = (config.get("title") or config.get("name") or "Trail Map") + (
-                config.get("title_suffix") or ""
-            )
+            # ("{name} Map" unless the curator overrode it). The engine
+            # emits it unbranded; a deploying site that wants a brand tail
+            # on the <title> appends it in its own post-processing (the
+            # trailmaps.app orchestrator does this in inject-og-meta.py),
+            # keeping the engine output identical for every consumer.
+            page_title = config.get("title") or config.get("name") or "Trail Map"
             content = re.sub(
                 r"<title>.*?</title>",
                 # Callable replacement: a title containing a backslash

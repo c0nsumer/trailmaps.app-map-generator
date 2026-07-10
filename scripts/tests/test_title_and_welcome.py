@@ -1,8 +1,6 @@
-"""Tests for derived titles, the title_suffix brand tail, and the
-Welcome-body default.
+"""Tests for derived titles and the Welcome-body default.
 
-`title` is an optional override derived as "{name} Map"; `title_suffix`
-is a site-wide brand tail that belongs to the <title> element alone; and
+`title` is an optional override derived as "{name} Map", and
 `welcome.body` defaults to `about.description` so the map is described
 once rather than hand-copied into two yaml keys.
 
@@ -80,27 +78,19 @@ def test_derivation_does_not_dedupe_a_name_ending_in_map(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# title_suffix scoping (template_inject.copy_templates)
+# <title> emission (template_inject.copy_templates)
 # ---------------------------------------------------------------------------
 
 
-def test_title_suffix_lands_on_title_element_only(tmp_path):
-    config = {**BASE, "title_suffix": " | example.org"}
-    copy_templates(config, str(tmp_path), dict(TRAILS))
-    html = (tmp_path / "index.html").read_text(encoding="utf-8")
-
-    assert "<title>My Trails Map | example.org</title>" in html
-    # og:site_name already names the site; the brand tail must not be
-    # repeated in the share-card titles.
-    assert 'property="og:title" content="My Trails Map"' in html
-    assert 'name="twitter:title" content="My Trails Map"' in html
-
-
-def test_title_suffix_absent_by_default(tmp_path):
-    """The engine ships unbranded for OSS consumers."""
+def test_title_emitted_unbranded(tmp_path):
+    """The engine ships unbranded output for every consumer. A deploying
+    site that wants a brand tail on the <title> appends it in its own
+    post-processing (trailmaps.app does this in inject-og-meta.py)."""
     copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "<title>My Trails Map</title>" in html
+    assert 'property="og:title" content="My Trails Map"' in html
+    assert 'name="twitter:title" content="My Trails Map"' in html
 
 
 def test_title_containing_a_backslash_escape_survives_substitution(tmp_path):

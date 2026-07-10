@@ -20,12 +20,6 @@ slug: my-trails
 # route map). Don't end `name` in " Map" — the derivation would double it.
 # title: "My Trails Map"
 
-# Optional. Brand tail appended to the <title> element ONLY — never to the
-# share-card title (og:site_name already names the site), the in-app brand, or
-# the PWA manifest. Site-wide, so it's normally set by whatever deploys the
-# map rather than authored per map. Default: none.
-# title_suffix: " | example.org"
-
 # ============================================================
 # Data sources
 # ============================================================

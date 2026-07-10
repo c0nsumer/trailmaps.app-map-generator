@@ -56,7 +56,6 @@ KNOWN_KEYS = {
     "name": str,
     "slug": str,
     "title": str,
-    "title_suffix": str,
     # Map view / geometry
     "bbox": list,
     "pan_bbox": list,
@@ -169,11 +168,6 @@ KNOWN_KEYS = {
 # for the value. The drift lint (`assert_spec_coverage`) accepts these as
 # legitimate omissions.
 BUILD_ONLY_KEYS = {
-    # Site-wide brand suffix appended to the <title> element only
-    # (template_inject.copy_templates). Deliberately absent from
-    # og:title, the in-app brand, and the PWA manifest name, so it
-    # never reaches the runtime CONFIG.
-    "title_suffix",
     # OSM data fetching (fetch_trails.py, fetch_pois.py, osm_parser.py)
     "osm_file",
     "relations",

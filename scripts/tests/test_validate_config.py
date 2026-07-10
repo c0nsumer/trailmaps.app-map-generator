@@ -207,9 +207,13 @@ def test_title_optional():
     assert errors == [], errors
 
 
-def test_title_suffix_accepted_and_type_checked():
-    assert validate_config({**BASE, "title_suffix": " | example.org"})[0] == []
-    assert any("title_suffix" in e for e in _errors(title_suffix=123))
+def test_title_suffix_rejected_as_unknown():
+    # `title_suffix` existed briefly (2026-07) and was removed before
+    # release: branding the <title> is the deploying site's job, done in
+    # post-processing, not an engine config concern. The unknown-key check
+    # must flag it so a stale yaml fails loud instead of silently
+    # un-branding.
+    assert any("title_suffix" in e for e in _errors(title_suffix=" | example.org"))
 
 
 def test_hub_colors_validated():

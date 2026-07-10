@@ -119,7 +119,6 @@ into the same folder, and reference them by bare filename in the config.
 | `name` | Yes | : | Short name used in build logs and as the PWA icon label on mobile home screens. |
 | `slug` | Yes | : | URL-safe identifier. Used for the map's config folder (`configs/<slug>/`), the build output directory (`build/<slug>/`), and the deploy destination subdirectory. Must match `[a-z0-9_-]+` and match the folder name holding the YAML. |
 | `title` | No | `"{name} Map"` | Full title used for the browser tab, share-card `og:title`, the in-app brand, and the PWA install dialog. Derived from `name` when omitted; set it only where a curated string carries information the derivation can't (a race course, a route map). Because the derivation appends " Map", a `name` that already ends in " Map" would double it. |
-| `title_suffix` | No | none | Brand tail appended to the `<title>` element **only**. It never reaches `og:title` (`og:site_name` already names the site), the in-app brand, or the PWA manifest. Site-wide rather than per-map, so it is normally set by whatever deploys the map: trailmaps.app sets `" \| trailmaps.app"`, yielding `<title>My Trails Map \| trailmaps.app</title>`. |
 
 ### Data sources
 

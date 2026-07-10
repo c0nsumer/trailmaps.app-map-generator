@@ -551,10 +551,6 @@ def load_config(config_path):
     # generate_icons' manifest name, build.py's own log lines — sees
     # the same string without repeating the fallback.
     #
-    # `title_suffix` is NOT folded in: it belongs to the <title> element
-    # alone (see copy_templates), never to og:title, the brand, or the
-    # manifest.
-    #
     # A name already ending in " Map" would derive "… Map Map". The
     # deploying orchestrator's pre-validate forbids such names; the
     # engine does not second-guess a curator who wants that string.
