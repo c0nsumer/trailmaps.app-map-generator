@@ -2399,6 +2399,19 @@ async function init() {
     const mapOptions = {
         container: "map",
         style: style,
+        // Dash patterns are cross-faded properties: at every integer-zoom
+        // crossing MapLibre renders them at the old and new scale and
+        // blends over fadeDuration (default 300ms), so dashed lines
+        // (highlight strokes especially) flashed a double-exposure
+        // shimmer during any zoom animation, e.g. the fitBounds run by
+        // highlightRoute(). line-dasharray-transition does not govern
+        // this; the map-level fadeDuration is the only knob. 0 pins the
+        // crossfade factor at 1 so exactly one pattern renders, and the
+        // dash length re-anchors with a clean snap at integer zooms,
+        // matching the snap-not-crossfade convention of the highlight
+        // layers. Side effect: symbol labels appear/disappear instantly
+        // instead of fading in.
+        fadeDuration: 0,
         minZoom: CONFIG.minZoom,
         maxZoom: CONFIG.maxZoom,
         maxBounds: [
