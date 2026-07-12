@@ -710,6 +710,39 @@ function pointAtArcLength(segments, totalLength, arc) {
     return { lng: last.lng2, lat: last.lat2, bearing: last.bearing };
 }
 
+// ---- Decoration placement debugging ----
+// Phase 0 of .claude/plans/mid-zoom-label-dead-band.md. URL-param
+// gated (?debugDecor=1), deliberately NOT persisted to localStorage:
+// the overlay is diagnostic tooling for whoever is browsing right
+// now, not rider-facing state. When on, computeDecorations() also
+// emits its placement-index contents (the metre-radius reservations
+// every placement deconflicts against) to a separate GeoJSON source
+// rendered as circle outlines + radius text, and logs a one-line
+// placement summary per pass. Permanent tooling, zero cost when off.
+const DEBUG_DECOR = (() => {
+    try {
+        return new URLSearchParams(window.location.search)
+            .get("debugDecor") === "1";
+    } catch (e) {
+        return false;
+    }
+})();
+
+// Reservation FeatureCollection from the most recent
+// computeDecorations() pass (null when DEBUG_DECOR is off);
+// updateDecorationsSource pushes it into the decor-debug source.
+let _decorDebugData = null;
+
+// Overlay color category for a placement-index reservation. The
+// KIND enum names features; reservations only need the four visual
+// buckets the overlay distinguishes (label / arrow / diamond /
+// DOM-marker obstacle — obstacles are tagged at gatherObstacles).
+function decorDebugKind(kind) {
+    if (kind === KIND.ARROW) return "arrow";
+    if (kind === KIND.DIAMOND) return "diamond";
+    return "label";
+}
+
 // Footprint radii (meters) used for placement collision suppression.
 // Calibrated to zoom 15 (~3.5 m/px at lat 42°), at higher zooms the
 // icons shrink in metric terms; at lower zooms they grow but the
@@ -756,7 +789,8 @@ function gatherObstacles() {
         for (const m of arr) {
             if (m._map !== map) continue;
             const ll = m.getLngLat();
-            out.push({ lngLat: [ll.lng, ll.lat], radiusM: r });
+            out.push({ lngLat: [ll.lng, ll.lat], radiusM: r,
+                       debugKind: "obstacle" });
         }
     }
     _obstaclesCache = out;
@@ -813,6 +847,16 @@ function makeSpatialIndex(anchorLat) {
                         for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
                     }
                 }
+            }
+            return out;
+        },
+        // Every item ever added, for the ?debugDecor=1 reservation
+        // overlay. Iterates the live buckets, so it's only as
+        // expensive as the caller's use; not on any hot path.
+        all() {
+            const out = [];
+            for (const bucket of grid.values()) {
+                for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
             }
             return out;
         },
@@ -951,7 +995,8 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                 ...extra,
             },
         });
-        placedIndex.add({ lngLat: [pt.lng, pt.lat], radiusM: radius });
+        placedIndex.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
+                          debugKind: decorDebugKind(kind) });
         return true;
     }
     return false;
@@ -1132,7 +1177,8 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
                 geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
                 properties: { kind, min_zoom: minZoom, ...extraPropsFn(w, pt) },
             });
-            placed.add({ lngLat: [pt.lng, pt.lat], radiusM: radius });
+            placed.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
+                         debugKind: decorDebugKind(kind) });
             acceptedPts.push([pt.lng, pt.lat]);
             return true;
         }
@@ -1309,7 +1355,8 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
                     shared_routes: s.owner.sharedRoutes,
                 },
             });
-            placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R });
+            placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R,
+                         debugKind: "arrow" });
             return true;
         };
         let placedAny = false;
@@ -1328,9 +1375,13 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
 // Pick a point ON `way` to anchor an overview label, preferring a stretch
 // clear of already-placed obstacles (POIs / markers). Tries the arc-length
 // midpoint first, then points either side, and returns the first with
-// clearance; falls back to the midpoint if none are clear (the label still
-// renders and MapLibre resolves any residual overlap at draw time). Returns
-// null only for a degenerate, segment-less way.
+// clearance ({pt, clear: true}); falls back to the midpoint if none are
+// clear ({pt, clear: false}). The fallback is a KNOWN collision: the
+// pt-label layers sit above the icon layers and icons draw regardless
+// (icon-allow-overlap), so nothing at render time resolves it — this is
+// hole 2 of .claude/plans/mid-zoom-label-dead-band.md, kept as-is until
+// Phase 2; `clear` feeds the Phase-0 telemetry that sizes the problem.
+// Returns null only for a degenerate, segment-less way.
 function chooseOnPathLabelPoint(way, placed, radiusM) {
     const fracs = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74];
     let fallback = null;
@@ -1339,9 +1390,11 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
             way.totalLength * fr);
         if (!pt) continue;
         if (!fallback) fallback = pt;
-        if (!placedCollides(pt.lng, pt.lat, radiusM, placed)) return pt;
+        if (!placedCollides(pt.lng, pt.lat, radiusM, placed)) {
+            return { pt, clear: true };
+        }
     }
-    return fallback;
+    return fallback ? { pt: fallback, clear: false } : null;
 }
 
 // Build the full decoration FeatureCollection for the current visible
@@ -1373,6 +1426,13 @@ function routeLabelAllowed(rid) {
 }
 
 function computeDecorations() {
+    // Phase-0 telemetry (mid-zoom-label-dead-band plan): stats is null
+    // when the ?debugDecor=1 flag is off, and every telemetry touch
+    // below is guarded on it, so the normal path pays nothing.
+    const stats = DEBUG_DECOR ? {
+        t0: performance.now(),
+        ptEmitted: 0, ptFallback: 0, ptDropped: 0,
+    } : null;
     const decorations = [];
     // Build a spatial-hash index of all collision targets. Seed with
     // the cached obstacle markers (POIs the placer must avoid), then
@@ -1438,6 +1498,8 @@ function computeDecorations() {
         }
     }
 
+    if (stats) stats.b1 = decorations.length;
+
     // ---- Pass 1.5: run-tier overview markers, arrows and diamonds
     //      spaced along each connected run so every directional stretch
     //      and difficulty band reads when zoomed out, without the per-way
@@ -1460,6 +1522,7 @@ function computeDecorations() {
                 };
             });
     }
+    if (stats) stats.b15a = decorations.length;
     const diamondRuns = computeConnectedRuns(ways,
         (w) => ["0", "1", "2", "3", "4", "5"].includes(w.imba),
         (w) => w.imba);
@@ -1470,6 +1533,7 @@ function computeDecorations() {
             trail_name: w.trailName,
             shared_routes: w.sharedRoutes,
         }));
+    if (stats) stats.b15d = decorations.length;
 
     // ---- Pass 1.7: overview point labels, one name per visible route, and
     //      (trails mode) per named trail, pinned ON the trail at a low-clutter
@@ -1492,8 +1556,16 @@ function computeDecorations() {
         // placed and untouched. Meters: the on-screen clearance it buys grows
         // with zoom, biting hardest at z15-16 where the tiers are densest.
         const r = Math.min(120, 45 + text.length * 6);
-        const pt = chooseOnPathLabelPoint(way, placed, r);
-        if (!pt) return;
+        const chosen = chooseOnPathLabelPoint(way, placed, r);
+        if (!chosen) {
+            if (stats) stats.ptDropped++;
+            return;
+        }
+        if (stats) {
+            stats.ptEmitted++;
+            if (!chosen.clear) stats.ptFallback++;
+        }
+        const pt = chosen.pt;
         decorations.push({
             type: "Feature",
             geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
@@ -1504,7 +1576,8 @@ function computeDecorations() {
                 shared_routes: way.sharedRoutes,
             }, extraProps),
         });
-        placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
+        placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r,
+                     debugKind: "label" });
     };
     // Route name labels, gated per-route by routeLabelAllowed (which
     // reflects the current label mode); the muted event-mode network
@@ -1578,6 +1651,7 @@ function computeDecorations() {
             }
         }
     }
+    if (stats) stats.b2 = decorations.length;
     // ---- Pass 3: density ladder, one rung per zoom level (see
     //      DECOR_LADDER). Each rung sweeps diamonds along every rated
     //      way and arrows along every one-way chain at the rung's
@@ -1616,6 +1690,49 @@ function computeDecorations() {
         }
     }
 
+    if (stats) {
+        // Reservation overlay data: one Point per placement-index item,
+        // radius in meters (drawn as a geographic circle so the metre
+        // reservations' zoom-blindness is visible on screen).
+        _decorDebugData = {
+            type: "FeatureCollection",
+            features: placed.all().map((it) => ({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: it.lngLat },
+                properties: {
+                    debug_kind: it.debugKind || "obstacle",
+                    radius_m: it.radiusM,
+                    radius_label: Math.round(it.radiusM) + "m",
+                },
+            })),
+        };
+
+        // One greppable summary line per pass (plan §4 0b).
+        const kindCountsFrom = (from, to) => {
+            let a = 0, d = 0;
+            for (let i = from; i < to; i++) {
+                const k = decorations[i].properties.kind;
+                if (k === KIND.ARROW) a++;
+                else if (k === KIND.DIAMOND) d++;
+            }
+            return { a, d };
+        };
+        const ladder = kindCountsFrom(stats.b2, decorations.length);
+        const perWayDiamonds = (stats.b2 - stats.b15d) - stats.ptEmitted;
+        const ms = (performance.now() - stats.t0).toFixed(1);
+        console.info(
+            `[decor] ${ms}ms ways=${ways.length}`
+            + ` obstacles=${obstacleArr.length}`
+            + ` | lines=${stats.b1}`
+            + ` ptLabels=${stats.ptEmitted}`
+            + ` (fallback=${stats.ptFallback} dropped=${stats.ptDropped})`
+            + ` | run a=${stats.b15a - stats.b1}`
+            + ` d=${stats.b15d - stats.b15a}`
+            + ` | perway d=${perWayDiamonds}`
+            + ` | ladder a=${ladder.a} d=${ladder.d}`
+            + ` | total=${decorations.length}`);
+    }
+
     return { type: "FeatureCollection", features: decorations };
 }
 
@@ -1648,8 +1765,97 @@ function updateDecorationsSource() {
     requestAnimationFrame(() => {
         _decorationsScheduled = false;
         const src = map.getSource("trail-decorations");
-        if (src) src.setData(computeDecorations());
+        if (!src) return;
+        const fc = computeDecorations();
+        src.setData(fc);
+        if (DEBUG_DECOR) {
+            const dbg = map.getSource("decor-debug");
+            if (dbg && _decorDebugData) dbg.setData(_decorDebugData);
+            debugLogLabelExtents(fc.features);
+        }
     });
+}
+
+// ---- Phase-0c text/icon extent measurement (?debugDecor=1 only) ----
+// The placement radii were historically derived from a ~3.5 px/char
+// guess; Phase 1 of the dead-band plan needs measured numbers. Runs
+// once per page load, after the first decoration pass: measures every
+// emitted overview point label with canvas.measureText at the layer's
+// interpolated text-size for z12/14/16 and logs len→px pairs plus a
+// px-per-char summary, then the icons' drawn sizes at the same zooms.
+// canvas measures whatever local font the stack resolves to, not the
+// glyph PBFs MapLibre actually renders — close enough for radius
+// calibration, and the font actually used is logged alongside.
+
+// Evaluate a MapLibre-style linear zoom ramp at `z` (clamped to the
+// end stops, like ["interpolate", ["linear"], ["zoom"], ...]).
+function interpZoomStops(stops, z) {
+    if (z <= stops[0][0]) return stops[0][1];
+    for (let i = 1; i < stops.length; i++) {
+        const [z1, v1] = stops[i];
+        const [z0, v0] = stops[i - 1];
+        if (z <= z1) return v0 + ((z - z0) / (z1 - z0)) * (v1 - v0);
+    }
+    return stops[stops.length - 1][1];
+}
+
+// Mirrors of the layer ramps below / in addDecorationLayers; if those
+// change, change these (measurement-only, no placement effect).
+const _PT_LABEL_TEXT_SIZE_STOPS = [[10, 11], [13, 13], [18, 15]];
+const _DECOR_ICON_SIZE_STOPS = [[12, 0.5], [14, 0.7], [18, 1.0]];
+
+let _decorExtentsLogged = false;
+function debugLogLabelExtents(features) {
+    if (_decorExtentsLogged) return;
+    _decorExtentsLogged = true;
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) return;
+    const zooms = [12, 14, 16];
+    // Same stack the symbol layers request; the browser substitutes
+    // its best local match when Noto Sans isn't a document webfont.
+    const fontStack = '"Noto Sans", "Noto Sans Regular", sans-serif';
+
+    const seen = new Set();
+    const totals = zooms.map(() => 0);
+    let totalChars = 0;
+    for (const f of features) {
+        const k = f.properties.kind;
+        if (k !== KIND.ROUTE_LABEL_PT && k !== KIND.TRAIL_LABEL_PT) continue;
+        const text = f.properties.text || "";
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+        totalChars += text.length;
+        const widths = zooms.map((z, i) => {
+            const size = interpZoomStops(_PT_LABEL_TEXT_SIZE_STOPS, z);
+            ctx.font = `${size}px ${fontStack}`;
+            const w = ctx.measureText(text).width;
+            totals[i] += w;
+            return w.toFixed(1);
+        });
+        console.info(`[decorText] len=${text.length}`
+            + ` z12=${widths[0]}px z14=${widths[1]}px z16=${widths[2]}px`
+            + ` "${text}"`);
+    }
+    if (seen.size) {
+        const ppc = totals.map((t) => (t / totalChars).toFixed(2));
+        console.info(`[decorText] px-per-char z12=${ppc[0]}`
+            + ` z14=${ppc[1]} z16=${ppc[2]}`
+            + ` (n=${seen.size} labels, font=${fontStack})`);
+    } else {
+        console.info("[decorText] no overview point labels emitted");
+    }
+
+    // Icon drawn size = logical sprite size × the icon-size ramp.
+    // Logical sizes match registerArrowIcons (22) and
+    // registerDifficultyIcons (24).
+    const iconLine = (name, logicalPx) => {
+        const px = zooms.map((z) =>
+            (logicalPx * interpZoomStops(_DECOR_ICON_SIZE_STOPS, z))
+                .toFixed(1));
+        return `${name} z12=${px[0]}px z14=${px[1]}px z16=${px[2]}px`;
+    };
+    console.info(`[decorIcon] ${iconLine("arrow", 22)}`
+        + ` | ${iconLine("diamond", 24)}`);
 }
 
 // Add the four decor layers, kind-filtered with a tier gate
@@ -1852,6 +2058,67 @@ function addDecorationLayers() {
             "text-color": "#1a1a1a",
             "text-halo-color": "rgba(255,255,255,0.9)",
             "text-halo-width": 2,
+        },
+    });
+
+    if (DEBUG_DECOR) addDecorDebugLayers();
+}
+
+// Reservation debug overlay layers (?debugDecor=1): a circle outline
+// per placement-index reservation, colored by what reserved it, plus
+// tiny radius text. The metre radii are drawn as GEOGRAPHIC circles
+// (exponential-base-2 zoom ramp = a fixed ground size), deliberately
+// honest about their zoom-blindness: zoom out and the disc shrinks
+// under the fixed-size text it is supposed to protect (hole 1 of the
+// dead-band plan). Added last so they draw above every decor layer.
+// The text layer sets allow-overlap + ignore-placement so the overlay
+// never perturbs MapLibre's real collision decisions.
+function addDecorDebugLayers() {
+    if (map.getLayer("decor-debug-reservations")) return;
+
+    const KIND_COLOR = ["match", ["get", "debug_kind"],
+        "label", "#d81b60",     // magenta
+        "arrow", "#1e88e5",     // blue
+        "diamond", "#fb8c00",   // orange
+        "#616161",              // obstacle (DOM markers): gray
+    ];
+    // radius_m meters → screen px, exact at any zoom for a base-2
+    // exponential ramp (error ≈ the sub-pixel z0 value).
+    const radiusPx = (z) => ["/", ["get", "radius_m"],
+        decorMetersPerPixel(z)];
+
+    map.addLayer({
+        id: "decor-debug-reservations",
+        type: "circle",
+        source: "decor-debug",
+        paint: {
+            "circle-radius": ["interpolate", ["exponential", 2], ["zoom"],
+                0, radiusPx(0), 24, radiusPx(24)],
+            "circle-color": "rgba(0,0,0,0)",
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": KIND_COLOR,
+            "circle-stroke-opacity": 0.85,
+            "circle-pitch-alignment": "map",
+        },
+    });
+    map.addLayer({
+        id: "decor-debug-radius",
+        type: "symbol",
+        source: "decor-debug",
+        layout: {
+            "symbol-placement": "point",
+            "text-field": ["get", "radius_label"],
+            "text-font": ["Noto Sans Regular"],
+            "text-size": 9,
+            "text-anchor": "top",
+            "text-offset": [0, 0.2],
+            "text-allow-overlap": true,
+            "text-ignore-placement": true,
+        },
+        paint: {
+            "text-color": KIND_COLOR,
+            "text-halo-color": "rgba(255,255,255,0.85)",
+            "text-halo-width": 1,
         },
     });
 }
@@ -4158,6 +4425,16 @@ async function loadTrails() {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
+    // Reservation debug overlay source (?debugDecor=1). Populated by
+    // updateDecorationsSource from the placement index; survives scheme
+    // rebuilds like every non-basemap source (rebuildBasemapLayers
+    // carries sources over wholesale).
+    if (DEBUG_DECOR) {
+        map.addSource("decor-debug", {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+        });
+    }
     // Open the boot gate and run the first pass. Earlier calls (e.g.
     // setupFloatingChrome's applyVisibilityChange inside style.load)
     // were dropped by the gate, this is the single first pass, off
