@@ -8010,6 +8010,38 @@ function setupFloatingChrome() {
         if (highlight || _highlightedPois.length > 0) clearHighlight();
     });
 
+    // "/" opens search, the app's one keyboard shortcut. It's the
+    // convention from GitHub / Google Maps / Slack, and search is the
+    // only FAB workflow that's keyboard-shaped: type, arrow through
+    // results, Escape to back out. The other FABs stay pointer-only
+    // on purpose (Locate could fire a permission prompt from a stray
+    // keypress; Options / GPX are open-look-click anyway).
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "/") return;
+        // Only bare "/". Ctrl / Cmd / Alt chords belong to the
+        // browser or OS (e.g. Cmd-/ toggles comments in devtools).
+        // Shift is deliberately NOT blocked: several layouts
+        // (German, others) need Shift to produce "/" at all, and
+        // e.key already tells us the composed character.
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // Never steal the keystroke from a text field.
+        const t = e.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
+                  t.tagName === "SELECT" || t.isContentEditable)) return;
+        // About sits on top of everything; opening search under it
+        // would be invisible. Same guard the Escape handler uses.
+        if (isAboutOpen()) return;
+        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
+            return;
+        }
+        // preventDefault stops Firefox's built-in Quick Find bar
+        // (bound to "/" by default) and keeps the "/" character out
+        // of the finder input that openSearchOverlay is about to
+        // focus on desktop.
+        e.preventDefault();
+        openSearchOverlay();
+    });
+
     // Expose closeSearchOverlay so the finder row clicks (defined
     // outside this function's scope) can dismiss search after a
     // selection commits. Replaces the old window.__closeSearchOverlay.
