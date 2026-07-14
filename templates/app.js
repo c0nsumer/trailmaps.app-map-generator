@@ -3081,6 +3081,12 @@ async function init() {
             // query; in that case clicking again once permission
             // resolves will work. No explicit retry needed.
             geolocate.trigger();
+            // Drop focus so a later keypress (e.g. Escape clearing a
+            // highlight) can't promote the button to :focus-visible
+            // in Chrome, which focuses buttons on mouse click. Same
+            // rationale as the blur in setOverlayOpen(); this FAB
+            // never goes through that path because it has no overlay.
+            locateBtn.blur();
         });
         if (nativeLocateBtn) {
             const obs = new MutationObserver(mirrorLocateState);
@@ -7714,7 +7720,17 @@ function setupFloatingChrome() {
             if (btn) btn.setAttribute("aria-pressed", "true");
         } else {
             overlay.classList.remove("is-open");
-            if (btn) btn.setAttribute("aria-pressed", "false");
+            if (btn) {
+                btn.setAttribute("aria-pressed", "false");
+                // Drop focus from the trigger. Chrome (unlike
+                // Firefox/Safari on macOS) focuses a button on mouse
+                // click, and a later Escape press counts as keyboard
+                // interaction, promoting the still-focused button to
+                // :focus-visible and drawing the accent ring. The
+                // triggers are pointer-only by design, so nothing is
+                // lost by blurring.
+                if (document.activeElement === btn) btn.blur();
+            }
             // Wait for slide-out transition before re-hiding the
             // element so the animation plays. Match the CSS
             // transition duration (0.22s) plus a small margin.
