@@ -748,10 +748,10 @@ function decorDebugKind(kind) {
 }
 
 // Footprint radii (meters) used for placement collision suppression.
-// Calibrated to zoom 15 (~3.5 m/px at lat 42°), at higher zooms the
-// icons shrink in metric terms; at lower zooms they grow but the
-// tiered min_zoom keeps fewer items on screen, so a static radius
-// works across the visible range.
+// Calibrated to zoom 15 (~3.5 m/px at lat 42°). Since Phase 1 of the
+// mid-zoom-label-dead-band plan these are only the overview-zoom
+// FLOOR of the separation; the px radii below govern wherever they
+// demand more (z13+, where the mid-zoom failures lived).
 const DECOR_RADIUS_M = {
     label:    60,  // text along trail axis (legacy point placement)
     diamond:  35,
@@ -764,6 +764,81 @@ const DECOR_RADIUS_M = {
     // chop the label support line in JS instead.
     label_line_clearance: 50,
 };
+
+// ---- px-aware reservations (Phase 1, mid-zoom-label-dead-band) ----
+// Metre radii alone are zoom-blind: drawn text and icons are a fixed
+// SCREEN size, so below ~z15.5 a metre disc is smaller on screen than
+// the thing it protects (hole 1 of the plan; the ?debugDecor=1
+// overlay makes this visible). Every placement-index item therefore
+// also carries a pixel radius and the min_zoom it appears at.
+// placedCollides() enforces the LARGER of the metre separation and
+// the pixel separation converted to meters at the pair's binding
+// zoom: the lowest zoom both items are on screen (max of their
+// min_zooms), clamped to DECOR_PX_BINDING_MIN_ZOOM. Screen distance
+// between fixed geographic points only grows with zoom, so clearance
+// at the binding zoom implies clearance at every zoom above it. The
+// clamp deliberately accepts historic overlap at true overview zooms
+// — without it, labels would reserve km-scale discs and wipe out the
+// run-tier marker field (see plan §5).
+const DECOR_PX_BINDING_MIN_ZOOM = 13;
+// Icon values are drawn half-extents at their largest (icon-size 1.0
+// at z18: arrow 22 px, diamond 24 px sprites — 0c-confirmed) plus a
+// hair of pad; obstacle covers the ~26-30 px CSS POI marker icons.
+const DECOR_RADIUS_PX = {
+    arrow: 12,
+    diamond: 13,
+    obstacle: 16,
+    label_pad: 6,  // added to a label's measured half-width
+};
+
+function decorPxRadiusFor(kind) {
+    if (kind === KIND.ARROW) return DECOR_RADIUS_PX.arrow;
+    if (kind === KIND.DIAMOND) return DECOR_RADIUS_PX.diamond;
+    // Point labels measure their own text (labelHalfPx) and pass
+    // pxRadius explicitly; anything else falls back to metre-only.
+    return 0;
+}
+
+// Largest separation an item can demand of any neighbor: its metre
+// radius, or its px radius converted at the lowest zoom its px
+// protection can bind. Used both as the spatial-index query span and
+// for the index's max-reach bookkeeping (which closes hole 3: pairs
+// whose combined reach exceeds one cell ring are now always scanned).
+function decorItemReachM(item) {
+    const mz = Math.max(item.minZoom || 0, DECOR_PX_BINDING_MIN_ZOOM);
+    const pxM = (item.pxRadius || 0) * decorMetersPerPixel(mz);
+    return Math.max(item.radiusM || 0, pxM);
+}
+
+// Half the drawn width of an overview point label in CSS px at the
+// largest text-size the pt-label layers reach (their maxzoom = the
+// worst case across the label's visible range), plus label_pad.
+// Same canvas measurement Phase 0c validated against real maps
+// (~6.3-6.9 px/char on local Noto Sans); cached per string because
+// every decoration recompute re-measures the same names.
+const _labelHalfPxCache = new Map();
+let _labelMeasureCtx = null;
+function labelHalfPx(text) {
+    let v = _labelHalfPxCache.get(text);
+    if (v !== undefined) return v;
+    if (_labelMeasureCtx === null) {
+        const c = document.createElement("canvas");
+        _labelMeasureCtx = (c.getContext && c.getContext("2d")) || false;
+    }
+    let w;
+    if (_labelMeasureCtx) {
+        const size = interpZoomStops(_PT_LABEL_TEXT_SIZE_STOPS,
+            OVERVIEW_LABEL_MAX_ZOOM);
+        _labelMeasureCtx.font =
+            `${size}px "Noto Sans", "Noto Sans Regular", sans-serif`;
+        w = _labelMeasureCtx.measureText(text).width;
+    } else {
+        w = text.length * 6.9;   // 0c-measured px-per-char fallback
+    }
+    v = w / 2 + DECOR_RADIUS_PX.label_pad;
+    _labelHalfPxCache.set(text, v);
+    return v;
+}
 
 // Snapshot the on-map POI markers so the decoration placer skips
 // their footprint. Markers are DOM overlays (above the WebGL canvas),
@@ -794,6 +869,7 @@ function gatherObstacles() {
             if (m._map !== map) continue;
             const ll = m.getLngLat();
             out.push({ lngLat: [ll.lng, ll.lat], radiusM: r,
+                       pxRadius: DECOR_RADIUS_PX.obstacle, minZoom: 0,
                        debugKind: "obstacle" });
         }
     }
@@ -809,12 +885,15 @@ function gatherObstacles() {
 // length. On dense maps (200+ POIs + dozens of decorations) the
 // label-clipping + collision-check work was 100-200ms.
 //
-// The index buckets items into square cells whose side length is
-// chosen ≥ the largest collision-radius sum we'll ever check
-// (label radius 60 + label radius 60 = 120m → cell 150m gives
-// margin). A 3×3-cell query around any candidate covers all
-// possible collisions; the worst-case query inspects O(items per
-// cell) ≈ a handful on typical maps. Insertions are O(1).
+// The index buckets items into 150 m square cells. The scan span
+// around a query cell is derived per query from the query's own
+// reach plus the largest reach of any inserted item (tracked in
+// add()), so detection is guaranteed for ANY radius pair — the old
+// fixed 3×3 scan only guaranteed pairs whose combined radii fit one
+// cell ring (hole 3 of the mid-zoom-label-dead-band plan; a
+// 117 m + 117 m label pair could already slip it). Worst-case spans
+// come from label px-reservations binding at z13 (~1 km reach →
+// ~7-cell ring); telemetry keeps an eye on the cost.
 //
 // COS-of-anchor-latitude approximation for the lat→meters
 // projection introduces <0.5% cell-size error within ±50 km of the
@@ -825,6 +904,7 @@ function makeSpatialIndex(anchorLat) {
     const cosLat = Math.cos((anchorLat * Math.PI) / 180);
     const lngMPerDeg = _LAT_M_PER_DEG * cosLat;
     const grid = new Map();
+    let maxReachM = 0;
     function cellKey(lng, lat) {
         const cx = Math.floor((lng * lngMPerDeg) / _SPATIAL_INDEX_CELL_M);
         const cy = Math.floor((lat * _LAT_M_PER_DEG) / _SPATIAL_INDEX_CELL_M);
@@ -832,20 +912,24 @@ function makeSpatialIndex(anchorLat) {
     }
     return {
         add(item) {
+            const reach = decorItemReachM(item);
+            if (reach > maxReachM) maxReachM = reach;
             const k = cellKey(item.lngLat[0], item.lngLat[1]);
             const bucket = grid.get(k);
             if (bucket) bucket.push(item);
             else grid.set(k, [item]);
         },
-        nearby(lng, lat) {
-            // Inline 3×3 scan: explicit unrolling beats nested loops
-            // here because the function is in the hot path and 9 keys
-            // is small enough to be fully predictable for the JIT.
+        // `queryReachM` is the querying item's own reach
+        // (decorItemReachM); the span then covers every item whose
+        // combined separation with the query could still collide.
+        nearby(lng, lat, queryReachM) {
             const cx = Math.floor((lng * lngMPerDeg) / _SPATIAL_INDEX_CELL_M);
             const cy = Math.floor((lat * _LAT_M_PER_DEG) / _SPATIAL_INDEX_CELL_M);
+            const span = Math.max(1, Math.ceil(
+                ((queryReachM || 0) + maxReachM) / _SPATIAL_INDEX_CELL_M));
             const out = [];
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -span; dx <= span; dx++) {
+                for (let dy = -span; dy <= span; dy++) {
                     const bucket = grid.get((cx + dx) * 65537 + (cy + dy));
                     if (bucket) {
                         for (let i = 0; i < bucket.length; i++) out.push(bucket[i]);
@@ -867,12 +951,28 @@ function makeSpatialIndex(anchorLat) {
     };
 }
 
-function placedCollides(lng, lat, radiusM, placedIndex) {
-    const candidates = placedIndex.nearby(lng, lat);
+// `q` is the candidate's reservation descriptor:
+// { radiusM, pxRadius, minZoom } — the same fields index items carry.
+// Separation against each neighbor is the larger of the metre sum
+// (historic behavior, still the floor at overview zooms) and the px
+// sum converted to meters at the pair's binding zoom (see the
+// px-aware reservations comment block).
+function placedCollides(lng, lat, q, placedIndex) {
+    const candidates = placedIndex.nearby(lng, lat, decorItemReachM(q));
+    const qPx = q.pxRadius || 0;
+    const qMz = q.minZoom || 0;
     for (let i = 0; i < candidates.length; i++) {
         const p = candidates[i];
         const d = haversineMeters(lng, lat, p.lngLat[0], p.lngLat[1]);
-        if (d < radiusM + p.radiusM) return true;
+        let sep = (q.radiusM || 0) + (p.radiusM || 0);
+        const pPx = p.pxRadius || 0;
+        if (qPx && pPx) {
+            const bz = Math.max(qMz, p.minZoom || 0,
+                DECOR_PX_BINDING_MIN_ZOOM);
+            const pxSep = (qPx + pPx) * decorMetersPerPixel(bz);
+            if (pxSep > sep) sep = pxSep;
+        }
+        if (d < sep) return true;
     }
     return false;
 }
@@ -898,7 +998,7 @@ function clipCoordsAroundObstacles(coords, obstaclesIndex, radius) {
     for (let i = 0; i < coords.length; i++) {
         const [lng, lat] = coords[i];
         let blocked = false;
-        const candidates = obstaclesIndex.nearby(lng, lat);
+        const candidates = obstaclesIndex.nearby(lng, lat, radius);
         for (let j = 0; j < candidates.length; j++) {
             const obs = candidates[j];
             if (haversineMeters(lng, lat, obs.lngLat[0], obs.lngLat[1])
@@ -984,11 +1084,13 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
     // placeArrowTierAlongChains, which builds its features directly.
     const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
                  :                           DECOR_RADIUS_M.label;
+    const q = { radiusM: radius, pxRadius: decorPxRadiusFor(kind),
+                minZoom };
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
         const pt = pointAtArcLength(way.segments, way.totalLength, arc);
         if (!pt) continue;
-        if (placedCollides(pt.lng, pt.lat, radius, placedIndex)) continue;
+        if (placedCollides(pt.lng, pt.lat, q, placedIndex)) continue;
         const extra = extraPropsFn ? extraPropsFn(pt) : {};
         decorations.push({
             type: "Feature",
@@ -1000,6 +1102,7 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
             },
         });
         placedIndex.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
+                          pxRadius: q.pxRadius, minZoom,
                           debugKind: decorDebugKind(kind) });
         return true;
     }
@@ -1161,6 +1264,8 @@ function computeConnectedRuns(ways, isEligible, groupKey) {
 // kind-specific feature properties.
 function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
                            decorations, placed, extraPropsFn) {
+    const q = { radiusM: radius, pxRadius: decorPxRadiusFor(kind),
+                minZoom };
     const acceptedPts = [];
     const farEnough = (lng, lat) => {
         for (const p of acceptedPts) {
@@ -1175,13 +1280,14 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
             const pt = pointAtArcLength(w.segments, L, L * f);
             if (!pt) continue;
             if (!ignoreSpacing && !farEnough(pt.lng, pt.lat)) continue;
-            if (placedCollides(pt.lng, pt.lat, radius, placed)) continue;
+            if (placedCollides(pt.lng, pt.lat, q, placed)) continue;
             decorations.push({
                 type: "Feature",
                 geometry: { type: "Point", coordinates: [pt.lng, pt.lat] },
                 properties: { kind, min_zoom: minZoom, ...extraPropsFn(w, pt) },
             });
             placed.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
+                         pxRadius: q.pxRadius, minZoom,
                          debugKind: decorDebugKind(kind) });
             acceptedPts.push([pt.lng, pt.lat]);
             return true;
@@ -1338,6 +1444,7 @@ function sampleChain(entries, a) {
 function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
                                    placed, guarantee) {
     const R = DECOR_RADIUS_M.arrow;
+    const q = { radiusM: R, pxRadius: DECOR_RADIUS_PX.arrow, minZoom };
     const reverseSet = reverseRoutesToday;
     for (const chain of chains) {
         const { entries, chainLength } = chainParam(chain);
@@ -1345,7 +1452,7 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
         const emit = (a) => {
             const s = sampleChain(entries, a);
             if (!s) return false;
-            if (placedCollides(s.pt.lng, s.pt.lat, R, placed)) return false;
+            if (placedCollides(s.pt.lng, s.pt.lat, q, placed)) return false;
             const reverse = reverseSet.has(s.owner.routeId)
                 || s.owner.sharedRoutes.some((id) => reverseSet.has(id));
             decorations.push({
@@ -1360,6 +1467,7 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
                 },
             });
             placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R,
+                         pxRadius: q.pxRadius, minZoom,
                          debugKind: "arrow" });
             return true;
         };
@@ -1386,7 +1494,9 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
 // hole 2 of .claude/plans/mid-zoom-label-dead-band.md, kept as-is until
 // Phase 2; `clear` feeds the Phase-0 telemetry that sizes the problem.
 // Returns null only for a degenerate, segment-less way.
-function chooseOnPathLabelPoint(way, placed, radiusM) {
+// `q` is the label's reservation descriptor ({radiusM, pxRadius,
+// minZoom}), passed through to placedCollides.
+function chooseOnPathLabelPoint(way, placed, q) {
     const fracs = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74];
     let fallback = null;
     for (const fr of fracs) {
@@ -1394,7 +1504,7 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
             way.totalLength * fr);
         if (!pt) continue;
         if (!fallback) fallback = pt;
-        if (!placedCollides(pt.lng, pt.lat, radiusM, placed)) {
+        if (!placedCollides(pt.lng, pt.lat, q, placed)) {
             return { pt, clear: true };
         }
     }
@@ -1560,7 +1670,11 @@ function computeDecorations() {
         // placed and untouched. Meters: the on-screen clearance it buys grows
         // with zoom, biting hardest at z15-16 where the tiers are densest.
         const r = Math.min(120, 45 + text.length * 6);
-        const chosen = chooseOnPathLabelPoint(way, placed, r);
+        // Phase 1: the metre disc above remains the overview-zoom
+        // floor; the px radius (half the measured text width) is what
+        // actually holds neighbors off the drawn glyphs at z13+.
+        const q = { radiusM: r, pxRadius: labelHalfPx(text), minZoom: 0 };
+        const chosen = chooseOnPathLabelPoint(way, placed, q);
         if (!chosen) {
             if (stats) stats.ptDropped++;
             return;
@@ -1581,6 +1695,7 @@ function computeDecorations() {
             }, extraProps),
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r,
+                     pxRadius: q.pxRadius, minZoom: 0,
                      debugKind: "label",
                      // Known-collision fallback placements (hole 2)
                      // render red in the debug overlay so they can be
@@ -1711,7 +1826,11 @@ function computeDecorations() {
                     debug_kind: it.debugKind || "obstacle",
                     fallback: it.debugFallback === true,
                     radius_m: it.radiusM,
-                    radius_label: Math.round(it.radiusM) + "m",
+                    px_radius: it.pxRadius || 0,
+                    radius_label: Math.round(it.radiusM) + "m"
+                        + (it.pxRadius
+                            ? "/" + Math.round(it.pxRadius) + "px"
+                            : ""),
                 },
             })),
         };
@@ -2117,6 +2236,24 @@ function addDecorDebugLayers() {
             "circle-stroke-color": KIND_COLOR,
             "circle-stroke-opacity": 0.85,
             "circle-pitch-alignment": "map",
+        },
+    });
+    // Phase-1 px reservations: screen-anchored discs (constant px
+    // radius, so they hold their size as you zoom — the exact
+    // opposite of the shrinking metre circles above). The effective
+    // protection at any zoom is the larger of the two circles; below
+    // DECOR_PX_BINDING_MIN_ZOOM the px disc is advisory only.
+    map.addLayer({
+        id: "decor-debug-px-reservations",
+        type: "circle",
+        source: "decor-debug",
+        filter: [">", ["get", "px_radius"], 0],
+        paint: {
+            "circle-radius": ["get", "px_radius"],
+            "circle-color": "rgba(0,0,0,0)",
+            "circle-stroke-width": 1,
+            "circle-stroke-color": KIND_COLOR,
+            "circle-stroke-opacity": 0.5,
         },
     });
     map.addLayer({
