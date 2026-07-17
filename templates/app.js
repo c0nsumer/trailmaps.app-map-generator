@@ -737,14 +737,34 @@ let _decorDebugData = null;
 // without the console open.
 let _decorDebugSummary = "";
 
-// Overlay color category for a placement-index reservation. The
-// KIND enum names features; reservations only need the four visual
-// buckets the overlay distinguishes (label / arrow / diamond /
-// DOM-marker obstacle — obstacles are tagged at gatherObstacles).
-function decorDebugKind(kind) {
+// Reservation kind for a placement-index item: label / arrow /
+// diamond / obstacle (obstacles are tagged at gatherObstacles). The
+// KIND enum names features; reservations need only these four
+// buckets. Doubles as the debug overlay's color category AND as the
+// input to decorResClass below, which decides whether a pair gets
+// px-separation.
+function decorResKindFor(kind) {
     if (kind === KIND.ARROW) return "arrow";
     if (kind === KIND.DIAMOND) return "diamond";
     return "label";
+}
+
+// Collision class for the px-separation rule (Phase 1 P2 finding):
+// px separation applies ONLY to cross-class pairs. Same-class pairs
+// keep the metre floor because they already have a working
+// deconfliction mechanism — label-vs-label is resolved per zoom by
+// MapLibre's own pt-label collision at render time (reserving
+// worst-case z13 screen space in JS instead made EVERY label on a
+// compact map a fallback: bloomer went fb=20/30 → 30/30), and
+// icon-vs-icon spacing is what the cadence ladder itself controls
+// (px-contesting run-tier arrows broke the one-arrow-per-run
+// guarantee: bloomer 6 → 3). Cross-class pairs (label-icon,
+// label-obstacle, icon-obstacle) have NO render-time protection —
+// they are exactly the postmortem's failing rows and keep the px
+// rule.
+function decorResClass(resKind) {
+    if (resKind === "arrow" || resKind === "diamond") return "icon";
+    return resKind || "obstacle";
 }
 
 // Footprint radii (meters) used for placement collision suppression.
@@ -779,7 +799,10 @@ const DECOR_RADIUS_M = {
 // at the binding zoom implies clearance at every zoom above it. The
 // clamp deliberately accepts historic overlap at true overview zooms
 // — without it, labels would reserve km-scale discs and wipe out the
-// run-tier marker field (see plan §5).
+// run-tier marker field (see plan §5). Px separation applies to
+// CROSS-CLASS pairs only (decorResClass) — same-class pairs already
+// have a working mechanism and field data showed px-contesting them
+// is destructive (see the decorResClass comment).
 const DECOR_PX_BINDING_MIN_ZOOM = 13;
 // Icon values are drawn half-extents at their largest (icon-size 1.0
 // at z18: arrow 22 px, diamond 24 px sprites — 0c-confirmed) plus a
@@ -870,7 +893,7 @@ function gatherObstacles() {
             const ll = m.getLngLat();
             out.push({ lngLat: [ll.lng, ll.lat], radiusM: r,
                        pxRadius: DECOR_RADIUS_PX.obstacle, minZoom: 0,
-                       debugKind: "obstacle" });
+                       resKind: "obstacle" });
         }
     }
     _obstaclesCache = out;
@@ -952,21 +975,22 @@ function makeSpatialIndex(anchorLat) {
 }
 
 // `q` is the candidate's reservation descriptor:
-// { radiusM, pxRadius, minZoom } — the same fields index items carry.
-// Separation against each neighbor is the larger of the metre sum
-// (historic behavior, still the floor at overview zooms) and the px
-// sum converted to meters at the pair's binding zoom (see the
-// px-aware reservations comment block).
+// { radiusM, pxRadius, minZoom, resKind } — the same fields index
+// items carry. Separation against each neighbor is the larger of the
+// metre sum (historic behavior, still the floor at overview zooms)
+// and — for cross-class pairs only, see decorResClass — the px sum
+// converted to meters at the pair's binding zoom.
 function placedCollides(lng, lat, q, placedIndex) {
     const candidates = placedIndex.nearby(lng, lat, decorItemReachM(q));
     const qPx = q.pxRadius || 0;
     const qMz = q.minZoom || 0;
+    const qClass = decorResClass(q.resKind);
     for (let i = 0; i < candidates.length; i++) {
         const p = candidates[i];
         const d = haversineMeters(lng, lat, p.lngLat[0], p.lngLat[1]);
         let sep = (q.radiusM || 0) + (p.radiusM || 0);
         const pPx = p.pxRadius || 0;
-        if (qPx && pPx) {
+        if (qPx && pPx && decorResClass(p.resKind) !== qClass) {
             const bz = Math.max(qMz, p.minZoom || 0,
                 DECOR_PX_BINDING_MIN_ZOOM);
             const pxSep = (qPx + pPx) * decorMetersPerPixel(bz);
@@ -1085,7 +1109,7 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
     const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
                  :                           DECOR_RADIUS_M.label;
     const q = { radiusM: radius, pxRadius: decorPxRadiusFor(kind),
-                minZoom };
+                minZoom, resKind: decorResKindFor(kind) };
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
         const pt = pointAtArcLength(way.segments, way.totalLength, arc);
@@ -1103,7 +1127,7 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
         });
         placedIndex.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
                           pxRadius: q.pxRadius, minZoom,
-                          debugKind: decorDebugKind(kind) });
+                          resKind: decorResKindFor(kind) });
         return true;
     }
     return false;
@@ -1265,7 +1289,7 @@ function computeConnectedRuns(ways, isEligible, groupKey) {
 function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
                            decorations, placed, extraPropsFn) {
     const q = { radiusM: radius, pxRadius: decorPxRadiusFor(kind),
-                minZoom };
+                minZoom, resKind: decorResKindFor(kind) };
     const acceptedPts = [];
     const farEnough = (lng, lat) => {
         for (const p of acceptedPts) {
@@ -1288,7 +1312,7 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
             });
             placed.add({ lngLat: [pt.lng, pt.lat], radiusM: radius,
                          pxRadius: q.pxRadius, minZoom,
-                         debugKind: decorDebugKind(kind) });
+                         resKind: decorResKindFor(kind) });
             acceptedPts.push([pt.lng, pt.lat]);
             return true;
         }
@@ -1444,7 +1468,8 @@ function sampleChain(entries, a) {
 function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
                                    placed, guarantee) {
     const R = DECOR_RADIUS_M.arrow;
-    const q = { radiusM: R, pxRadius: DECOR_RADIUS_PX.arrow, minZoom };
+    const q = { radiusM: R, pxRadius: DECOR_RADIUS_PX.arrow, minZoom,
+                resKind: "arrow" };
     const reverseSet = reverseRoutesToday;
     for (const chain of chains) {
         const { entries, chainLength } = chainParam(chain);
@@ -1468,7 +1493,7 @@ function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
             });
             placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R,
                          pxRadius: q.pxRadius, minZoom,
-                         debugKind: "arrow" });
+                         resKind: "arrow" });
             return true;
         };
         let placedAny = false;
@@ -1673,7 +1698,8 @@ function computeDecorations() {
         // Phase 1: the metre disc above remains the overview-zoom
         // floor; the px radius (half the measured text width) is what
         // actually holds neighbors off the drawn glyphs at z13+.
-        const q = { radiusM: r, pxRadius: labelHalfPx(text), minZoom: 0 };
+        const q = { radiusM: r, pxRadius: labelHalfPx(text), minZoom: 0,
+                    resKind: "label" };
         const chosen = chooseOnPathLabelPoint(way, placed, q);
         if (!chosen) {
             if (stats) stats.ptDropped++;
@@ -1696,7 +1722,7 @@ function computeDecorations() {
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r,
                      pxRadius: q.pxRadius, minZoom: 0,
-                     debugKind: "label",
+                     resKind: "label",
                      // Known-collision fallback placements (hole 2)
                      // render red in the debug overlay so they can be
                      // found by browsing rather than by luck.
@@ -1823,7 +1849,7 @@ function computeDecorations() {
                 type: "Feature",
                 geometry: { type: "Point", coordinates: it.lngLat },
                 properties: {
-                    debug_kind: it.debugKind || "obstacle",
+                    debug_kind: it.resKind || "obstacle",
                     fallback: it.debugFallback === true,
                     radius_m: it.radiusM,
                     px_radius: it.pxRadius || 0,
