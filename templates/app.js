@@ -732,6 +732,10 @@ const DEBUG_DECOR = (() => {
 // computeDecorations() pass (null when DEBUG_DECOR is off);
 // updateDecorationsSource pushes it into the decor-debug source.
 let _decorDebugData = null;
+// Short form of the last telemetry line, shown in the on-screen
+// debug badge so label fallback counts are visible while browsing
+// without the console open.
+let _decorDebugSummary = "";
 
 // Overlay color category for a placement-index reservation. The
 // KIND enum names features; reservations only need the four visual
@@ -1577,7 +1581,11 @@ function computeDecorations() {
             }, extraProps),
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r,
-                     debugKind: "label" });
+                     debugKind: "label",
+                     // Known-collision fallback placements (hole 2)
+                     // render red in the debug overlay so they can be
+                     // found by browsing rather than by luck.
+                     debugFallback: !chosen.clear });
     };
     // Route name labels, gated per-route by routeLabelAllowed (which
     // reflects the current label mode); the muted event-mode network
@@ -1701,6 +1709,7 @@ function computeDecorations() {
                 geometry: { type: "Point", coordinates: it.lngLat },
                 properties: {
                     debug_kind: it.debugKind || "obstacle",
+                    fallback: it.debugFallback === true,
                     radius_m: it.radiusM,
                     radius_label: Math.round(it.radiusM) + "m",
                 },
@@ -1720,6 +1729,8 @@ function computeDecorations() {
         const ladder = kindCountsFrom(stats.b2, decorations.length);
         const perWayDiamonds = (stats.b2 - stats.b15d) - stats.ptEmitted;
         const ms = (performance.now() - stats.t0).toFixed(1);
+        _decorDebugSummary = `pt=${stats.ptEmitted}`
+            + ` fb=${stats.ptFallback} drop=${stats.ptDropped} ${ms}ms`;
         console.info(
             `[decor] ${ms}ms ways=${ways.length}`
             + ` obstacles=${obstacleArr.length}`
@@ -1772,6 +1783,7 @@ function updateDecorationsSource() {
             const dbg = map.getSource("decor-debug");
             if (dbg && _decorDebugData) dbg.setData(_decorDebugData);
             debugLogLabelExtents(fc.features);
+            updateDecorDebugBadge();
         }
     });
 }
@@ -2076,11 +2088,16 @@ function addDecorationLayers() {
 function addDecorDebugLayers() {
     if (map.getLayer("decor-debug-reservations")) return;
 
-    const KIND_COLOR = ["match", ["get", "debug_kind"],
-        "label", "#d81b60",     // magenta
-        "arrow", "#1e88e5",     // blue
-        "diamond", "#fb8c00",   // orange
-        "#616161",              // obstacle (DOM markers): gray
+    // Fallback-placed labels (known collisions, hole 2) override
+    // their kind color with red so they jump out while browsing.
+    const KIND_COLOR = ["case", ["==", ["get", "fallback"], true],
+        "#e60000",
+        ["match", ["get", "debug_kind"],
+            "label", "#d81b60",     // magenta
+            "arrow", "#1e88e5",     // blue
+            "diamond", "#fb8c00",   // orange
+            "#616161",              // obstacle (DOM markers): gray
+        ],
     ];
     // radius_m meters → screen px, exact at any zoom for a base-2
     // exponential ramp (error ≈ the sub-pixel z0 value).
@@ -2095,7 +2112,8 @@ function addDecorDebugLayers() {
             "circle-radius": ["interpolate", ["exponential", 2], ["zoom"],
                 0, radiusPx(0), 24, radiusPx(24)],
             "circle-color": "rgba(0,0,0,0)",
-            "circle-stroke-width": 1.5,
+            "circle-stroke-width": ["case",
+                ["==", ["get", "fallback"], true], 3, 1.5],
             "circle-stroke-color": KIND_COLOR,
             "circle-stroke-opacity": 0.85,
             "circle-pitch-alignment": "map",
@@ -2121,6 +2139,42 @@ function addDecorDebugLayers() {
             "text-halo-width": 1,
         },
     });
+
+    setupDecorDebugBadge();
+}
+
+// On-screen readout for the ?debugDecor=1 browse pass: current zoom +
+// center (so screenshots self-document the §9 sweep position) and the
+// short form of the last placement telemetry (pt/fallback/drop counts,
+// wall time) without needing the console open. Top-center, the one
+// edge no chrome occupies; pointer-events none so it never intercepts
+// a gesture; z-index 4 keeps it under open overlays like the brand.
+let _decorBadgeEl = null;
+function updateDecorDebugBadge() {
+    if (!_decorBadgeEl) return;
+    const c = map.getCenter();
+    const z = map.getZoom().toFixed(2);
+    _decorBadgeEl.textContent =
+        `z${z} ${c.lat.toFixed(5)},${c.lng.toFixed(5)}`
+        + (_decorDebugSummary ? ` | ${_decorDebugSummary}` : "");
+}
+function setupDecorDebugBadge() {
+    if (_decorBadgeEl) return;
+    const el = document.createElement("div");
+    el.id = "decor-debug-badge";
+    el.style.cssText = "position:fixed;"
+        + "top:calc(10px + env(safe-area-inset-top,0px));"
+        + "left:50%;transform:translateX(-50%);z-index:4;"
+        + "background:rgba(0,0,0,0.72);color:#fff;"
+        + "font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;"
+        + "padding:3px 10px;border-radius:8px;"
+        + "pointer-events:none;white-space:nowrap;";
+    document.body.appendChild(el);
+    _decorBadgeEl = el;
+    // "move" fires throughout pans AND zooms (zooming moves the
+    // camera), so one listener covers the whole sweep.
+    map.on("move", updateDecorDebugBadge);
+    updateDecorDebugBadge();
 }
 
 function directionArrowsToggleOn() {
