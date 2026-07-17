@@ -9929,10 +9929,8 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     function revealInstallSection(showButton) {
-        const section = document.getElementById("sheet-install-section");
         const btn = document.getElementById("install-btn");
         if (btn) btn.classList.toggle("hidden", !showButton);
-        if (section) section.classList.toggle("hidden", !showButton);
     }
 
     function setInstallButtonEnabled(enabled) {
@@ -9986,12 +9984,14 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
             });
         }
 
-        // iOS Safari: show the install row with the platform-specific
-        // help text swapped in ("Tap Share, then Add to Home Screen"
-        // instead of the Android-side "Install locally for offline
-        // use."). iOS has no programmatic install API, the actual
-        // flow lives in the browser chrome (Share → Add to Home
-        // Screen), so the row is tagged .is-static to suppress the
+        // iOS Safari: show the install row with platform-specific title
+        // and help text ("Add to home screen" / "Tap Share, then Add to
+        // Home Screen" instead of the Android-side "Install this app" /
+        // "Add to your home screen for offline access."). iOS has no
+        // programmatic install API — there's no real "install," just a
+        // home-screen shortcut — so the wording avoids overclaiming, and
+        // the actual flow lives in the browser chrome (Share → Add to
+        // Home Screen). The row is tagged .is-static to suppress the
         // tap-target affordance. The icon stays for visual consistency
         // with Android (riders see the same "this is the install
         // option" cue regardless of platform).
@@ -9999,6 +9999,10 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
             const installBtn = document.getElementById("install-btn");
             if (installBtn) {
                 installBtn.classList.add("is-static");
+                const title = installBtn.querySelector(".opt-action-title");
+                if (title) {
+                    title.textContent = "Add to home screen";
+                }
                 const help = installBtn.querySelector(".opt-action-help");
                 if (help) {
                     help.innerHTML = "Tap <strong>Share</strong>, "
