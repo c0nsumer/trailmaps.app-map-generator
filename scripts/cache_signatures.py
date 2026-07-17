@@ -168,29 +168,3 @@ def _pmtiles_needs_regen(output_path, bbox, maxzoom):
     if actual != expected:
         return True, f"signature changed (was {actual!r}, want {expected!r})"
     return False, None
-
-
-# ----------------------------------------------------------------------
-# Event mode: feature one or more routes prominently while every other
-# trail on the map renders as muted background context.
-#
-# Implementation strategy: pure build-time pre-processing translates the
-# `event_mode` directive into the existing per-route override
-# mechanisms (relation_colors, dashed_relations, custom_routes mutation).
-# No runtime code needs to know about event_mode. Two helpers, called at
-# different points in the build sequence:
-#
-#   _apply_event_mode_to_custom_routes(config)
-#       Pre-enrichment. Folds event_mode.routes into config["custom_
-#       routes"] (so they participate in the geometry bake-in inside
-#       _enrich_trails_geojson) and overrides non-featured custom
-#       routes' color and dashed fields with the background style.
-#
-#   _apply_event_mode_to_relations(config, trails_geojson)
-#       Pre-injection. After enrichment has populated the trails.geojson
-#       routes metadata, this pass synthesizes relation_colors and
-#       dashed_relations entries for every non-featured OSM route.
-#       Curator's explicit per-route entries always win.
-#
-# Background style default (when omitted): gray dashed.
-# ----------------------------------------------------------------------

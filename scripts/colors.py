@@ -55,7 +55,7 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_
 
     Walks lightness down in small steps. With sat_boost > 0, also nudges
     saturation up each step so a deepened accent reads vivid rather than
-    muddy-gray (Task 7 vividness); contrast is re-checked every iteration,
+    muddy-gray (vividness); contrast is re-checked every iteration,
     so a saturation change that lowers luminance just costs another step.
     Bails after a fixed number of iterations to avoid pathological inputs
     spinning forever.
@@ -145,7 +145,7 @@ _ON_ACCENT_DARK = "#14140F"
 # shade must read against. Matches --sheet-bg in style.css's dark block.
 _DARK_SHEET_BG = (28, 28, 30)
 
-# Vividness tuning (Task 7), applied only on the "auto" light shade.
+# Vividness tuning, applied only on the "auto" light shade.
 # Deepen past the AA floor and gently saturate while darkening so an
 # auto-derived accent that would otherwise sit right at 4.5 reads vivid
 # rather than muddy-gray. Hues whose raw pick already clears the target
@@ -163,7 +163,7 @@ def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
     _darken_for_contrast for the dark-mode accent shade.
 
     Walks lightness UP in small steps, HOLDING saturation so the dark
-    shade stays vivid rather than washing out to pastel (Task 7). In
+    shade stays vivid rather than washing out to pastel. In
     practice 4.5 vs the dark sheet is reached at moderate lightness
     (L <= ~0.65 across hues), so the result keeps the base's saturation
     and never approaches neon/white — no separate desaturation cap is
@@ -200,7 +200,7 @@ def _palette_from_base(base_rgb, darken_light):
     """Derive the 4-value accent palette from a single base (r, g, b).
 
     - light shade: the base verbatim, OR — on the "auto" path
-      (`darken_light`) — deepened + saturated for vividness (Task 7),
+      (`darken_light`) — deepened + saturated for vividness,
       which also keeps white-on-accent pills legible. Explicit hex /
       framework default are used verbatim, so light mode is unchanged.
     - dark shade: the base LIGHTENED until it reads AA against the dark
@@ -211,7 +211,7 @@ def _palette_from_base(base_rgb, darken_light):
     Returns {"light", "dark", "onLight", "onDark"} as hex strings.
     """
     if darken_light:
-        # Auto path: deepen + saturate for vividness (Task 7).
+        # Auto path: deepen + saturate for vividness.
         light_rgb = _darken_for_contrast(
             base_rgb,
             target_contrast=_LIGHT_TARGET_CONTRAST,
@@ -248,7 +248,7 @@ def resolve_accent_palette(config, project_root, cache_dir):
       - explicit hex → the hex, used verbatim for light (preserves
         curator intent exactly; only the dark shade is derived).
       - "auto" → logo/icon-derived pixel pick (cached as the RAW pick),
-        deepened + saturated for the light shade (vividness, Task 7) so
+        deepened + saturated for the light shade (vividness) so
         it reads vivid and white text stays AA-legible.
     """
     base_rgb, darken_light, is_default = _resolve_accent_base(config, project_root, cache_dir)

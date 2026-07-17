@@ -86,7 +86,7 @@ def test_best_text_color_flips_with_accent_lightness():
 
 
 def test_vividness_deepens_auto_light_shade():
-    # Task 7: the "auto" light shade is deepened past the 4.5 AA floor so
+    # Vividness: the "auto" light shade is deepened past the 4.5 AA floor so
     # it reads vivid, not muddy. A green raw that clears 4.5 early still
     # gets pushed to the vividness target.
     p = _palette_from_base((72, 152, 32), darken_light=True)

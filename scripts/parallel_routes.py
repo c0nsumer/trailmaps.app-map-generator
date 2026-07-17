@@ -35,7 +35,7 @@ the transition zone's endpoint. The micro-features REPLACE that
 ~10 m section of B's geometry instead of overlaying it. The original
 first vertex is stashed in `_subwayOriginalCoord0` so re-runs
 (idempotency) and toggle-off restoration both work cleanly — see
-the restore step in build.py's _enrich_trails_geojson.
+the restore step in enrichment.py's _enrich_trails_geojson.
 
 Caveats:
 - We do NOT walk past corridor B's first vertex. The transition zone
@@ -205,10 +205,17 @@ def _sample_cubic_bezier(p0, p1, p2, p3, n_samples):
 # Cubic-bezier handle length as a fraction of the transition span.
 # Larger values = the curve hugs the tangent direction longer at
 # each end before turning toward the other side. 0.55 is the
-# canonical value for approximating a quarter-circle with a bezier;
-# we use 0.5 — slightly tighter — to keep the curve from overshooting
-# on shallow bends while still visibly arcing on sharp corners.
+# canonical value for approximating a quarter-circle with a bezier
+# (and is what _smooth_sharp_corners uses, via
+# _SMOOTH_HANDLE_FRACTION); transitions use 0.5 — slightly tighter —
+# to keep the curve from overshooting on shallow bends while still
+# visibly arcing on sharp corners.
 _BEZIER_HANDLE_FRACTION = 0.5
+
+# Corner-smoothing handle length (see _smooth_sharp_corners): the
+# canonical 0.55 quarter-circle approximation, giving the curve room
+# to round arbitrary bend angles without overshooting.
+_SMOOTH_HANDLE_FRACTION = 0.55
 
 
 def _tangent_meters_into_junction(coords, end_kind):
@@ -282,7 +289,7 @@ def _smooth_sharp_corners(coords):
     for i in range(n - 1):
         seg_lens.append(_euclidean_meters(coords[i], coords[i + 1]))
 
-    # info[i] is None for non-sharp vertices, or a list of replacement
+    # arcs[i] is None for non-sharp vertices, or a list of replacement
     # arc coordinates (length = _SMOOTH_ARC_SAMPLES + 1) for sharp ones.
     arcs = [None] * n
 
@@ -340,11 +347,8 @@ def _smooth_sharp_corners(coords):
         ]
 
         # Bezier control points. P0 = p_in tangent unit_in_m, P3 =
-        # p_out tangent unit_out_m. Handle length 0.55 * tuck_m is
-        # the canonical quarter-circle approximation; for our use
-        # case (smoothing arbitrary bend angles) it gives the curve
-        # enough room to round the corner without overshooting.
-        handle_m = tuck_m * 0.55
+        # p_out tangent unit_out_m.
+        handle_m = tuck_m * _SMOOTH_HANDLE_FRACTION
         bp0 = p_in
         bp1 = [
             p_in[0] + unit_in_m[0] * handle_m * deg_per_m_lon,
@@ -418,7 +422,7 @@ def apply_subway_style(
     route_order : list of str or None.
         When provided, sorts each corridor's routes by index into
         this list instead of by natural-sort of route_id. Mirrors
-        the runtime's globalRank from CONFIG.routeOrder. Used by
+        the runtime's globalRank from CONFIG.routeOrders. Used by
         mode-aware builds to keep build-time bezier offsets and
         runtime line offsets consistent.
     visible_routes : iterable of str or None.

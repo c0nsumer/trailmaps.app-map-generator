@@ -12,7 +12,7 @@ import shutil
 
 import console
 
-# Logo render bounding box. The brand-img CSS at templates/style.css:1982
+# Logo render bounding box. The #brand-img CSS in templates/style.css
 # bounds it to max-width: 200px, max-height: 48px on the map overlay.
 # About modal uses the same image, similar bounds. We resample the source
 # to ~2× this on its longer side so retina displays render cleanly without

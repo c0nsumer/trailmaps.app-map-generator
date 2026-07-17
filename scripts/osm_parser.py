@@ -23,7 +23,7 @@ def parse_osm_file(osm_path):
     """Parse a .osm XML file into nodes, ways, and relations.
 
     Returns:
-        nodes: dict[int, (lon, lat)]
+        nodes: dict[int, (lon, lat, tags)]
         ways: dict[int, {"id", "nd_refs", "tags"}]
         relations: dict[int, {"id", "members", "tags"}]
     """

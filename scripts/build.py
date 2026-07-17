@@ -1288,7 +1288,7 @@ def main(argv=None):
     # parking lots or event_mode.pois in YAML wouldn't show up until
     # the curator remembered to pass `--trails`. Trails are
     # re-enriched every build (the unconditional
-    # `_enrich_trails_geojson` pass at the top of inject does that
+    # `_enrich_trails_geojson` pass earlier in main() does that
     # for custom routes); POIs now follow the same convention.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if (

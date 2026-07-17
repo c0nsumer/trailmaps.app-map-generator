@@ -365,9 +365,11 @@ def _validate_unknown_keys(report, config):
         # if they leak in (defensive — users won't write these).
         if key.startswith("_"):
             continue
-        # Legacy keys handled by `_validate_legacy_keys` get a pointed
-        # migration message there; suppress the generic "unknown key"
-        # warning so the curator sees one clear error per key, not two.
+        # Legacy keys get a pointed migration message from their
+        # dedicated validators (_validate_legacy_keys,
+        # _validate_renamed_keys, and friends); suppress the generic
+        # "unknown key" warning so the curator sees one clear error
+        # per key, not two.
         if key in _LEGACY_KEYS:
             continue
         suggestions = difflib.get_close_matches(key, KNOWN_KEYS.keys(), n=2)
@@ -1256,9 +1258,9 @@ def _validate_default_visible(report, config):
 
 def _validate_renamed_keys(report, config):
     """Hard-error on legacy keys whose only fate is a one-for-one
-    rename. Listed in HANDLED_SPECIALLY so the unknown-key fuzzy
-    matcher doesn't try to suggest spelling fixes for them — the
-    error message here points at the new name directly.
+    rename. Listed in _LEGACY_KEYS so the unknown-key fuzzy matcher
+    doesn't try to suggest spelling fixes for them — the error
+    message here points at the new name directly.
     """
     if "suppress_path_labels" in config:
         report.err(
@@ -1404,8 +1406,8 @@ def _validate_event_mode(report, config):
                                  # (matches an OSM relation id present
                                  # somewhere in this config).
         background_style:        # optional; default is gray dashed.
-          color: "#888888"
-          pattern: [2, 2]
+          color: gray
+          pattern: [0, 2]
           cap: round
 
     At least one of `routes` or `featured` must be non-empty.

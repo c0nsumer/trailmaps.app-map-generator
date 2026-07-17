@@ -75,7 +75,8 @@ Failure modes (all non-fatal):
     treated like a missing sample.
   - Empty route (no coords)               → skip; both stats omitted.
   - HTTP 502/503 (transient overload)     → automatic retry with
-    backoff (60s, 90s, 120s) per batch. After all retries are
+    backoff (RETRY_BACKOFF_SECONDS: 5s, 15s, 60s, 120s) per batch.
+    After all retries are
     exhausted on a single batch, the build stops trying for the rest
     of the routes and lets cache fill in on a later run.
 """

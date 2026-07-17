@@ -256,11 +256,11 @@ def _resolve_oneway(tags):
     return bike if bike else tags.get("oneway", "")
 
 
-def merge_consecutive_ways(ways_dict, relation_ids_set):
+def merge_consecutive_ways(ways_dict, way_relation_ids):
     """Merge consecutive ways that share the same set of relations, name, and difficulty.
 
-    Given a dict of ways belonging to one relation and a function to look up
-    which relations each way belongs to, merge consecutive ways where the
+    Given a dict of ways belonging to one relation and a mapping of
+    ``{way_id: set(relation_ids)}``, merge consecutive ways where the
     relation membership, way name, AND IMBA difficulty are identical.
 
     Returns a list of merged segments, each being a dict with:
@@ -292,7 +292,7 @@ def merge_consecutive_ways(ways_dict, relation_ids_set):
     # features so each retains its own digitization order.
     way_signatures = {}
     for way_id, way in ways_dict.items():
-        sig = tuple(sorted(relation_ids_set.get(way_id, set())))
+        sig = tuple(sorted(way_relation_ids.get(way_id, set())))
         name = way.get("tags", {}).get("name", "")
         imba = way.get("tags", {}).get("mtb:scale:imba", "")
         # Resolve effective oneway state. Bicycle-specific tag takes
@@ -784,7 +784,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # framework would otherwise silently render them as static one-ways in
     # OSM-digitization order, which is wrong half the time.
     #
-    # Resolution mirrors build.py:
+    # Resolution mirrors template_inject.py's CONFIG emission:
     #   - direction_schedule.reverse_days (non-empty) covers every
     #     relation by default.
     #   - direction_schedule.per_route[<rel>] is a per-relation override.
@@ -793,16 +793,16 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     #     system-wide default.
     #   - A super-relation key fans out to every child route, except
     #     where a child has its own explicit entry (which always wins).
-    #     Mirrors the two-pass logic in build.py — leaves first, then
-    #     supers fill in unset children.
+    #     Mirrors the two-pass logic in template_inject.py — leaves
+    #     first, then supers fill in unset children.
     sched_block = config.get("direction_schedule") or {}
     sched_raw = sched_block.get("per_route") or {}
     default_active = bool(sched_block.get("reverse_days"))
 
     # Build per-child resolved entries through the expansion table. The
     # resolved set drives both validation here and CONFIG.directionSchedules
-    # in build.py (re-derived there from the persisted metadata so the
-    # cached-build path stays consistent).
+    # in template_inject.py (re-derived there from the persisted metadata
+    # so the cached-build path stays consistent).
     overrides_active = set()  # relations explicitly scheduled
     overrides_optout = set()  # relations explicitly opted out (empty list)
     deferred_supers = []  # super entries to fan out after leaves

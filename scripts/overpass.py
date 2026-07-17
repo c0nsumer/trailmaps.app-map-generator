@@ -57,11 +57,11 @@ EMPTY_RETRY_LIMIT = 2
 
 # Maximum acceptable replication lag for an Overpass mirror's snapshot,
 # measured by the response's `osm3s.timestamp_osm_base` vs. wall clock.
-# Overpass mirrors replicate independently and can fall days behind without
-# raising any error — they'll cheerfully serve a stale snapshot. If a
-# response is older than this threshold, treat the mirror as unhealthy and
-# fall through to the next one. 24h is generous; the main mirror is usually
-# within minutes of upstream. Applies to LIVE responses only — cached
+# Overpass instances replicate independently and can fall days behind
+# without raising any error — they'll cheerfully serve a stale snapshot. If
+# a response is older than this threshold, raise StaleSnapshotError and
+# retry the endpoint on the backoff schedule. 24h is generous; the endpoint
+# is usually within minutes of upstream. Applies to LIVE responses only — cached
 # responses are served regardless of age (re-querying is explicit, via
 # the --refresh flags).
 MAX_OSM_BASE_LAG = timedelta(hours=24)

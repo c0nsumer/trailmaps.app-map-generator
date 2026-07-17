@@ -1,7 +1,7 @@
 # mtb-map-framework Python dependencies — pinned for reproducible builds.
 #
-# Requires Python 3.11+ (tested through 3.14). The only direct deps are the first five
-# below; everything else is a pinned transitive (captured via
+# Requires Python 3.11+ (tested through 3.14). The only direct deps are those
+# under "Direct dependencies" below; everything else is a pinned transitive (captured via
 # `pip freeze`) so a fresh `pip install -r requirements.txt` six months
 # from now produces the same dependency graph and the same build output
 # regardless of upstream releases.

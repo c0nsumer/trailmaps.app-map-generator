@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """Generate self-hosted terrain/hillshade tiles as PMTiles.
 
-Downloads SRTM elevation data for the configured bounding box, reprojects
-to Web Mercator, encodes as Terrarium RGB, and packages as PMTiles for
-MapLibre GL JS hillshade rendering.
+Primary path: extract pre-built Terrarium terrain tiles for the
+configured bounding box from the Mapterhorn project using ``pmtiles
+extract`` — no GDAL stack needed, and the only path that works with a
+stock ``requirements.txt`` install.
 
-Internal build sub-stage: build.py imports and calls fetch_terrain()
-directly; the ``__main__`` CLI exists only for standalone debugging.
-
-Dependencies:
+Fallback: build the tiles locally from SRTM elevation data (download,
+reproject to Web Mercator, encode as Terrarium RGB, package as
+PMTiles). Requires extra dependencies not in requirements.txt:
   pip install elevation rasterio rio-rgbify rio-pmtiles
   (Also requires GDAL system libraries)
 
-Alternative: If the full pipeline is too complex to install, this script
-can also download pre-built terrain PMTiles from Protomaps' Mapterhorn
-project using pmtiles extract.
+Internal build sub-stage: build.py imports and calls fetch_terrain()
+directly; the ``__main__`` CLI exists only for standalone debugging.
 """
 
 import os

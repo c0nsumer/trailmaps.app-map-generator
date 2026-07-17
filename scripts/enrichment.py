@@ -262,8 +262,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                         "coordinates": line,
                     },
                     "properties": {
-                        "route_id": cid,  # string id; Phase 4 will
-                        # stringify OSM ids too.
+                        "route_id": cid,  # string id, like the
+                        # stringified OSM ids above.
                         "route_name": cname,
                         "route_colour": ccolor,
                         "route_ref": "",
@@ -445,8 +445,8 @@ def _route_modes_from_orders(routes_metadata):
     """Return mode_key → frozenset of route IDs, matching the modes
     that route_order.enumerate_modes would produce.
 
-    Kept here as a small helper so build.py can compute modes the
-    same way as route_order.compute_route_orders did internally —
+    Small helper so the corridor-baseline pass computes modes the
+    same way as route_order.compute_route_orders does internally —
     they need to agree on which mode keys are active.
     """
     from route_order import enumerate_modes

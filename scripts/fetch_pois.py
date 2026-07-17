@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Fetch points of interest from OpenStreetMap.
 
-Queries the Overpass API for guideposts within the configured bounding
-box, combines with config-specified parking locations (which include
-driving direction URLs), and outputs a GeoJSON file.
+Queries the Overpass API for five POI categories within the configured
+bounding box (guideposts, emergency access points, attractions, toilets,
+drinking water — see fetch_pois_from_osm), merges in the config-specified
+POIs (parking, trailheads, hubs, event-mode POIs), and outputs a GeoJSON
+file.
 
 Parking areas are defined entirely in the YAML config, not fetched from OSM.
 
