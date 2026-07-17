@@ -1883,6 +1883,174 @@ let _firstGeolocateMoveAfterTrigger = false;
 let _followUserOnGeolocate = false;
 
 // ============================================================
+// Compass heading wedge (.claude/plans/compass-heading-wedge.md)
+// ============================================================
+// A translucent cone on the user-location dot showing which way the
+// rider is FACING (device compass), so a rider stopped at a junction
+// can pick the right fork without riding until the dot moves.
+// Custom-built: MapLibre 5.24 has no showUserHeading. Contract:
+//   - The sensor stream runs only while the Locate control is
+//     actively tracking (started from the Locate tap, stopped by
+//     mirrorLocateState's idle/disabled transitions).
+//   - The wedge HIDES on stale readings (3 s) or bad magnetometer
+//     accuracy rather than freeze pointing the wrong way.
+//   - Fallback when no compass is available: the direction-of-travel
+//     fields (coords.heading / coords.speed) that EVERY geolocation
+//     fix already carries, computed by the device's OS before the
+//     fix reaches the browser. The app does no movement inference of
+//     its own and keeps no position history — each fix is read and
+//     discarded, and the only retained location state remains the
+//     single latest `userLocation`, exactly as before this feature.
+//     A live compass reading always wins over the per-fix course.
+//   - The map itself never rotates. Bearing is locked at 0 app-wide,
+//     so wedge rotation = heading directly; if rotation ever
+//     unlocks, subtract map.getBearing() in applyWedgeHeading.
+//   - Desktop / no sensors: nothing appears, nothing asks.
+let _wedgeMarker = null;     // our own maplibregl.Marker (never the
+                             // GeolocateControl's private dot marker:
+                             // private internals are a foot-gun
+                             // across MapLibre upgrades)
+let _wedgeEl = null;         // marker root; --wedge-heading lives here
+let _wedgeAngleCss = 0;      // unwrapped accumulated angle for CSS
+let _wedgeHeading = null;    // smoothed heading [0,360) or null
+let _wedgeLastApply = 0;
+let _wedgeStaleTimer = null;
+let _orientationListening = false;
+
+// Ask for compass access. iOS gates DeviceOrientationEvent behind a
+// requestPermission() that only resolves from a real user gesture,
+// so this is called from the Locate FAB click (the tap that starts
+// tracking). Safe to call on every such tap: after a user deny, iOS
+// resolves 'denied' silently with no re-prompt, and platforms
+// without the gate have no prompt at all.
+function requestCompassOnGesture() {
+    if (typeof DeviceOrientationEvent === "undefined") return;
+    if (_orientationListening) return;
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+        DeviceOrientationEvent.requestPermission().then((res) => {
+            if (res === "granted") startOrientationListener();
+        }).catch(() => { /* not a gesture / unsupported: no compass */ });
+    } else {
+        startOrientationListener();
+    }
+}
+
+// iOS delivers webkitCompassHeading on plain `deviceorientation`;
+// Chromium delivers magnetometer-referenced yaw only on
+// `deviceorientationabsolute` (its plain events are gyro-relative
+// and drift). Listening to both and filtering in the handler covers
+// each platform without UA sniffing.
+function startOrientationListener() {
+    if (_orientationListening) return;
+    _orientationListening = true;
+    window.addEventListener("deviceorientation", onDeviceOrientation, true);
+    window.addEventListener("deviceorientationabsolute", onDeviceOrientation, true);
+}
+
+function stopOrientationListener() {
+    if (!_orientationListening) return;
+    _orientationListening = false;
+    window.removeEventListener("deviceorientation", onDeviceOrientation, true);
+    window.removeEventListener("deviceorientationabsolute", onDeviceOrientation, true);
+}
+
+function onDeviceOrientation(e) {
+    let heading = null;
+    if (typeof e.webkitCompassHeading === "number"
+            && e.webkitCompassHeading >= 0) {
+        // iOS: degrees clockwise from north. Accuracy is the max
+        // deviation in degrees (-1 = invalid); hide rather than
+        // mislead when the magnetometer is badly calibrated.
+        if (typeof e.webkitCompassAccuracy === "number"
+                && (e.webkitCompassAccuracy < 0
+                    || e.webkitCompassAccuracy > 50)) {
+            return;
+        }
+        heading = e.webkitCompassHeading;
+    } else if (e.absolute === true && typeof e.alpha === "number") {
+        // Chromium: alpha is counterclockwise from north; compensate
+        // for the screen's own rotation in landscape. (The sign of
+        // the compensation is what the landscape row of the device
+        // test matrix validates.)
+        const screenAngle =
+            (screen.orientation
+                && typeof screen.orientation.angle === "number")
+                ? screen.orientation.angle
+                : (typeof window.orientation === "number"
+                    ? window.orientation : 0);
+        heading = ((360 - e.alpha + screenAngle) % 360 + 360) % 360;
+    }
+    if (heading === null) return;
+    applyWedgeHeading(heading, false);
+}
+
+// `fromCourse` marks a reading taken from a single GPS fix's own
+// OS-computed heading field (compass fallback); it never overrides
+// a live compass.
+function applyWedgeHeading(heading, fromCourse) {
+    if (fromCourse && _orientationListening && _wedgeHeading !== null) {
+        return;
+    }
+    const now = performance.now();
+    if (now - _wedgeLastApply < 80) return;   // ~12 Hz is plenty
+    _wedgeLastApply = now;
+    if (_wedgeHeading === null) {
+        _wedgeHeading = heading;
+    } else {
+        // Shortest-arc exponential smoothing: raw magnetometer
+        // readings jitter several degrees event to event.
+        const d = ((heading - _wedgeHeading + 540) % 360) - 180;
+        _wedgeHeading = (_wedgeHeading + d * 0.3 + 360) % 360;
+    }
+    // The CSS angle accumulates without wrapping so the rotate()
+    // transition never takes the 350° long way around at the
+    // 359 → 0 seam.
+    const cur = ((_wedgeAngleCss % 360) + 360) % 360;
+    const dd = ((_wedgeHeading - cur + 540) % 360) - 180;
+    _wedgeAngleCss += dd;
+    if (_wedgeEl) {
+        _wedgeEl.style.setProperty("--wedge-heading",
+            _wedgeAngleCss + "deg");
+    }
+    showCompassWedge();
+    if (_wedgeStaleTimer) clearTimeout(_wedgeStaleTimer);
+    _wedgeStaleTimer = setTimeout(hideCompassWedge, 3000);
+}
+
+function showCompassWedge() {
+    if (!userLocation || _wedgeHeading === null || !map) return;
+    if (!_wedgeMarker) {
+        // Root carries no transform of its own (MapLibre positions
+        // the marker by writing the element's transform, which would
+        // clobber a CSS rotate here); the cone child does the
+        // rotating via the --wedge-heading custom property.
+        _wedgeEl = document.createElement("div");
+        _wedgeEl.className = "compass-wedge";
+        const cone = document.createElement("div");
+        cone.className = "compass-wedge-cone";
+        _wedgeEl.appendChild(cone);
+        _wedgeEl.style.setProperty("--wedge-heading",
+            _wedgeAngleCss + "deg");
+        _wedgeMarker = new maplibregl.Marker({
+            element: _wedgeEl,
+            rotationAlignment: "map",
+            pitchAlignment: "map",
+        });
+    }
+    _wedgeMarker.setLngLat(userLocation);
+    if (_wedgeMarker._map !== map) _wedgeMarker.addTo(map);
+}
+
+function hideCompassWedge() {
+    if (_wedgeStaleTimer) {
+        clearTimeout(_wedgeStaleTimer);
+        _wedgeStaleTimer = null;
+    }
+    _wedgeHeading = null;
+    if (_wedgeMarker && _wedgeMarker._map) _wedgeMarker.remove();
+}
+
+// ============================================================
 // Initialization
 // ============================================================
 // Required CONFIG fields, checked at boot. If the build produces a
@@ -2536,6 +2704,21 @@ async function init() {
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
         maybeShowOffScreenToast();
+        // Keep the compass wedge glued to the dot. The compass
+        // fallback below reads two fields THIS fix already carries
+        // (the OS computes heading/speed per fix; no history is kept
+        // or compared here): heading is only meaningful when the
+        // device is actually moving (NaN/garbage when stationary;
+        // ~1 m/s ≈ slow walk), hence the speed gate.
+        if (_wedgeMarker && _wedgeMarker._map) {
+            _wedgeMarker.setLngLat(userLocation);
+        }
+        if (typeof e.coords.heading === "number"
+                && !Number.isNaN(e.coords.heading)
+                && typeof e.coords.speed === "number"
+                && e.coords.speed > 1) {
+            applyWedgeHeading(e.coords.heading, true);
+        }
     });
 
     // NOTE: no trackuserlocationstart handler. MapLibre 5.x doesn't
@@ -2649,6 +2832,11 @@ async function init() {
         if (state === "idle" || state === "disabled") {
             userLocation = null;
             updateLocationIndicator();
+            // Tracking is off: retire the compass wedge and stop the
+            // sensor stream (battery; also prevents a ghost wedge if
+            // tracking restarts before any fresh fix arrives).
+            hideCompassWedge();
+            stopOrientationListener();
         }
     }
     if (locateBtn) {
@@ -2674,6 +2862,10 @@ async function init() {
                 _firstGeolocateMoveAfterTrigger = false;
                 _showToastOnNextFix = false;
                 _followUserOnGeolocate = true;
+                // Tracking-on tap = the user gesture iOS requires for
+                // the compass permission (see requestCompassOnGesture;
+                // no-ops everywhere it can't or shouldn't ask).
+                requestCompassOnGesture();
             } else if (!inTrackingState) {
                 // IDLE / DISABLED → ACTIVE (initial enable). Original
                 // framework intent: don't yank the camera with the
@@ -2693,6 +2885,8 @@ async function init() {
                 _firstGeolocateMoveAfterTrigger = true;
                 _showToastOnNextFix = true;
                 _followUserOnGeolocate = false;
+                // See the matching call in the BACKGROUND branch.
+                requestCompassOnGesture();
             }
             // else: ACTIVE / WAITING / *_ERROR → trigger() goes to
             //   IDLE. mirrorLocateState handles userLocation cleanup

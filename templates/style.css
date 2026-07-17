@@ -1982,6 +1982,56 @@ body::after {
     z-index: 2;
 }
 
+/* ----- Compass heading wedge ---------------------------------------
+ * Translucent cone fanning out from the user-location dot, rotated
+ * to the device compass heading by app.js (see the compass-heading
+ * block there; .claude/plans/compass-heading-wedge.md is the
+ * contract). The marker ROOT (.compass-wedge, which MapLibre also
+ * tags .maplibregl-marker and positions via inline transform) stays
+ * transform-free; the cone child does the rotating via the
+ * --wedge-heading custom property, so MapLibre's positioning writes
+ * never clobber the rotation. z-index 1 slots the cone above POI
+ * markers but under the dot (z-2), so the dot always reads as the
+ * anchor point of the fan. */
+.compass-wedge {
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.maplibregl-marker.compass-wedge {
+    z-index: 1;
+}
+
+.compass-wedge-cone {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 56px;
+    height: 56px;
+    margin: -28px 0 0 -28px;
+    border-radius: 50%;
+    /* ~50° sector centered on 12 o'clock, soft edges; dot blue. */
+    background: conic-gradient(
+        rgba(52, 152, 219, 0.45) 0deg 20deg,
+        rgba(52, 152, 219, 0.10) 20deg 25deg,
+        transparent 25deg 335deg,
+        rgba(52, 152, 219, 0.10) 335deg 340deg,
+        rgba(52, 152, 219, 0.45) 340deg 360deg);
+    transform: rotate(var(--wedge-heading, 0deg));
+    /* Short ease keeps the sweep smooth between ~12 Hz updates; the
+     * JS side feeds an unwrapped angle so this can never animate the
+     * long way around the 359 -> 0 seam. */
+    transition: transform 150ms ease-out;
+    will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .compass-wedge-cone {
+        transition: none;
+    }
+}
+
 /* ----- Spotlight dim (map_dim_on_highlight) ------------------------
  * POI markers that aren't adjacent to the highlighted route/trail are
  * faded. The fade is driven by an INLINE style set in app.js
