@@ -218,7 +218,7 @@ HANDLED_SPECIALLY = {
     "welcome",  # → CONFIG.welcome (object or false; passed through)
     "default_visible",  # → CONFIG.defaultVisible (list; "all" expanded at build time)
     "forced_visible",  # → CONFIG.forcedVisible (list; "all" expanded at build time)
-    "accent_color",  # → CONFIG.accentColor (hex; "auto" resolved from logo at build time)
+    "accent_color",  # → CONFIG.accentLight/accentDark (hex; "auto" resolved from logo at build time)
     "logo",  # → CONFIG.logoUrl (after asset pipeline)
     "icon",  # → fallback for logoUrl
     "additional_logos",  # → baked into #brand HTML at build time
@@ -1776,7 +1776,7 @@ def _validate_slug(report, config):
 # ----------------------------------------------------------------------
 
 
-def validate_config(config, *, config_path=None, project_root=None):
+def validate_config(config, *, config_path=None):
     """Validate a loaded config dict.
 
     Returns (errors, warnings) — both lists of pre-formatted strings.
@@ -1784,9 +1784,7 @@ def validate_config(config, *, config_path=None, project_root=None):
 
     ``config_path`` (or ``config["_config_dir"]`` set by build.py's
     ``load_config``) is used as the base for resolving user-supplied
-    asset paths (logo, icon, osm_file, custom_routes[].geometry). The
-    ``project_root`` parameter is retained for backwards compat but no
-    longer used for asset-path resolution.
+    asset paths (logo, icon, osm_file, custom_routes[].geometry).
     """
     if not isinstance(config, dict):
         return (

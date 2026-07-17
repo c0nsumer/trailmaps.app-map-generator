@@ -23,7 +23,7 @@ import console
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
-from config_io import load_config_for_fetch as load_config  # noqa: E402,F401
+from config_io import load_config_for_fetch as load_config
 from osm_parser import (
     detect_super_expansions,
     extract_source_relations,

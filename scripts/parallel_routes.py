@@ -169,15 +169,6 @@ def _euclidean_meters(p_a, p_b):
     return math.sqrt(dx_m * dx_m + dy_m * dy_m)
 
 
-def _interp_along_segment(p_a, p_b, fraction):
-    """Linear interpolation between two [lon, lat] points. fraction
-    in [0, 1]: 0 returns p_a, 1 returns p_b."""
-    return [
-        p_a[0] + (p_b[0] - p_a[0]) * fraction,
-        p_a[1] + (p_b[1] - p_a[1]) * fraction,
-    ]
-
-
 def _meters_unit_to_degree_delta(unit_meters, magnitude_meters, latitude):
     """Convert a unit vector in METER space + a meter-magnitude into
     a (dlon, dlat) delta in degree space at the given latitude. Used

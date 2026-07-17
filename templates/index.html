@@ -419,11 +419,11 @@
                  control, Season cycle, Emergency Access toggle, and (Phase 2)
                  Toilets + Drinking Water — one unified group of "what's
                  painted on the map." -->
-            <section class="opt-section" id="section-what-to-show">
+            <section class="opt-section">
                 <h3 class="opt-section-header">
                     <span class="opt-section-title">What to show</span>
                 </h3>
-                <div class="opt-section-body" id="section-what-to-show-body">
+                <div class="opt-section-body">
                     <!-- Labels — segmented control on the right (Routes
                          / Trails / None). mdi:label icon for visual
                          identity matching neighboring rows. -->
@@ -612,7 +612,7 @@
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label" id="season-group-label">Season</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="season-group-label" id="season-segmented">
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="season-group-label">
                             <button type="button" class="opt-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
                             <button type="button" class="opt-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
                         </div>
@@ -629,7 +629,7 @@
                          (label colors, arrow icon variant). Lives at the
                          bottom of "What to show" with Season — both are
                          "viewing mode" controls rather than per-layer toggles. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="color-scheme-field">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented">
                         <span class="layer-swatch appearance-swatch" aria-hidden="true">
                             <!-- mdi:theme-light-dark (Apache 2.0,
                                  Pictogrammers). Canonical Material
@@ -655,7 +655,7 @@
                 <h3 class="opt-section-header">
                     <span class="opt-section-title">Map style</span>
                 </h3>
-                <div class="opt-section-body" id="section-style-body">
+                <div class="opt-section-body">
                     <div class="opt-row opt-row-field" id="basemap-field">
                         <label class="opt-field-label" for="basemap-select">Basemap</label>
                         <select id="basemap-select" class="opt-select"></select>
@@ -671,8 +671,8 @@
                  The .opt-section's existing border-top hairline still
                  provides the visual break between layer toggles and
                  actions. -->
-            <section class="opt-section" id="section-more">
-                <div class="opt-section-body" id="section-more-body">
+            <section class="opt-section">
+                <div class="opt-section-body">
                     <!-- Share start -->
                     <button id="share-btn" class="opt-action-row hidden" type="button">
                         <span class="opt-action-icon" aria-hidden="true">

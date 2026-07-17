@@ -967,7 +967,7 @@ def main(argv=None):
     # Validate the config before doing anything expensive (Overpass fetches,
     # tile generation). Errors abort the build; warnings (e.g. asset files
     # not present yet) print but allow it to continue.
-    errors, warnings = validate_config(config, config_path=args.config, project_root=project_root)
+    errors, warnings = validate_config(config, config_path=args.config)
     for line in warnings:
         print(line)
     if errors:

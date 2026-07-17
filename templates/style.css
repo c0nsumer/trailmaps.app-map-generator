@@ -431,15 +431,6 @@ body::after {
     text-align: left;
 }
 
-.opt-section-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--sheet-text-muted);
-    margin: 0;
-}
-
 .opt-section-body {
     padding: 0 8px 4px 8px;
 }
@@ -869,7 +860,7 @@ body::after {
 /* Emergency route-bucket swatch — still used on the Map-options
  * Emergency Access row even though POI markers are merged. */
 .emergency-swatch {
-    background: #c0392b;
+    background: var(--emergency-color);
 }
 
 .parking-swatch {
@@ -1126,10 +1117,6 @@ body::after {
     border-bottom: 1px solid var(--sheet-divider);
 }
 
-.finder-section-header:first-child {
-    border-top: none;
-}
-
 .finder-row {
     display: flex;
     align-items: center;
@@ -1160,8 +1147,9 @@ body::after {
  * fast, even in a long list. */
 .finder-row.is-active {
     /* Accent at 18% opacity. color-mix lets per-map accent overrides
-     * (CONFIG.accentColor → :root --accent) cascade through to this
-     * keyboard-active background without any JS plumbing. */
+     * (CONFIG.accentLight/accentDark → :root vars, mapped to --accent
+     * per scheme) cascade through to this keyboard-active background
+     * without any JS plumbing. */
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     box-shadow: inset 3px 0 0 var(--accent);
 }
@@ -1243,13 +1231,6 @@ body::after {
     flex-shrink: 0;
 }
 
-.finder-empty {
-    padding: 16px 12px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--sheet-text-muted);
-}
-
 /* ----- About modal -------------------------------------------------- */
 .about-modal {
     position: fixed;
@@ -1301,9 +1282,10 @@ body::after {
 }
 
 /* Welcome modal CTA: primary action button at the bottom of the
-   first-visit modal. Uses the per-map accent (var(--accent), set on
-   :root from CONFIG.accentColor) so it tracks accent_color overrides
-   including "auto", matching the rest of the accent-aware UI. */
+   first-visit modal. Uses the per-map accent (var(--accent), mapped
+   per scheme from CONFIG.accentLight/accentDark) so it tracks
+   accent_color overrides including "auto", matching the rest of the
+   accent-aware UI. */
 .welcome-modal-cta {
     display: block;
     width: 100%;
@@ -2264,7 +2246,7 @@ body::after {
 #map-loading-bar.visible { opacity: 1; }
 
 /* Moving segment — the map's accent color (--accent, per-map from
- * CONFIG.accentColor, mapped per scheme), with a glow trail so it reads
+ * CONFIG.accentLight/accentDark, mapped per scheme), with a glow trail so it reads
  * clearly at a glance. Pinned to the top edge, never covering the map;
  * stays legible over both light and dark basemaps, where the faint track
  * is invisible. Using the variable means the bar (and its color-mixed

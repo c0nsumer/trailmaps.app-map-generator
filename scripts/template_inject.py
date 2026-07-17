@@ -245,10 +245,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # explicit per-relation entries WIN.
     _apply_event_mode_to_relations(config, trails_geojson)
 
-    # Apply route overrides (winter, color, dash) in a single pass.
-    # YAML keys keep their original "relation" names since they take OSM
-    # relation IDs as input; the values populate route info on the JS side.
-    winter_ids = set(config.get("winter_relations") or [])
+    # Apply route overrides (color, dash) in a single pass. YAML keys
+    # keep their original "relation" names since they take OSM
+    # relation IDs as input; the values populate route info on the JS
+    # side. (winter_relations is consumed earlier, in enrichment's
+    # bucket-flag pass — the runtime reads bucket flags, not a
+    # per-route season field.)
     relation_colors = config.get("relation_colors") or {}
     dashed_relations = config.get("dashed_relations") or {}
 
@@ -449,13 +451,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
             continue
 
         route_id = int(route_id_str)
-
-        # Winter override — kept for the legacy "seasonal" field on route
-        # info (backward compat with the current template). The three
-        # bucket flags (summer/winter/emergency) are set in
-        # _enrich_trails_geojson before this function runs.
-        if route_id in winter_ids:
-            route_info["seasonal"] = "winter"
 
         # Color override
         color_override = relation_colors.get(route_id)
@@ -681,14 +676,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # its best on-accent text color — from the logo pick / explicit
     # hex / framework default. app.js sets the four BASE vars on :root
     # and style.css maps --accent / --on-accent per [data-color-scheme],
-    # so the accent reads correctly in both schemes. accentColor (= the
-    # light shade) stays emitted for back-compat / external readers.
+    # so the accent reads correctly in both schemes.
     accent_palette = config.get("_accent_palette") or {}
     config_obj["accentLight"] = accent_palette.get("light")
     config_obj["accentDark"] = accent_palette.get("dark")
     config_obj["onAccentLight"] = accent_palette.get("onLight")
     config_obj["onAccentDark"] = accent_palette.get("onDark")
-    config_obj["accentColor"] = accent_palette.get("light")
 
     # Per-type POI counts (computed from pois.geojson at build
     # time — see _poi_counts stash). Drives the dynamic Welcome
