@@ -85,7 +85,13 @@ function currentColorScheme() {
 const MAP_PAINT_TOKENS = {
     light: {
         labelText:  "#1a1a1a",
-        labelHalo:  "rgba(255, 255, 255, 0.9)",
+        // Halo doubles as a knockout mask where a name crosses a
+        // one-way chevron glyph (chevrons are ignore-placement, so
+        // overlap is expected): near-opaque + 3 px wide (see the
+        // text-halo-width on every trail/route label layer) makes
+        // the text read in a clean pocket with the glyph passing
+        // behind, no collision management involved.
+        labelHalo:  "rgba(255, 255, 255, 0.95)",
         // Arrow icon ID, we register two canvas-rendered variants
         // (light-bg / dark-bg), distinct images, swap via
         // setLayoutProperty.
@@ -112,7 +118,7 @@ const MAP_PAINT_TOKENS = {
     },
     dark: {
         labelText:  "#f0f0f0",
-        labelHalo:  "rgba(0, 0, 0, 0.7)",
+        labelHalo:  "rgba(0, 0, 0, 0.85)",
         chevronFwd: "chevron-fwd-dark-bg",
         chevronRev: "chevron-rev-dark-bg",
         // Pure-black shadow deepens valleys BELOW the dark basemap
@@ -1530,7 +1536,7 @@ function addDecorationLayers() {
         paint: {
             "text-color": "#1a1a1a",
             "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
+            "text-halo-width": 3,
         },
     });
 
@@ -1558,7 +1564,7 @@ function addDecorationLayers() {
         paint: {
             "text-color": "#1a1a1a",
             "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
+            "text-halo-width": 3,
         },
     });
 
@@ -1632,7 +1638,7 @@ function addDecorationLayers() {
         paint: {
             "text-color": "#1a1a1a",
             "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
+            "text-halo-width": 3,
         },
     });
     map.addLayer({
@@ -1657,7 +1663,7 @@ function addDecorationLayers() {
         paint: {
             "text-color": "#1a1a1a",
             "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 2,
+            "text-halo-width": 3,
         },
     });
 }
@@ -4606,7 +4612,7 @@ async function loadTrails() {
             paint: {
                 "text-color": "#1a1a1a",
                 "text-halo-color": "rgba(255,255,255,0.9)",
-                "text-halo-width": 2,
+                "text-halo-width": 3,
             },
         });
     }
