@@ -9999,20 +9999,27 @@ function updateLocationIndicator() {
 
     // Inset rectangle the indicator is allowed to occupy. The bottom
     // edge accounts for safe-area-inset-bottom (notch / home bar).
-    // The FAB stack at bottom-right (Search alone) is corner-
-    // localized so the standard 48px edgeMargin keeps the indicator
-    // clear. The TOP-RIGHT FAB stack (Locate + Options) needs more
-    // headroom: 12px inset + two 48px FABs + 10px gap + 12px buffer
-    // = 130px from the top edge to clear both buttons. The brand at
-    // top-left and the highlight chip at top-center are handled by
-    // the same standard 48px edgeMargin.
+    // The routes panel at bottom-right is corner-localized so the
+    // standard 48px edgeMargin keeps the indicator clear. The
+    // TOP-RIGHT FAB stack (Locate + Reset View + Options, plus GPX
+    // on event maps) is taller than the edge margin, so its reserve
+    // is measured from the live element (+12px buffer) instead of
+    // hardcoded: the stack's height varies by build flags, and a
+    // constant here already went stale once when Reset View was
+    // added (the indicator arrow clamped under the Options FAB,
+    // which draws above it at z-index 5). The brand at top-left and
+    // the highlight chip at top-center are handled by the standard
+    // 48px edgeMargin.
     const cs = getComputedStyle(document.documentElement);
     const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
     const edgeMargin = 48;
-    const fabStackTopReserve = 130;
+    const fabStack = document.getElementById("fab-stack-top");
+    const fabStackTopReserve = fabStack
+        ? fabStack.getBoundingClientRect().bottom + 12
+        : edgeMargin;
     const xLeft = edgeMargin;
     const xRight = w - edgeMargin;
-    const yTop = fabStackTopReserve;
+    const yTop = Math.max(edgeMargin, fabStackTopReserve);
     const yBottom = h - safeBottom - edgeMargin;
 
     // Degenerate rectangle (canvas too short for the reserve), skip.

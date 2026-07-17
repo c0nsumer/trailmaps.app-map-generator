@@ -2319,7 +2319,9 @@ body::after {
  * The map fills the entire viewport. Pieces of chrome float over
  * it, occupying corners:
  *   - #brand              top-left     : logo or title text
- *   - #fab-stack-top      top-right    : Locate (corner) + Options
+ *   - #fab-stack-top      top-right    : Locate (corner) + Reset
+ *                                        View + Options (+ GPX on
+ *                                        event maps)
  *   - #route-panel        bottom-right : routes key + search entry
  *                                        (one-handed thumb corner)
  *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
@@ -2464,10 +2466,10 @@ body::after {
     white-space: nowrap;
 }
 
-/* ----- Floating button stacks (split: top-right + bottom-right) --- */
-/* Two corner-anchored vertical stacks. Top-right holds Locate
- * (corner) + Options. Bottom-right holds Search alone, where a
- * one-handed thumb naturally rests. Same 12 px corner inset as the
+/* ----- Floating button stack (top-right) -------------------------- */
+/* One corner-anchored vertical stack: Locate (corner) + Reset View
+ * + Options, plus GPX on event maps. (Bottom-right belongs to the
+ * routes panel — see .route-panel.) Same 12 px corner inset as the
  * brand element on the left.
  *
  * z-index sits BELOW any open overlay (search z=6, options z=7) so
