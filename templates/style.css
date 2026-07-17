@@ -125,6 +125,16 @@
      * halo on dark basemap. */
     --feature-label-color: #1e1e1e;
     --feature-label-halo: rgba(255, 255, 255, 0.9);
+    /* Toilet / drinking-water marker colors — fixed values (unlike
+     * the CONFIG-driven POI colors, which app.js sets as :root vars
+     * at boot; these two categories have no per-map config knob).
+     * Shared by the Options swatches and the on-map markers. */
+    --toilet-color: #6c5ce7;
+    --toilet-text-color: #fff;
+    --toilet-border-color: #fff;
+    --drinking-water-color: #3498db;
+    --drinking-water-text-color: #fff;
+    --drinking-water-border-color: #fff;
 }
 
 /* Dark-mode token overrides. Selector targets <html data-color-scheme="dark">,
@@ -979,8 +989,8 @@ body::after {
  * basemap — light text on dark halo). The chip doubles as a
  * tiny "label color sample" in either mode. */
 .label-swatch {
-    background: var(--label-text-color, #fff);
-    color: var(--label-color, #5d6d7e);
+    background: #fff;
+    color: #5d6d7e;
 }
 
 [data-color-scheme="dark"] .label-swatch {
@@ -1008,18 +1018,18 @@ body::after {
  * with parking blue or trailhead green. Glyph is a stylized standing
  * figure rendered as an SVG inside the swatch. */
 .toilet-swatch {
-    background: var(--toilet-color, #6c5ce7);
-    color: var(--toilet-text-color, #fff);
-    border: var(--poi-marker-border) solid var(--toilet-border-color, #fff);
+    background: var(--toilet-color);
+    color: var(--toilet-text-color);
+    border: var(--poi-marker-border) solid var(--toilet-border-color);
 }
 
 /* Drinking water — saturated blue with a droplet glyph. Distinct
  * enough from the parking blue (which is darker) to read as its
  * own category at a glance. */
 .drinking-water-swatch {
-    background: var(--drinking-water-color, #3498db);
-    color: var(--drinking-water-text-color, #fff);
-    border: var(--poi-marker-border) solid var(--drinking-water-border-color, #fff);
+    background: var(--drinking-water-color);
+    color: var(--drinking-water-text-color);
+    border: var(--poi-marker-border) solid var(--drinking-water-border-color);
 }
 
 /* Event-mode POI swatch — matches the on-map .event-poi-marker
@@ -1664,15 +1674,15 @@ body::after {
  * popup). The base .poi-marker rule sets cursor: pointer, which
  * is correct for parking/trailheads but wrong here. */
 .toilet-marker {
-    background: var(--toilet-color, #6c5ce7);
-    border-color: var(--toilet-border-color, #fff);
+    background: var(--toilet-color);
+    border-color: var(--toilet-border-color);
     pointer-events: none;
     cursor: default;
 }
 
 .drinking-water-marker {
-    background: var(--drinking-water-color, #3498db);
-    border-color: var(--drinking-water-border-color, #fff);
+    background: var(--drinking-water-color);
+    border-color: var(--drinking-water-border-color);
     pointer-events: none;
     cursor: default;
 }

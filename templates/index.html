@@ -179,9 +179,9 @@
 
     <!-- Highlight chip — floating at top of map when a route or trail is highlighted.
          The .highlight-chip-text wrapper holds the primary label and an optional
-         second-line note (used by the POI force-show flow to say "hidden in Options"
-         when a search highlight is showing markers whose layer toggle is off). The
-         note's .hidden class is toggled in JS based on whether there's anything to say. -->
+         second-line note (currently unused; kept as a hook in showHighlightChip's
+         API). The note's .hidden class is toggled in JS based on whether there's
+         anything to say. -->
     <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
         <span class="highlight-chip-swatch" aria-hidden="true"></span>
         <span class="highlight-chip-text">

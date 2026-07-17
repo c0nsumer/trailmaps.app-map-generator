@@ -92,9 +92,6 @@ const MAP_PAINT_TOKENS = {
         // the text read in a clean pocket with the glyph passing
         // behind, no collision management involved.
         labelHalo:  "rgba(255, 255, 255, 0.95)",
-        // Arrow icon ID, we register two canvas-rendered variants
-        // (light-bg / dark-bg), distinct images, swap via
-        // setLayoutProperty.
         // One-way chevron glyph image IDs (forward / reverse, per
         // scheme); registered by registerChevronPatterns, swapped via
         // setLayoutProperty icon-image on the decor-chevron-* layers.
@@ -215,9 +212,9 @@ const SCRIM_OPACITY = Math.max(0, Math.min(1,
 //   1. Persist preference to LS so subsequent visits use it.
 //   2. Resolve "auto" → "light"|"dark" via prefers-color-scheme.
 //   3. Update <html data-color-scheme>, then rebuild the basemap
-//      (Protomaps flavor follows scheme via buildPmtilesStyle), then
-//      re-apply the per-scheme map paint tokens once the new style
-//      finishes loading.
+//      (Protomaps flavor follows scheme via rebuildBasemapLayers),
+//      then re-apply the per-scheme map paint tokens once the new
+//      style finishes loading.
 //
 // Used by:
 //   - The Options Appearance segmented control (rider toggle)
@@ -298,10 +295,13 @@ function watchSystemColorScheme() {
 // next visit. Prefixing with CONFIG.slug isolates each map's UI
 // prefs. All values are purely-functional UI prefs (not personal
 // data); falls under the ePrivacy "strictly necessary" exemption,
-// no consent banner required. Unprefixed keys: mtb.seasonMode,
-// mtb.emergencyOn, mtb.poi.markers (merged guidepost + emergency
-// trail-marker layer), mtb.poi.parking, mtb.poi.trailheads,
-// mtb.poi.features, mtb.labels, mtb.difficulty.
+// no consent banner required. Keys (each stored with the slug
+// prefix): mtb.seasonMode, mtb.emergencyOn, mtb.labels,
+// mtb.difficulty, mtb.directionArrows, mtb.colorScheme,
+// mtb.poi.markers (merged guidepost + emergency trail-marker
+// layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
+// mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
+// mtb.routePanelExpanded, mtb.welcomed, mtb.fabsLabeled.
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
 // emits CONFIG.defaultVisible as a list of layer names that should
@@ -1493,10 +1493,13 @@ function updateDecorationsSource() {
     });
 }
 
-// Add the four decor layers, kind-filtered with a tier gate
-// (`min_zoom <= zoom`) so density grows with zoom.
+// Add the decor layers (trail-name, route-name, diamond, plus the
+// -pt point variants), kind-filtered with a tier gate
+// (`min_zoom <= zoom`) so density grows with zoom. Direction arrows
+// are NOT decoration points — they live on the separate
+// decor-chevron-* line-symbol layers.
 //
-// Icons (diamond, arrow) use `icon-allow-overlap: true` because their
+// Icons (diamond) use `icon-allow-overlap: true` because their
 // positions were already deconflicted in computeDecorations and we
 // want exactly the placements we chose. They use `icon-ignore-
 // placement: false` so they DO register in MapLibre's collision index
@@ -1670,10 +1673,10 @@ function addDecorationLayers() {
 
 function directionArrowsToggleOn() {
     // Curator-suppressed: when CONFIG.showDirectionArrows is false,
-    // the layer is force-hidden, the toggle row is hidden in
-    // setupFloatingChrome, and computeDecorations skips arrow
-    // placement. Wins over forced_visible (the "show" gate is the
-    // outer envelope; force-on only applies when arrows are shown at
+    // the chevron layers are force-hidden and the toggle row is
+    // hidden in setupFloatingChrome. Wins over forced_visible (the
+    // "show" gate is the outer envelope; force-on only applies when
+    // arrows are shown at
     // all). Use for aesthetic maps that should never display
     // directional indicators regardless of OSM tagging.
     if (CONFIG.showDirectionArrows === false) return false;
@@ -2420,7 +2423,7 @@ async function init() {
     // no UI noise, this is curator-with-DevTools-open territory.
     checkPMTilesRangeSupport();
 
-    // Build map style (light theme only)
+    // Build map style (Protomaps flavor follows the active scheme)
     const style = buildStyle();
 
     // Build transformRequest for base layers that require auth headers
@@ -3630,7 +3633,7 @@ function buildAboutModalContent() {
 }
 
 // ============================================================
-// Style building (light theme only)
+// Style building (Protomaps flavor per color scheme)
 // ============================================================
 function getBaseUrl() {
     const loc = window.location;
@@ -3671,8 +3674,8 @@ function buildStyle() {
     // "dark". The bootstrap script in <head> sets data-color-scheme
     // before the runtime initializes, so first-paint tile selection
     // is already correct, no light→dark flicker on load. Scheme
-    // toggles at runtime trigger map.setStyle(buildStyle()) which
-    // re-runs this and gets the new flavor.
+    // toggles at runtime go through applyColorScheme →
+    // rebuildBasemapLayers, which re-derives the flavor the same way.
     const flavor = currentColorScheme() === "dark" ? "dark" : "light";
     const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
 
@@ -3735,7 +3738,7 @@ function buildCustomStyle(layer, base) {
 }
 
 // ============================================================
-// Terrain / Hillshade (light tones)
+// Terrain / Hillshade (tones follow the per-scheme paint tokens)
 // ============================================================
 // Resolves once terrain has settled for the opening viewport, hillshade
 // tiles loaded, or none needed (out of coverage / config gate). Stays
@@ -4056,7 +4059,7 @@ function updateMarkerProximity() {
     filterMarkers(drinkingWaterMarkers,  isOn("toggle-drinking-water"),  POI_AMENITY_PROXIMITY_METERS);
 
     // Markers are obstacles for the decoration placer (gatherObstacles
-    // walks the four marker arrays). When any marker is added/removed
+    // walks every POI marker array). When any marker is added/removed
     // here, recompute the decorations so arrows/diamonds/labels skip
     // the new POI footprints (or reclaim space when a marker drops).
     invalidateObstaclesCache();
@@ -4229,11 +4232,11 @@ async function loadTrails() {
     });
 
     // Decoration source, pre-deconflicted Point features (trail
-    // names, route names, IMBA diamonds, direction arrows). All
-    // placement decisions happen in JS at compute time, so the four
-    // decor layers can render with `*-allow-overlap: true` and skip
-    // MapLibre's per-tile collision pipeline. See computeDecorations()
-    // for the placement algorithm.
+    // names, route names, IMBA diamonds; direction chevrons live on
+    // their own line-symbol layers). All placement decisions happen
+    // in JS at compute time, so the decor layers can render with
+    // `*-allow-overlap: true` and skip MapLibre's per-tile collision
+    // pipeline. See computeDecorations() for the placement algorithm.
     //
     // Initial data is empty; the first computeDecorations() pass is
     // deferred to map.once('idle', …) below so the basemap + trail
@@ -4811,7 +4814,7 @@ async function loadTrails() {
         });
     }
 
-    // Decoration layers, IMBA diamonds and direction arrows are
+    // Decoration layers: IMBA diamonds are
     // pre-deconflicted Point features (rendered with icon-allow-overlap
     // so placements computed in JS are exactly what's drawn). Trail and
     // route name labels are LineString features with symbol-placement:
@@ -5296,7 +5299,7 @@ function updateTrailDisplay() {
     const labelSource = map.getSource("trails-labels");
     if (labelSource) labelSource.setData(computeLabelData());
 
-    // Decorations (arrows, diamonds, trail/route name labels) are
+    // Decorations (diamonds, trail/route name labels) are
     // pre-deconflicted Point features. Recompute on every visibility
     // change so ways whose only visible route just toggled off drop
     // out, and so the obstacle / way-length set the placer sees
@@ -7867,7 +7870,7 @@ function setupFloatingChrome() {
 
     // Expose closeSearchOverlay so the finder row clicks (defined
     // outside this function's scope) can dismiss search after a
-    // selection commits. Replaces the old window.__closeSearchOverlay.
+    // selection commits.
     window.__closeSearchOverlay = closeSearchOverlay;
 
     // ----- Season toggle ---------------------------------------------
@@ -9117,16 +9120,17 @@ function setupInteractions() {
     // Every POI marker type belongs in this guard: a tap on a marker
     // chip that sits on a trail line must not bubble into the map-wide
     // click handler below and open the trail popup underneath the
-    // marker the rider just tapped. toilet/water/hub were missing.
-    let parkingPopupOpen = false;
+    // marker the rider just tapped. (toilet/water/hub were once
+    // missing from this list — add new marker types here.)
+    let poiMarkerTapped = false;
     for (const marker of [...trailMarkerMarkers,
                           ...parkingMarkers, ...trailheadMarkers,
                           ...hubMarkers, ...toiletMarkers,
                           ...drinkingWaterMarkers,
                           ...featureMarkers, ...eventPoiMarkers]) {
         marker.getElement().addEventListener("click", () => {
-            parkingPopupOpen = true;
-            requestAnimationFrame(() => { parkingPopupOpen = false; });
+            poiMarkerTapped = true;
+            requestAnimationFrame(() => { poiMarkerTapped = false; });
         });
     }
 
@@ -9330,7 +9334,7 @@ function setupInteractions() {
     // point \u2014 platform-tiered (iOS 12 / Android 6 / desktop 4) per
     // the design rationale comment above.
     map.on("click", (e) => {
-        if (parkingPopupOpen) return;
+        if (poiMarkerTapped) return;
         const r = TRAIL_TAP_BUFFER_PX;
         const box = [
             [e.point.x - r, e.point.y - r],
@@ -9443,8 +9447,9 @@ function suppressBasemapOnewayArrows() {
 }
 
 // ============================================================
-// Basemap rebuild, only when user picks a different basemap from the
-// (optional) base_layers selector. Light theme only; no theme rebuilds.
+// Basemap rebuild: user picks a different basemap from the (optional)
+// base_layers selector, or the color scheme changes (applyColorScheme
+// calls this to swap the Protomaps flavor in place).
 // ============================================================
 function rebuildBasemapLayers() {
     const base = getBaseUrl();
@@ -9491,7 +9496,7 @@ function rebuildBasemapLayers() {
         };
         map.setStyle(newStyle, { diff: true });
     } else {
-        // Same flavor logic as buildPmtilesStyle, picks dark/light
+        // Same flavor logic as buildStyle, picks dark/light
         // Protomaps tiles to match the current color scheme.
         const flavor = currentColorScheme() === "dark" ? "dark" : "light";
         baseLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });

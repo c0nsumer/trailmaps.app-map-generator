@@ -250,9 +250,8 @@ self.addEventListener("fetch", (event) => {
     // as "I just deployed and clicked Reload but the page still
     // shows the old map until I shift-reload"). Revalidation is
     // ~50 ms of overhead when content hasn't changed (304 response,
-    // no body) and free correctness when it has. Same posture as
-    // backgroundPrecache's `cache: "reload"`, but cheaper because
-    // it allows 304s.
+    // no body) and free correctness when it has. Same
+    // `cache: "no-cache"` posture as backgroundPrecache above.
     event.respondWith(
         caches.match(event.request).then((cached) => {
             if (cached) return cached;
