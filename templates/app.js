@@ -575,35 +575,23 @@ const ONEWAY_CHEVRONS = true;
 const CHEVRON_TILE_W = 96;
 const CHEVRON_TILE_H = 16;
 
-// A single ">" glyph centered in the tile, stroked with a halo under
-// the fill like the arrow icons; the rest of the tile is transparent
-// padding (that padding IS the spacing).
+// One solid arrowhead centered in the tile; the rest of the tile is
+// transparent padding (that padding IS the spacing). The glyph is
+// drawArrow, the same chunky notched arrowhead the point arrows
+// used, so the visual language carries over. A FILLED shape is
+// deliberate: line-pattern bends the tile along the line's curve,
+// and a thin stroked chevron distorts into a squiggle on twisty
+// singletrack (the first cut's "DNA symbol" look); a solid triangle
+// survives the bending legibly.
 function drawChevronTile(ctx, w, h, fill, halo, reverse) {
-    const depth = 10;   // chevron point depth (x extent)
-    const half = 5;     // half-height of the chevron arms
-    const cy = h / 2;
-    const x0 = (w - depth) / 2;
     ctx.save();
     if (reverse) {
         ctx.translate(w, 0);
         ctx.scale(-1, 1);
     }
-    const trace = () => {
-        ctx.beginPath();
-        ctx.moveTo(x0, cy - half);
-        ctx.lineTo(x0 + depth, cy);
-        ctx.lineTo(x0, cy + half);
-    };
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    trace();
-    ctx.strokeStyle = halo;
-    ctx.lineWidth = 6.5;
-    ctx.stroke();
-    trace();
-    ctx.strokeStyle = fill;
-    ctx.lineWidth = 3.5;
-    ctx.stroke();
+    // drawArrow renders into an h×h box pointing +x; center it.
+    ctx.translate((w - h) / 2, 0);
+    drawArrow(ctx, h, fill, halo);
     ctx.restore();
 }
 
