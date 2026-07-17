@@ -1506,10 +1506,6 @@ function updateDecorationsSource() {
 function addDecorationLayers() {
     if (map.getLayer("decor-trail-name")) return;
 
-    // Chevron layers first: above the trail fills (added before this
-    // function runs), below the label and icon layers added next.
-    addChevronLayers();
-
     map.addLayer({
         id: "decor-trail-name",
         type: "symbol",
@@ -1741,10 +1737,12 @@ function buildChevronFilter(rev) {
 // One-way chevron layers (one-way-line-direction.md Phase 1). Two
 // symbol layers, forward and reverse-today (mirror-image glyphs);
 // day-tick and highlight changes rebuild the filters via
-// updateChevronFilters. Added before the other decor layers so
-// chevrons sit above the trail fills but under labels and diamonds.
-// allow-overlap + ignore-placement make them collision-inert: every
-// glyph draws, none registers, so labels/diamonds are unaffected.
+// updateChevronFilters. Called from addAllTrailLayers after the
+// casings/fills and BEFORE the per-route trail-label-<id> loop, so
+// chevrons sit above every line but under every text layer (the
+// decor label/diamond layers are added later still). allow-overlap
+// + ignore-placement make them collision-inert: every glyph draws,
+// none registers, so labels/diamonds are unaffected.
 function addChevronLayers() {
     if (map.getLayer("decor-chevron-fwd")) return;
     const t = MAP_PAINT_TOKENS[currentColorScheme()];
@@ -4545,6 +4543,15 @@ async function loadTrails() {
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
+
+    // One-way chevron layers go here: above every casing/fill/
+    // highlight line added before this point, below EVERY text layer
+    // (the per-route trail-label-<id> layers below, plus the decor
+    // label layers added in addDecorationLayers). Chevrons are
+    // ignore-placement so MapLibre will happily draw text and glyph
+    // in the same spot; drawing text on top keeps names readable and
+    // the halo makes the underlying chevron read as background.
+    addChevronLayers();
 
     // Route-name labels, one layer per route so each follows its
     // own offset line. Only rendered when labelMode === "routes";
