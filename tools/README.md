@@ -35,20 +35,20 @@ with a clear hint if neither is set.
 ./tools/build_and_deploy.sh
 
 # Build and deploy specific configs (use YAML filename without extension)
-./tools/build_and_deploy.sh ramba
-./tools/build_and_deploy.sh ramba stony glacialhills
+./tools/build_and_deploy.sh example
+./tools/build_and_deploy.sh example northpark rivertrail
 
 # Build only (no deploy)
-./tools/build_and_deploy.sh --build-only ramba
+./tools/build_and_deploy.sh --build-only example
 
 # Deploy only (skip build, use existing output)
-./tools/build_and_deploy.sh --deploy-only ramba
+./tools/build_and_deploy.sh --deploy-only example
 
 # Re-fetch all remote data (passes --refresh to build.py)
-./tools/build_and_deploy.sh --refresh ramba
+./tools/build_and_deploy.sh --refresh example
 
 # Pass extra flags to build.py after a -- separator
-./tools/build_and_deploy.sh ramba -- --no-basemap --no-terrain
+./tools/build_and_deploy.sh example -- --no-basemap --no-terrain
 ```
 
 ### Options
@@ -83,7 +83,7 @@ documentation comments) while preserving every value the production
 file explicitly set — and every curator comment along with it.
 
 The original file is never modified. Review the cleaned output and
-swap it in manually when satisfied. One behaviour worth knowing
+swap it in manually when satisfied. One behavior worth knowing
 before swapping: live template keys the production file doesn't set
 are commented out in the output rather than inherited (so a
 custom-route-only map that omits `relations:` never picks up the
@@ -103,7 +103,7 @@ python tools/clean_config.py configs/foo/foo.yaml \
 python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 ```
 
-### Behaviour
+### Behavior
 
 - Set keys are spliced, not re-serialized: the production file's own
   lines for each key it sets are copied verbatim into the template's
@@ -139,3 +139,31 @@ deletes the output and exits non-zero. The gate is always on — the
 tool cannot hand back a config that behaves differently. The output
 should also pass `validate_config.py` and build via `build.py`; any
 gate failure means the cleaner mishandled something, file an issue.
+
+## list_relations.py
+
+Diagnostic that lists every OpenStreetMap relation (route) a map is
+built from, one per line as `<id>\t<name>`. Super-relations are
+expanded to their child routes — the leaves that actually produce
+geometry — exactly as the build does, and clipped relations are marked
+`[clipped]`.
+
+Operates purely from the local cache by default: it reconstructs the
+same Overpass query `fetch_trails` runs and reads the matching
+`cache/overpass_<hash>.json`. It never touches the network unless
+`--fetch` is given. Maps that read a local `osm_file:` are handled by
+parsing that file, no cache needed.
+
+### Usage
+
+```bash
+# By slug or config path
+python tools/list_relations.py example
+python tools/list_relations.py configs/example/example.yaml
+
+# Member ways instead of relations
+python tools/list_relations.py example --ways
+
+# Allow a live Overpass query on cache miss
+python tools/list_relations.py example --fetch
+```

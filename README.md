@@ -138,8 +138,9 @@ separate private orchestrator that drives this engine as a CLI tool.
 
 1. Map your trails in OpenStreetMap as route relations under a relation or
    super-relation (or pick an existing one).
-2. Create `configs/<slug>/` (the folder name must match your chosen slug
-   exactly). Copy
+2. Create `configs/<slug>/` (matching folder and slug is the convention the
+   `build_and_deploy.sh` wrapper expects; the engine itself only requires the
+   slug to be `[a-z0-9_-]+`). Copy
    [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
    into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and a
    geometry source. This is usually `relations:` (a non-empty list of OSM
@@ -226,8 +227,8 @@ their licenses and origins are listed here:
 | [Pillow](https://python-pillow.org/) | Build-time icon and logo image processing | HPND |
 | [PyYAML](https://pyyaml.org/) | YAML config parsing | MIT |
 | [requests](https://requests.readthedocs.io/) | HTTP client for Overpass / 3DEP fetches | Apache 2.0 |
-| [shapely](https://shapely.readthedocs.io/) | Geometry processing in build scripts | BSD-3-Clause |
-| [pyclipper](https://github.com/fonttools/pyclipper) | Polygon offsetting (parallel route smoothing) | MIT |
+| [shapely](https://shapely.readthedocs.io/) | Dependency of mapbox-vector-tile | BSD-3-Clause |
+| [pyclipper](https://github.com/fonttools/pyclipper) | Dependency of mapbox-vector-tile | MIT |
 | [mapbox-vector-tile](https://github.com/mapbox/mapbox-vector-tile-py) | Vector tile parsing in build scripts | BSD-3-Clause |
 | [potrace](http://potrace.sourceforge.net/) (optional) | Safari pinned-tab SVG generation | GPL 2.0 |
 | [go-pmtiles](https://github.com/protomaps/go-pmtiles) | PMTiles CLI for tile extraction | BSD-3-Clause |

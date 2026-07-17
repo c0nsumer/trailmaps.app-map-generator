@@ -66,7 +66,7 @@ configs/<slug>/
 ```
 
 Each folder is self-contained: everything the build needs for that map lives in
-one place. Copy `configs/ramba/` somewhere else, rename it, and you have the
+one place. Copy `configs/example/` somewhere else, rename it, and you have the
 scaffold for a new map.
 
 Asset paths in the config are resolved relative to the config's directory. Bare
@@ -117,7 +117,7 @@ into the same folder, and reference them by bare filename in the config.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `name` | Yes | : | Short name used in build logs and as the PWA icon label on mobile home screens. |
-| `slug` | Yes | : | URL-safe identifier. Used for the map's config folder (`configs/<slug>/`), the build output directory (`build/<slug>/`), and the deploy destination subdirectory. Must match `[a-z0-9_-]+` and match the folder name holding the YAML. |
+| `slug` | Yes | : | URL-safe identifier. Used for the map's config folder (`configs/<slug>/`), the build output directory (`build/<slug>/`), and the deploy destination subdirectory. Must match `[a-z0-9_-]+`. By convention it matches the folder holding the YAML (the `build_and_deploy.sh` wrapper discovers configs via the `configs/<name>/<name>.yaml` pattern), but the validator does not require the slug and folder to match. |
 | `title` | No | `"{name} Map"` | Full title used for the browser tab, share-card `og:title`, the in-app brand, and the PWA install dialog. Derived from `name` when omitted; set it only where a curated string carries information the derivation can't (a race course, a route map). Because the derivation appends " Map", a `name` that already ends in " Map" would double it. |
 
 ### Data sources
@@ -211,7 +211,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden, even if `direction_arrows` is in `forced_visible` (this gate wins). The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (custom base layers unaffected). |
-| `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighbourhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
+| `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
 | `show_route_distance` | No | `false` | When true, computes per-route distance at build time and shows it in the Finder rows and highlight chip. Units follow `distance_units`. |
 | `show_route_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
@@ -844,7 +844,7 @@ supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | Yes | Display name shown in popup |
+| `name` | No | Display name shown in popup; omitting it is allowed but leaves the popup unlabeled |
 | `coordinates` | Yes | `[longitude, latitude]` |
 | `directions_url` | No | Custom directions URL; if omitted, auto-generates based on browser |
 
@@ -879,7 +879,7 @@ Each entry supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | Yes | Display name shown inline under the on-map chip and in search results |
+| `name` | No | Display name shown inline under the on-map chip and in search results; omitting it is allowed but defeats the point of a hub |
 | `coordinates` | Yes | `[longitude, latitude]` |
 
 Example:
@@ -900,7 +900,7 @@ supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | Yes | Display name shown in popup |
+| `name` | No | Display name shown in popup; omitting it is allowed but leaves the popup unlabeled |
 | `coordinates` | Yes | `[longitude, latitude]` |
 | `directions_url` | No | Custom directions URL; if omitted, auto-generates a link based on browser (see below) |
 
@@ -1026,7 +1026,7 @@ currently rasterized and should be pre-converted.
 |---|---|
 | **Purpose** | Map overlay branding; also shown in the About modal header |
 | **Map overlay render** | Inside a 280x64 px bounding box on desktop (≥768px), 200x48 px on mobile |
-| **About modal render** | Inside a 140x56 px box on desktop, 100x40 px on mobile |
+| **About modal render** | Inside a 140x56 px box (all screen sizes) |
 | **Binding axis** | Wide wordmarks (aspect wider than ~4.17:1, the 200:48 box) land at 200 px wide; square or tall logos land at 48 px tall |
 | **Pre-resize target** | Source is resampled to ~2x the render size (max longer side ~400 px on desktop). Never upscaled; smaller sources are preserved. |
 | **Recommended source** | At least 2x the expected render size on its long side (e.g. 400+ px wide for a wordmark); higher is fine, the framework resizes down |

@@ -143,7 +143,7 @@ A development server with HTTP Range request support lives at
 
 ```bash
 python scripts/serve.py build/example
-# Open http://localhost:8090
+# Open http://localhost:8090 (change the port with --port/-p)
 ```
 
 This is the fastest way to test changes without a production deploy.
@@ -171,7 +171,7 @@ patterns:
 ./tools/build_and_deploy.sh
 
 # Build and deploy a subset
-./tools/build_and_deploy.sh example dte
+./tools/build_and_deploy.sh example northpark
 
 # Build but skip deploy
 ./tools/build_and_deploy.sh --build-only example
@@ -258,7 +258,7 @@ file explicitly set.
 
 ```bash
 # Default template (configs/reference/reference-minimal.yaml)
-python tools/clean_config.py configs/potoloo/potoloo.yaml
+python tools/clean_config.py configs/example/example.yaml
 
 # Custom template (e.g. the verbose annotated reference)
 python tools/clean_config.py configs/foo/foo.yaml \
@@ -434,7 +434,7 @@ configs/
     reference-minimal.yaml  Bare template; copy this to start a new map
     reference.yaml          Annotated reference, same key order
 
-scripts/
+scripts/            (abridged; supporting modules not listed)
   build.py            Build orchestrator
   fetch_trails.py     OSM trail data via Overpass API or local .osm file
   fetch_pois.py       Trail markers (guideposts + emergency-access points, merged), features, toilets, drinking water
@@ -456,7 +456,7 @@ templates/
 
 assets/
   fonts/              Protomaps basemap fonts (PBF glyph ranges, auto-trimmed at build time)
-  sprites/            Protomaps basemap sprites (PNG + JSON, all flavours)
+  sprites/            Protomaps basemap sprites (PNG + JSON, all flavors)
 
 build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
@@ -464,6 +464,7 @@ cache/                Cached Overpass API responses
 tools/
   build_and_deploy.sh Convenience wrapper: validate then build then optional rsync deploy
   clean_config.py     Re-align a production YAML against the canonical template
+  list_relations.py   Diagnostic: list the OSM relations a map is built from
   README.md           Tool documentation
 
 docs/                 Documentation (this folder)
