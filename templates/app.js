@@ -90,6 +90,11 @@ const MAP_PAINT_TOKENS = {
         // (light-bg / dark-bg), distinct images, swap via
         // setLayoutProperty.
         arrowIcon:  "arrow-light-bg",
+        // One-way chevron line-pattern IDs (forward / reverse, per
+        // scheme); registered by registerChevronPatterns, swapped via
+        // setPaintProperty on the decor-chevron-* layers.
+        chevronFwd: "chevron-fwd-light-bg",
+        chevronRev: "chevron-rev-light-bg",
         // Hillshade, bright highlight + dark shadow give classic
         // "lit-from-NW" 3D shading on a light basemap. The dark
         // override below uses a much subtler highlight; bright
@@ -110,6 +115,8 @@ const MAP_PAINT_TOKENS = {
         labelText:  "#f0f0f0",
         labelHalo:  "rgba(0, 0, 0, 0.7)",
         arrowIcon:  "arrow-dark-bg",
+        chevronFwd: "chevron-fwd-dark-bg",
+        chevronRev: "chevron-rev-dark-bg",
         // Pure-black shadow deepens valleys BELOW the dark basemap
         // so topography reads. Highlight kept at low-alpha white
         // (~15%), provides a subtle lift on the lit slopes
@@ -182,6 +189,12 @@ function applyMapPaintForScheme(scheme) {
     }
     if (map.getLayer("decor-arrow")) {
         map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
+    }
+    if (map.getLayer("decor-chevron-fwd")) {
+        map.setPaintProperty("decor-chevron-fwd", "line-pattern", t.chevronFwd);
+    }
+    if (map.getLayer("decor-chevron-rev")) {
+        map.setPaintProperty("decor-chevron-rev", "line-pattern", t.chevronRev);
     }
     if (map.getLayer("hillshade")) {
         map.setPaintProperty("hillshade", "hillshade-shadow-color", t.hillshadeShadow);
@@ -540,6 +553,92 @@ function registerArrowIcons() {
             width: size * ratio,
             height: size * ratio,
             data: ctx.getImageData(0, 0, size * ratio, size * ratio).data,
+        }, { pixelRatio: ratio });
+    }
+}
+
+// ---- One-way chevron line decoration ----
+// Phase 1 of .claude/plans/one-way-line-direction.md: one-way travel
+// direction rendered as a continuous chevron line-pattern on the
+// corridor centerline instead of point-placed arrows. While true,
+// the decor-arrow layer is not added and computeDecorations skips
+// its arrow passes (the point-arrow code itself is deleted in
+// Phase 2 once the look is approved).
+const ONEWAY_CHEVRONS = true;
+
+// Pattern tile geometry, THE two appearance knobs:
+// - line-pattern stretches the tile so its HEIGHT equals the layer's
+//   line-width, so the chevron's drawn size is the line-width ramp
+//   on the decor-chevron-* layers.
+// - On-screen spacing between chevrons = (tile width / tile height)
+//   × line-width. 96/16 = 6× → ~60 px spacing at a 10 px line-width.
+const CHEVRON_TILE_W = 96;
+const CHEVRON_TILE_H = 16;
+
+// A single ">" glyph centered in the tile, stroked with a halo under
+// the fill like the arrow icons; the rest of the tile is transparent
+// padding (that padding IS the spacing).
+function drawChevronTile(ctx, w, h, fill, halo, reverse) {
+    const depth = 10;   // chevron point depth (x extent)
+    const half = 5;     // half-height of the chevron arms
+    const cy = h / 2;
+    const x0 = (w - depth) / 2;
+    ctx.save();
+    if (reverse) {
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1);
+    }
+    const trace = () => {
+        ctx.beginPath();
+        ctx.moveTo(x0, cy - half);
+        ctx.lineTo(x0 + depth, cy);
+        ctx.lineTo(x0, cy + half);
+    };
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    trace();
+    ctx.strokeStyle = halo;
+    ctx.lineWidth = 6.5;
+    ctx.stroke();
+    trace();
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+    ctx.restore();
+}
+
+// Four pattern variants: {light,dark} basemap × {forward,reverse}.
+// Forward points +x; line-pattern lays the tile's x-axis along the
+// line's digitization direction, so +x = OSM travel direction.
+// Reverse is the mirror, selected per feature by the rev layer's
+// filter (routes reversed today), not by rotating anything.
+const CHEVRON_VARIANTS = [
+    { id: "chevron-fwd-light-bg", fill: "#000000",
+      halo: "rgba(255,255,255,0.9)", reverse: false },
+    { id: "chevron-rev-light-bg", fill: "#000000",
+      halo: "rgba(255,255,255,0.9)", reverse: true },
+    { id: "chevron-fwd-dark-bg",  fill: "#ffffff",
+      halo: "rgba(0,0,0,0.7)",  reverse: false },
+    { id: "chevron-rev-dark-bg",  fill: "#ffffff",
+      halo: "rgba(0,0,0,0.7)",  reverse: true },
+];
+
+function registerChevronPatterns() {
+    const ratio = 4;
+    for (const v of CHEVRON_VARIANTS) {
+        if (map.hasImage(v.id)) continue;
+        const canvas = document.createElement("canvas");
+        canvas.width = CHEVRON_TILE_W * ratio;
+        canvas.height = CHEVRON_TILE_H * ratio;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(ratio, ratio);
+        drawChevronTile(ctx, CHEVRON_TILE_W, CHEVRON_TILE_H,
+            v.fill, v.halo, v.reverse);
+        map.addImage(v.id, {
+            width: CHEVRON_TILE_W * ratio,
+            height: CHEVRON_TILE_H * ratio,
+            data: ctx.getImageData(0, 0, CHEVRON_TILE_W * ratio,
+                CHEVRON_TILE_H * ratio).data,
         }, { pixelRatio: ratio });
     }
 }
@@ -1391,7 +1490,11 @@ function computeDecorations() {
     ways.sort((a, b) => b.totalLength - a.totalLength);
 
     const reverseSet = reverseRoutesToday;
-    const arrowsAllowed = CONFIG.showDirectionArrows !== false;
+    // Chevron mode: the line-pattern layers own direction; skip every
+    // arrow placement pass so diamonds and labels place exactly as
+    // they will after the Phase 2 deletion.
+    const arrowsAllowed = CONFIG.showDirectionArrows !== false
+        && !ONEWAY_CHEVRONS;
 
     // ---- Pass 1: labels (one or more LineString runs per way;
     //      MapLibre's symbol-placement:line auto-curves text along the
@@ -1671,6 +1774,10 @@ function updateDecorationsSource() {
 function addDecorationLayers() {
     if (map.getLayer("decor-trail-name")) return;
 
+    // Chevron layers first: above the trail fills (added before this
+    // function runs), below the label and icon layers added next.
+    if (ONEWAY_CHEVRONS) addChevronLayers();
+
     map.addLayer({
         id: "decor-trail-name",
         type: "symbol",
@@ -1764,7 +1871,9 @@ function addDecorationLayers() {
         });
     }
 
-    map.addLayer({
+    // Point arrows are replaced by the chevron layers while
+    // ONEWAY_CHEVRONS is set (Phase 2 deletes this block outright).
+    if (!ONEWAY_CHEVRONS) map.addLayer({
         id: "decor-arrow",
         type: "symbol",
         source: "trail-decorations",
@@ -1893,6 +2002,80 @@ function buildDecorFilter(kind) {
         ["==", ["get", "trail_name"], highlight.key]];
 }
 
+// Build the filter for one chevron layer. `rev` selects ways whose
+// travel direction is flipped today: any sharing route present in
+// reverseRoutesToday, the same rule the point arrows used. ANDed on
+// top: canonical ownership (exactly one chevron row per physical
+// way, stamped by computeOffsetsAndFilter so it tracks visibility
+// changes), oneway membership, and the same highlight narrowing
+// buildDecorFilter applies to icons.
+function buildChevronFilter(rev) {
+    const sharedOf = ["coalesce", ["get", "shared_routes"], ["literal", []]];
+    const f = ["all",
+        ["==", ["get", "chevron_owner"], true],
+        ["match", ["get", "oneway"], ["yes", "reversible"], true, false],
+    ];
+    const ids = [...reverseRoutesToday];
+    // A feature is reversed-today when its own route or any sharing
+    // route is in today's reverse set (shared_routes may be absent on
+    // solo ways, hence the coalesce + explicit route_id check).
+    const revExpr = ids.length
+        ? ["any", ...ids.map((id) => ["any",
+            ["==", ["get", "route_id"], id],
+            ["in", id, sharedOf]])]
+        : false;
+    f.push(rev ? revExpr : ["!", revExpr]);
+    if (highlightDimActive()) {
+        if (highlight.kind === "route") {
+            f.push(["any",
+                ["==", ["get", "route_id"], highlight.key],
+                ["in", highlight.key, sharedOf]]);
+        } else {
+            f.push(["==", ["get", "trail_name"], highlight.key]);
+        }
+    }
+    return f;
+}
+
+// One-way chevron layers (one-way-line-direction.md Phase 1). Two
+// layers, forward and reverse-today, so no data-driven line-pattern
+// is needed; day-tick and highlight changes rebuild the filters via
+// updateChevronFilters. Added before the other decor layers so
+// chevrons sit above the trail fills but under labels and diamonds.
+function addChevronLayers() {
+    if (map.getLayer("decor-chevron-fwd")) return;
+    const t = MAP_PAINT_TOKENS[currentColorScheme()];
+    for (const [id, rev] of [["decor-chevron-fwd", false],
+                             ["decor-chevron-rev", true]]) {
+        map.addLayer({
+            id,
+            type: "line",
+            source: "trails",
+            filter: buildChevronFilter(rev),
+            layout: {
+                "line-cap": "butt",
+                "line-join": "round",
+                "visibility": directionArrowsToggleOn()
+                    ? "visible" : "none",
+            },
+            paint: {
+                "line-pattern": rev ? t.chevronRev : t.chevronFwd,
+                // Chevron drawn height per zoom; on-screen spacing
+                // follows via the tile aspect ratio (see
+                // CHEVRON_TILE_* comments).
+                "line-width": ["interpolate", ["linear"], ["zoom"],
+                    12, 7, 14, 10, 18, 14],
+            },
+        });
+    }
+}
+
+function updateChevronFilters() {
+    if (!map.getLayer("decor-chevron-fwd")) return;
+    map.setFilter("decor-chevron-fwd", buildChevronFilter(false));
+    map.setFilter("decor-chevron-rev", buildChevronFilter(true));
+}
+
 // Refresh the diamond + arrow filters in response to highlight state
 // changes. Name-label visibility is handled in updateLabels(): all name
 // labels narrow to a highlighted ROUTE there, while TRAIL highlights
@@ -1905,6 +2088,7 @@ function updateDecorationsHighlight() {
     if (map.getLayer("decor-arrow")) {
         map.setFilter("decor-arrow", buildDecorFilter(KIND.ARROW));
     }
+    updateChevronFilters();
 }
 
 // ============================================================
@@ -4730,6 +4914,7 @@ async function loadTrails() {
         registerDifficultyIcons();
     }
     registerArrowIcons();
+    if (ONEWAY_CHEVRONS) registerChevronPatterns();
     addDecorationLayers();
     // Apply the current color scheme's paint tokens, sets label
     // text-color / halo and arrow icon-image to the scheme-correct
@@ -5049,6 +5234,15 @@ function computeOffsetsAndFilter() {
             properties: {
                 ...props,
                 offset_index: offsetIndex,
+                // Canonical-duplicate flag for the one-way chevron
+                // layers: shared ways appear once per route with
+                // identical geometry, and exactly the lowest-ranked
+                // VISIBLE route's copy carries the chevron row (same
+                // rule collectCanonicalWays uses). Recomputed on
+                // every visibility change since this function is,
+                // so ownership follows route toggles. Hidden-route
+                // features get false (position is -1).
+                chevron_owner: position === 0,
             },
         };
     });
@@ -8111,12 +8305,21 @@ function setupFloatingChrome() {
     const arrowsShown = CONFIG.showDirectionArrows !== false;
     if (arrowsBtn && CONFIG.hasOnewayTrails && arrowsShown && !isForcedVisible("direction_arrows")) {
         arrowsBtn.classList.remove("hidden");
+        const applyChevronVisibility = (on) => {
+            for (const id of ["decor-chevron-fwd", "decor-chevron-rev"]) {
+                if (map.getLayer(id)) {
+                    map.setLayoutProperty(id, "visibility",
+                        on ? "visible" : "none");
+                }
+            }
+        };
         wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
                 isDefaultVisible("direction_arrows"), (on) => {
             if (map.getLayer("decor-arrow")) {
                 map.setLayoutProperty("decor-arrow", "visibility",
                     on ? "visible" : "none");
             }
+            applyChevronVisibility(on);
         }, "direction_arrows");
     } else if (arrowsBtn) {
         arrowsBtn.classList.add("hidden");
@@ -8308,6 +8511,10 @@ function setupFloatingChrome() {
         if (changed) {
             reverseRoutesToday = next;
             updateDecorationsSource();
+            // Chevron layers encode reversal via their filters, not
+            // baked feature props; a flip just swaps ways between
+            // the fwd and rev layers.
+            updateChevronFilters();
         }
     }, 5 * 60 * 1000);
 }
@@ -9422,6 +9629,9 @@ function rebuildBasemapLayers() {
     if (!map.hasImage(ARROW_ICON_LIGHT_BG_ID) ||
             !map.hasImage(ARROW_ICON_DARK_BG_ID)) {
         registerArrowIcons();
+    }
+    if (ONEWAY_CHEVRONS && !map.hasImage(CHEVRON_VARIANTS[0].id)) {
+        registerChevronPatterns();
     }
     // After style rebuild (including scheme-driven flavor swap),
     // re-apply the paint tokens so labels and arrow icons match
