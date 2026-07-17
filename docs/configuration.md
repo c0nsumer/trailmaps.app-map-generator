@@ -586,9 +586,13 @@ their length:
 
 The map renders direction-of-travel arrows along ways tagged with either
 `oneway:bicycle=*` or `oneway=*` in OpenStreetMap. Two-way ways get no arrows.
-Arrows scale with zoom, follow the line's bearing (they rotate with the map
-rather than the screen), and are always on. They're sized to read as a subtle directional cue
-rather than compete with the trail casing.
+Arrows render as a row of small arrowheads repeating along the line itself at
+a constant on-screen spacing (roughly every 80 px at any zoom), rotated to
+follow the line's local bearing, always on where the layer is visible. On
+shared corridors rendered as parallel route lines, one arrowhead row marks
+the corridor rather than repeating per route. They're sized to read as a
+subtle directional cue rather than compete with the trail casing, and trail
+or route name text always draws over them.
 
 Arrow rendering follows the same **per-way** model as IMBA difficulty. The tag
 is read from individual ways; relations themselves don't have a direction, so
