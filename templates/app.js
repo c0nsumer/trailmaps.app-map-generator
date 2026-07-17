@@ -89,7 +89,6 @@ const MAP_PAINT_TOKENS = {
         // Arrow icon ID, we register two canvas-rendered variants
         // (light-bg / dark-bg), distinct images, swap via
         // setLayoutProperty.
-        arrowIcon:  "arrow-light-bg",
         // One-way chevron glyph image IDs (forward / reverse, per
         // scheme); registered by registerChevronPatterns, swapped via
         // setLayoutProperty icon-image on the decor-chevron-* layers.
@@ -114,7 +113,6 @@ const MAP_PAINT_TOKENS = {
     dark: {
         labelText:  "#f0f0f0",
         labelHalo:  "rgba(0, 0, 0, 0.7)",
-        arrowIcon:  "arrow-dark-bg",
         chevronFwd: "chevron-fwd-dark-bg",
         chevronRev: "chevron-rev-dark-bg",
         // Pure-black shadow deepens valleys BELOW the dark basemap
@@ -186,9 +184,6 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("route-highlight-outline", "line-color",
             routeInfo ? routeHighlightOutlineColor(routeInfo)
                 : t.highlightOutline);
-    }
-    if (map.getLayer("decor-arrow")) {
-        map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
     }
     if (map.getLayer("decor-chevron-fwd")) {
         map.setLayoutProperty("decor-chevron-fwd", "icon-image", t.chevronFwd);
@@ -488,15 +483,12 @@ function difficultyToggleOn() {
 const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday",
                       "thursday", "friday", "saturday"];
 
-// Bold chevron icon, drawn in canvas like the IMBA difficulty icons so we
-// control color, weight, and halo. Light theme only, black arrow with a
-// light halo always reads against the casings (which are also black/dark).
-//
-// The arrow points RIGHT (positive-X). `symbol-placement: line` with
-// `icon-rotation-alignment: map` aligns the icon's positive-X axis with the
-// line's direction of travel, so an icon drawn pointing right ends up
-// pointing along the line; 0° = forward along digitization, 180° =
-// reversed (alternating days).
+// Solid notched arrowhead, drawn in canvas like the IMBA difficulty
+// icons so we control color, weight, and halo. This is the one-way
+// chevron glyph (see registerChevronPatterns below); it points RIGHT
+// (positive-X), which `symbol-placement: line` +
+// `icon-rotation-alignment: map` aligns with the line's digitization
+// direction. Reversed-today ways use the mirrored variant.
 function drawArrow(ctx, size, fillColor, haloColor) {
     const cy    = size / 2;
     const tip   = size * 0.94;   // tip x
@@ -526,46 +518,13 @@ function drawArrow(ctx, size, fillColor, haloColor) {
     ctx.fill();
 }
 
-// Two arrow icon variants, one tuned for each color scheme.
-// MapLibre's icon-image layout property swaps between them via
-// applyMapPaintForScheme(). Both are registered at init so the swap
-// is instant; setStyle() drops icons but the registerArrowIcons
-// re-registration in onStyleLoaded re-uploads both.
-const ARROW_ICON_LIGHT_BG_ID = "arrow-light-bg";   // black fill on light basemap
-const ARROW_ICON_DARK_BG_ID  = "arrow-dark-bg";    // white fill on dark basemap
-const ARROW_VARIANTS = [
-    { id: ARROW_ICON_LIGHT_BG_ID, fill: "#000000",            halo: "rgba(255,255,255,0.9)" },
-    { id: ARROW_ICON_DARK_BG_ID,  fill: "#ffffff",            halo: "rgba(0,0,0,0.7)" },
-];
-
-function registerArrowIcons() {
-    const size = 22;
-    const ratio = 4;
-    for (const variant of ARROW_VARIANTS) {
-        if (map.hasImage(variant.id)) continue;
-        const canvas = document.createElement("canvas");
-        canvas.width = size * ratio;
-        canvas.height = size * ratio;
-        const ctx = canvas.getContext("2d");
-        ctx.scale(ratio, ratio);
-        drawArrow(ctx, size, variant.fill, variant.halo);
-        map.addImage(variant.id, {
-            width: size * ratio,
-            height: size * ratio,
-            data: ctx.getImageData(0, 0, size * ratio, size * ratio).data,
-        }, { pixelRatio: ratio });
-    }
-}
-
 // ---- One-way chevron line decoration ----
-// Phase 1 of .claude/plans/one-way-line-direction.md: one-way travel
-// direction rendered as repeating glyphs along the corridor
-// centerline instead of JS-placed point arrows. While true,
-// the decor-arrow layer is not added and computeDecorations skips
-// its arrow passes (the point-arrow code itself is deleted in
-// Phase 2 once the look is approved).
-const ONEWAY_CHEVRONS = true;
-
+// One-way travel direction rendered as repeating glyphs along the
+// corridor centerline (.claude/plans/one-way-line-direction.md).
+// This replaced the JS-placed point arrows: compute-once point
+// placement kept fighting screen-space reality (see the superseded
+// mid-zoom-label-dead-band plan's field record).
+//
 // Rendered as line-placed SYMBOLS, not line-pattern: the pattern
 // shader pins tile height to screen-space line width but
 // parameterizes the along-line axis in tile units (pattern_size.x
@@ -662,25 +621,27 @@ function todaysReverseRoutes() {
     return out;
 }
 
-// Recomputed on day-tick (see setInterval in setupFloatingChrome); each
-// arrow's rotation is baked into its feature properties at decoration
-// build time, so a change here forces a full updateDecorationsSource().
+// Recomputed on day-tick (see setInterval in setupFloatingChrome); a
+// change swaps ways between the fwd/rev chevron layers via
+// updateChevronFilters().
 let reverseRoutesToday = todaysReverseRoutes();
 
 // ============================================================
-// Decoration system, pre-deconflicted Point features that replace
-// the old per-layer `symbol-placement: line` setup. MapLibre places
-// line symbols PER TILE: the same feature gets re-anchored inside
-// each tile bucket independently, so cross-layer alignment (arrows
-// over diamonds over labels) breaks at tile seams regardless of
+// Decoration system, pre-deconflicted Point features. MapLibre
+// places line symbols PER TILE: the same feature gets re-anchored
+// inside each tile bucket independently, so cross-layer alignment
+// (diamonds over labels) breaks at tile seams regardless of
 // `symbol-spacing` math. Pre-computing the decoration positions in
 // JS, then rendering them as point features with `icon-allow-overlap:
 // true`, sidesteps the entire collision pipeline, the layout we
-// compute is exactly what the user sees.
+// compute is exactly what the user sees. (One-way direction is the
+// exception: the decor-chevron-* layers render it as line-placed,
+// collision-inert symbols where per-tile anchoring is fine, a lone
+// glyph row has nothing to align WITH.)
 //
-// One source (`trail-decorations`), four kinds (trail_name,
-// route_name, diamond, arrow), each with `min_zoom` for tiered
-// density. Layer filter: `kind == X && min_zoom <= zoom`.
+// One source (`trail-decorations`), kinds trail_name / route_name /
+// diamond (+ the *_label_pt point labels), each with `min_zoom` for
+// tiered density. Layer filter: `kind == X && min_zoom <= zoom`.
 // ============================================================
 
 // String enums for decoration kinds (the `kind` property on every
@@ -694,7 +655,6 @@ const KIND = Object.freeze({
     TRAIL_NAME: "trail_name",
     ROUTE_NAME: "route_name",
     DIAMOND:    "diamond",
-    ARROW:      "arrow",
     // Point-placed name labels shown only at overview zoom (a single
     // loop/trail name at a representative point), distinct from the
     // curve-following TRAIL_NAME/ROUTE_NAME LineString labels.
@@ -760,14 +720,6 @@ function bearingDeg(lng1, lat1, lng2, lat2) {
     return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 }
 
-// Map a trail bearing to the rotation the east-pointing arrow icon
-// needs so it points along the line (and adds 180° on reverse-day
-// schedules).
-function arrowRotateForBearing(bearing, reverse) {
-    const b = reverse ? bearing + 180 : bearing;
-    return ((b - 90) % 360 + 360) % 360;
-}
-
 // Decompose a polyline into segments with bearings + cumulative arc
 // length. Returns { segments: [{lng1,lat1,lng2,lat2,lengthM,bearing,
 // arcStart}], totalLength: number }. Zero-length segments are
@@ -817,7 +769,6 @@ function pointAtArcLength(segments, totalLength, arc) {
 const DECOR_RADIUS_M = {
     label:    60,  // text along trail axis (legacy point placement)
     diamond:  35,
-    arrow:    30,
     obstacle: 30,  // POI / parking / trailhead / feature markers
     // Min distance from a line-placed label's support polyline to a
     // DOM marker center. Sized to keep the rendered glyph row clear
@@ -1031,8 +982,6 @@ function collectCanonicalWays() {
 // see them in collision checks.
 function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                             decorations, placedIndex, extraPropsFn) {
-    // Arrows never come through here, they're placed by
-    // placeArrowTierAlongChains, which builds its features directly.
     const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
                  :                           DECOR_RADIUS_M.label;
     for (const arc of candidateArcs) {
@@ -1057,10 +1006,10 @@ function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
 }
 
 // ---- Decoration density (min_zoom gates; eye-tunable) ----
-// Direction arrows AND difficulty diamonds share the ladder below. The
-// overview band shows markers spaced along each connected run so every
-// stretch reads at a glance without per-way speckle; the ladder then
-// layers on one rung of markers per zoom level.
+// Difficulty diamonds use the ladder below. The overview band shows
+// markers spaced along each connected run so every stretch reads at
+// a glance without per-way speckle; the ladder then layers on one
+// rung of markers per zoom level.
 const DECOR_MZ_RUN     = 0;   // run-spaced overview markers
 const DECOR_MZ_PER_WAY = 14;  // 2 diamonds per physical way
 
@@ -1077,7 +1026,7 @@ const DECOR_MZ_PER_WAY = 14;  // 2 diamonds per physical way
 // the rider zooms in.
 const DECOR_TARGET_SPACING_PX = 110;
 // Finest cadence the ladder emits. Caps total feature count on big
-// networks (a 100 km one-way system stays ~1-2k arrows, not 10k); past
+// networks; past
 // the zoom where the floor engages, on-screen spacing grows again,
 // acceptable close-in, where the rider is inspecting a specific trail.
 const DECOR_CADENCE_FLOOR_M = 100;
@@ -1114,14 +1063,13 @@ const DECOR_LADDER = decorCadenceLadder(DECOR_TARGET_SPACING_PX,
 const DECOR_OVERVIEW_SPACING_M =
     DECOR_TARGET_SPACING_PX * decorMetersPerPixel(CONFIG.minZoom);
 
-// Zoom at which the curve-following on-path labels become ELIGIBLE (their
-// minzoom). Set to 16, deliberately ABOVE the per-way arrow tier
-// (DECOR_MZ_PER_WAY = 14). When this aliased 14, on-path labels switched on
-// at the same zoom as the dense per-way arrows and, because everything is
-// compressed together on screen at that zoom, drew straight over them.
-// Holding on-path labels to 16 lets the map spread out first, so the text
-// lands in the gaps between arrows, and keeps the single overview point
-// label as the shown label across more of the zoom range.
+// Zoom at which the curve-following on-path labels become ELIGIBLE
+// (their minzoom). Historically held at 16 because on-path labels at
+// z14 drew straight over the dense per-way POINT ARROW field; those
+// arrows are gone (one-way direction is now the collision-inert
+// decor-chevron-* line symbols), so the remaining contention is only
+// the much sparser diamond field. Lowering this toward 14 is Phase 3
+// of one-way-line-direction.md, the actual mid-zoom dead-band fix.
 const POINT_LABEL_MAX_ZOOM = 16;
 
 // On-path line layers' minzoom. Clamped one stop under the map's own maxZoom
@@ -1153,10 +1101,10 @@ function endpointKey(lng, lat) {
 // Group ways into maximal connected runs. `isEligible(way)` selects the
 // participating ways; two eligible ways join when they meet at an endpoint,
 // share at least one route id (so two loops crossing at a junction stay
-// separate), AND share the same `groupKey(way)`. For arrows the key is
-// constant (direction only); for diamonds it's the difficulty, so a black
-// pitch inside a blue loop forms its own run and keeps its own overview
-// marker. Returns one entry per run: { ways: [...] }.
+// separate), AND share the same `groupKey(way)`. For diamonds the key
+// is the difficulty, so a black pitch inside a blue loop forms its
+// own run and keeps its own overview marker. Returns one entry per
+// run: { ways: [...] }.
 function computeConnectedRuns(ways, isEligible, groupKey) {
     const eligible = ways.filter(isEligible);
     const parent = eligible.map((_, i) => i);
@@ -1253,177 +1201,6 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
     }
 }
 
-// Order a connected one-way run's ways into maximal head-to-tail chains.
-// A chain is a simple path: it breaks at branch nodes (degree >= 3) and
-// run endpoints, so the detail arrow tiers can space arrows with one
-// continuous arc cursor across way boundaries (no per-segment phase
-// reset, that reset is what made arrows bunch where a route changes
-// trail name or difficulty). Coordinates are never flipped, bearings
-// must keep encoding one-way travel direction, so each entry's `forward`
-// flag only tells the parameterizer which way the cursor runs that way.
-function buildChains(run) {
-    const ways = run.ways;
-    const hk = new Map();   // way -> head endpoint key
-    const tk = new Map();   // way -> tail endpoint key
-    const adj = new Map();  // endpoint key -> [{ way, end }]
-    for (const w of ways) {
-        const c = w.coords;
-        const h = endpointKey(c[0][0], c[0][1]);
-        const t = endpointKey(c[c.length - 1][0], c[c.length - 1][1]);
-        hk.set(w, h);
-        tk.set(w, t);
-        for (const [k, end] of [[h, "head"], [t, "tail"]]) {
-            let b = adj.get(k);
-            if (!b) { b = []; adj.set(k, b); }
-            b.push({ way: w, end });
-        }
-    }
-    const degree = (k) => (adj.get(k) || []).length;
-    const used = new Set();
-    // Walk a maximal simple chain, entering `startWay` through `entryKey`
-    // and continuing only through degree-2 nodes.
-    const walkFrom = (startWay, entryKey) => {
-        const chain = [];
-        let w = startWay;
-        let entry = entryKey;
-        while (w && !used.has(w)) {
-            used.add(w);
-            const forward = (entry === hk.get(w));
-            chain.push({ way: w, forward });
-            const exit = forward ? tk.get(w) : hk.get(w);
-            if (degree(exit) !== 2) break;          // branch or dead end
-            let next = null;
-            for (const cand of adj.get(exit)) {
-                if (cand.way !== w && !used.has(cand.way)) {
-                    next = cand.way;
-                    break;
-                }
-            }
-            if (!next) break;                        // cycle closed onto a used way
-            entry = exit;
-            w = next;
-        }
-        return chain;
-    };
-    const chains = [];
-    // Open chains start at degree-1 endpoints.
-    for (const [k, bucket] of adj) {
-        if (bucket.length === 1 && !used.has(bucket[0].way)) {
-            chains.push(walkFrom(bucket[0].way, k));
-        }
-    }
-    // Each unused arm of a branch node (degree >= 3) seeds its own chain.
-    for (const [k, bucket] of adj) {
-        if (bucket.length >= 3) {
-            for (const cand of bucket) {
-                if (!used.has(cand.way)) chains.push(walkFrom(cand.way, k));
-            }
-        }
-    }
-    // Remaining ways form pure (all-degree-2) cycles.
-    for (const w of ways) {
-        if (!used.has(w)) chains.push(walkFrom(w, hk.get(w)));
-    }
-    return chains;
-}
-
-// Flatten a chain into a continuous arc parameterization: one entry per
-// source segment, in cursor order, tagged with the owning way and the
-// segment's own arcStart. `fwd` = the cursor runs this segment head->tail.
-function chainParam(chain) {
-    const entries = [];
-    let cursor = 0;
-    for (const { way, forward } of chain) {
-        const segs = way.segments;
-        if (forward) {
-            for (let i = 0; i < segs.length; i++) {
-                const s = segs[i];
-                entries.push({ owner: way, chainStart: cursor,
-                    lengthM: s.lengthM, fwd: true, segArcStart: s.arcStart });
-                cursor += s.lengthM;
-            }
-        } else {
-            for (let i = segs.length - 1; i >= 0; i--) {
-                const s = segs[i];
-                entries.push({ owner: way, chainStart: cursor,
-                    lengthM: s.lengthM, fwd: false, segArcStart: s.arcStart });
-                cursor += s.lengthM;
-            }
-        }
-    }
-    return { entries, chainLength: cursor };
-}
-
-// Resolve a chain-arc distance to a map point + owning way. Bearing comes
-// from the owner's own segment (head->tail = the one-way travel
-// direction), regardless of which way the cursor ran the chain.
-function sampleChain(entries, a) {
-    for (let i = 0; i < entries.length; i++) {
-        const e = entries[i];
-        if (a <= e.chainStart + e.lengthM) {
-            const t = e.lengthM === 0 ? 0 : (a - e.chainStart) / e.lengthM;
-            const ownerArc = e.fwd
-                ? e.segArcStart + t * e.lengthM
-                : e.segArcStart + (1 - t) * e.lengthM;
-            const pt = pointAtArcLength(e.owner.segments,
-                e.owner.totalLength, ownerArc);
-            return pt ? { pt, owner: e.owner } : null;
-        }
-    }
-    return null;
-}
-
-// Place direction arrows at an even `cadenceM` ground spacing along each
-// one-way chain, phase carried across way boundaries so spacing stays
-// consistent where a route changes trail name or difficulty. Shares the
-// `placed` collision index (so arrows dodge POIs, diamonds, and each
-// other) and registers every placement; call coarse rungs before fine so
-// finer rungs nest into the gaps. `guarantee` forces at least one arrow
-// per chain, passed on a single mid-ladder rung (see the ladder pass)
-// so every chain shows direction by detail zoom without speckling the
-// overview zooms of branchy networks with one arrow per chain arm.
-// Arrow-specific (rotation / reverse-day); add an extraPropsFn to reuse
-// the chain machinery for other icon kinds.
-function placeArrowTierAlongChains(chains, cadenceM, minZoom, decorations,
-                                   placed, guarantee) {
-    const R = DECOR_RADIUS_M.arrow;
-    const reverseSet = reverseRoutesToday;
-    for (const chain of chains) {
-        const { entries, chainLength } = chainParam(chain);
-        if (chainLength === 0) continue;
-        const emit = (a) => {
-            const s = sampleChain(entries, a);
-            if (!s) return false;
-            if (placedCollides(s.pt.lng, s.pt.lat, R, placed)) return false;
-            const reverse = reverseSet.has(s.owner.routeId)
-                || s.owner.sharedRoutes.some((id) => reverseSet.has(id));
-            decorations.push({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [s.pt.lng, s.pt.lat] },
-                properties: {
-                    kind: KIND.ARROW,
-                    min_zoom: minZoom,
-                    rotation: arrowRotateForBearing(s.pt.bearing, reverse),
-                    trail_name: s.owner.trailName,
-                    shared_routes: s.owner.sharedRoutes,
-                },
-            });
-            placed.add({ lngLat: [s.pt.lng, s.pt.lat], radiusM: R });
-            return true;
-        };
-        let placedAny = false;
-        for (let a = cadenceM / 2; a < chainLength; a += cadenceM) {
-            if (emit(a)) placedAny = true;
-        }
-        if (!placedAny && guarantee) {
-            // Short or fully-contested chain: still mark direction once.
-            for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) {
-                if (emit(chainLength * f)) break;
-            }
-        }
-    }
-}
-
 // Pick a point ON `way` to anchor an overview label, preferring a stretch
 // clear of already-placed obstacles (POIs / markers). Tries the arc-length
 // midpoint first, then points either side, and returns the first with
@@ -1447,20 +1224,21 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 // route set. Order matters:
 //   Pass 1: line labels (symbol-placement: line; text follows the
 //              trail curve; not pre-deconflicted)
-//   Pass 1.5: run-tier overview markers: arrows and diamonds spaced
-//              along each connected run, placed first so detail-tier
-//              markers can't double up on them
+//   Pass 1.5: run-tier overview diamonds spaced along each connected
+//              run, placed first so detail-tier diamonds can't
+//              double up on them
 //   Pass 1.7: overview point labels (one loop/trail name pinned on the
 //              trail; placed AFTER the run-tier markers so those keep
 //              priority, reserves its footprint so the per-way/sweep tiers
 //              below deconflict around it; maxzoom hands to line labels)
 //   Pass 2: per-way mandatory diamonds (2 per applicable way) so
 //              even short trails get difficulty markings
-//   Pass 3: density ladder: one diamond sweep + one arrow sweep per
-//              zoom rung (see DECOR_LADDER), coarse to fine
-// Arrows and diamonds share the DECOR_LADDER rungs above. Each rung's
-// candidates are deconflicted against everything already placed,
-// including obstacle markers gathered up front.
+//   Pass 3: density ladder: one diamond sweep per zoom rung (see
+//              DECOR_LADDER), coarse to fine
+// Each rung's candidates are deconflicted against everything already
+// placed, including obstacle markers gathered up front. (One-way
+// direction is NOT placed here anymore; the decor-chevron-* line
+// symbol layers own it.)
 // Event mode restricts route-name labels to the featured route(s) so
 // the muted background network never labels itself. Non-event maps
 // label every route, so this gate is a no-op there. Mirrors the
@@ -1489,17 +1267,10 @@ function computeDecorations() {
     // their label, which is the desired tradeoff.
     ways.sort((a, b) => b.totalLength - a.totalLength);
 
-    const reverseSet = reverseRoutesToday;
-    // Chevron mode: the line-symbol layers own direction; skip every
-    // arrow placement pass so diamonds and labels place exactly as
-    // they will after the Phase 2 deletion.
-    const arrowsAllowed = CONFIG.showDirectionArrows !== false
-        && !ONEWAY_CHEVRONS;
-
     // ---- Pass 1: labels (one or more LineString runs per way;
     //      MapLibre's symbol-placement:line auto-curves text along the
     //      trail). The way coords are clipped around DOM markers so
-    //      labels never cross a marker icon. Diamonds and arrows
+    //      labels never cross a marker icon. Diamonds
     //      placed in later passes don't need JS clipping, they're
     //      WebGL features and the label layer's text-allow-overlap:
     //      false + the icon layers' icon-ignore-placement: false make
@@ -1541,28 +1312,11 @@ function computeDecorations() {
         }
     }
 
-    // ---- Pass 1.5: run-tier overview markers, arrows and diamonds
-    //      spaced along each connected run so every directional stretch
-    //      and difficulty band reads when zoomed out, without the per-way
-    //      speckle. Placed before the per-way passes so they seed the
-    //      collision index and coincident detail-tier markers get
-    //      suppressed. ----
-    if (arrowsAllowed) {
-        const arrowRuns = computeConnectedRuns(ways,
-            (w) => w.oneway === "yes" || w.oneway === "reversible",
-            () => "");
-        placeOverviewRuns(arrowRuns, KIND.ARROW, DECOR_RADIUS_M.arrow,
-            DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
-            (w, pt) => {
-                const reverse = reverseSet.has(w.routeId)
-                    || w.sharedRoutes.some((id) => reverseSet.has(id));
-                return {
-                    rotation: arrowRotateForBearing(pt.bearing, reverse),
-                    trail_name: w.trailName,
-                    shared_routes: w.sharedRoutes,
-                };
-            });
-    }
+    // ---- Pass 1.5: run-tier overview diamonds spaced along each
+    //      connected run so every difficulty band reads when zoomed
+    //      out, without the per-way speckle. Placed before the
+    //      per-way passes so they seed the collision index and
+    //      coincident detail-tier diamonds get suppressed. ----
     const diamondRuns = computeConnectedRuns(ways,
         (w) => ["0", "1", "2", "3", "4", "5"].includes(w.imba),
         (w) => w.imba);
@@ -1577,7 +1331,7 @@ function computeDecorations() {
     // ---- Pass 1.7: overview point labels, one name per visible route, and
     //      (trails mode) per named trail, pinned ON the trail at a low-clutter
     //      point on its longest way. Placed AFTER the run-tier overview
-    //      markers above so those sparse, zoomed-out arrows/diamonds keep
+    //      diamonds above so those sparse, zoomed-out markers keep
     //      priority and aren't starved, but BEFORE the per-way and sweep
     //      tiers below, whose markers it reserves a footprint against so they
     //      don't drop on the label text at runtime. Only the modes the map
@@ -1648,18 +1402,8 @@ function computeDecorations() {
         }
     }
 
-    // Order the one-way runs into head-to-tail chains once, so the detail
-    // arrow tiers below space arrows with a single continuous arc cursor
-    // across way boundaries (no per-segment phase reset).
-    const arrowChains = arrowsAllowed
-        ? computeConnectedRuns(ways,
-            (w) => w.oneway === "yes" || w.oneway === "reversible",
-            () => "").flatMap(buildChains)
-        : [];
-
     // ---- Pass 2: per-way mandatory diamonds, 2 per applicable way so
-    //      even short trails get clear difficulty markings. (Arrows are
-    //      handled by the ladder's continuous chain sweeps below.) ----
+    //      even short trails get clear difficulty markings. ----
     for (const way of ways) {
         const L = way.totalLength;
         const hasDiamond = ["0", "1", "2", "3", "4", "5"].includes(way.imba);
@@ -1683,15 +1427,11 @@ function computeDecorations() {
     }
     // ---- Pass 3: density ladder, one rung per zoom level (see
     //      DECOR_LADDER). Each rung sweeps diamonds along every rated
-    //      way and arrows along every one-way chain at the rung's
-    //      cadence. Diamonds place first within a rung so difficulty
-    //      icons keep priority and arrows fill the space around them.
-    //      On finer rungs, candidates coincident with coarser
-    //      placements get dropped by the collision check, so each rung
-    //      fills gaps rather than stacking. ----
-    let arrowGuaranteeSpent = false;
-    for (let ri = 0; ri < DECOR_LADDER.length; ri++) {
-        const rung = DECOR_LADDER[ri];
+    //      way at the rung's cadence. On finer rungs, candidates
+    //      coincident with coarser placements get dropped by the
+    //      collision check, so each rung fills gaps rather than
+    //      stacking. ----
+    for (const rung of DECOR_LADDER) {
         for (const way of ways) {
             if (!["0", "1", "2", "3", "4", "5"].includes(way.imba)) continue;
             for (let arc = rung.cadenceM; arc < way.totalLength;
@@ -1703,19 +1443,6 @@ function computeDecorations() {
                         shared_routes: way.sharedRoutes,
                     }));
             }
-        }
-        if (arrowsAllowed) {
-            // Spend the per-chain guarantee exactly once, on the first
-            // rung at or past the per-way zoom (or the final rung on a
-            // low-maxZoom map whose ladder never reaches it): by detail
-            // zoom every chain shows direction, while the coarse
-            // overview rungs stay free of per-chain speckle.
-            const guarantee = !arrowGuaranteeSpent
-                && (rung.minZoom >= DECOR_MZ_PER_WAY
-                    || ri === DECOR_LADDER.length - 1);
-            if (guarantee) arrowGuaranteeSpent = true;
-            placeArrowTierAlongChains(arrowChains, rung.cadenceM,
-                rung.minZoom, decorations, placed, guarantee);
         }
     }
 
@@ -1776,7 +1503,7 @@ function addDecorationLayers() {
 
     // Chevron layers first: above the trail fills (added before this
     // function runs), below the label and icon layers added next.
-    if (ONEWAY_CHEVRONS) addChevronLayers();
+    addChevronLayers();
 
     map.addLayer({
         id: "decor-trail-name",
@@ -1871,39 +1598,8 @@ function addDecorationLayers() {
         });
     }
 
-    // Point arrows are replaced by the chevron layers while
-    // ONEWAY_CHEVRONS is set (Phase 2 deletes this block outright).
-    if (!ONEWAY_CHEVRONS) map.addLayer({
-        id: "decor-arrow",
-        type: "symbol",
-        source: "trail-decorations",
-        filter: ["all",
-            ["==", ["get", "kind"], KIND.ARROW],
-            ["<=", ["get", "min_zoom"], ["zoom"]],
-        ],
-        layout: {
-            "symbol-placement": "point",
-            // Initial icon-image keyed off current scheme; swapped on
-            // scheme change by applyMapPaintForScheme.
-            "icon-image": MAP_PAINT_TOKENS[currentColorScheme()].arrowIcon,
-            "icon-size": ["interpolate", ["linear"], ["zoom"],
-                12, 0.5, 14, 0.7, 18, 1.0],
-            "icon-rotate": ["get", "rotation"],
-            "icon-rotation-alignment": "map",
-            "icon-allow-overlap": true,
-            // Register in the collision index so labels avoid us; see
-            // the matching comment on decor-diamond above.
-            "icon-ignore-placement": false,
-            // Initial visibility from the rider's persisted toggle
-            // state (or the per-map default_visible default if no
-            // LS value yet). Wired to the Direction-arrows toggle in
-            // setupFloatingChrome.
-            "visibility": directionArrowsToggleOn() ? "visible" : "none",
-        },
-    });
-
     // Overview point labels, a single loop/trail name pinned ON the trail
-    // (computeDecorations Pass 1.6 reserves its footprint so arrows/diamonds
+    // (computeDecorations Pass 1.7 reserves its footprint so diamonds
     // deconflict around it). maxzoom OVERVIEW_LABEL_MAX_ZOOM hands off to the
     // curve-following line label (eligible one stop earlier, at
     // LABEL_CROSSOVER_ZOOM): below the crossover this point label is the sole,
@@ -2086,9 +1782,6 @@ function updateChevronFilters() {
 function updateDecorationsHighlight() {
     if (map.getLayer("decor-diamond")) {
         map.setFilter("decor-diamond", buildDecorFilter(KIND.DIAMOND));
-    }
-    if (map.getLayer("decor-arrow")) {
-        map.setFilter("decor-arrow", buildDecorFilter(KIND.ARROW));
     }
     updateChevronFilters();
 }
@@ -4915,8 +4608,7 @@ async function loadTrails() {
     if (CONFIG.showDifficulty) {
         registerDifficultyIcons();
     }
-    registerArrowIcons();
-    if (ONEWAY_CHEVRONS) registerChevronPatterns();
+    registerChevronPatterns();
     addDecorationLayers();
     // Apply the current color scheme's paint tokens, sets label
     // text-color / halo and arrow icon-image to the scheme-correct
@@ -8284,25 +7976,19 @@ function setupFloatingChrome() {
         difficultyBtn.classList.add("hidden");
     }
 
-    // Direction arrows, drives the decor-arrow MapLibre layer
-    // (chevrons placed along one-way / reversible trails). Reveal
+    // Direction arrows, drives the decor-chevron-* MapLibre layers
+    // (chevron glyphs along one-way / reversible trails). Reveal
     // the toggle row only when the trails data actually contains at
     // least one oneway-tagged feature AND "direction_arrows" is not
-    // in `forced_visible`. When forced, the layer's initial
-    // visibility (set in addArrowLayer) is already on via
+    // in `forced_visible`. When forced, the layers' initial
+    // visibility (set in addChevronLayers) is already on via
     // directionArrowsToggleOn() reading CONFIG.forcedVisible, we
     // just keep the toggle row hidden so the rider has no off
     // affordance.
     //
     // The "has any oneway trails" decision is a build-time scan
-    // (CONFIG.hasOnewayTrails, populated by inject_config_into_template).
-    // Doing it at runtime would mean reading the trail-decorations
-    // source's feature count, but that source is intentionally
-    // populated AFTER setupFloatingChrome() runs, the first
-    // computeDecorations() pass is deferred to map.once('idle', …)
-    // for first-paint perf, so a runtime count races the deferral
-    // and reads 0 at gate time. Same wirePeekToggle pattern as
-    // Difficulty otherwise.
+    // (CONFIG.hasOnewayTrails, populated by inject_config_into_template);
+    // same wirePeekToggle pattern as Difficulty otherwise.
     const arrowsBtn = document.getElementById("toggle-direction-arrows");
     const arrowsShown = CONFIG.showDirectionArrows !== false;
     if (arrowsBtn && CONFIG.hasOnewayTrails && arrowsShown && !isForcedVisible("direction_arrows")) {
@@ -8317,10 +8003,6 @@ function setupFloatingChrome() {
         };
         wirePeekToggle("toggle-direction-arrows", "mtb.directionArrows",
                 isDefaultVisible("direction_arrows"), (on) => {
-            if (map.getLayer("decor-arrow")) {
-                map.setLayoutProperty("decor-arrow", "visibility",
-                    on ? "visible" : "none");
-            }
             applyChevronVisibility(on);
         }, "direction_arrows");
     } else if (arrowsBtn) {
@@ -8502,20 +8184,16 @@ function setupFloatingChrome() {
     applyVisibilityChange();
 
     // ----- Day-of-week recheck for direction schedules -----
-    // Each arrow's rotation is baked into its feature properties at
-    // decoration-build time, so a flip in `reverseRoutesToday` forces
-    // a full source recompute (cheap, we already do it on every
-    // visibility change).
+    // The chevron layers encode reversal via their filters, so a
+    // flip in `reverseRoutesToday` just swaps ways between the fwd
+    // and rev layers; no decoration recompute is needed (nothing in
+    // computeDecorations is day-dependent anymore).
     setInterval(() => {
         const next = todaysReverseRoutes();
         const changed = next.size !== reverseRoutesToday.size
             || [...next].some((id) => !reverseRoutesToday.has(id));
         if (changed) {
             reverseRoutesToday = next;
-            updateDecorationsSource();
-            // Chevron layers encode reversal via their filters, not
-            // baked feature props; a flip just swaps ways between
-            // the fwd and rev layers.
             updateChevronFilters();
         }
     }, 5 * 60 * 1000);
@@ -9621,18 +9299,14 @@ function rebuildBasemapLayers() {
     suppressBasemapPois();
     suppressBasemapOnewayArrows();
 
-    // Re-register difficulty/arrow icons if lost during style rebuild.
-    // The decoration layers themselves come back via the serialized
-    // style (setStyle preserves overlayLayers); icons need to be
-    // re-uploaded if dropped.
+    // Re-register difficulty/chevron icons if lost during style
+    // rebuild. The decoration layers themselves come back via the
+    // serialized style (setStyle preserves overlayLayers); icons
+    // need to be re-uploaded if dropped.
     if (CONFIG.showDifficulty && !map.hasImage("imba-0")) {
         registerDifficultyIcons();
     }
-    if (!map.hasImage(ARROW_ICON_LIGHT_BG_ID) ||
-            !map.hasImage(ARROW_ICON_DARK_BG_ID)) {
-        registerArrowIcons();
-    }
-    if (ONEWAY_CHEVRONS && !map.hasImage(CHEVRON_VARIANTS[0].id)) {
+    if (!map.hasImage(CHEVRON_VARIANTS[0].id)) {
         registerChevronPatterns();
     }
     // After style rebuild (including scheme-driven flavor swap),
