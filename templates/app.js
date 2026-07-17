@@ -578,7 +578,10 @@ const ONEWAY_CHEVRONS = true;
 // spirit of the original design.
 //
 // Appearance knobs:
-const CHEVRON_SPACING_PX = 60;   // symbol-spacing between glyphs
+// Spacing: eye-tuned on the dev builds; 60 read as slightly too
+// frequent. Constant at every zoom (symbol-spacing is screen px);
+// a zoom ramp is possible here if close-in ever wants sparser.
+const CHEVRON_SPACING_PX = 80;   // symbol-spacing between glyphs
 const CHEVRON_ICON_W = 20;       // icon canvas; small margin keeps
 const CHEVRON_ICON_H = 16;       // the halo unclipped at the tip
 
