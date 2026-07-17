@@ -826,7 +826,7 @@ dashed_relations:
 **One color vs. two.** A single-element `colors: ["#ff0000"]` overrides the
 route's color entirely (equivalent to setting `relation_colors`) and applies
 dashes from `pattern`. Two elements activates the alternating-color path. Three
-or more colors are not supported; extra entries are ignored.
+or more colors are not supported; the build fails validation.
 
 **Interaction with other features.** Alternating-color dashes work with
 direction arrows, labels, and the route visibility rules exactly like any other

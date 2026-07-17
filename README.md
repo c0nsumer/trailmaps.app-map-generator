@@ -39,9 +39,10 @@ Oaks Map as of 2026-Jul-05*
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.
 - Compass heading indicator: on devices with a compass, the Locate dot grows
-  a small cone showing which way the rider is facing. Permission-gated on iOS
-  (asked once, on the Locate tap); reads only the direction fields each GPS
-  fix already carries; the app keeps no location history.
+  a small cone showing which way the rider is facing. Reads the device compass
+  (falling back to the direction field each GPS fix already carries), behind
+  its own iOS permission prompt (asked once, during the Locate tap); all
+  readings stay on the device and the app keeps no location history.
 - Light and dark color schemes; per-map accent color (manual or auto-derived
   from the logo); per-map branding via a logo and icon, plus optional secondary
   event / sponsor logos stacked under the primary.
