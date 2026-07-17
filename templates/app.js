@@ -1068,9 +1068,14 @@ const DECOR_OVERVIEW_SPACING_M =
 // z14 drew straight over the dense per-way POINT ARROW field; those
 // arrows are gone (one-way direction is now the collision-inert
 // decor-chevron-* line symbols), so the remaining contention is only
-// the much sparser diamond field. Lowering this toward 14 is Phase 3
-// of one-way-line-direction.md, the actual mid-zoom dead-band fix.
-const POINT_LABEL_MAX_ZOOM = 16;
+// the much sparser diamond field, and the crossover comes back down
+// to 14. This closes the z13-15 "mid-zoom label dead band" (trails
+// on screen, no name anywhere): on-path names now cover it, and the
+// overview point label hands off at 15 instead of 17
+// (OVERVIEW_LABEL_MAX_ZOOM below). Phase 3 of
+// one-way-line-direction.md; if 14 proves too busy against the
+// diamond field, 15 is the fallback stop.
+const POINT_LABEL_MAX_ZOOM = 14;
 
 // On-path line layers' minzoom. Clamped one stop under the map's own maxZoom
 // so a low-maxZoom regional map that never reaches 16 still gets an on-path
