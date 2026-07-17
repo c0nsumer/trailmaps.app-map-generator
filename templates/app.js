@@ -575,23 +575,110 @@ const ONEWAY_CHEVRONS = true;
 const CHEVRON_TILE_W = 96;
 const CHEVRON_TILE_H = 16;
 
-// One solid arrowhead centered in the tile; the rest of the tile is
-// transparent padding (that padding IS the spacing). The glyph is
-// drawArrow, the same chunky notched arrowhead the point arrows
-// used, so the visual language carries over. A FILLED shape is
-// deliberate: line-pattern bends the tile along the line's curve,
-// and a thin stroked chevron distorts into a squiggle on twisty
-// singletrack (the first cut's "DNA symbol" look); a solid triangle
-// survives the bending legibly.
+// DEV-ONLY glyph switcher for the Phase 1 eye test:
+// ?chevronShape=notch|dart|harpoon|triangle|chevron picks the tile
+// glyph per page load so one deployed build compares every
+// candidate. Once a shape is chosen it gets hardcoded and this
+// param is deleted (before the branch merges; it must not ship).
+const CHEVRON_SHAPE = (() => {
+    try {
+        const s = new URLSearchParams(window.location.search)
+            .get("chevronShape");
+        return ["notch", "dart", "harpoon", "triangle", "chevron"]
+            .includes(s) ? s : "notch";
+    } catch (e) {
+        return "notch";
+    }
+})();
+
+// One glyph centered in the tile; the rest of the tile is
+// transparent padding (that padding IS the spacing). FILLED shapes
+// are preferred: line-pattern bends the tile along the line's curve,
+// and thin strokes distort into squiggles on twisty singletrack (the
+// first cut's "DNA symbol" look); solid shapes survive the bending.
+// "chevron" (the stroked first cut) is kept selectable for
+// comparison.
 function drawChevronTile(ctx, w, h, fill, halo, reverse) {
     ctx.save();
     if (reverse) {
         ctx.translate(w, 0);
         ctx.scale(-1, 1);
     }
-    // drawArrow renders into an h×h box pointing +x; center it.
-    ctx.translate((w - h) / 2, 0);
-    drawArrow(ctx, h, fill, halo);
+    const cy = h / 2;
+    // Filled shapes share the halo-under-fill treatment drawArrow
+    // uses; `len` is the glyph's along-line extent (shorter bends
+    // less on tight curves).
+    const filled = (len, tracePath) => {
+        ctx.translate((w - len) / 2, 0);
+        tracePath();
+        ctx.strokeStyle = halo;
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        tracePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+    };
+    if (CHEVRON_SHAPE === "notch") {
+        // The point arrows' chunky notched arrowhead (h×h box).
+        ctx.translate((w - h) / 2, 0);
+        drawArrow(ctx, h, fill, halo);
+    } else if (CHEVRON_SHAPE === "dart") {
+        // Elongated kite: strongly directional when tiled.
+        const len = h * 1.5;
+        filled(len, () => {
+            ctx.beginPath();
+            ctx.moveTo(len * 0.97, cy);
+            ctx.lineTo(0, cy - h * 0.36);
+            ctx.lineTo(len * 0.22, cy);
+            ctx.lineTo(0, cy + h * 0.36);
+            ctx.closePath();
+        });
+    } else if (CHEVRON_SHAPE === "harpoon") {
+        // One-sided barb, visually quieter when repeated; nudged
+        // down so its mass centers on the line.
+        const len = h * 1.1;
+        filled(len, () => {
+            const y = cy + h * 0.12;
+            ctx.beginPath();
+            ctx.moveTo(len * 0.95, y);
+            ctx.lineTo(0, y - h * 0.44);
+            ctx.lineTo(len * 0.3, y);
+            ctx.closePath();
+        });
+    } else if (CHEVRON_SHAPE === "triangle") {
+        // Plain compact arrowhead: shortest along-line extent, so it
+        // distorts least on switchbacks.
+        const len = h * 0.8;
+        filled(len, () => {
+            ctx.beginPath();
+            ctx.moveTo(len, cy);
+            ctx.lineTo(0, cy - h * 0.42);
+            ctx.lineTo(0, cy + h * 0.42);
+            ctx.closePath();
+        });
+    } else {
+        // "chevron": the stroked ">" first cut, for reference.
+        const depth = 10;
+        const half = 5;
+        const x0 = (w - depth) / 2;
+        const trace = () => {
+            ctx.beginPath();
+            ctx.moveTo(x0, cy - half);
+            ctx.lineTo(x0 + depth, cy);
+            ctx.lineTo(x0, cy + half);
+        };
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        trace();
+        ctx.strokeStyle = halo;
+        ctx.lineWidth = 6.5;
+        ctx.stroke();
+        trace();
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+    }
     ctx.restore();
 }
 
