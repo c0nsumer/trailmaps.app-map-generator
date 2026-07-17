@@ -90,9 +90,9 @@ const MAP_PAINT_TOKENS = {
         // (light-bg / dark-bg), distinct images, swap via
         // setLayoutProperty.
         arrowIcon:  "arrow-light-bg",
-        // One-way chevron line-pattern IDs (forward / reverse, per
+        // One-way chevron glyph image IDs (forward / reverse, per
         // scheme); registered by registerChevronPatterns, swapped via
-        // setPaintProperty on the decor-chevron-* layers.
+        // setLayoutProperty icon-image on the decor-chevron-* layers.
         chevronFwd: "chevron-fwd-light-bg",
         chevronRev: "chevron-rev-light-bg",
         // Hillshade, bright highlight + dark shadow give classic
@@ -191,10 +191,10 @@ function applyMapPaintForScheme(scheme) {
         map.setLayoutProperty("decor-arrow", "icon-image", t.arrowIcon);
     }
     if (map.getLayer("decor-chevron-fwd")) {
-        map.setPaintProperty("decor-chevron-fwd", "line-pattern", t.chevronFwd);
+        map.setLayoutProperty("decor-chevron-fwd", "icon-image", t.chevronFwd);
     }
     if (map.getLayer("decor-chevron-rev")) {
-        map.setPaintProperty("decor-chevron-rev", "line-pattern", t.chevronRev);
+        map.setLayoutProperty("decor-chevron-rev", "icon-image", t.chevronRev);
     }
     if (map.getLayer("hillshade")) {
         map.setPaintProperty("hillshade", "hillshade-shadow-color", t.hillshadeShadow);
@@ -559,21 +559,28 @@ function registerArrowIcons() {
 
 // ---- One-way chevron line decoration ----
 // Phase 1 of .claude/plans/one-way-line-direction.md: one-way travel
-// direction rendered as a continuous chevron line-pattern on the
-// corridor centerline instead of point-placed arrows. While true,
+// direction rendered as repeating glyphs along the corridor
+// centerline instead of JS-placed point arrows. While true,
 // the decor-arrow layer is not added and computeDecorations skips
 // its arrow passes (the point-arrow code itself is deleted in
 // Phase 2 once the look is approved).
 const ONEWAY_CHEVRONS = true;
 
-// Pattern tile geometry, THE two appearance knobs:
-// - line-pattern stretches the tile so its HEIGHT equals the layer's
-//   line-width, so the chevron's drawn size is the line-width ramp
-//   on the decor-chevron-* layers.
-// - On-screen spacing between chevrons = (tile width / tile height)
-//   × line-width. 96/16 = 6× → ~60 px spacing at a 10 px line-width.
-const CHEVRON_TILE_W = 96;
-const CHEVRON_TILE_H = 16;
+// Rendered as line-placed SYMBOLS, not line-pattern: the pattern
+// shader pins tile height to screen-space line width but
+// parameterizes the along-line axis in tile units (pattern_size.x
+// is divided by tileZoomRatio), so a rigid glyph stretches up to 2×
+// with fractional zoom between tile cuts — fine for dashes,
+// shape-destroying for arrowheads. Symbols render pixel-rigid at
+// every zoom and rotate to the local line direction. With
+// icon-allow-overlap + icon-ignore-placement they are collision-
+// inert (never shed, never shift others), keeping the pure-paint
+// spirit of the original design.
+//
+// Appearance knobs:
+const CHEVRON_SPACING_PX = 60;   // symbol-spacing between glyphs
+const CHEVRON_ICON_W = 28;       // icon canvas (fits the dart, the
+const CHEVRON_ICON_H = 16;       // longest glyph; extra is margin)
 
 // DEV-ONLY glyph switcher for the Phase 1 eye test:
 // ?chevronShape=notch|dart|harpoon|triangle|chevron picks the tile
@@ -591,13 +598,12 @@ const CHEVRON_SHAPE = (() => {
     }
 })();
 
-// One glyph centered in the tile; the rest of the tile is
-// transparent padding (that padding IS the spacing). FILLED shapes
-// are preferred: line-pattern bends the tile along the line's curve,
-// and thin strokes distort into squiggles on twisty singletrack (the
-// first cut's "DNA symbol" look); solid shapes survive the bending.
-// "chevron" (the stroked first cut) is kept selectable for
-// comparison.
+// One glyph centered in the icon canvas (surplus width is
+// transparent margin; on-screen spacing is symbol-spacing on the
+// layers, not the canvas). FILLED shapes are preferred: they read
+// solidly at 8-14 drawn px where thin strokes go noisy (the first
+// cut's "DNA symbol" look). "chevron" (the stroked first cut) is
+// kept selectable for comparison.
 function drawChevronTile(ctx, w, h, fill, halo, reverse) {
     ctx.save();
     if (reverse) {
@@ -682,11 +688,14 @@ function drawChevronTile(ctx, w, h, fill, halo, reverse) {
     ctx.restore();
 }
 
-// Four pattern variants: {light,dark} basemap × {forward,reverse}.
-// Forward points +x; line-pattern lays the tile's x-axis along the
+// Four glyph variants: {light,dark} basemap × {forward,reverse}.
+// Forward points +x; symbol-placement:line with
+// icon-rotation-alignment:map lays the icon's +x axis along the
 // line's digitization direction, so +x = OSM travel direction.
-// Reverse is the mirror, selected per feature by the rev layer's
-// filter (routes reversed today), not by rotating anything.
+// Reverse is the mirror image, selected per feature by the rev
+// layer's filter (routes reversed today); a mirror (not a 180°
+// rotate) keeps asymmetric glyphs like the harpoon on a consistent
+// side of the line.
 const CHEVRON_VARIANTS = [
     { id: "chevron-fwd-light-bg", fill: "#000000",
       halo: "rgba(255,255,255,0.9)", reverse: false },
@@ -703,17 +712,17 @@ function registerChevronPatterns() {
     for (const v of CHEVRON_VARIANTS) {
         if (map.hasImage(v.id)) continue;
         const canvas = document.createElement("canvas");
-        canvas.width = CHEVRON_TILE_W * ratio;
-        canvas.height = CHEVRON_TILE_H * ratio;
+        canvas.width = CHEVRON_ICON_W * ratio;
+        canvas.height = CHEVRON_ICON_H * ratio;
         const ctx = canvas.getContext("2d");
         ctx.scale(ratio, ratio);
-        drawChevronTile(ctx, CHEVRON_TILE_W, CHEVRON_TILE_H,
+        drawChevronTile(ctx, CHEVRON_ICON_W, CHEVRON_ICON_H,
             v.fill, v.halo, v.reverse);
         map.addImage(v.id, {
-            width: CHEVRON_TILE_W * ratio,
-            height: CHEVRON_TILE_H * ratio,
-            data: ctx.getImageData(0, 0, CHEVRON_TILE_W * ratio,
-                CHEVRON_TILE_H * ratio).data,
+            width: CHEVRON_ICON_W * ratio,
+            height: CHEVRON_ICON_H * ratio,
+            data: ctx.getImageData(0, 0, CHEVRON_ICON_W * ratio,
+                CHEVRON_ICON_H * ratio).data,
         }, { pixelRatio: ratio });
     }
 }
@@ -1565,7 +1574,7 @@ function computeDecorations() {
     ways.sort((a, b) => b.totalLength - a.totalLength);
 
     const reverseSet = reverseRoutesToday;
-    // Chevron mode: the line-pattern layers own direction; skip every
+    // Chevron mode: the line-symbol layers own direction; skip every
     // arrow placement pass so diamonds and labels place exactly as
     // they will after the Phase 2 deletion.
     const arrowsAllowed = CONFIG.showDirectionArrows !== false
@@ -2113,10 +2122,12 @@ function buildChevronFilter(rev) {
 }
 
 // One-way chevron layers (one-way-line-direction.md Phase 1). Two
-// layers, forward and reverse-today, so no data-driven line-pattern
-// is needed; day-tick and highlight changes rebuild the filters via
+// symbol layers, forward and reverse-today (mirror-image glyphs);
+// day-tick and highlight changes rebuild the filters via
 // updateChevronFilters. Added before the other decor layers so
 // chevrons sit above the trail fills but under labels and diamonds.
+// allow-overlap + ignore-placement make them collision-inert: every
+// glyph draws, none registers, so labels/diamonds are unaffected.
 function addChevronLayers() {
     if (map.getLayer("decor-chevron-fwd")) return;
     const t = MAP_PAINT_TOKENS[currentColorScheme()];
@@ -2124,22 +2135,22 @@ function addChevronLayers() {
                              ["decor-chevron-rev", true]]) {
         map.addLayer({
             id,
-            type: "line",
+            type: "symbol",
             source: "trails",
             filter: buildChevronFilter(rev),
             layout: {
-                "line-cap": "butt",
-                "line-join": "round",
+                "symbol-placement": "line",
+                "symbol-spacing": CHEVRON_SPACING_PX,
+                "icon-image": rev ? t.chevronRev : t.chevronFwd,
+                // Glyph drawn height = CHEVRON_ICON_H × this ramp
+                // (16 px canvas → ~8 px at z12, ~14 px at z18).
+                "icon-size": ["interpolate", ["linear"], ["zoom"],
+                    12, 0.5, 14, 0.65, 18, 0.9],
+                "icon-rotation-alignment": "map",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
                 "visibility": directionArrowsToggleOn()
                     ? "visible" : "none",
-            },
-            paint: {
-                "line-pattern": rev ? t.chevronRev : t.chevronFwd,
-                // Chevron drawn height per zoom; on-screen spacing
-                // follows via the tile aspect ratio (see
-                // CHEVRON_TILE_* comments).
-                "line-width": ["interpolate", ["linear"], ["zoom"],
-                    12, 7, 14, 10, 18, 14],
             },
         });
     }
