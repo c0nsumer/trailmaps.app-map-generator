@@ -97,6 +97,22 @@ Both entry points are interchangeable; the package form just forwards flags
 to `scripts/build.py`. Omit `--output-dir` / `--cache-dir` and the legacy
 `build/<slug>/` and `cache/` layout under the repo root is used.
 
+## Repository layout
+
+The project runs from a checkout as above; it is not meant to be installed
+with `pip install .` (the `pyproject.toml` exists to declare the Python floor,
+not to package a distribution).
+
+| Directory | What it is |
+|---|---|
+| `scripts/` | The engine itself: build pipeline, data fetchers, config validation, and the test suite. Despite the name, this is where the code lives. |
+| `map_generator/` | Thin CLI facade for the `python -m map_generator build` form; forwards to `scripts/build.py`. |
+| `templates/` | The web app shipped with every generated map (HTML, CSS, JS, service worker), processed at build time. |
+| `assets/` | Vendored fonts, sprites, and JS bundles, so builds are hermetic. |
+| `tools/` | Maintainer helpers: deploy wrapper, config cleaner, diagnostics. See [`tools/README.md`](tools/README.md). |
+| `configs/` | Map configs. Only `example/` and `reference/` are tracked; yours stay private (see below). |
+| `docs/` | Full documentation, indexed under [Documentation](#documentation). |
+
 ## Bring your own configs
 
 The engine itself does not ship any specific trail data. The only configs
@@ -220,3 +236,10 @@ If you re-deploy this framework, please preserve the in-app About modal credits
 unchanged: every component above earned its place by either being free
 infrastructure (Overpass), donated public data (OpenStreetMap, USGS), or
 thoughtful open-source work (everyone else).
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). The table above
+describes the licenses of its dependencies and data sources, not of this
+project itself; the only GPL item (potrace) is an optional external tool
+invoked at build time, never linked or redistributed.

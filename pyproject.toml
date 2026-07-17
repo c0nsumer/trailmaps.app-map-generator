@@ -12,3 +12,9 @@ name = "map-generator"
 version = "0.1.0"
 description = "Static MTB trail-map generator (MapLibre + PMTiles)"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/c0nsumer/trailmaps.app-map-generator"
+Documentation = "https://github.com/c0nsumer/trailmaps.app-map-generator/tree/main/docs"
