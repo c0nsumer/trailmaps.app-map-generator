@@ -105,7 +105,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     # gets `(relation(R);rel(r);)` so super-relations expand to their
     # children inline. Wrapping each in `()` makes them independent
     # union members of the outer `({...})`.
-    parts = [";".join(f"(relation({rid});rel(r);)" for rid in all_input_ids) + ";"]
+    union = ";".join(f"(relation({rid});rel(r);)" for rid in all_input_ids) + ";"
 
     # `out body;` instead of `out tags;` so member lists come back too.
     # Super-relation detection below needs to see type=relation members.
@@ -113,7 +113,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     # cache the response.
     query = f"""
 [out:json][timeout:120];
-({" ".join(parts)});
+({union});
 out body;
 """
     data = overpass_query(query, cache_dir, label="relations", require_elements=True, refresh=refresh)
@@ -1065,4 +1065,4 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
     output = args.output or os.path.join("build", config["slug"], "trails.geojson")
-    fetch_trails(args.config, output, args.cache_dir)
+    fetch_trails(config, output, args.cache_dir)

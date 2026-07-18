@@ -238,4 +238,6 @@ def test_refuses_subway_expanded_geometry(marker):
 
 
 if __name__ == "__main__":
-    sys.exit(os.system(f"{sys.executable} -m pytest {os.path.abspath(__file__)} -v") >> 8)
+    import pytest
+
+    sys.exit(pytest.main([__file__, "-v"]))

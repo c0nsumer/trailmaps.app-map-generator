@@ -282,14 +282,14 @@ def generate_service_worker(config, output_dir):
             all_files.append(rel_url)
 
     precache_urls = ["./"]
-    precache_pmtiles = []  # large archives, deferred to the tail (see below)
+    # Large archives, deferred to the precache tail (see below); the
+    # same list also feeds PMTILES_FILES in the SW config.
     pmtiles_files = []
     for rel_url in all_files:
         if not _is_precachable_glyph(rel_url):
             continue
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)
-            precache_pmtiles.append(rel_url)
         else:
             precache_urls.append(rel_url)
 
@@ -308,7 +308,7 @@ def generate_service_worker(config, output_dir):
     # (PMTILES_FILES order is independent — it's only a suffix-match set for
     # the Range handler. CACHE_VERSION hashes all_files, not this list, so
     # reordering here does NOT bust any rider's cache.)
-    precache_urls.extend(precache_pmtiles)
+    precache_urls.extend(pmtiles_files)
 
     # Compute cache version from actual file CONTENTS of every
     # deployed file in the build (not just the precache subset). The earlier
@@ -1055,7 +1055,8 @@ def main(argv=None):
 
     auto_refetch_reason = None
     refresh_trails = args.refresh or args.refresh_trails
-    if not (refresh_trails or not os.path.exists(trails_src_path)):
+    needs_fetch = refresh_trails or not os.path.exists(trails_src_path)
+    if not needs_fetch:
         # Base cache exists; refetch only if the config inputs changed or the
         # base file was modified out from under us (content-guard). A missing
         # sidecar is a legacy backfill, not a refetch.
@@ -1077,7 +1078,7 @@ def main(argv=None):
         )
         return fetched
 
-    if refresh_trails or not os.path.exists(trails_src_path) or auto_refetch_reason:
+    if needs_fetch or auto_refetch_reason:
         if auto_refetch_reason:
             console.step(f"Trails: refetching ({auto_refetch_reason})")
         trails_geojson = _fetch_and_snapshot()

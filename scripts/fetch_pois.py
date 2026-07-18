@@ -460,4 +460,4 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
     output = args.output or os.path.join("build", config["slug"], "pois.geojson")
-    fetch_pois(args.config, output, args.cache_dir)
+    fetch_pois(config, output, args.cache_dir)

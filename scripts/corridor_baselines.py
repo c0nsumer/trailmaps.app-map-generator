@@ -175,19 +175,14 @@ def _objective(b, edge_terms, anchors):
     return movement + drift
 
 
-def compute_baselines_for_mode(features, visible, rank, *, previous=None):
-    """Compute {corridor_key: baseline} for one visible mode.
+def _visible_corridors(features, visible):
+    """Collect multi-route corridor signatures from ``features``.
 
-    Only multi-route corridors (>=2 visible routes) get baselines; solo
-    segments render at offset 0 via the runtime's ``visibleCount <= 1``
-    path, and a route's solo->corridor entry is a genuine join handled by
-    a smooth transition rather than a baseline constraint.
-
-    ``rank`` is {route_id: index} from this mode's route order.
-    ``previous`` (optional) seeds the search for rebuild stability.
+    A corridor is the frozenset of visible route ids sharing a
+    LineString segment; stubs and subway host variants are skipped.
+    Only corridors with 2+ visible routes matter for offsets.
+    ``visible`` must already be a set of string ids.
     """
-    visible = {str(r) for r in visible}
-
     corridors = set()
     for feat in features:
         props = feat.get("properties") or {}
@@ -200,6 +195,22 @@ def compute_baselines_for_mode(features, visible, rank, *, previous=None):
         ss = frozenset(str(x) for x in shared if x and str(x) in visible)
         if len(ss) >= 2:
             corridors.add(ss)
+    return corridors
+
+
+def compute_baselines_for_mode(features, visible, rank, *, previous=None):
+    """Compute {corridor_key: baseline} for one visible mode.
+
+    Only multi-route corridors (>=2 visible routes) get baselines; solo
+    segments render at offset 0 via the runtime's ``visibleCount <= 1``
+    path, and a route's solo->corridor entry is a genuine join handled by
+    a smooth transition rather than a baseline constraint.
+
+    ``rank`` is {route_id: index} from this mode's route order.
+    ``previous`` (optional) seeds the search for rebuild stability.
+    """
+    visible = {str(r) for r in visible}
+    corridors = _visible_corridors(features, visible)
     if not corridors:
         return {}
 
@@ -257,18 +268,7 @@ def _movement_and_drift(baselines, features, visible, rank):
     transitions) where ``transitions`` counts adjacencies with non-zero
     residual movement. Used for build logging / verification."""
     visible = {str(r) for r in visible}
-    corridors = set()
-    for feat in features:
-        props = feat.get("properties") or {}
-        if props.get("isStub") or props.get("_subwayHostVariant"):
-            continue
-        geom = feat.get("geometry") or {}
-        if geom.get("type") != "LineString":
-            continue
-        shared = props.get("shared_routes") or [props.get("route_id")]
-        ss = frozenset(str(x) for x in shared if x and str(x) in visible)
-        if len(ss) >= 2:
-            corridors.add(ss)
+    corridors = _visible_corridors(features, visible)
     keymap = {ss: corridor_key(ss, rank) for ss in corridors}
     pos_cache = {ss: _positions(ss, rank) for ss in corridors}
 

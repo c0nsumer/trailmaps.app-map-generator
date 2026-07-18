@@ -806,9 +806,9 @@ function gatherObstacles() {
     if (_obstaclesCache !== null) return _obstaclesCache;
     const out = [];
     const r = DECOR_RADIUS_M.obstacle;
-    for (const arr of [trailMarkerMarkers, parkingMarkers,
-                       trailheadMarkers, hubMarkers, featureMarkers,
-                       toiletMarkers, drinkingWaterMarkers]) {
+    // Event POIs are not obstacles for the decoration placer.
+    for (const [type, arr] of Object.entries(POI_MARKER_ARRAYS)) {
+        if (type === "event") continue;
         for (const m of arr) {
             if (m._map !== map) continue;
             const ll = m.getLngLat();
@@ -1870,6 +1870,24 @@ let drinkingWaterMarkers = [];
 // event_mode.pois, always-on, no rider toggle. Held in its own
 // array so the proximity / toggle filter passes don't touch it.
 let eventPoiMarkers = [];
+// Registry of every POI marker pool, keyed by poiIndex type. The
+// arrays above are mutated in place (never reassigned), so these
+// references stay live. Code that must cover EVERY marker type
+// (obstacle gathering, dim-state, the tap guard in
+// setupInteractions) iterates this registry instead of hand-listing
+// arrays — a new POI type registered here is picked up everywhere at
+// once. (toilet/water/hub were each once forgotten at one of those
+// sites back when the lists were maintained by hand.)
+const POI_MARKER_ARRAYS = {
+    trail_marker:   trailMarkerMarkers,
+    parking:        parkingMarkers,
+    trailhead:      trailheadMarkers,
+    hub:            hubMarkers,
+    feature:        featureMarkers,
+    toilet:         toiletMarkers,
+    drinking_water: drinkingWaterMarkers,
+    event:          eventPoiMarkers,
+};
 let userLocation = null; // [lng, lat] from geolocate control
 // MapLibre GeolocateControl handle; assigned in init(). Hoisted to module
 // scope so the off-screen indicator's click handler (defined at module
@@ -4022,13 +4040,10 @@ function updateMarkerDimState() {
             marker.setOpacity(dimmed ? "0.25" : "1");
         }
     };
-    apply(trailMarkerMarkers);
-    apply(parkingMarkers);
-    apply(trailheadMarkers);
-    apply(hubMarkers);
-    apply(featureMarkers);
-    apply(toiletMarkers);
-    apply(drinkingWaterMarkers);
+    // Event POIs keep full opacity; they are not part of the dim pass.
+    for (const [type, arr] of Object.entries(POI_MARKER_ARRAYS)) {
+        if (type !== "event") apply(arr);
+    }
 }
 
 function updateMarkerProximity() {
@@ -5874,17 +5889,7 @@ function highlightPoiByRef(ref) {
 // POI's layer toggle is off (the marker objects exist but aren't
 // .addTo()'d to the map). The popup-open path tolerates null.
 function findPoiMarker(p) {
-    const arrays = {
-        "trail_marker":   trailMarkerMarkers,
-        "parking":        parkingMarkers,
-        "trailhead":      trailheadMarkers,
-        "hub":            hubMarkers,
-        "feature":        featureMarkers,
-        "toilet":         toiletMarkers,
-        "drinking_water": drinkingWaterMarkers,
-        "event":          eventPoiMarkers,
-    };
-    const list = arrays[p.type];
+    const list = POI_MARKER_ARRAYS[p.type];
     if (!list) return null;
     const lngEq = (a, b) => Math.abs(a - b) < 1e-6;
     for (const m of list) {
@@ -6001,17 +6006,7 @@ function finderPoisInScope() {
 }
 
 function _markerArrayForType(type) {
-    switch (type) {
-        case "parking":         return parkingMarkers;
-        case "trailhead":       return trailheadMarkers;
-        case "hub":             return hubMarkers;
-        case "toilet":          return toiletMarkers;
-        case "drinking_water":  return drinkingWaterMarkers;
-        case "trail_marker":    return trailMarkerMarkers;
-        case "feature":         return featureMarkers;
-        case "event":           return eventPoiMarkers;
-    }
-    return null;
+    return POI_MARKER_ARRAYS[type] || null;
 }
 
 function _lsKeyForType(type) {
@@ -9120,14 +9115,10 @@ function setupInteractions() {
     // Every POI marker type belongs in this guard: a tap on a marker
     // chip that sits on a trail line must not bubble into the map-wide
     // click handler below and open the trail popup underneath the
-    // marker the rider just tapped. (toilet/water/hub were once
-    // missing from this list — add new marker types here.)
+    // marker the rider just tapped. Iterating the registry keeps a
+    // new marker type from being forgotten here.
     let poiMarkerTapped = false;
-    for (const marker of [...trailMarkerMarkers,
-                          ...parkingMarkers, ...trailheadMarkers,
-                          ...hubMarkers, ...toiletMarkers,
-                          ...drinkingWaterMarkers,
-                          ...featureMarkers, ...eventPoiMarkers]) {
+    for (const marker of Object.values(POI_MARKER_ARRAYS).flat()) {
         marker.getElement().addEventListener("click", () => {
             poiMarkerTapped = true;
             requestAnimationFrame(() => { poiMarkerTapped = false; });

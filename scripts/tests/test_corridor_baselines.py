@@ -249,19 +249,6 @@ def test_matches_brute_force_on_small_graph():
 
 
 if __name__ == "__main__":
-    import traceback
+    import pytest
 
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
-    for fn in tests:
-        try:
-            fn()
-            print(f"  PASS  {fn.__name__}")
-        except Exception:
-            failed += 1
-            print(f"  FAIL  {fn.__name__}")
-            traceback.print_exc()
-    if failed:
-        print(f"\n{failed}/{len(tests)} failed")
-        sys.exit(1)
-    print(f"\nAll {len(tests)} tests passed.")
+    sys.exit(pytest.main([__file__, "-v"]))
