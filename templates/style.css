@@ -1210,14 +1210,19 @@ body::after {
     border: none;
 }
 
+/* Same 14×4 line shape as the route swatches above, so trail rows
+ * read like the route rows. Highlighter yellow (#FFEC00) matches the
+ * on-map trail highlight and the chip's trail line (highlightTrail),
+ * not the old amber dot: the mark previews what clicking the row
+ * does. Same rgba outline as the other bars keeps the light yellow
+ * visible on the white list background. */
 .finder-row-trail-mark {
     display: inline-block;
     width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--highlight-amber);
-    border: 1.5px solid white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    height: 4px;
+    border-radius: 2px;
+    background: #ffec00;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
     flex-shrink: 0;
 }
 
