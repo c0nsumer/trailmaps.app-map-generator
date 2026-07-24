@@ -955,8 +955,14 @@ The modal also always shows a **"Built with"** section at the bottom:
   Map Generator.").
 - `Trail data: <date HH:MM>` (`_data_date`: the OSM snapshot timestamp
   recorded when the trail data was last actually fetched, or the `.osm`
-  file's mtime for local-file maps) and `App built: <date HH:MM>` (set at
-  build time). Both timestamps use the build machine's local time.
+  file's mtime for local-file maps; rendered in the build machine's local
+  time) and `App version: v<N> (<date>)` (the engine's commit count as of
+  the last commit that touched `templates/`, plus that commit's date, so
+  the version only advances when the shipped app code changes). The
+  version line is omitted when the build can't consult git (e.g. a
+  tarball checkout). A `buildDate` value (newest mtime of the templates
+  and the map's own inputs) is still injected into `CONFIG` for the
+  landing page's "Updated" line, but is no longer displayed here.
 - One credit line per data source and library: OSM, Protomaps, Material Design
   Icons, MapLibre GL JS, and SIL Open Font License always; Mapterhorn when
   terrain is enabled; USGS 3DEP when route elevation is computed and shown. See

@@ -3652,10 +3652,16 @@ function buildAboutModalContent() {
         p.textContent = `Trail data: ${CONFIG.dataDate}`;
         tail.appendChild(p);
     }
-    if (CONFIG.buildDate) {
+    // "App version: v294 (2026-07-17)" — the engine's commit-count
+    // version of the shipped app code plus that commit's date. Absent
+    // (empty) when the build couldn't consult git; the line is simply
+    // omitted then. CONFIG.buildDate still exists but is not shown
+    // here — the landing-page "Updated" line consumes it.
+    if (CONFIG.appVersion) {
         const p = document.createElement("p");
         p.className = "about-modal-version";
-        p.textContent = `App built: ${CONFIG.buildDate}`;
+        p.textContent = `App version: ${CONFIG.appVersion}` +
+            (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : "");
         tail.appendChild(p);
     }
 

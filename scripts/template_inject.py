@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import urllib.parse
 from datetime import datetime
@@ -23,6 +24,47 @@ from logo import logo_output_filename, process_logo
 from validate_config import DEFAULT_VISIBLE_LAYERS, VALID_DAYS, match_day_token
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _engine_app_version():
+    """Return the engine's app version as ("v<count>", "YYYY-MM-DD").
+
+    <count> is the repo's commit count as of the last commit that touched
+    templates/ (the shipped app code), and the date is that commit's
+    commit date. Keying off templates/ rather than HEAD means the version
+    only advances when the app a rider runs actually changes — a
+    scripts-only engine commit leaves every map's app.js bytes (and
+    therefore the content-hashed CACHE_VERSION) untouched, so installed
+    riders aren't forced through a full re-precache for deploys that
+    changed nothing they run. Both values are derived from git history,
+    not wall clock or mtimes, so rebuilds stay deterministic.
+
+    Returns ("", "") when the version can't be determined (no git binary,
+    or a .git-less tree such as a tarball download of the public repo);
+    the About modal omits its version line in that case and the build
+    proceeds normally.
+    """
+    root = os.path.dirname(SCRIPTS_DIR)
+
+    def _git(*args):
+        proc = subprocess.run(
+            ["git", "-C", root, *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return proc.stdout.strip() if proc.returncode == 0 else ""
+
+    try:
+        commit, _, date = _git("log", "-1", "--format=%H|%cs", "--", "templates/").partition("|")
+        if not (commit and date):
+            return "", ""
+        count = _git("rev-list", "--count", commit)
+        if not count.isdigit():
+            return "", ""
+        return f"v{count}", date
+    except (OSError, subprocess.SubprocessError):
+        return "", ""
 
 
 # Declarative config spec: (yaml_key, js_key, default).
@@ -533,15 +575,18 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultTrailDash"] = False
         config_obj["defaultTrailCap"] = "round"
 
-    # buildDate answers "when did this map's app last change", shown in
-    # the About modal next to dataDate ("when was OSM last fetched").
-    # "This map's app" is the engine templates PLUS the map's own build
-    # inputs — the config YAML and the assets it references — so a
-    # curator editing a title or swapping a logo sees the change
-    # reflected in About even though no engine code changed. OSM data
-    # is deliberately NOT an input here: that's dataDate's job (a
-    # refetch stamps metadata.data_timestamp into the src snapshot,
-    # which moves dataDate).
+    # buildDate answers "when did this map's app last change": the
+    # engine templates PLUS the map's own build inputs — the config YAML
+    # and the assets it references — so a curator editing a title or
+    # swapping a logo moves it even though no engine code changed. It is
+    # NOT displayed in the About modal (appVersion below replaced it
+    # there); it survives in CONFIG because the website repo's
+    # build-pages.py reads it (together with dataDate and
+    # appVersionDate) to compute each landing-page card's "Updated"
+    # date and the sitemap <lastmod>. OSM data is deliberately not an
+    # input here: that's dataDate's job (a refetch stamps
+    # metadata.data_timestamp into the src snapshot, which moves
+    # dataDate).
     #
     # Derived from input mtimes — NOT datetime.now(): a wall-clock
     # stamp made every rebuild produce different app.js bytes, which
@@ -566,6 +611,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
         else ""
     )
     config_obj["dataDate"] = config.get("_data_date", "")
+    # Engine app version ("v<commit count>", commit date), shown in the
+    # About modal as "App version: v294 (2026-07-17)". See
+    # _engine_app_version for the derivation and why it keys off
+    # templates/ instead of HEAD. Empty strings (git unavailable) make
+    # the runtime omit the line.
+    config_obj["appVersion"], config_obj["appVersionDate"] = _engine_app_version()
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
     # Build-time scan for trail-property gates that surface Options
     # toggles. Done at build time (rather than counting placed
