@@ -214,6 +214,25 @@ if ! "$PYTHON" "${PROJECT_ROOT}/scripts/validate_config.py" "${validate_args[@]}
 fi
 echo ""
 
+# Syntax-check the template JS. app.js and sw.js are hand-edited and
+# copied verbatim into every build (no bundler or lint step between),
+# so a typo would only surface as a broken app in the browser. Parse
+# them up-front with `node --check`; skip with a warning if node isn't
+# installed so forkers without it aren't blocked.
+echo "━━━ Checking template JS syntax ━━━"
+if command -v node >/dev/null 2>&1; then
+    for js in "${PROJECT_ROOT}/templates/app.js" "${PROJECT_ROOT}/templates/sw.js"; do
+        if ! node --check "$js"; then
+            echo "Aborting: fix the JS syntax error above and rerun." >&2
+            exit 1
+        fi
+    done
+    echo "OK"
+else
+    echo "warn: node not found — skipping JS syntax check"
+fi
+echo ""
+
 if $VALIDATE_ONLY; then
     echo "All ${#configs[@]} config(s) validated successfully."
     exit 0
