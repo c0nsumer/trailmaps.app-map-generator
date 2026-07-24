@@ -539,9 +539,9 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # inputs — the config YAML and the assets it references — so a
     # curator editing a title or swapping a logo sees the change
     # reflected in About even though no engine code changed. OSM data
-    # is deliberately NOT an input here: that's dataDate's job (an
-    # osm_file edit triggers a refetch, which moves dataDate via the
-    # src snapshot's mtime).
+    # is deliberately NOT an input here: that's dataDate's job (a
+    # refetch stamps metadata.data_timestamp into the src snapshot,
+    # which moves dataDate).
     #
     # Derived from input mtimes — NOT datetime.now(): a wall-clock
     # stamp made every rebuild produce different app.js bytes, which

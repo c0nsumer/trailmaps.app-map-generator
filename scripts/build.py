@@ -18,7 +18,7 @@ import json
 import os
 import shutil
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
 if sys.version_info < (3, 11):  # noqa: UP036 — runtime gate FOR older Pythons
     sys.exit(
@@ -1114,16 +1114,34 @@ def main(argv=None):
     for key, val in stability_seed.items():
         trails_geojson.setdefault("metadata", {}).setdefault(key, val)
 
-    # Record the data date from the BASE file's modification time (the moment
-    # OSM was last fetched), including local-time HH:MM so the About modal can
-    # show fetch granularity finer than a single day. Also feeds the
-    # service-worker cache key, so finer precision means stale clients update
-    # more reliably. Uses trails.src.geojson, not the expanded output: the
-    # latter is rewritten on every build and would report the re-enrich time
-    # rather than the fetch time.
-    config["_data_date"] = datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
-        "%Y-%m-%d %H:%M"
-    )
+    # Record the data date ("when is this OSM data from") for the About
+    # modal and the service-worker cache key, in local time with HH:MM so
+    # stale clients update reliably on sub-day refetches. Read from the
+    # base's embedded metadata.data_timestamp (the Overpass osm3s snapshot
+    # captured at fetch time, or the .osm file's mtime), NOT from the base
+    # file's mtime: the base gets rewritten by any build that re-expands
+    # it from cached Overpass responses (fresh checkout, machine move,
+    # config-triggered refetch), so its mtime reports the rebuild moment
+    # even when no fetch happened and the data is weeks old.
+    config["_data_date"] = ""
+    _data_ts = (trails_geojson.get("metadata") or {}).get("data_timestamp") or ""
+    if _data_ts:
+        try:
+            config["_data_date"] = (
+                datetime.strptime(_data_ts, "%Y-%m-%dT%H:%M:%SZ")
+                .replace(tzinfo=UTC)
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M")
+            )
+        except ValueError:
+            pass  # unrecognized stamp — fall through to the mtime path
+    if not config["_data_date"]:
+        # Base predates the metadata stamp (or is a route-only map with
+        # no OSM data): fall back to the old mtime derivation. A
+        # --refresh-trails run stamps the real timestamp permanently.
+        config["_data_date"] = datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
+            "%Y-%m-%d %H:%M"
+        )
 
     # Tell the runtime whether clip_endpoints.geojson exists in this
     # build. fetch_trails only writes the file when there are clipped

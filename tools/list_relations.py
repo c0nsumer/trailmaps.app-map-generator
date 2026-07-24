@@ -115,7 +115,7 @@ def _member_ways(config, relations, cache_dir, parsed=None):
     if parsed is not None:
         all_ways = osm_parser.extract_ways(parsed, rel_ids)
     else:
-        all_ways = fetch_trails.fetch_all_ways_bulk(rel_ids, cache_dir)
+        all_ways, _ = fetch_trails.fetch_all_ways_bulk(rel_ids, cache_dir)
     ways = {}
     for per_rel in all_ways.values():
         for way_id, way in per_rel.items():
@@ -177,7 +177,7 @@ def main(argv=None):
         if osm_file:
             members, clipped, parsed = _load_from_osm_file(config, relation_ids, clipped_ids)
         else:
-            members, clipped, _ = fetch_trails.fetch_all_relations(
+            members, clipped, _, _ = fetch_trails.fetch_all_relations(
                 relation_ids, clipped_ids, args.cache_dir
             )
     except CacheMiss as miss:

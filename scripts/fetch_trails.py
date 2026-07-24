@@ -15,6 +15,7 @@ import math
 import os
 import sys
 from collections import defaultdict
+from datetime import UTC, datetime
 
 import cli
 import console
@@ -80,7 +81,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     treated as a leaf and returned directly (the "single-relation map"
     fallback: the relation IS the route).
 
-    Returns (members, clipped, expansions):
+    Returns (members, clipped, expansions, osm_base):
         members:    {rel_id: info} for every leaf route resolved from
                     `relation_ids` (and the children of any super-
                     relations therein).
@@ -93,13 +94,18 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
                     caller to propagate per-list semantics (winter /
                     summer / emergency tagging) from parent slot to
                     children.
+        osm_base:   the response's osm3s.timestamp_osm_base ("...Z" UTC
+                    string), "" when absent. The OSM snapshot the data
+                    came from — durable across rebuilds because it
+                    lives inside the (cached) response body, unlike a
+                    file mtime.
     """
     relation_ids = list(relation_ids or [])
     clipped_ids = list(clipped_ids or [])
     all_input_ids = relation_ids + clipped_ids
 
     if not all_input_ids:
-        return {}, {}, {}
+        return {}, {}, {}, ""
 
     # Build a single Overpass query covering every input ID. Each entry
     # gets `(relation(R);rel(r);)` so super-relations expand to their
@@ -117,6 +123,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
 out body;
 """
     data = overpass_query(query, cache_dir, label="relations", require_elements=True, refresh=refresh)
+    osm_base = data.get("osm3s", {}).get("timestamp_osm_base") or ""
     all_rels = _parse_relations(data)
 
     # Surface input IDs the response didn't contain. Without this, a
@@ -175,7 +182,7 @@ out body;
         # If it ever does happen we silently drop the orphan rather
         # than emitting a route the curator didn't ask for.
 
-    return members, clipped, expansions
+    return members, clipped, expansions, osm_base
 
 
 def fetch_all_ways_bulk(relation_ids, cache_dir=None, refresh=False):
@@ -185,10 +192,13 @@ def fetch_all_ways_bulk(relation_ids, cache_dir=None, refresh=False):
     a sentinel relation element before each group of ways so we can split
     the flat response back into per-relation buckets.
 
-    Returns dict of {relation_id: {way_id: way_dict, ...}, ...}
+    Returns (all_ways, osm_base):
+        all_ways: dict of {relation_id: {way_id: way_dict, ...}, ...}
+        osm_base: the response's osm3s.timestamp_osm_base ("...Z" UTC
+                  string), "" when absent — see fetch_all_relations.
     """
     if not relation_ids:
-        return {}
+        return {}, ""
 
     id_union = ";".join(f"relation({rid})" for rid in relation_ids)
     query = f"""
@@ -201,6 +211,7 @@ foreach -> .rel(
 );
 """
     data = overpass_query(query, cache_dir, label="ways", require_elements=True, refresh=refresh)
+    osm_base = data.get("osm3s", {}).get("timestamp_osm_base") or ""
 
     # Parse the flat element list.  The foreach emits a relation element
     # (with just an id) followed by its member ways, then the next relation, etc.
@@ -223,7 +234,7 @@ foreach -> .rel(
                 if current_rel_id in all_ways:
                     all_ways[current_rel_id][element["id"]] = way
 
-    return all_ways
+    return all_ways, osm_base
 
 
 def build_way_to_relations_map(all_ways):
@@ -624,7 +635,7 @@ def _write_empty_trails(output_path, map_name):
     geojson = {
         "type": "FeatureCollection",
         "features": [],
-        "metadata": {"routes": {}, "super_relation_expansions": {}},
+        "metadata": {"routes": {}, "super_relation_expansions": {}, "data_timestamp": ""},
     }
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -691,6 +702,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # winter / summer / emergency bucket flags from the config.
     super_relation_expansions = {}
 
+    # "...Z" UTC string recording where this data is from in time: the
+    # Overpass osm3s snapshot timestamp (or the .osm file's mtime for
+    # local-file maps). Persisted to metadata so build.py's dataDate
+    # survives rebuilds that re-expand from cached responses.
+    data_timestamp = ""
+
     def _log_expansions(label, expansions):
         for parent_id, child_ids in sorted(expansions.items()):
             console.info(f"  {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
@@ -699,6 +716,13 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
+
+        # The .osm file IS the data source, so its mtime is the honest
+        # "data as of" record (and, like buildDate's inputs, survives
+        # rebuilds and machine moves that preserve mtimes).
+        data_timestamp = datetime.fromtimestamp(os.path.getmtime(osm_file), tz=UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
 
         console.step("Stage A: Parsing .osm file...")
         parsed = parse_osm_file(osm_file)
@@ -729,8 +753,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     else:
         # Stage A: Fetch all relation metadata in a single query
         console.step("Stage A: Fetching relation metadata...")
-        members, clipped_relations, super_relation_expansions = fetch_all_relations(
-            relation_ids, clipped_relation_ids, cache_dir, refresh=refresh
+        members, clipped_relations, super_relation_expansions, relations_osm_base = (
+            fetch_all_relations(relation_ids, clipped_relation_ids, cache_dir, refresh=refresh)
         )
         _log_expansions("expanded", super_relation_expansions)
 
@@ -754,8 +778,18 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
         # Stage B: Fetch ways for all relations in a single bulk query
         console.step(f"Stage B: Fetching ways for {len(relations)} relations (bulk query)...")
-        all_ways = fetch_all_ways_bulk(list(relations.keys()), cache_dir, refresh=refresh)
+        all_ways, ways_osm_base = fetch_all_ways_bulk(
+            list(relations.keys()), cache_dir, refresh=refresh
+        )
         _log_way_counts(relations, all_ways)
+
+        # The two responses' snapshots normally match to the minute (both
+        # queries key off the same relation set, so they refresh together);
+        # min() takes the conservative claim if they ever diverge. ISO "Z"
+        # strings order lexicographically = chronologically.
+        data_timestamp = min(
+            [t for t in (relations_osm_base, ways_osm_base) if t], default=""
+        )
 
     # Apply winter_relations config override (marks relations as winter
     # even if they don't have seasonal=winter in OSM). Expand through
@@ -1026,6 +1060,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             str(parent_id): [str(c) for c in child_ids]
             for parent_id, child_ids in super_relation_expansions.items()
         },
+        # UTC "...Z" record of where the trail data is from in time (see
+        # the assignment sites above). build.py derives dataDate from
+        # this, NOT from file mtimes, so the About modal's "Trail data"
+        # date stays put across rebuilds / checkouts / machine moves and
+        # only advances on a genuine refetch.
+        "data_timestamp": data_timestamp,
     }
 
     # Write output
