@@ -4229,6 +4229,18 @@ function getDashColors(routeInfo) {
     return routeInfo.dashColors || null;
 }
 
+// Normalize a raw CONFIG.routes entry into the {color, dashed, dashCap,
+// dashColors} shape routeSwatchEl expects (CONFIG spells it `colour`;
+// effectiveRouteColor also folds in dashColors[0] and the default).
+function routeSwatchModel(info) {
+    return {
+        color: effectiveRouteColor(info),
+        dashed: Array.isArray(info.dashed) ? info.dashed : null,
+        dashCap: info.dashCap || null,
+        dashColors: Array.isArray(info.dashColors) ? info.dashColors : null,
+    };
+}
+
 // ============================================================
 // Trail data loading
 // ============================================================
@@ -5737,15 +5749,11 @@ function highlightRoute(routeId) {
         label: info.name,
         color,
         stats: indexEntry ? routeStatsText(indexEntry) : "",
-        // Dash fields for the chip swatch, built from CONFIG directly
-        // (mirroring buildRouteIndex) rather than indexEntry so the
-        // chip renders correctly even if routeIndex isn't built yet.
-        route: {
-            color,
-            dashed: Array.isArray(info.dashed) ? info.dashed : null,
-            dashCap: info.dashCap || null,
-            dashColors: Array.isArray(info.dashColors) ? info.dashColors : null,
-        },
+        // Swatch model built from CONFIG directly (not indexEntry) so
+        // the chip renders correctly even if routeIndex isn't built
+        // yet. routeSwatchModel's color equals `color` above by
+        // construction (both come from effectiveRouteColor).
+        line: routeSwatchModel(info),
     });
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
@@ -5790,7 +5798,9 @@ function highlightTrail(trailName) {
     }
 
     fitToRouteOrTrail({ trailName });
-    showHighlightChip({ label: trailName, color: highlighter });
+    // A trail is a line on the map, so the chip gets a line swatch
+    // (solid highlighter yellow); POI highlights keep the dot.
+    showHighlightChip({ label: trailName, line: { color: highlighter } });
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
@@ -6451,26 +6461,26 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note, route }) {
+function showHighlightChip({ label, color, stats, note, line }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
     const labelEl = chip.querySelector(".highlight-chip-label");
     const statsEl = chip.querySelector(".highlight-chip-stats");
     const noteEl = chip.querySelector(".highlight-chip-note");
-    // Swatch: rebuilt on every call. `route` (optional) carries the
-    // dash fields (color / dashed / dashCap / dashColors); a dashed
-    // route swaps the flat dot for the same mini-SVG ribbon the key
-    // and finder rows use (routeSwatchEl), so the chip can't
-    // misrepresent a dashed line as solid. Everything else (solid
-    // routes, trails, POIs) gets a plain dot in `color`. Rebuilding
-    // rather than mutating means a trail/POI highlight following a
-    // dashed route gets its dot back without SVG-vs-span special
-    // cases.
+    // Swatch: rebuilt on every call. `line` (optional) is a
+    // routeSwatchModel-shaped object ({color, dashed, dashCap,
+    // dashColors}); when present the chip renders the same line
+    // swatch the key and finder rows use (routeSwatchEl): a flat bar
+    // for solid routes and trails, the mini-SVG ribbon for dashed
+    // routes. Point highlights (POIs) pass `color` instead and get a
+    // dot. Rebuilding rather than mutating means a POI highlight
+    // following a route gets its dot back without SVG-vs-span
+    // special cases.
     if (swatch) {
         let next;
-        if (route && isDashed(route)) {
-            next = routeSwatchEl(route, "highlight-chip-swatch");
+        if (line) {
+            next = routeSwatchEl(line, "highlight-chip-swatch is-line");
         } else {
             next = document.createElement("span");
             next.className = "highlight-chip-swatch";
@@ -6738,7 +6748,11 @@ function buildRouteIndex() {
         routeIndex.push({
             id,
             name: info.name,
-            color: effectiveRouteColor(info),
+            // color + dash fields (dashed / dashCap / dashColors) so
+            // the key/finder swatches render dashed routes as dashed
+            // ribbons rather than flat color bars; dashColors[0] is
+            // already folded into `color`.
+            ...routeSwatchModel(info),
             summer: !!info.summer,
             winter: !!info.winter,
             emergency: !!info.emergency,
@@ -6759,15 +6773,6 @@ function buildRouteIndex() {
             distanceM: typeof info.distance_m === "number" ? info.distance_m : null,
             elevationGainM: typeof info.elevation_gain_m === "number" ? info.elevation_gain_m : null,
             elevationLossM: typeof info.elevation_loss_m === "number" ? info.elevation_loss_m : null,
-            // Dash fields, copied verbatim so the key/finder swatches
-            // can reuse the on-map dash helpers (isDashed / getDashPattern
-            // / getDashCap / getDashColors) and render dashed routes as
-            // dashed ribbons rather than flat color bars. dashed is the
-            // pattern array (or absent); dashColors[0] is the dash color
-            // (already folded into `color` via effectiveRouteColor).
-            dashed: Array.isArray(info.dashed) ? info.dashed : null,
-            dashCap: info.dashCap || null,
-            dashColors: Array.isArray(info.dashColors) ? info.dashColors : null,
         });
     }
     // Sort alphabetically by name (case-insensitive) for the list display.
@@ -8894,14 +8899,16 @@ function routeStatsText(r) {
 }
 
 // Shared route-swatch builder for the key rows (rebuildRoutePanel),
-// the finder rows (makeRouteRow), and the highlight chip
-// (showHighlightChip), so the three surfaces can never disagree
-// about how a route's line is drawn. Plain routes get the flat color
-// bar; dashed routes get a mini inline SVG ribbon, a two-color
-// underlay beneath a dashed top line, round pills for a [0, N] pattern.
-// `className` is the caller's own swatch class (.route-panel-swatch,
-// .finder-row-swatch, or .highlight-chip-swatch), which the .is-dashed
-// CSS variant widens for the SVG.
+// the finder rows (makeRouteRow), the highlight chip
+// (showHighlightChip), and the trail popup's "Part of Route(s)" rows
+// (map click handler), so no surface can disagree about how a
+// route's line is drawn. Plain routes get the flat color bar; dashed
+// routes get a mini inline SVG ribbon, a two-color underlay beneath
+// a dashed top line, round pills for a [0, N] pattern. `className`
+// is the caller's own swatch class (.route-panel-swatch,
+// .finder-row-swatch, .highlight-chip-swatch is-line, or
+// .popup-route-swatch), which the .is-dashed CSS variant widens for
+// the SVG.
 //
 // The ribbon renders for LEGIBILITY, not map-space fidelity. Naively
 // scaling the config pattern into the SVG breaks two ways at swatch
@@ -9407,12 +9414,15 @@ function setupInteractions() {
             .filter(Boolean);
         const routeItems = matchedRoutes
             .map((rel) => {
-                // effectiveRouteColor returns a hex / rgb() string
-                // from a validated palette path; still escape for
-                // attribute-context safety in case a future change
-                // ever lets a non-validated string through.
-                const color = effectiveRouteColor(rel);
-                return `<div class="popup-routes"><span style="color:${escapeHtml(color)};">\u25CF</span> ${escapeHtml(rel.name)}</div>`;
+                // Same line swatch as the Routes key / finder rows.
+                // Safe to inline via outerHTML: the element is
+                // self-generated by routeSwatchEl (color comes from
+                // the validated palette path), only the OSM route
+                // name is untrusted and it stays escaped. Flex layout
+                // rides inline like the difficulty/one-way rows below.
+                const swatchHtml =
+                    routeSwatchEl(routeSwatchModel(rel), "popup-route-swatch").outerHTML;
+                return `<div class="popup-routes" style="display:flex;align-items:center;gap:6px;">${swatchHtml}<span>${escapeHtml(rel.name)}</span></div>`;
             })
             .join("");
 
