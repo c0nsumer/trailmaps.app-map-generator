@@ -608,6 +608,57 @@ function registerChevronPatterns() {
     }
 }
 
+// ---- Popup glyph data-URLs ----
+// The trail popup embeds the same canvas-drawn glyphs the map uses
+// (IMBA difficulty symbol, one-way chevron), rendered to data-URL
+// <img> sources so the popup symbols are pixel-identical to the
+// on-map decorations. Cached per rating / color scheme so repeated
+// clicks don't re-rasterize.
+const RATING_NAMES = ["Easiest", "Easy", "More difficult",
+    "Very difficult", "Extremely difficult", "Pro-only"];
+const _popupIconCache = {};
+
+function difficultyIconDataUrl(imba) {
+    const n = parseInt(imba, 10);
+    if (!(n >= 0 && n < IMBA_RATINGS.length)) return null;
+    const key = `imba-${n}`;
+    if (!_popupIconCache[key]) {
+        const size = 24;
+        const ratio = 4;
+        const canvas = document.createElement("canvas");
+        canvas.width = size * ratio;
+        canvas.height = size * ratio;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(ratio, ratio);
+        drawDifficultyShape(ctx, size, IMBA_RATINGS[n]);
+        _popupIconCache[key] = canvas.toDataURL();
+    }
+    return _popupIconCache[key];
+}
+
+function chevronIconDataUrl() {
+    // Forward-pointing only: a popup has no line direction to align
+    // with, the chevron just brands the row as "direction arrow".
+    // Fill/halo track the color scheme like CHEVRON_VARIANTS.
+    const scheme = currentColorScheme();
+    const key = `chevron-${scheme}`;
+    if (!_popupIconCache[key]) {
+        const ratio = 4;
+        const canvas = document.createElement("canvas");
+        canvas.width = CHEVRON_ICON_W * ratio;
+        canvas.height = CHEVRON_ICON_H * ratio;
+        const ctx = canvas.getContext("2d");
+        ctx.scale(ratio, ratio);
+        const fill = scheme === "dark" ? "#ffffff" : "#000000";
+        const halo = scheme === "dark"
+            ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.9)";
+        drawChevronTile(ctx, CHEVRON_ICON_W, CHEVRON_ICON_H,
+            fill, halo, false);
+        _popupIconCache[key] = canvas.toDataURL();
+    }
+    return _popupIconCache[key];
+}
+
 function todaysReverseRoutes() {
     const now = new Date();
     const weekday = WEEKDAY_NAMES[now.getDay()];
@@ -9217,11 +9268,15 @@ function setupInteractions() {
     }
 
     function _collectAllRoutesAt(geometry, tapLngLat) {
-        // Returns { routeIds: string[], trailName: string, anchor }.
+        // Returns { routeIds: string[], trailName: string, anchor,
+        // imba, oneway }.
         // routeIds: deduplicated, in stable order (custom routes first,
         // then OSM by appearance).
         // trailName: the name of the trail nearest the tap.
         // anchor: [lng,lat] on that trail, for popup placement.
+        // imba / oneway: the CLICKED segment's imba_difficulty and
+        // oneway values (a named trail's segments can differ; the
+        // popup reports what's under the tap, not an aggregate).
         //
         // `geometry` is whatever queryRenderedFeatures accepts: a
         // single Point for hover-style precise lookups, or a
@@ -9237,7 +9292,10 @@ function setupInteractions() {
         const feats = map.queryRenderedFeatures(geometry, {
             layers: _trailCasingLayerIds.filter((id) => map.getLayer(id)),
         });
-        if (!feats.length) return { routeIds: [], trailName: "", anchor: null };
+        if (!feats.length) {
+            return { routeIds: [], trailName: "", anchor: null,
+                     imba: "", oneway: "" };
+        }
 
         // Find the candidate feature nearest the tap.
         let best = null; // { feat, dist, point }
@@ -9299,7 +9357,10 @@ function setupInteractions() {
             addRoutes(best.feat.properties || {});
         }
 
-        return { routeIds, trailName: targetName, anchor };
+        const bestProps = best.feat.properties || {};
+        return { routeIds, trailName: targetName, anchor,
+                 imba: bestProps.imba_difficulty || "",
+                 oneway: bestProps.oneway || "" };
     }
 
     function attachTrailHoverHandlers(layerId) {
@@ -9331,7 +9392,8 @@ function setupInteractions() {
             [e.point.x - r, e.point.y - r],
             [e.point.x + r, e.point.y + r],
         ];
-        const { routeIds, trailName, anchor } = _collectAllRoutesAt(box, e.lngLat);
+        const { routeIds, trailName, anchor, imba, oneway } =
+            _collectAllRoutesAt(box, e.lngLat);
         if (!routeIds.length) return;
 
         const matchedRoutes = routeIds
@@ -9348,18 +9410,41 @@ function setupInteractions() {
             })
             .join("");
 
+        // Difficulty / one-way rows carry their presentation INLINE
+        // (flex centering, sizes, gaps) rather than in style.css:
+        // the markup is generated here, so shipping its look in the
+        // same file means a popup can never render half-styled when
+        // the service worker serves a stale stylesheet alongside a
+        // fresh app.js. Sizing attrs + flex:none also pin the icons
+        // to text scale (the canvases' natural size is 4x for
+        // crispness, not for display).
+        const iconUrl = difficultyIconDataUrl(imba);
+        const ratingName = iconUrl ? RATING_NAMES[parseInt(imba, 10)] : "";
+
         let html = "";
         if (trailName) {
             // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
             // Escape to neutralize any vandalism (script tags,
-            // event handlers) in OSM data.
+            // event handlers) in OSM data. Data URLs are
+            // self-generated, not OSM strings.
             html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
+        }
+        if (iconUrl) {
+            // Symbol + rating name on their own row, same quiet
+            // typography as the one-way row below (with or without
+            // a trail name above).
+            html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
+        }
+        if (oneway === "yes" || oneway === "reversible") {
+            const text = oneway === "reversible"
+                ? "One-way (reversible)" : "One-way";
+            html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
         }
         if (routeItems) {
             const label = matchedRoutes.length === 1
                 ? "Part of Route:"
                 : "Part of Routes:";
-            if (trailName) {
+            if (html) {
                 html += `<hr class="popup-hr">`;
             }
             html += `<div class="popup-routes">${label}</div>`;

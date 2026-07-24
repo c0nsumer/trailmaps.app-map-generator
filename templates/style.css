@@ -1925,6 +1925,14 @@ body::after {
     word-break: break-word;
 }
 
+/* The trail popup's difficulty and one-way rows
+ * (.popup-difficulty, .popup-difficulty-icon, .popup-oneway,
+ * .popup-oneway-icon) intentionally have NO rules here: their
+ * presentation ships
+ * inline with the generated markup in app.js so a stale cached
+ * stylesheet can never render them half-styled. The class names
+ * exist in the markup as hooks/documentation only. */
+
 .popup-hr {
     margin: 4px 0;
     border: none;
