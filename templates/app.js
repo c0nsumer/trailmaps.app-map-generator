@@ -614,8 +614,10 @@ function registerChevronPatterns() {
 // <img> sources so the popup symbols are pixel-identical to the
 // on-map decorations. Cached per rating / color scheme so repeated
 // clicks don't re-rasterize.
-const RATING_NAMES = ["Easiest", "Easy", "More difficult",
-    "Very difficult", "Extremely difficult", "Pro-only"];
+// Title case: these are the official IMBA rating names as printed
+// on trailhead signage, so they read as proper names.
+const RATING_NAMES = ["Easiest", "Easy", "More Difficult",
+    "Very Difficult", "Extremely Difficult", "Pro-Only"];
 const _popupIconCache = {};
 
 function difficultyIconDataUrl(imba) {
@@ -9453,7 +9455,7 @@ function setupInteractions() {
         }
         if (oneway === "yes" || oneway === "reversible") {
             const text = oneway === "reversible"
-                ? "One-way (reversible)" : "One-way";
+                ? "One-way (alternating)" : "One-way";
             html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
         }
         if (routeItems) {

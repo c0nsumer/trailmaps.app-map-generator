@@ -142,10 +142,10 @@ The IMBA-rating scale, condensed:
 |---|---|---|
 | `0` | white circle | Easiest (rolling, smooth, gentle grades) |
 | `1` | green circle | Easy |
-| `2` | blue square | More difficult |
-| `3` | black diamond | Very difficult |
-| `4` | double black diamond | Extremely difficult |
-| `5` | double black with orange highlight | Pro-only / extreme features |
+| `2` | blue square | More Difficult |
+| `3` | black diamond | Very Difficult |
+| `4` | double black diamond | Extremely Difficult |
+| `5` | double black with orange highlight | Pro-Only / extreme features |
 
 Tag the segment's actual difficulty rather than what you wish were on the map. A
 segment without a rating renders as the default trail color (so it's still
