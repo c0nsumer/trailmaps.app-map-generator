@@ -956,7 +956,7 @@ The modal also always shows a **"Built with"** section at the bottom:
 - `Trail data: <date HH:MM>` (`_data_date`: the OSM snapshot timestamp
   recorded when the trail data was last actually fetched, or the `.osm`
   file's mtime for local-file maps; rendered in the build machine's local
-  time) and `App version: v<N> (<date>)` (the engine's commit count as of
+  time) and `App version: <N> (<date>)` (the engine's commit count as of
   the last commit that touched `templates/`, plus that commit's date, so
   the version only advances when the shipped app code changes). The
   version line is omitted when the build can't consult git (e.g. a

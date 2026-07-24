@@ -27,7 +27,7 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def _engine_app_version():
-    """Return the engine's app version as ("v<count>", "YYYY-MM-DD").
+    """Return the engine's app version as ("<count>", "YYYY-MM-DD").
 
     <count> is the repo's commit count as of the last commit that touched
     templates/ (the shipped app code), and the date is that commit's
@@ -62,7 +62,7 @@ def _engine_app_version():
         count = _git("rev-list", "--count", commit)
         if not count.isdigit():
             return "", ""
-        return f"v{count}", date
+        return count, date
     except (OSError, subprocess.SubprocessError):
         return "", ""
 
