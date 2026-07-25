@@ -131,8 +131,155 @@ const MAP_PAINT_TOKENS = {
     },
 };
 
+// High-contrast ("sunlight") overrides, layered ON TOP of the per-scheme
+// tokens above rather than duplicating them. See the [data-contrast="high"]
+// block in style.css for why contrast is an axis orthogonal to the scheme.
+//
+// The failure being designed against is a phone in direct sun, where the
+// screen's effective contrast ratio collapses and MID-TONES go first. So
+// the moves are: push text and edges to the extremes, and strip competing
+// mid-tone detail. Hillshade is the biggest offender — it is precisely a
+// field of mid-tones laid under everything else — so it goes nearly flat
+// rather than getting "boosted".
+const MAP_PAINT_HIGH_CONTRAST = {
+    light: {
+        labelText: "#000000",
+        // Fully opaque halo: the 0.95 alpha that reads as a clean pocket
+        // indoors is exactly what washes out in sun.
+        labelHalo: "#ffffff",
+        hillshadeShadow: "#6b6b6b",
+        hillshadeHighlight: "rgba(255, 255, 255, 0.25)",
+        trailCasing: "rgba(0,0,0,0.95)",
+        arrowHalo: "#000000",
+        highlightOutline: "#000000",
+    },
+    dark: {
+        labelText: "#ffffff",
+        labelHalo: "#000000",
+        hillshadeShadow: "#000000",
+        hillshadeHighlight: "rgba(255, 255, 255, 0.08)",
+        trailCasing: "rgba(255,255,255,0.95)",
+        arrowHalo: "#ffffff",
+        highlightOutline: "#ffffff",
+    },
+};
+
+function highContrastOn() {
+    return document.documentElement.dataset.contrast === "high";
+}
+
+// Resolved paint tokens for the active scheme + contrast pair. Every
+// consumer goes through here so a contrast flip can't half-apply.
+function mapPaintTokens(scheme) {
+    const s = scheme || currentColorScheme();
+    const base = MAP_PAINT_TOKENS[s] || MAP_PAINT_TOKENS.light;
+    if (!highContrastOn()) return base;
+    return { ...base, ...(MAP_PAINT_HIGH_CONTRAST[s] || {}) };
+}
+
+// Basemap flavor + sprite atlas for the active scheme + contrast pair.
+// All five Protomaps atlases (light/dark/white/black/grayscale) already
+// ship in assets/sprites/v4/ and are copied into every build, so the
+// high-contrast flavors cost no extra payload.
+//
+// grayscale rather than white for light+high: it keeps the basemap's
+// information hierarchy (water, landuse, roads stay distinguishable for
+// orientation) while removing all color competition, so trail colors and
+// difficulty glyphs carry the saliency. Swap to "white" here if maximum
+// contrast at the cost of those cues turns out to be the better trade.
+function basemapFlavor(scheme) {
+    const s = scheme || currentColorScheme();
+    if (highContrastOn()) return s === "dark" ? "black" : "grayscale";
+    return s === "dark" ? "dark" : "light";
+}
+
+// Trail line-width multiplier. Wider lines survive glare, and widening
+// casing and fill together preserves the ~1-1.5 px halo the casing exists
+// to draw. Highlight ribbons are deliberately NOT scaled: they already run
+// ~1.9x the fill width and are the most visible thing on screen.
+function contrastWidthMultiplier() {
+    return highContrastOn() ? 1.3 : 1;
+}
+
+// Featured routes (event mode) render at 1.5x the standard line width,
+// which makes the spotlighted route(s) read as foreground against the
+// muted background trails. Applies to casing, fill, and the two-color
+// underlay layer. Module-level because both addAllTrailLayers and the
+// contrast re-apply pass below need it.
+const FEATURED_WIDTH_MULTIPLIER = 1.5;
+
+// Zoom stops for trail line widths, by layer role. Centralized so the
+// casing/fill pair can't drift out of proportion (the casing's whole job
+// is to extend ~1-1.5 px past the fill) and so a contrast flip can
+// re-derive every width without duplicating the stops at each call site.
+const TRAIL_WIDTH_STOPS = {
+    // Visible casing uses the wider "solid-route" stops so it extends
+    // past the fill. Hidden casing keeps the narrower stops since it
+    // isn't drawn; matching what's rendered keeps debugging honest.
+    casingVisible: [3, 6, 10],
+    casingHidden: [2, 4, 7],
+    fill: [2, 4, 7],
+};
+
+function trailWidthExpr(kind, wmul) {
+    const stops = TRAIL_WIDTH_STOPS[kind] || TRAIL_WIDTH_STOPS.fill;
+    const m = (wmul || 1) * contrastWidthMultiplier();
+    return ["interpolate", ["linear"], ["zoom"],
+        10, stops[0] * m, 14, stops[1] * m, 18, stops[2] * m];
+}
+
+// Re-derive every trail layer's width after a contrast flip. The trail
+// overlays survive rebuildBasemapLayers' setStyle({diff:true}) verbatim,
+// so without this they would keep the width they were created with.
+function applyTrailWidthsForContrast() {
+    if (!map || !map.getStyle || !map.getStyle()) return;
+    for (const layer of map.getStyle().layers) {
+        const id = layer.id;
+        let kind = null;
+        let routeId = null;
+        // Order matters: "trail-fill-unrated-" also starts with
+        // "trail-fill-", so it has to be tested first.
+        if (id.startsWith("trail-casing-")) {
+            routeId = id.slice("trail-casing-".length);
+            const info = CONFIG.routes[routeId] || {};
+            const dashColors = getDashColors(info);
+            const hasUnderlay = !!(dashColors && dashColors.length >= 2);
+            kind = (!isDashed(info) || hasUnderlay)
+                ? "casingVisible" : "casingHidden";
+        } else if (id.startsWith("trail-fill2-")) {
+            routeId = id.slice("trail-fill2-".length);
+            kind = "fill";
+        } else if (id.startsWith("trail-fill-unrated-")) {
+            // Never carried the featured multiplier; keep it that way.
+            map.setPaintProperty(id, "line-width", trailWidthExpr("fill", 1));
+            continue;
+        } else if (id.startsWith("trail-fill-")) {
+            routeId = id.slice("trail-fill-".length);
+            kind = "fill";
+        }
+        if (!kind) continue;
+        const info = CONFIG.routes[routeId] || {};
+        const wmul = info.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
+        map.setPaintProperty(id, "line-width", trailWidthExpr(kind, wmul));
+    }
+}
+
+// Flip high contrast on/off at runtime: persist, restamp <html>, swap the
+// basemap flavor (which re-applies paint tokens on style load), then
+// re-derive trail widths.
+function applyHighContrast(on) {
+    LS.set("mtb.highContrast", !!on);
+    if (on) {
+        document.documentElement.setAttribute("data-contrast", "high");
+    } else {
+        document.documentElement.removeAttribute("data-contrast");
+    }
+    // rebuildBasemapLayers re-applies paint tokens AND trail widths.
+    if (map) rebuildBasemapLayers();
+}
+
 function applyMapPaintForScheme(scheme) {
-    const t = MAP_PAINT_TOKENS[scheme] || MAP_PAINT_TOKENS.light;
+    const t = mapPaintTokens(scheme);
     if (!map) return;
     if (map.getLayer("decor-trail-name")) {
         map.setPaintProperty("decor-trail-name", "text-color", t.labelText);
@@ -298,6 +445,7 @@ function watchSystemColorScheme() {
 // no consent banner required. Keys (each stored with the slug
 // prefix): mtb.seasonMode, mtb.emergencyOn, mtb.labels,
 // mtb.difficulty, mtb.directionArrows, mtb.colorScheme,
+// mtb.highContrast,
 // mtb.poi.markers (merged guidepost + emergency trail-marker
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
@@ -1849,7 +1997,7 @@ function buildChevronFilter(rev) {
 // none registers, so labels/diamonds are unaffected.
 function addChevronLayers() {
     if (map.getLayer("decor-chevron-fwd")) return;
-    const t = MAP_PAINT_TOKENS[currentColorScheme()];
+    const t = mapPaintTokens();
     for (const [id, rev] of [["decor-chevron-fwd", false],
                              ["decor-chevron-rev", true]]) {
         map.addLayer({
@@ -3795,7 +3943,7 @@ function buildStyle() {
     // is already correct, no light→dark flicker on load. Scheme
     // toggles at runtime go through applyColorScheme →
     // rebuildBasemapLayers, which re-derives the flavor the same way.
-    const flavor = currentColorScheme() === "dark" ? "dark" : "light";
+    const flavor = basemapFlavor();
     const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
 
     // Attribution: each source gets its own © assertion so it reads
@@ -3892,7 +4040,7 @@ async function addTerrainLayers() {
     // mode visitors don't see a flash of light-mode hillshade before
     // applyMapPaintForScheme() patches the layer. Subsequent scheme
     // toggles route through applyMapPaintForScheme.
-    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+    const t = mapPaintTokens();
     map.addLayer({
         id: "hillshade",
         type: "hillshade",
@@ -3960,7 +4108,7 @@ function effectiveRouteColor(routeInfo) {
 // colors live in MAP_PAINT_TOKENS so applyMapPaintForScheme() can
 // re-apply them on a scheme toggle.
 function trailCasingColor() {
-    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+    const t = mapPaintTokens();
     return t.trailCasing;
 }
 
@@ -3974,7 +4122,7 @@ function trailCasingColor() {
 // light edge on either basemap. Re-applied on scheme toggle by
 // applyMapPaintForScheme().
 function clipArrowHaloExpr() {
-    const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+    const t = mapPaintTokens();
     return [
         "case",
         [">=", ["get", "visible_count"], 2],
@@ -4422,12 +4570,6 @@ async function loadTrails() {
             return a.name.localeCompare(b.name);
         });
 
-    // Featured routes (event mode) render at 1.5x the standard line
-    // width, makes the spotlighted route(s) read as foreground
-    // against the muted background trails. Applies to casing, fill,
-    // and the two-color underlay layer.
-    const FEATURED_WIDTH_MULTIPLIER = 1.5;
-
     const byDifficulty = CONFIG.colorBy === "trail";
 
     // Pass 1: casings
@@ -4468,15 +4610,10 @@ async function loadTrails() {
             filter: ["==", ["get", "route_id"], routeId],
             paint: {
                 "line-color": casingCol,
-                // Visible casing uses the wider "solid-route" stops so
-                // it extends ~1-1.5 px beyond the fill on each side
-                // (the halo). Invisible casing keeps the narrower stops
-                // since it's not drawn anyway, keeps any future
-                // debugging consistent with what's actually rendered
-                // for single-color dashed.
-                "line-width": casingVisible
-                    ? ["interpolate", ["linear"], ["zoom"], 10, 3 * wmul, 14, 6 * wmul, 18, 10 * wmul]
-                    : ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
+                // Stops live in TRAIL_WIDTH_STOPS; see the note there on
+                // why the visible/hidden casing variants differ.
+                "line-width": trailWidthExpr(
+                    casingVisible ? "casingVisible" : "casingHidden", wmul),
                 "line-offset": makeOffsetExpr(),
                 "line-opacity": casingVisible ? 0.5 : 0,
                 // No line-dasharray on the casing, it's always a
@@ -4519,7 +4656,7 @@ async function loadTrails() {
                 filter: ["==", ["get", "route_id"], routeId],
                 paint: {
                     "line-color": dashColors[1],
-                    "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
+                    "line-width": trailWidthExpr("fill", wmul),
                     "line-offset": makeOffsetExpr(),
                 },
                 layout: {
@@ -4536,7 +4673,7 @@ async function loadTrails() {
             filter: ratedFilter,
             paint: {
                 "line-color": fillColor,
-                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2 * wmul, 14, 4 * wmul, 18, 7 * wmul],
+                "line-width": trailWidthExpr("fill", wmul),
                 "line-offset": makeOffsetExpr(),
                 "line-dasharray": getDashPattern(routeInfo),
             },
@@ -4557,7 +4694,7 @@ async function loadTrails() {
                                        ["literal", ["0","1","2","3","4","5"]]]]],
                 paint: {
                     "line-color": CONFIG.defaultTrailColor,
-                    "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 7],
+                    "line-width": trailWidthExpr("fill", 1),
                     "line-offset": makeOffsetExpr(),
                     "line-dasharray": CONFIG.defaultTrailDash,
                 },
@@ -5688,7 +5825,7 @@ function routeHighlightOutlineColor(info) {
     const dashColors = getDashColors(info);
     if (isDashed(info) && !(dashColors && dashColors.length >= 2)) {
         if (isGreyFamilyColor(effectiveRouteColor(info))) return "#ffffff";
-        const t = MAP_PAINT_TOKENS[currentColorScheme()] || MAP_PAINT_TOKENS.light;
+        const t = mapPaintTokens();
         return t.highlightOutline;
     }
     return highlightOutlineForColor(effectiveRouteColor(info));
@@ -8388,6 +8525,24 @@ function setupFloatingChrome() {
         watchSystemColorScheme();
     }
 
+    // ----- High contrast (sunlight mode) ---------------------------
+    //
+    // Binary row rather than a fourth Appearance button, because
+    // contrast is orthogonal to scheme (see the [data-contrast="high"]
+    // block in style.css). The bootstrap in <head> already stamped the
+    // attribute pre-paint; this only has to reflect that state into the
+    // pill and wire the flip.
+    //
+    // Default comes from prefers-contrast rather than default_visible:
+    // it's an accessibility signal, not a per-map display choice, so
+    // there's no YAML knob. Unlike Appearance's "auto" it is NOT
+    // live-tracked — the OS setting doesn't shift mid-ride the way a
+    // sunset-driven dark mode does, so first-visit default plus a
+    // persisted rider choice is the whole contract.
+    wirePeekToggle("toggle-high-contrast", "mtb.highContrast",
+        window.matchMedia("(prefers-contrast: more)").matches,
+        (on) => applyHighContrast(on));
+
     // ----- Show Trails gating -----
     //
     // Drop the Trails Labels option when trails are hidden. Routes are
@@ -9657,7 +9812,7 @@ function rebuildBasemapLayers() {
     } else {
         // Same flavor logic as buildStyle, picks dark/light
         // Protomaps tiles to match the current color scheme.
-        const flavor = currentColorScheme() === "dark" ? "dark" : "light";
+        const flavor = basemapFlavor();
         baseLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
         spritePath = `${base}sprites/v4/${flavor}`;
 
@@ -9690,6 +9845,10 @@ function rebuildBasemapLayers() {
     // the current scheme. setStyle preserves overlay layers but
     // not their JS-driven paint overrides.
     applyMapPaintForScheme(currentColorScheme());
+    // Same reasoning for trail widths under high contrast. Doing it here
+    // rather than only in applyHighContrast also covers a basemap-selector
+    // change made while high contrast is on.
+    applyTrailWidthsForContrast();
 }
 
 // ============================================================

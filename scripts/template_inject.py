@@ -1000,6 +1000,20 @@ def copy_templates(config, output_dir, trails_geojson):
                 's=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";'
                 "}"
                 'document.documentElement.setAttribute("data-color-scheme",s);'
+                # High-contrast ("sunlight") mode, an axis ORTHOGONAL to
+                # light/dark: data-contrast="high" composes with whichever
+                # scheme is active, so dark + high contrast works too.
+                # Resolved pre-paint for the same no-FOUC reason as the
+                # scheme. First visit falls back to the OS
+                # prefers-contrast signal; after that the rider's stored
+                # boolean wins (it is not live-tracked — an accessibility
+                # setting doesn't shift mid-ride the way a sunset-driven
+                # dark mode does).
+                f'var craw=localStorage.getItem({bootstrap_slug}+".mtb.highContrast");'
+                "var hc=null;"
+                "if(craw){try{hc=JSON.parse(craw);}catch(e){hc=null;}}"
+                'if(hc===null){hc=matchMedia("(prefers-contrast: more)").matches;}'
+                'if(hc===true){d.setAttribute("data-contrast","high");}'
                 + accent_js +
                 # Sync the meta theme-color tag in the same pass so
                 # the Android Chrome PWA status bar paints the per-map

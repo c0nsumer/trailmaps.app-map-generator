@@ -252,6 +252,22 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `distance_units` | No | `"mi"` | Units for **all** distance and elevation values. `"mi"`: miles for distance, feet for elevation gain. `"km"`: kilometers for distance, meters for elevation gain. Affects render-time formatting only. |
 | `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view, plus any active highlight (a route, a trail, or a place selected from the Finder: a single POI, a name group, or a whole POI category), as a deep-link URL and offers it via the native share sheet (mobile) or clipboard (desktop); opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
 
+The Options **High Contrast** row has no config knob either. It is an
+accessibility and field-conditions control rather than a per-map display
+choice, so there is no curator default: it starts from the rider's OS
+`prefers-contrast: more` signal on first visit and persists their choice per
+map thereafter.
+
+High Contrast is an axis *orthogonal* to Appearance, not a fourth scheme, so
+it composes with Light and Dark alike (dark plus high contrast is a valid
+combination for night riding). It targets a phone screen in direct sun, where
+effective contrast collapses and mid-tones disappear first: the Protomaps
+basemap swaps to its `grayscale` flavor (`black` in dark mode), hillshade
+flattens toward neutral, label halos go fully opaque, trail lines widen 1.3x,
+POI markers grow with heavier borders, and the sheet chrome moves to pure
+black-on-white or white-on-black. All five Protomaps sprite atlases already
+ship in every build, so the high-contrast flavors add no payload.
+
 The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
 
 ### Marker and accent colors
@@ -1144,6 +1160,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 | `mtb.difficulty` | Boolean: IMBA difficulty symbols on or off |
 | `mtb.directionArrows` | Boolean: direction arrows on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
+| `mtb.highContrast` | Boolean: high-contrast ("sunlight") mode on or off. Absent until the rider toggles it, so the OS `prefers-contrast` signal supplies the first-visit default |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
 | `mtb.routePanelExpanded` | Boolean: the routes panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |
