@@ -118,6 +118,46 @@ The basemap extraction automatically detects the latest available
 there's no URL to update by hand. You can override this by setting
 the `PROTOMAPS_PLANET_URL` environment variable.
 
+### Reviewing what an OSM refresh changed
+
+Any build that re-fetches trail data (an explicit `--refresh` /
+`--refresh-trails`, or an automatic re-fetch because the config's relation
+IDs or bbox changed) compares the new data against the previous snapshot and
+prints a summary:
+
+```
+OSM data diff vs previous snapshot
+    routes added: 1
+    trails renamed: 2
+    tag changes: 4
+    ways 128 → 130, total length 15.73 mi → 15.86 mi (+0.13 mi)
+      ~ trail Easy Option (old name) → Easier Option (3 ways)
+```
+
+The full report is written to
+`cache/osm_diff/<slug>/last-refresh.md` (overwritten each refresh), listing
+routes added, removed, renamed, recolored, or reseasoned; trails added,
+removed, or renamed; per-way `mtb:scale:imba` and `oneway` changes with
+`openstreetmap.org/way/<id>` links; and per-trail length changes. The
+previous snapshot itself is kept beside it as `trails.prev.geojson`.
+
+Both live under the cache directory, never under `build/<slug>/`, so there is
+no chance of an internal file reaching a deploy.
+
+Two things the diff deliberately does not do:
+
+- **It never diffs merged features.** `merge_consecutive_ways` fuses
+  consecutive ways sharing a `(relation membership, name, mtb:scale:imba,
+  resolved oneway)` signature, so a way that merely gains a rating moves
+  between features. The diff keys on OSM way IDs, which survive the merge, so
+  a one-tag edit reports as one tag change rather than wholesale churn.
+- **It never compares vertices.** Contributors nudge geometry constantly.
+  Length is the only geometry signal, and per-trail changes under 20 m are
+  treated as noise, so real extensions and truncations aren't buried.
+
+Nothing here needs a flag, and nothing changes when no re-fetch happens.
+A first build has no previous snapshot and reports nothing.
+
 Flags can be combined: `--refresh-trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching
 tiles.
@@ -446,6 +486,7 @@ scripts/            (abridged; supporting modules not listed)
   validate_config.py  Pre-flight YAML validation
   serve.py            Dev server with Range request support
   compute_route_stats.py     Per-route distance + USGS 3DEP elevation
+  osm_diff.py         Diff a trail re-fetch against the previous snapshot
   compare_elevation_sources.py  Diagnostic for elevation source comparisons
 
 templates/
@@ -460,6 +501,7 @@ assets/
 
 build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
+  osm_diff/<slug>/    Previous trail snapshot + last refresh's diff report
 
 tools/
   build_and_deploy.sh Convenience wrapper: validate then build then optional rsync deploy

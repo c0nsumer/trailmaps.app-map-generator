@@ -55,6 +55,7 @@ from fetch_basemap import fetch_basemap
 from fetch_pois import fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
+from osm_diff import report_refresh_diff, stash_previous_snapshot
 from template_inject import copy_assets, copy_templates
 from validate_config import validate_config
 
@@ -1094,6 +1095,13 @@ def main(argv=None):
         # so the next build re-expands from clean geometry instead of
         # re-enriching (and destroying) the expanded output. Copied after
         # fetch_trails succeeds so a partial/aborted fetch leaves no base.
+        #
+        # Stash the outgoing snapshot first so the refresh can be diffed
+        # against it (vetted-deploys-only means the curator has to know what
+        # changed upstream). Read before fetch_trails so a fetch that
+        # rewrites trails_path can't race it; returns None on a first build.
+        prev_snapshot = stash_previous_snapshot(
+            trails_src_path, cache_dir, config["slug"])
         fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
         shutil.copyfile(trails_path, trails_src_path)
         _save_signature(
@@ -1102,6 +1110,8 @@ def main(argv=None):
             + "\ntrails-content="
             + (_trails_content_hash(trails_src_path) or ""),
         )
+        report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"],
+                            config.get("distance_units", "mi"))
         return fetched
 
     if needs_fetch or auto_refetch_reason:
