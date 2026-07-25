@@ -41,6 +41,66 @@ def haversine_m(lng1, lat1, lng2, lat2):
     return EARTH_R_M * 2 * math.asin(math.sqrt(a))
 
 
+def point_to_segment_m(plng, plat, alng, alat, blng, blat):
+    """Distance in meters from a point to the segment AB.
+
+    Mirrors ``pointToSegmentDistance`` in templates/app.js. Projects onto a
+    local equirectangular plane centered on the point (longitude scaled by
+    cos(lat)) and solves in that plane, which is accurate well past the
+    few-hundred-meter range these checks use and avoids the cost of a proper
+    cross-track formula.
+
+    A vertex-only distance would be wrong here in a way that matters: a long
+    straight way carries very few vertices, so a point lying exactly ON such a
+    way can sit hundreds of meters from its nearest vertex. Rail trails and
+    road segments are routinely drawn that way.
+    """
+    m_per_deg_lat = 110540.0
+    m_per_deg_lng = 111320.0 * math.cos(math.radians(plat))
+    ax = (alng - plng) * m_per_deg_lng
+    ay = (alat - plat) * m_per_deg_lat
+    bx = (blng - plng) * m_per_deg_lng
+    by = (blat - plat) * m_per_deg_lat
+    dx = bx - ax
+    dy = by - ay
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        # Degenerate segment: fall back to the endpoint distance.
+        return math.hypot(ax, ay)
+    # Projection parameter of the origin (the point) onto AB, clamped to the
+    # segment so the result is a distance to the SEGMENT, not to its line.
+    t = -(ax * dx + ay * dy) / seg_len_sq
+    t = max(0.0, min(1.0, t))
+    cx = ax + t * dx
+    cy = ay + t * dy
+    return math.hypot(cx, cy)
+
+
+def point_to_polyline_m(plng, plat, line, stop_below=None):
+    """Shortest distance in meters from a point to a polyline.
+
+    ``line`` is a sequence of [lng, lat] pairs. ``stop_below`` short-circuits
+    as soon as a segment lands within that distance, which is what keeps an
+    "is this anywhere near the network?" scan cheap for the common case where
+    the answer is yes.
+
+    Returns None for a line with fewer than two points.
+    """
+    best = None
+    for i in range(1, len(line)):
+        a = line[i - 1]
+        b = line[i]
+        try:
+            d = point_to_segment_m(plng, plat, a[0], a[1], b[0], b[1])
+        except (TypeError, IndexError):
+            continue
+        if best is None or d < best:
+            best = d
+        if stop_below is not None and best <= stop_below:
+            return best
+    return best
+
+
 def natural_key(s):
     """Numeric-aware natural-sort key matching app.js ``ROUTE_ID_COMPARE``.
 

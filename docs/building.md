@@ -158,6 +158,51 @@ Two things the diff deliberately does not do:
 Nothing here needs a flag, and nothing changes when no re-fetch happens.
 A first build has no previous snapshot and reports nothing.
 
+### OSM data notes
+
+Every build also audits the OSM data for genuine gaps, writing
+`cache/osm_diff/<slug>/data-notes.md` and printing only when it finds
+something, so an unremarkable build stays quiet:
+
+```
+OSM data notes
+    3 possible unconnected way pairs
+    3 named trails with no difficulty rating
+    3 relations with no colour
+```
+
+This is **not** a "make the render look better" checklist.
+[Mapping for this framework](osm-mapping.md) is explicit that adding tags to
+manipulate a renderer degrades the dataset for every other consumer, so every
+check has to stand on its own as a data problem. What that rules out:
+
+- **Unnamed ways are never flagged.** Connectors and spurs are legitimately
+  nameless, and "name it so a label appears" is the anti-pattern itself.
+- **Missing difficulty ratings are only reported on maps with *partial*
+  coverage.** If nothing on the map is rated, nobody has tagged difficulty
+  there and listing every named trail would be asking for tags purely so this
+  renderer has something to draw. (The Difficulty control auto-hides on such
+  maps anyway.) An out-of-range value like `mtb:scale:imba=7` is always
+  reported, because that's wrong on its own terms.
+- **Parking, trailheads, and hubs are never checked for distance from a
+  trail.** They are curator-placed, and being off-trail is the point of a
+  parking lot. Only guideposts and emergency-access points, which are
+  definitionally on the trail, get the distance check.
+- **`oneway:bicycle` coverage is not checked**, although it would be useful.
+  The snapshot stores the resolved `oneway` value, so which tag it came from
+  isn't recoverable without changing what `fetch_trails` emits. Better to omit
+  a check than imply coverage that isn't there.
+
+The most valuable check is **possible unconnected ways**: two of a route's ways
+ending within 10 m of each other without sharing a node, so they look joined
+but aren't. That's what makes a loop fail to close for elevation, and what
+breaks routing for every other consumer of the data. Each finding links to the
+spot on openstreetmap.org. Ordinary branch junctions share a node exactly and
+are excluded, so the check stays quiet on healthy data.
+
+The audit reads the pre-enrichment snapshot, so custom routes (not OSM's to
+fix) and the subway-style parallel-route expansion never reach it.
+
 Flags can be combined: `--refresh-trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching
 tiles.
@@ -487,6 +532,7 @@ scripts/            (abridged; supporting modules not listed)
   serve.py            Dev server with Range request support
   compute_route_stats.py     Per-route distance + USGS 3DEP elevation
   osm_diff.py         Diff a trail re-fetch against the previous snapshot
+  tagging_report.py   OSM data-quality notes (gaps, not style preferences)
   compare_elevation_sources.py  Diagnostic for elevation source comparisons
 
 templates/
@@ -501,7 +547,7 @@ assets/
 
 build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
-  osm_diff/<slug>/    Previous trail snapshot + last refresh's diff report
+  osm_diff/<slug>/    Previous trail snapshot, refresh diff, OSM data notes
 
 tools/
   build_and_deploy.sh Convenience wrapper: validate then build then optional rsync deploy

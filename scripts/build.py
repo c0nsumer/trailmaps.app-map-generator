@@ -56,6 +56,7 @@ from fetch_pois import fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
+from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
 from validate_config import validate_config
 
@@ -427,6 +428,19 @@ def _is_build_only_artifact(rel_path):
     in sync with the --exclude list in tools/build_and_deploy.sh.
     """
     return rel_path.endswith((".sig", ".src.geojson", ".tmp"))
+
+
+def _load_json_or_none(path):
+    """Parse a JSON file, or None if it's missing or unreadable.
+
+    For consumers that only enrich the build's reporting (the OSM data notes)
+    and must degrade quietly rather than abort a build over a bad read.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def precompress_assets(output_dir):
@@ -1375,6 +1389,7 @@ def main(argv=None):
     # sit before Step 2, reading the PREVIOUS build's pois.geojson:
     # zero counts on a first build, one-build-stale counts after.
     poi_counts = {}
+    pois_data = None
     if os.path.exists(pois_path):
         try:
             with open(pois_path, encoding="utf-8") as f:
@@ -1401,6 +1416,15 @@ def main(argv=None):
         if yaml_hb:
             poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
     config["_poi_counts"] = poi_counts
+
+    # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
+    # disk, not the in-memory trails_geojson: by this point enrichment has
+    # baked in custom routes (not OSM data, so not OSM's to fix) and applied
+    # the subway-style expansion (stub micro-features and full-length host
+    # variants), either of which would badly confuse the unconnected-way
+    # check. One extra JSON parse buys an audit of exactly what OSM said.
+    report_tagging_quality(_load_json_or_none(trails_src_path), pois_data,
+                           config, cache_dir)
 
     # Steps 3+4: Fetch basemap + terrain in parallel.
     #
