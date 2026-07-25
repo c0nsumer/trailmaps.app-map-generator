@@ -343,9 +343,35 @@ def generate_service_worker(config, output_dir):
     hasher.update((config.get("_data_date", "") or "").encode())
     cache_version = hasher.hexdigest()[:12]
 
+    # Byte size of every precached URL, so the page can report offline
+    # readiness by WEIGHT instead of by file count. PRECACHE_URLS is only
+    # ~30 entries, but the .pmtiles archives at its tail are most of the
+    # bytes (a ~2 MB basemap plus an 8-30 MB terrain against ~3 MB of
+    # everything else). A count-based percentage would therefore sit near
+    # 90% while the only files that actually matter at the trailhead were
+    # still missing, then jump to 100% — worse than no number at all.
+    #
+    # Keyed by URL rather than positional, so reordering precache_urls
+    # (as the .pmtiles tail-append above already does) can't silently
+    # mis-attribute sizes. Sizes are final here: minification has already
+    # run (stage 5.5) and the precompression sidecars this ignores are
+    # written later (stage 8), against URLs the runtime never requests.
+    precache_bytes = {}
+    for rel_url in precache_urls:
+        # "./" is the page itself, which the server answers from index.html.
+        rel_path = "index.html" if rel_url == "./" else rel_url
+        try:
+            precache_bytes[rel_url] = os.path.getsize(
+                os.path.join(output_dir, rel_path))
+        except OSError:
+            # Omit rather than fail the build over a stat; the runtime
+            # treats a missing entry as weightless.
+            pass
+
     sw_config = {
         "CACHE_VERSION": cache_version,
         "PRECACHE_URLS": precache_urls,
+        "PRECACHE_BYTES": precache_bytes,
         "PMTILES_FILES": pmtiles_files,
     }
 

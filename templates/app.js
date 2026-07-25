@@ -7647,6 +7647,11 @@ function setupFloatingChrome() {
             if (btn) btn.setAttribute("aria-pressed", "true");
         } else {
             overlay.classList.remove("is-open");
+            // Single choke point for stopping the offline-status poll:
+            // several paths close Options without going through
+            // closeOptionsOverlay (openSearchOverlay, the Esc chain, a
+            // backdrop tap), and each would otherwise leak the interval.
+            if (overlay === optionsOverlay) stopOfflineStatusPolling();
             if (btn) {
                 btn.setAttribute("aria-pressed", "false");
                 // Drop focus from the trigger. Chrome (unlike
@@ -7720,6 +7725,11 @@ function setupFloatingChrome() {
             setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(optionsOverlay, optionsBtn, true);
+        // Offline-readiness row is live only while the panel is up.
+        // (The stop side lives in setOverlayOpen, which every close path
+        // goes through — openSearchOverlay and the Esc handler close
+        // Options directly, bypassing closeOptionsOverlay.)
+        startOfflineStatusPolling();
     }
     function closeOptionsOverlay() {
         setOverlayOpen(optionsOverlay, optionsBtn, false);
@@ -9828,6 +9838,116 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     navigator.serviceWorker.ready.then((reg) => {
         if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
     }).catch(() => { /* no active SW, nothing to resume */ });
+}
+
+// ============================================================
+// Offline readiness status (Options row)
+// ============================================================
+//
+// Answers "can I use this map away from signal?", which nothing else in
+// the UI can. The initial-load progress bar hides once the opening
+// viewport is painted; offline use needs the whole basemap + terrain
+// archives, and those never arrive through normal browsing — MapLibre
+// reads them with Range requests, and the SW caches only status-200
+// basic responses (handleRangeRequest passes a miss straight through
+// without storing). Only backgroundPrecache's full-file cache.add gets
+// them in, and they sit at the tail of PRECACHE_URLS behind a sequential
+// loop the browser may terminate. So a fully painted map and zero
+// offline coverage is a real state, and it was previously invisible.
+//
+// Report only. The precache already resumes on every page load via the
+// RESUME_PRECACHE ping, so there is nothing useful for a rider to press
+// here, and the auto-download behavior is unchanged.
+//
+// Deliberately NOT a toast: this is a line you consult in the parking
+// lot while you still have signal, not an interruption.
+const OFFLINE_STATUS_POLL_MS = 2000;
+let _offlineStatusTimer = null;
+let _offlineStatusSettled = false;
+
+// Ask the ACTIVE worker (not a waiting one) over a transferred
+// MessagePort. Asking the controller is both simpler than enumerating
+// clients and the right semantics: it describes the cache currently
+// serving this page, which is what "offline right now" means.
+// Resolves null on any doubt so callers can stay quiet.
+function _queryPrecacheStatus() {
+    return new Promise((resolve) => {
+        if (!CONFIG.pwa || !("serviceWorker" in navigator)) {
+            resolve(null);
+            return;
+        }
+        const sw = navigator.serviceWorker.controller;
+        if (!sw) {
+            // First load before clients.claim(), or PWA off. Nothing to ask.
+            resolve(null);
+            return;
+        }
+        const channel = new MessageChannel();
+        // The worker can be terminated between the controller read and
+        // the reply; don't leave the row waiting on a promise forever.
+        const timer = setTimeout(() => resolve(null), 3000);
+        channel.port1.onmessage = (e) => {
+            clearTimeout(timer);
+            resolve(e.data || null);
+        };
+        try {
+            sw.postMessage({ type: "PRECACHE_STATUS" }, [channel.port2]);
+        } catch (e) {
+            clearTimeout(timer);
+            resolve(null);
+        }
+    });
+}
+
+async function refreshOfflineStatus() {
+    const row = document.getElementById("offline-status");
+    const help = document.getElementById("offline-status-help");
+    // Absent when the PWA block was stripped at build time.
+    if (!row || !help) return;
+
+    const status = await _queryPrecacheStatus();
+    // No answer, or no byte weights to divide by: stay hidden. A missing
+    // row is honest; a row guessing at a state is not.
+    if (!status || !status.totalBytes) {
+        row.classList.add("hidden");
+        return;
+    }
+
+    if (status.complete) {
+        // "Saved", not "complete": PRECACHE_URLS excludes glyph ranges
+        // past 0-255 and the @2x sprite variants, which cache on fetch.
+        // For an English map that covers the labels a rider will see, but
+        // the wording shouldn't claim byte-for-byte completeness.
+        help.textContent = "Saved for offline use.";
+        row.dataset.state = "ready";
+        _offlineStatusSettled = true;
+        stopOfflineStatusPolling();
+    } else {
+        // Clamp below 100: the sentinel is the only thing that means
+        // done, and rounding must never contradict it.
+        const pct = Math.min(99, Math.floor(
+            (status.cachedBytes / status.totalBytes) * 100));
+        help.textContent = `Saving for offline use, ${pct}% done.`;
+        row.dataset.state = "saving";
+    }
+    row.classList.remove("hidden");
+}
+
+// Poll only while Options is open — there's no value in watching this
+// while the panel is shut, and each incomplete poll costs the worker a
+// cache.match per precache URL. Stops for good once saved.
+function startOfflineStatusPolling() {
+    refreshOfflineStatus();
+    if (_offlineStatusTimer || _offlineStatusSettled) return;
+    _offlineStatusTimer = setInterval(refreshOfflineStatus,
+        OFFLINE_STATUS_POLL_MS);
+}
+
+function stopOfflineStatusPolling() {
+    if (_offlineStatusTimer) {
+        clearInterval(_offlineStatusTimer);
+        _offlineStatusTimer = null;
+    }
 }
 
 // ============================================================

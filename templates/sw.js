@@ -10,6 +10,9 @@
 //   SW_CONFIG.PRECACHE_URLS  — priority list for background fill
 //                              (omits most glyph PBFs — those flow
 //                              through cache-on-fetch)
+//   SW_CONFIG.PRECACHE_BYTES — {url: size} for the above, so the page
+//                              can weight offline progress by bytes
+//                              instead of by file count
 //   SW_CONFIG.PMTILES_FILES  — list of .pmtiles filenames for
 //                              Range request handling
 
@@ -162,7 +165,63 @@ self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "RESUME_PRECACHE") {
         backgroundPrecache();
     }
+    // Offline-readiness query for the Options status row. The page
+    // transfers a MessagePort and we answer on it, so there's no need to
+    // enumerate clients or broadcast to every open tab.
+    if (event.data && event.data.type === "PRECACHE_STATUS") {
+        const port = event.ports && event.ports[0];
+        if (port) reportPrecacheStatus(port);
+    }
 });
+
+// Answer a PRECACHE_STATUS query with byte-weighted progress.
+//
+// Why bytes and not a file count: PRECACHE_URLS is ~30 entries, but the
+// .pmtiles archives at its tail are most of the payload. Counting files
+// would report ~90% while the tile archives — the only thing that makes
+// the map usable away from signal — were still absent.
+//
+// Note the asymmetry this reports on: normal browsing can never cache
+// those archives. MapLibre reads them with Range requests, the fetch
+// handler below caches only status-200 basic responses, and
+// handleRangeRequest passes a miss straight through without storing
+// anything. Only backgroundPrecache's full-file cache.add gets them in,
+// which is exactly why a rider can have a fully painted map and no
+// offline coverage at all.
+async function reportPrecacheStatus(port) {
+    const urls = SW_CONFIG.PRECACHE_URLS || [];
+    const sizes = SW_CONFIG.PRECACHE_BYTES || {};
+    let totalBytes = 0;
+    for (const url of urls) totalBytes += sizes[url] || 0;
+
+    let cachedBytes = 0;
+    let complete = false;
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        if (await cache.match(PRECACHE_DONE_URL)) {
+            // The sentinel is only written after a verification pass, so
+            // trust it and skip ~30 cache.match round trips. This is the
+            // settled state a rider is in almost all of the time.
+            complete = true;
+            cachedBytes = totalBytes;
+        } else {
+            for (const url of urls) {
+                if (await cache.match(url)) cachedBytes += sizes[url] || 0;
+            }
+        }
+    } catch (e) {
+        // Storage unavailable (private mode, quota). Fall through with
+        // what we have; the page reads a zero total as "unknown" and
+        // keeps its row hidden rather than claiming anything.
+        console.warn("SW reportPrecacheStatus failed:", e);
+    }
+    port.postMessage({
+        type: "PRECACHE_STATUS",
+        complete,
+        cachedBytes,
+        totalBytes,
+    });
+}
 
 // ============================================================
 // Activate — clean up old caches
