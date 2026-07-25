@@ -25,6 +25,13 @@ from validate_config import DEFAULT_VISIBLE_LAYERS, VALID_DAYS, match_day_token
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# How many IMBA ratings the runtime can draw a glyph for: mtb:scale:imba
+# 0-5, mirroring IMBA_RATINGS / RATING_NAMES in templates/app.js. Used to
+# reject out-of-range tag values from CONFIG.difficultyRatings so the key
+# strip never asks the runtime for a glyph that doesn't exist. Keep in
+# step with app.js if the rating set ever changes.
+_IMBA_RATING_COUNT = 6
+
 
 def _engine_app_version():
     """Return the engine's app version as ("<count>", "YYYY-MM-DD").
@@ -628,23 +635,40 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #     direction-arrow toggle
     #   - any mtb:scale:imba-tagged feature → CONFIG.hasDifficultyTrails
     #     → difficulty toggle
+    #   - the SET of in-range imba values → CONFIG.difficultyRatings →
+    #     the rating key rendered under the difficulty toggle, so a map
+    #     whose trails are all green and blue doesn't advertise double
+    #     blacks it has none of.
     # See setupFloatingChrome() in app.js where these are read.
+    #
+    # No early exit: the rating set needs every feature, and one pass
+    # over already-parsed JSON is cheap next to enrichment's own passes.
+    #
+    # hasDifficultyTrails stays deliberately looser than the rating set
+    # (any non-empty value, in range or not). A map tagged
+    # mtb:scale:imba=7 keeps its working toggle; only the key strip goes
+    # away, because there's no glyph to show for a rating that isn't one.
     has_oneway = False
     has_difficulty = False
+    ratings = set()
     for f in (trails_geojson.get("features") or []) if trails_geojson else []:
         props = f.get("properties") or {}
         if not has_oneway:
             ow = props.get("oneway")
             if ow in ("yes", True, "-1", "reversible"):
                 has_oneway = True
-        if not has_difficulty:
-            imba = props.get("imba_difficulty")
-            if imba and str(imba).strip():
-                has_difficulty = True
-        if has_oneway and has_difficulty:
-            break
+        imba = props.get("imba_difficulty")
+        if imba is not None and str(imba).strip():
+            has_difficulty = True
+            try:
+                n = int(str(imba).strip())
+            except (TypeError, ValueError):
+                n = None
+            if n is not None and 0 <= n < _IMBA_RATING_COUNT:
+                ratings.add(n)
     config_obj["hasOnewayTrails"] = has_oneway
     config_obj["hasDifficultyTrails"] = has_difficulty
+    config_obj["difficultyRatings"] = sorted(ratings)
     # Per-mode route orderings from MLNCM optimization (see
     # route_order.compute_route_orders). Runtime app.js looks up the
     # active mode's order in computeOffsetsAndFilter / computeLabelData

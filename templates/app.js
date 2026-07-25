@@ -638,6 +638,48 @@ function difficultyIconDataUrl(imba) {
     return _popupIconCache[key];
 }
 
+// Fill in the difficulty rating key under the Options Difficulty row:
+// one glyph + official IMBA name per rating THIS map actually carries
+// (CONFIG.difficultyRatings, a build-time scan of mtb:scale:imba values
+// — see the trail-property scan in template_inject.py). Reuses
+// difficultyIconDataUrl so the key and the on-map diamonds are the same
+// canvas render and can't drift apart.
+//
+// Called once from setupFloatingChrome, only on the path where the
+// Difficulty row is actually shown. The strip starts hidden in the
+// markup and is revealed only after at least one glyph lands, so a map
+// with an out-of-range tag value (imba=7 → working toggle, no drawable
+// rating) shows no empty strip.
+//
+// The glyphs are scheme-independent (fixed fills + a white halo, see
+// drawDifficultyShape), so unlike chevronIconDataUrl below this needs no
+// rebuild on a light/dark flip.
+function buildDifficultyKey() {
+    const strip = document.getElementById("difficulty-key");
+    if (!strip) return;
+    const ratings = CONFIG.difficultyRatings || [];
+    if (!ratings.length) return;
+    strip.textContent = "";
+    for (const n of ratings) {
+        const url = difficultyIconDataUrl(n);
+        if (!url) continue;
+        const li = document.createElement("li");
+        li.className = "opt-key-item";
+        const img = document.createElement("img");
+        img.className = "opt-key-glyph";
+        img.src = url;
+        // Decorative: the adjacent name text already carries the meaning.
+        img.alt = "";
+        li.appendChild(img);
+        const name = document.createElement("span");
+        name.className = "opt-key-name";
+        name.textContent = RATING_NAMES[n] || `Rating ${n}`;
+        li.appendChild(name);
+        strip.appendChild(li);
+    }
+    if (strip.children.length) strip.classList.remove("hidden");
+}
+
 function chevronIconDataUrl() {
     // Forward-pointing only: a popup has no line direction to align
     // with, the chevron just brands the row as "direction arrow".
@@ -8246,6 +8288,9 @@ function setupFloatingChrome() {
                     on ? "visible" : "none");
             }
         }, "difficulty");
+        // Reveal the rating key only on this path — the branches that
+        // hide the row leave the strip hidden as it ships.
+        buildDifficultyKey();
     } else if (difficultyBtn) {
         difficultyBtn.classList.add("hidden");
     }
@@ -8279,6 +8324,16 @@ function setupFloatingChrome() {
                 isDefaultVisible("direction_arrows"), (on) => {
             applyChevronVisibility(on);
         }, "direction_arrows");
+        // The row's static help line says what the chevrons mean. Add
+        // the alternation clause only when this map actually schedules a
+        // reversal, matching the popup's "One-way (alternating)" wording
+        // rather than implying every map's directions can flip.
+        const arrowsHelp = document.getElementById("direction-arrows-help");
+        if (arrowsHelp
+            && Object.keys(CONFIG.directionSchedules || {}).length) {
+            arrowsHelp.textContent =
+                "Shown on one-way trails. Some reverse by day.";
+        }
     } else if (arrowsBtn) {
         arrowsBtn.classList.add("hidden");
     }

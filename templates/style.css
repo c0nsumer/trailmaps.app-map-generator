@@ -507,6 +507,80 @@ body::after {
     color: var(--sheet-text);
 }
 
+/* Two-line text cell for rows that need a "what this means" line under
+ * the name (Direction Arrows). Takes over the label's flex-grow so the
+ * segmented pill still sits hard right; min-width:0 lets the help line
+ * wrap instead of forcing the row wider than the sheet. */
+.opt-toggle-row-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.opt-toggle-row-text > .opt-toggle-row-label {
+    flex: 0 0 auto;
+}
+
+.opt-toggle-row-help {
+    font-size: 11px;
+    line-height: 1.3;
+    font-weight: 400;
+    color: var(--sheet-text-muted);
+}
+
+/* ----- Symbol key strips (Difficulty ratings) ----------------------
+ *
+ * A wrapped grid of glyph + name pairs, rendered as a sibling directly
+ * below the toggle row whose symbols it explains. Indented to line up
+ * with that row's label rather than its swatch, so it reads as a
+ * continuation of the row and not as a new control.
+ *
+ * Populated by app.js (buildDifficultyKey); ships hidden and is
+ * revealed only once at least one glyph is in place. */
+.opt-key-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    /* 10px row padding + 28px swatch + 12px row gap = label edge. */
+    margin: -2px 10px 8px 50px;
+    padding: 0;
+    list-style: none;
+}
+
+.opt-key-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    /* Keeps a glyph and its name on one line when the strip wraps. */
+    white-space: nowrap;
+}
+
+.opt-key-glyph {
+    flex: 0 0 auto;
+    width: 15px;
+    height: 15px;
+    /* The canvas render carries its own white halo for on-map legibility;
+     * at key size that halo is most of the glyph's visual weight, so let
+     * it sit at its natural scale rather than stretching it. */
+    object-fit: contain;
+}
+
+.opt-key-name {
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--sheet-text-muted);
+}
+
+/* Follow the row's off state: when Difficulty is toggled off the glyphs
+ * aren't on the map, so the key recedes with the row it belongs to.
+ * Adjacent-sibling selector, which is exactly the DOM relationship the
+ * markup guarantees. */
+.opt-toggle-row[aria-pressed="false"] + .opt-key-strip {
+    opacity: 0.45;
+}
+
 /* (.opt-toggle-row-state was the old single On/Off pill on the
  * right side of each toggle-row. It's been replaced by the
  * segmented On/Off pill (.opt-segmented-pill with two buttons),

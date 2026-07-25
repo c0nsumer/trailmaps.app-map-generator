@@ -451,6 +451,21 @@
                         </div>
                     </div>
 
+                    <!-- Difficulty rating key. The Difficulty row above
+                         shows one representative diamond; this names the
+                         actual IMBA ratings so a first-time visitor can
+                         read the on-map glyphs. Filled by app.js's
+                         buildDifficultyKey() from CONFIG.difficultyRatings
+                         (build-time scan) so it lists only the ratings this
+                         map carries, and revealed only once a glyph lands.
+
+                         Deliberately a SIBLING of the toggle row, not a
+                         child: wirePeekToggle() adds
+                         .opt-toggle-row-clickable, making the whole row a
+                         toggle target, so a tap on the key would flip
+                         Difficulty off. -->
+                    <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty ratings"></ul>
+
                     <!-- Direction arrows — controls visibility of the
                          decor-arrow MapLibre layer (chevrons placed
                          along one-way / reversible trails). Hidden
@@ -474,7 +489,16 @@
                                 <path d="M22.56,12 L3.36,1.92 L7.68,12 L3.36,22.08 Z"/>
                             </svg>
                         </span>
-                        <span class="opt-toggle-row-label">Direction Arrows</span>
+                        <!-- Two-line text cell: the row name plus what the
+                             chevrons actually mean. "Direction Arrows"
+                             names the control but never says "one-way",
+                             which is the thing a rider needs to know. app.js
+                             appends the day-alternation clause when this map
+                             has a direction_schedule. -->
+                        <span class="opt-toggle-row-text">
+                            <span class="opt-toggle-row-label">Direction Arrows</span>
+                            <span class="opt-toggle-row-help" id="direction-arrows-help">Shown on one-way trails.</span>
+                        </span>
                         <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Direction Arrows">
                             <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
                             <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
