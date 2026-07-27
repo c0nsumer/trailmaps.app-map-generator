@@ -9617,7 +9617,16 @@ function setupInteractions() {
             _collectAllRoutesAt(box, e.lngLat);
         if (!routeIds.length) return;
 
+        // List only memberships the rider can currently see, using the
+        // same season/emergency-aware visibleRoutes set the panel,
+        // finder, and labels key off. The casing features carry every
+        // relation the way belongs to, so without this a summer popup
+        // advertised winter-only routes (and vice versa). The popup
+        // still opens when every membership is filtered out — the
+        // trail itself is visible, so its name/difficulty/one-way
+        // rows remain useful; only the "Part of" section drops.
         const matchedRoutes = routeIds
+            .filter((id) => visibleRoutes.has(id))
             .map((id) => CONFIG.routes[id])
             .filter(Boolean);
         const routeItems = matchedRoutes
@@ -9674,6 +9683,11 @@ function setupInteractions() {
             html += `<div class="popup-routes">${label}</div>`;
             html += routeItems;
         }
+
+        // Nothing survived: an unnamed, undecorated trail whose route
+        // memberships are all out of season. An empty popup would read
+        // as a rendering bug.
+        if (!html) return;
 
         new maplibregl.Popup({
             maxWidth: "220px",
