@@ -3772,8 +3772,10 @@ function buildAboutModalContent() {
         "https://github.com/c0nsumer/trailmaps.app-map-generator",
         "trailmaps.app Map Generator"));
     if (CONFIG.appVersion) {
+        // appVersion is the bare commit count ("294"); the "v" is
+        // presentation, so it lives here rather than in the build.
         appValue.appendChild(document.createTextNode(
-            ` ${CONFIG.appVersion}`
+            ` v${CONFIG.appVersion}`
             + (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : "")));
     }
     detailRow("App", appValue);
