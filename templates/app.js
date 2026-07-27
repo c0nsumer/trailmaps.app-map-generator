@@ -8156,6 +8156,7 @@ function setupFloatingChrome() {
             });
         }
         reflectSeason();
+        wireSegmentedRowCycle(seasonField.querySelector(".opt-segmented"));
     } else if (seasonField) {
         seasonField.classList.add("hidden");
         // Force summer regardless of persisted state so renders are silent.
@@ -8280,6 +8281,33 @@ function setupFloatingChrome() {
         row.addEventListener("click", () => {
             const currentlyOn = row.getAttribute("aria-pressed") === "true";
             setState(!currentlyOn);
+        });
+    }
+
+    // Whole-row advance for segmented multi-option rows (Labels /
+    // Season / Appearance). Binary rows toggle on a row tap
+    // (wirePeekToggle above); these cycle to the next option, which is
+    // the same gesture generalized — a binary toggle IS a two-state
+    // cycle. Clicks inside the segmented pill are excluded here (one
+    // guard) instead of per-button stopPropagation, so buttons wired
+    // elsewhere don't each need to remember it. Buttons are re-queried
+    // per click because the Labels row can lose its Trails segment at
+    // wiring time (show_trails: false).
+    function wireSegmentedRowCycle(group) {
+        if (!group) return;
+        const row = group.closest(".opt-toggle-row");
+        if (!row) return;
+        row.classList.add("opt-toggle-row-clickable");
+        row.addEventListener("click", (e) => {
+            if (e.target.closest(".opt-segmented")) return;
+            const buttons = Array.from(
+                group.querySelectorAll(".opt-segmented-btn"));
+            if (!buttons.length) return;
+            // findIndex miss (-1) lands on the first button, a sane
+            // recovery if no segment is somehow checked.
+            const i = buttons.findIndex(
+                (b) => b.getAttribute("aria-checked") === "true");
+            buttons[(i + 1) % buttons.length].click();
         });
     }
 
@@ -8497,6 +8525,7 @@ function setupFloatingChrome() {
             });
         }
         watchSystemColorScheme();
+        wireSegmentedRowCycle(schemeGroup);
     }
 
     // ----- Show Trails gating -----
@@ -8570,6 +8599,7 @@ function setupFloatingChrome() {
                 updateLabels();
             });
         }
+        wireSegmentedRowCycle(labelGroup);
     }
 
     const basemapField = document.getElementById("basemap-field");

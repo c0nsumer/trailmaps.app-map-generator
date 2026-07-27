@@ -515,12 +515,23 @@ body::after {
  * Layout: swatch on left + label in middle + ON/OFF state on right.
  * Driven by aria-pressed. Wired up by wirePeekToggle() in app.js
  * (the helper kept its peek-era name; behavior is unchanged). */
-.opt-toggle-row {
+.opt-row.opt-toggle-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    width: 100%;
-    padding: 10px 10px;
+    /* Hover-wash geometry: the section body's 8px side padding is
+     * absorbed into the row (negative margin + matching padding), so
+     * the highlight gets the same ~8px inset left/right that the
+     * 44px min-height leaves above/below a 28px swatch. Without this
+     * the wash hugged the content at its rounded ends while floating
+     * clear of it vertically. The unhighlighted layout is unchanged:
+     * content stays aligned with the section titles.
+     * Selector is .opt-row.opt-toggle-row (not .opt-toggle-row) so
+     * the padding survives the later same-specificity `.opt-row
+     * { padding: 4px 0 }` rule, which used to silently win. */
+    width: calc(100% + 16px);
+    margin: 0 -8px;
+    padding: 4px 8px;
     background: transparent;
     border: none;
     border-radius: 10px;
@@ -529,12 +540,12 @@ body::after {
     text-align: left;
 }
 
-/* Binary on/off rows opt into whole-row click via the
- * .opt-toggle-row-clickable marker class added by wirePeekToggle().
- * Multi-option rows (Labels / Season) deliberately stay inert
- * outside their inner buttons — there's no sensible "toggle" for
- * a 3-state choice, and a row-level cycle would clash with
- * direct-click on the buttons. */
+/* Every toggle row opts into whole-row click via the
+ * .opt-toggle-row-clickable marker class: binary rows toggle
+ * (wirePeekToggle), multi-option rows (Labels / Season / Appearance)
+ * advance to the next option (wireSegmentedRowCycle). One gesture
+ * across the overlay: tap the row, the state advances; tap a
+ * specific segment, that state is chosen. */
 .opt-toggle-row-clickable {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
