@@ -609,8 +609,12 @@ body::after {
  * Populated by app.js (buildDifficultyKey); ships hidden and is
  * revealed only once at least one glyph is in place. */
 .opt-key-strip {
-    /* Forces its own line inside the wrapping row. */
-    flex: 0 0 100%;
+    /* Forces its own line inside the wrapping row. The basis must
+     * subtract the indent below: at a plain 100% the margin pushed the
+     * strip's right edge 40px past the row, so a full set of ratings
+     * (imba 1-4, or more) overflowed instead of wrapping. Sized to the
+     * row, the strip's own flex-wrap absorbs any number of ratings. */
+    flex: 0 0 calc(100% - 40px);
     display: flex;
     flex-wrap: wrap;
     gap: 4px 14px;
