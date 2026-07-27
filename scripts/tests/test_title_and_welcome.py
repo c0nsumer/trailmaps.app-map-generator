@@ -1,8 +1,9 @@
-"""Tests for derived titles and the Welcome-body default.
+"""Tests for derived titles and Welcome-config pass-through.
 
-`title` is an optional override derived as "{name} Map", and
-`welcome.body` defaults to `about.description` so the map is described
-once rather than hand-copied into two yaml keys.
+`title` is an optional override derived as "{name} Map".
+`welcome.body` is the map's one descriptive text (the retired
+`about.description` folded into it), so injection is a plain
+pass-through: dict stays a dict, false stays false, empty means None.
 
 Run from repo root:
     python -m pytest scripts/tests/test_title_and_welcome.py -v
@@ -121,17 +122,17 @@ def test_title_containing_a_backslash_escape_survives_substitution(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Welcome body defaulting (template_inject.inject_config_into_template)
+# Welcome config pass-through (template_inject.inject_config_into_template)
 # ---------------------------------------------------------------------------
 
-ABOUT = {"description": "An unofficial map of the trails."}
+ABOUT = {"curator": {"name": "A Curator"}}
 
 
-def test_welcome_body_defaults_to_about_description():
-    """The common case: no `welcome` key at all, so the map's one
-    description reaches the Welcome modal without being hand-copied."""
-    welcome = _config_obj({**BASE, "about": ABOUT})["welcome"]
-    assert welcome == {"body": "An unofficial map of the trails."}
+def test_welcome_dict_passes_through():
+    """`welcome.body` is the one authored home of the map's description;
+    injection must hand it to the runtime untouched."""
+    config = {**BASE, "about": ABOUT, "welcome": {"body": "An unofficial map."}}
+    assert _config_obj(config)["welcome"] == {"body": "An unofficial map."}
 
 
 def test_welcome_false_stays_suppressed():
@@ -139,26 +140,20 @@ def test_welcome_false_stays_suppressed():
     assert _config_obj({**BASE, "about": ABOUT, "welcome": False})["welcome"] is False
 
 
-def test_explicit_welcome_body_wins():
-    config = {**BASE, "about": ABOUT, "welcome": {"body": "Course opens at 9am."}}
-    assert _config_obj(config)["welcome"]["body"] == "Course opens at 9am."
-
-
 def test_welcome_dict_without_body_keeps_its_other_keys():
-    config = {**BASE, "about": ABOUT, "welcome": {"show_controls_hint": False}}
+    """No defaulting from `about` — the retired `about.description` must
+    never leak back into the welcome body."""
+    config = {
+        **BASE,
+        "about": {**ABOUT, "description": "legacy text"},
+        "welcome": {"show_controls_hint": False},
+    }
     welcome = _config_obj(config)["welcome"]
-    assert welcome["body"] == "An unofficial map of the trails."
-    assert welcome["show_controls_hint"] is False
+    assert welcome == {"show_controls_hint": False}
 
 
-def test_welcome_stays_none_without_about_description():
-    """Nothing to say, so the runtime takes the framework default rather
-    than an object that says nothing."""
+def test_welcome_stays_none_when_absent_or_empty():
+    """Nothing configured, so the runtime takes the framework default
+    rather than an object that says nothing."""
     assert _config_obj(dict(BASE))["welcome"] is None
-    assert _config_obj({**BASE, "about": {"description": "   "}})["welcome"] is None
-
-
-def test_welcome_defaulting_does_not_mutate_the_caller_config():
-    config = {**BASE, "about": ABOUT, "welcome": {"show_controls_hint": False}}
-    _config_obj(config)
-    assert config["welcome"] == {"show_controls_hint": False}
+    assert _config_obj({**BASE, "welcome": {}})["welcome"] is None

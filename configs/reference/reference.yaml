@@ -361,12 +361,10 @@ relations:
 # About modal
 # ============================================================
 
-# Optional description / curator / links. `description` is the map's one
-# descriptive text and renders in the Welcome/Help modal; the About modal is
-# the technical surface (curator, links, versions, credits, offline status).
+# Optional curator / links, shown in the About modal — the technical surface
+# (curator, links, versions, credits, offline status). The map's descriptive
+# text lives at `welcome.body` below.
 # about:
-#   description: |
-#     Description text.
 #   curator:
 #     name: ""
 #     url: ""
@@ -383,9 +381,8 @@ relations:
 # content, false to suppress the first-visit auto-open (the Help row still
 # works), or a dict with optional title / body / show_controls_hint.
 #
-# `body` defaults to `about.description` — the map is described once and this
-# modal shows it. Set `body` only when the text should differ from the
-# description (an event map's "course opens at 9am" belongs here).
+# `body` is the map's one descriptive text: it renders in this modal and its
+# first paragraph doubles as the og:description social-preview snippet.
 # welcome:
 #   title: ""
 #   body: |

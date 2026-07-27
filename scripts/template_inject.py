@@ -722,34 +722,23 @@ def inject_config_into_template(template_content, config, trails_geojson):
         else {}
     )
     config_obj["about"] = config.get("about") or None
-    # Welcome modal config. Three forms accepted: omitted (None →
-    # framework default), false (modal suppressed), or a dict with
-    # title/body/show_controls_hint. Distinguish "explicitly false"
-    # from "omitted" — `or` would collapse both to None, which the
-    # runtime would interpret as "use defaults" and still show the
-    # modal.
+    # Welcome/Help modal config. Three forms accepted: omitted (None →
+    # framework default), false (first-visit auto-open suppressed), or
+    # a dict with title/body/show_controls_hint. Distinguish
+    # "explicitly false" from "omitted" — `or` would collapse both to
+    # None, which the runtime would interpret as "use defaults" and
+    # still auto-open.
     #
-    # The map's description is authored ONCE, at about.description, and
-    # the Welcome body defaults to it. These were separate keys that
-    # curators hand-copied between, so they drifted. `welcome.body`
-    # survives as an optional override for maps whose first-visit text
-    # genuinely differs from the About text (an event map's "course
-    # opens at 9am" belongs in Welcome, not About).
+    # `welcome.body` is the map's one descriptive text. Its ancestor
+    # `about.description` was retired when About became a purely
+    # technical surface (the validator rejects it with a migration
+    # error), so there is no defaulting between keys anymore.
     welcome = config.get("welcome") if "welcome" in config else None
     if welcome is not False:
-        # Copy rather than mutate: `config` is reused by the caller
-        # (copy_assets ran before us and buildDate reads it after).
-        resolved = dict(welcome) if isinstance(welcome, dict) else {}
-        about_description = (config.get("about") or {}).get("description")
-        has_description = isinstance(about_description, str) and about_description.strip()
-        if not resolved.get("body") and has_description:
-            # Verbatim, not stripped: the runtime splits on blank lines
-            # to build paragraphs, exactly as the About modal does.
-            resolved["body"] = about_description
         # An empty dict means "nothing configured" — emit None so the
         # runtime takes the framework default rather than an object
         # that says nothing.
-        welcome = resolved or None
+        welcome = welcome if isinstance(welcome, dict) and welcome else None
     config_obj["welcome"] = welcome
     # default_visible: list of layer names that default to ON for
     # first-visit riders. Three accepted YAML forms:
@@ -897,8 +886,12 @@ def copy_templates(config, output_dir, trails_geojson):
             # equally. Values are HTML-attribute-escaped to survive
             # quotes / ampersands in trail-system names + descriptions.
             og_title = config.get("title") or config.get("name") or "Trail Map"
-            about = config.get("about") or {}
-            og_description_raw = (about.get("description") or "").strip()
+            # The map's one descriptive text lives at welcome.body
+            # (about.description was retired). `welcome: false` and
+            # omitted both leave no prose — fall through to the title.
+            welcome_cfg = config.get("welcome")
+            welcome_cfg = welcome_cfg if isinstance(welcome_cfg, dict) else {}
+            og_description_raw = (welcome_cfg.get("body") or "").strip()
             # First paragraph only (split on the first double-newline);
             # cap at ~200 chars to avoid runaway snippet length in
             # share previews.

@@ -3319,12 +3319,11 @@ function openWelcomeModal(source) {
     if (bodyEl) {
         bodyEl.innerHTML = "";
 
-        // Build-time resolution already defaults `welcome.body` from
-        // `about.description`; the runtime falls back to the raw
-        // description too so a `welcome: false` map (whose body is
-        // never resolved at build time) still shows its text when
-        // opened from the Help row.
-        const bodyText = welcome.body || (CONFIG.about || {}).description || "";
+        // `welcome.body` is the map's one descriptive text (the
+        // retired `about.description` folded into it). A map without
+        // it (including `welcome: false`) shows just the controls
+        // hint here.
+        const bodyText = welcome.body || "";
         if (bodyText) {
             // Split body into paragraphs on blank lines so YAML's
             // `|` block scalar reads naturally without HTML.

@@ -318,13 +318,13 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `about` | No | none | Object with optional `description`, `curator`, `links` keys. `description` renders in the Welcome/Help modal; the rest renders in the About modal, the technical surface. See [About this map block](#about-this-map-block). |
+| `about` | No | none | Object with optional `curator` and `links` keys, rendered in the About modal, the technical surface. (`about.description` was retired; the map's descriptive text is `welcome.body`.) See [About this map block](#about-this-map-block). |
 
 ### Welcome modal
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `welcome` | No | framework default | Welcome/Help modal: auto-opens on first visit, and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` defaults to `about.description`, so the map is described once and this modal shows it; set `body` only when the text should differ from the description (an event map's "course opens at 9am" belongs here). The `title` applies to the first-visit auto-open; opened from the Help row, the modal is titled "How to use this map" to match the row. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
+| `welcome` | No | framework default | Welcome/Help modal: auto-opens on first visit, and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` is the map's one descriptive text: it renders in this modal, and its first paragraph doubles as the `og:description` social-preview snippet. The `title` applies to the first-visit auto-open; opened from the Help row, the modal is titled "How to use this map" to match the row. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
 
 ### Output
 
@@ -928,16 +928,14 @@ right. The `about` YAML block is optional; when omitted, the modal still
 renders the always-on "Built with" section (data + build dates, framework
 credits).
 
-The `description` key is authored here but renders in the Welcome/Help modal
-(the first-visit greeting, reopenable from the **How to use this map** row),
-not in About — the map is described once, and the descriptive and technical
-surfaces stay distinct.
+The map's descriptive prose does not live here: it's `welcome.body`, rendered
+in the Welcome/Help modal (the first-visit greeting, reopenable from the
+**How to use this map** row). The map is described once, and the descriptive
+and technical surfaces stay distinct. (`about.description` was the old home;
+the validator rejects it with a migration hint.)
 
 ```yaml
 about:
-  description: |
-    Free-form multi-line description. Line breaks in a YAML `|` block are
-    preserved in the modal.
   curator:
     name: "Your Name"
     url: "https://yoursite.example.com"
@@ -952,7 +950,6 @@ about:
 
 | Key | Required | Description |
 |---|---|---|
-| `description` | No | The map's descriptive prose, shown in the Welcome/Help modal (it doubles as the default `welcome.body`). `\|`-style multi-line blocks preserve newlines; blank lines separate paragraphs. |
 | `curator` | No | Single `{name, url}` object rendered under a "Map Curator" header. The name appears on the next line, as a hyperlink when `url` is set and plain text otherwise. |
 | `links` | No | List of `{label, url}` entries rendered as a bulleted list under a "More info" header: trail-system pages, club pages, a source repo, and so on. YAML order is the render order. |
 

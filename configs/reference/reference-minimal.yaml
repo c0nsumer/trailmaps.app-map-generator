@@ -110,8 +110,6 @@ relations:
 
 # --- About modal ---
 # about:
-#   description: |
-#     Description text.
 #   curator:
 #     name: ""
 #     url: ""

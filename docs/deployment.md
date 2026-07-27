@@ -220,7 +220,7 @@ that consumes OG tags, the preview card shows:
 
 - The map title.
 - The map's icon (one of the generated PWA icons).
-- A short description (the `about.description` first paragraph, trimmed to a
+- A short description (the `welcome.body` first paragraph, trimmed to a
   sensible length, or a sober default).
 
 No separate config gate is needed; the meta tags are inert until something

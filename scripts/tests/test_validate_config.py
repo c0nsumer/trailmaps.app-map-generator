@@ -252,6 +252,29 @@ def test_dashed_relations_dict_shape_validated():
     )
 
 
+def test_about_description_rejected_with_migration_hint():
+    """`about.description` was retired for `welcome.body` when the About
+    modal became a purely technical surface; the error must say where
+    the text goes so a curator can fix the config without archaeology."""
+    errors = _errors(about={"description": "An unofficial map."})
+    assert any("about.description" in e and "welcome.body" in e for e in errors), errors
+
+
+def test_about_curator_and_links_still_accepted():
+    errors = _errors(
+        about={
+            "curator": {"name": "A Curator", "url": "https://example.com"},
+            "links": [{"label": "Trail Org", "url": "https://example.org"}],
+        }
+    )
+    assert errors == [], errors
+
+
+def test_welcome_body_accepted():
+    errors = _errors(welcome={"body": "An unofficial map of the trails."})
+    assert errors == [], errors
+
+
 if __name__ == "__main__":
     import traceback
 

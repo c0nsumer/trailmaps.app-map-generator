@@ -116,8 +116,6 @@ parking:
 
 # --- About modal ---
 about:
-  description: |
-    Example Description: This is an example map configuration for trailmaps.app's map generator. It uses OpenStreetMap data and is not an official map of Addison Oaks County Park.
   links:
   - label: Addison Oaks County Park (Official)
     url: https://www.oakgov.com/community/oakland-county-parks/parks-trails/addison-oaks
@@ -133,7 +131,7 @@ about:
 welcome:
 #   title: ""
   body: |
-    Example Welcome: This is an example map configuration for trailmaps.app's map generator. It uses OpenStreetMap data and is not an official map of Addison Oaks County Park.
+    Example Description: This is an example map configuration for trailmaps.app's map generator. It uses OpenStreetMap data and is not an official map of Addison Oaks County Park.
 #   show_controls_hint: true
 
 # --- Output ---

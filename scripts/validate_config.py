@@ -1344,9 +1344,17 @@ def _validate_about(report, config):
     if not isinstance(about, dict):
         report.err("about", f"expected dict, got {type(about).__name__}")
         return
-    if "description" in about and not isinstance(about["description"], str):
+    # Legacy-key migration error. `description` moved to `welcome.body`
+    # when About became a purely technical surface (curator, links,
+    # versions, credits, offline status) and the Welcome/Help modal
+    # became the home of the map's descriptive text. Hard-cut like the
+    # renames below — same one-curator, small-config-set reasoning.
+    if "description" in about:
         report.err(
-            "about.description", f"must be a string, got {type(about['description']).__name__}"
+            "about.description",
+            "`about.description` was removed; move the text to `welcome.body` "
+            "(the Welcome/Help modal shows the map's description; "
+            "About is the technical surface).",
         )
     # Legacy-key migration error. The previous schema split the
     # "more info" links into two arrays (more_information,
