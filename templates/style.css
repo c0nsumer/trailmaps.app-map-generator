@@ -70,6 +70,36 @@
      * light line on a dark sheet. Both hover at low opacity so the
      * chip's filled color does the heavy lifting and the hairline
      * just provides a "this is a chip" edge. */
+    /* Elevation scale. Every shadow that lifts a surface off the map or
+     * off a sheet goes through one of these.
+     *
+     * The reason these exist: --sheet-shadow flips 0.18 -> 0.60 between
+     * schemes, but only 4 declarations used it. Twelve others hardcoded
+     * their own rgba(0,0,0,...) and there were NO dark-scheme box-shadow
+     * overrides anywhere in this file, so the FABs, the toast and both
+     * overlay panels kept a light-mode shadow in dark mode. A black
+     * shadow at 0.2 alpha over a dark sheet is close to invisible, which
+     * left the dark scheme with almost no depth cue at all.
+     *
+     * Geometry is deliberately IDENTICAL to what each role already used,
+     * so light mode is pixel-for-pixel unchanged and the fix is confined
+     * to dark mode.
+     *
+     * One deliberate holdout: the install-button icon and its "+" badge
+     * keep their own matching 0 1px 3px pair. They're a self-contained
+     * composite at their own scale, folding them in would change their
+     * geometry (not just color), and the badge's white ring already
+     * separates it in either scheme. */
+    --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
+    --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.22);
+    /* Hairline around color-bar / dot swatches so a light trail color
+     * stays visible against a light row. Single value, no dark override:
+     * in dark mode a pale swatch already separates from the sheet on its
+     * own, and the chip variants carry a white border that does the job.
+     * Unifies a stray 0.15 on .highlight-chip-swatch with the 0.25 its
+     * five siblings used. */
+    --swatch-hairline: 0 0 0 1px rgba(0, 0, 0, 0.25);
     --swatch-outline: rgba(0, 0, 0, 0.08);
     /* Per-map accent palette. The build derives four base values from
      * one source color (logo pick / explicit hex / framework default)
@@ -198,6 +228,11 @@
     /* Light hairline against the dark sheet so chips have a visible
      * edge in dark mode (the dark-line variant from the light scheme
      * disappears against the dark sheet). */
+    /* Dark elevation. Deeper alphas so a shadow still reads against a
+     * dark sheet; tuned to the same ballpark as --sheet-shadow's 0.60. */
+    --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.55);
+    --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.65);
+    --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.6);
     --swatch-outline: rgba(255, 255, 255, 0.18);
     /* Accent: swap to the lightened dark-mode shade + its on-accent
      * text, and flip --accent-strong to brighten (toward white) since
@@ -380,7 +415,7 @@ body::after {
     border-radius: 50%;
     background: var(--highlight-amber);
     border: 1.5px solid white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--swatch-hairline);
     flex-shrink: 0;
 }
 
@@ -1273,7 +1308,7 @@ body::after {
     background: #888;
     /* Subtle outline so light-colored swatches (e.g. white trail
      * colors) remain visible against the list's white background. */
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--swatch-hairline);
 }
 
 /* Line-swatch variant of the highlight chip swatch: routes and trails
@@ -1287,7 +1322,7 @@ body::after {
     height: 4px;
     border-radius: 2px;
     border: none;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--swatch-hairline);
 }
 
 /* Dashed / dotted / two-color routes swap the flat bar for an SVG
@@ -1322,7 +1357,7 @@ body::after {
     height: 4px;
     border-radius: 2px;
     background: #ffec00;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--swatch-hairline);
     flex-shrink: 0;
 }
 
@@ -1658,6 +1693,30 @@ body::after {
  * variable-width to fit ref strings of any length.
  * ============================================================ */
 
+/* Marker glyph centering — VERIFIED, do not "fix" without re-measuring.
+ *
+ * Horizontal and vertical centering both come from the flex trio below
+ * (display:flex + align-items:center + justify-content:center) plus
+ * line-height:1, and every chip has symmetric borders and padding, so
+ * the box math is exact. What's easy to get wrong is the OPTICAL side,
+ * where a glyph's typographic center differs from its visual one — see
+ * .install-btn .install-btn-icon::after, where a text "+" had to be
+ * replaced with SVG geometry for exactly that reason.
+ *
+ * Measured for the shipped font stack (Arial metrics: ascent 0.905,
+ * descent 0.212, cap 0.716). With line-height:1 the baseline lands
+ * 0.847em below the line-box top, putting a capital's visual center at
+ * 0.4885em against the box's 0.5em — i.e. capitals sit 0.0115em HIGH,
+ * which is 0.15 px at 13 px and 0.13 px at 11 px. Sub-pixel; leave it.
+ * All glyphs these markers render (P, TH, #, and numeric guidepost
+ * refs) are cap-height, so none of them deviate from that.
+ *
+ * MapLibre rounds marker positions to whole pixels (Marker._update ->
+ * _pos.round()), and --poi-marker-label-anchor-shift is a whole pixel
+ * too, so nothing lands on a half-pixel and softens the edges.
+ *
+ * The hub "H" is the one hand-placed glyph; its derivation is on
+ * .hub-marker-letter. */
 .poi-marker {
     width: var(--poi-marker-size);
     height: var(--poi-marker-size);
@@ -2081,7 +2140,7 @@ body::after {
     height: 4px;
     border-radius: 2px;
     flex-shrink: 0;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--swatch-hairline);
 }
 
 .popup-directions {
@@ -2275,7 +2334,7 @@ body::after {
      * is smaller: 90vw (works at narrow phone widths) or 360px (a
      * nice paragraph-width on tablet/desktop). */
     max-width: min(90vw, 360px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--elev-floating);
     /* Sits above the about / welcome modals (z=100). The SW-update
      * toast in particular needs to surface on top of the welcome
      * modal a first-visit rider sees, otherwise they can't reach
@@ -2658,7 +2717,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
      * rather than a bright white spot. */
     background: var(--sheet-bg);
     border: 1.5px solid var(--sheet-border);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--elev-raised);
     color: var(--sheet-text);
     display: inline-flex;
     align-items: center;
@@ -2723,7 +2782,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
     background: var(--sheet-bg);
     color: var(--sheet-text);
     border: 1.5px solid var(--sheet-border);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--elev-raised);
     /* Asymmetric: rounded on the left (the "head" of the chip) and
      * squared on the right so the wedge can attach to a flat edge.
      * A fully rounded pill produced an unavoidable geometric mismatch
@@ -3516,7 +3575,7 @@ body.modal-open .gpx-overlay.is-open {
     border-radius: 2px;
     flex-shrink: 0;
     background: #888;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--swatch-hairline);
 }
 
 .route-panel-row-name {
@@ -3596,7 +3655,7 @@ body.modal-open .gpx-overlay.is-open {
         width: min(440px, calc(100vw - 48px));
         border: 1px solid var(--sheet-border);
         border-radius: 14px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+        box-shadow: var(--elev-sheet);
     }
 
     /* Search panel — anchored ~24px above the bottom. */
@@ -3612,7 +3671,7 @@ body.modal-open .gpx-overlay.is-open {
         width: min(440px, calc(100vw - 48px));
         border: 1px solid var(--sheet-border);
         border-radius: 14px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+        box-shadow: var(--elev-sheet);
         margin-bottom: 24px;
     }
 
