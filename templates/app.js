@@ -3690,7 +3690,10 @@ function buildAboutModalContent() {
     const titleEl = document.getElementById("about-modal-title");
     const body = document.getElementById("about-modal-body");
     const tail = document.getElementById("about-modal-tail");
-    titleEl.textContent = CONFIG.title || "About This Map";
+    // Static header — matches the Options row that opens the modal.
+    // The map's own title is a details row below: the header names the
+    // surface, the rows state the facts.
+    titleEl.textContent = "About this map";
     body.innerHTML = "";
     tail.innerHTML = "";
 
@@ -3722,26 +3725,76 @@ function buildAboutModalContent() {
     // row). About is the technical surface — provenance, versions,
     // credits, offline state.
 
-    // Map Curator \u2014 h3 section with the curator's name on the next
-    // line (optionally linked). "Curator" rather than "Author"
-    // because the framework just generates the map; the human
-    // chooses the data, configures the styling, and decides what's
-    // shown \u2014 that's curation, not authorship of the underlying
-    // data. Section is omitted entirely when no curator is given.
+    // Details block \u2014 one label:value row per map fact, spec-sheet
+    // style, instead of an h3 section per one-line fact (which made
+    // the modal tall and repetitive). Rows render only when their
+    // fact exists.
+    const details = document.createElement("dl");
+    details.className = "about-modal-details";
+    const detailRow = (label, value) => {
+        const row = document.createElement("div");
+        row.className = "about-modal-detail-row";
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        if (typeof value === "string") dd.textContent = value;
+        else dd.appendChild(value);
+        row.appendChild(dt);
+        row.appendChild(dd);
+        details.appendChild(row);
+        return { row, dd };
+    };
+
+    detailRow("Title", CONFIG.title || CONFIG.name || "Trail Map");
+
+    // "Curator" rather than "Author" because the framework just
+    // generates the map; the human chooses the data, configures the
+    // styling, and decides what's shown \u2014 that's curation, not
+    // authorship of the underlying data.
     if (about.curator && (about.curator.name || about.curator.url)) {
-        const h = document.createElement("h3");
-        h.textContent = "Map Curator";
-        body.appendChild(h);
-        const p = document.createElement("p");
-        if (about.curator.url && about.curator.name) {
-            p.appendChild(aboutExtLink(about.curator.url, about.curator.name));
-        } else if (about.curator.url) {
-            p.appendChild(aboutExtLink(about.curator.url, about.curator.url));
-        } else {
-            p.textContent = about.curator.name;
-        }
-        body.appendChild(p);
+        const c = about.curator;
+        detailRow("Curator", c.url
+            ? aboutExtLink(c.url, c.name || c.url)
+            : (c.name || ""));
     }
+
+    if (CONFIG.dataDate) {
+        detailRow("Trail data", CONFIG.dataDate);
+    }
+
+    // "App", not "Generator" \u2014 the value already ends in "Generator",
+    // and a label repeating its value teaches nothing. Linked name
+    // plus version and that version's commit date (the engine's
+    // commit-count version of the shipped app code; absent when the
+    // build couldn't consult git, leaving just the name).
+    const appValue = document.createElement("span");
+    appValue.appendChild(aboutExtLink(
+        "https://github.com/c0nsumer/trailmaps.app-map-generator",
+        "trailmaps.app Map Generator"));
+    if (CONFIG.appVersion) {
+        appValue.appendChild(document.createTextNode(
+            ` ${CONFIG.appVersion}`
+            + (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : "")));
+    }
+    detailRow("App", appValue);
+
+    // Offline readiness \u2014 diagnostic row, not a feature advertisement
+    // (same spirit as the version row: a line you consult when
+    // troubleshooting). Built only when PWA is on, ships hidden, and
+    // stays hidden unless the service worker returns a real answer \u2014
+    // no controller yet, no storage, or an unknown total all leave it
+    // out rather than claiming something. Report only: the precache
+    // already resumes on every page load, so there is nothing here for
+    // a rider to trigger. refreshOfflineStatus() fills and reveals it
+    // while the modal is open.
+    if (CONFIG.pwa) {
+        const { row, dd } = detailRow("Offline", "");
+        row.id = "offline-status";
+        row.classList.add("hidden");
+        dd.id = "offline-status-help";
+    }
+
+    body.appendChild(details);
 
     // More info \u2014 single section combining what was previously two
     // (more_information + extra_links). Curator-supplied bulleted
@@ -3761,16 +3814,17 @@ function buildAboutModalContent() {
         body.appendChild(ul);
     }
 
-    // Built with \u2014 combined section for framework-generated meta
-    // (versions + credits, previously two separate h3 sections).
-    // Always rendered. Order: framework name credit (so the rider
-    // knows what generated this map), then versions (recency cue),
-    // then per-source credits (data + libraries). Terrain credit is
-    // conditional on show_terrain \u2014 no point crediting a source
-    // whose tiles aren't loaded for this map.
-    const builtWithHeader = document.createElement("h3");
-    builtWithHeader.textContent = "Built with";
-    tail.appendChild(builtWithHeader);
+    // Credits \u2014 pure attribution for data sources and libraries.
+    // The framework credit and versions that used to lead this section
+    // moved into the details block above (the App / Trail data rows);
+    // what remains is attribution only, so the section says so.
+    // Always rendered. Terrain credit is conditional on show_terrain
+    // \u2014 no point crediting a source whose tiles aren't loaded for
+    // this map. (CONFIG.buildDate still exists but is not shown
+    // anywhere here \u2014 the landing-page "Updated" line consumes it.)
+    const creditsHeader = document.createElement("h3");
+    creditsHeader.textContent = "Credits";
+    tail.appendChild(creditsHeader);
 
     const credit = (prefix, url, label, suffix) => {
         const p = document.createElement("p");
@@ -3780,36 +3834,6 @@ function buildAboutModalContent() {
         if (suffix) p.appendChild(document.createTextNode(suffix));
         tail.appendChild(p);
     };
-
-    // Framework credit \u2014 the entire phrase "trailmaps.app Map
-    // Generator" is the link text (replaces the older "Generated by
-    // <a>trailmaps.app</a> Map Generator." phrasing). The two version
-    // lines that follow indent visually under this credit via the
-    // .about-modal-version CSS, so the relationship reads as
-    // metadata about the framework generation, not as standalone items.
-    credit("",
-        "https://github.com/c0nsumer/trailmaps.app-map-generator",
-        "trailmaps.app Map Generator",
-        "");
-
-    if (CONFIG.dataDate) {
-        const p = document.createElement("p");
-        p.className = "about-modal-version";
-        p.textContent = `Trail data: ${CONFIG.dataDate}`;
-        tail.appendChild(p);
-    }
-    // "App version: v294 (2026-07-17)" — the engine's commit-count
-    // version of the shipped app code plus that commit's date. Absent
-    // (empty) when the build couldn't consult git; the line is simply
-    // omitted then. CONFIG.buildDate still exists but is not shown
-    // here — the landing-page "Updated" line consumes it.
-    if (CONFIG.appVersion) {
-        const p = document.createElement("p");
-        p.className = "about-modal-version";
-        p.textContent = `App version: ${CONFIG.appVersion}` +
-            (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : "");
-        tail.appendChild(p);
-    }
 
     credit("Map data \u00a9 ",
         "https://www.openstreetmap.org/copyright",
@@ -9991,7 +10015,8 @@ function _queryPrecacheStatus() {
 async function refreshOfflineStatus() {
     const row = document.getElementById("offline-status");
     const help = document.getElementById("offline-status-help");
-    // Absent when the PWA block was stripped at build time.
+    // Absent when PWA is off — buildAboutModalContent doesn't create
+    // the row at all then.
     if (!row || !help) return;
 
     const status = await _queryPrecacheStatus();

@@ -1615,14 +1615,42 @@ body::after {
     text-decoration: underline;
 }
 
-.about-modal-version {
-    color: var(--sheet-text);
-    opacity: 0.8;
+/* Details block — one label:value row per map fact (Title, Curator,
+ * Trail data, App, Offline). A two-column grid keeps the values
+ * aligned so the block reads as a spec sheet, fitting the modal's
+ * technical-surface role; labels reuse the h3 small-caps treatment at
+ * row scale so the whole modal speaks one typographic language. */
+.about-modal-details {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 14px;
+    row-gap: 6px;
     margin: 0 0 4px 0;
-    /* Indent under the preceding "trailmaps.app Map Generator" credit
-     * so the data-date / build-date lines read as metadata about that
-     * framework generation rather than standalone items. */
-    padding-left: 1.25em;
+}
+
+.about-modal-detail-row {
+    /* The row div exists for show/hide (the Offline diagnostic row)
+     * and grouping; display:contents lets its dt/dd participate in
+     * the dl's grid directly. The global `.hidden` is !important, so
+     * it still wins for a hidden row. */
+    display: contents;
+}
+
+.about-modal-detail-row dt {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--sheet-text-muted);
+    /* Nudge the smaller label down so it sits on the value's baseline. */
+    padding-top: 3px;
+}
+
+.about-modal-detail-row dd {
+    margin: 0;
+    color: var(--sheet-text);
+    min-width: 0;
+    overflow-wrap: break-word;
 }
 
 /* ----- MapLibre control overrides ---------------------------------- */
