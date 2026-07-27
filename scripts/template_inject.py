@@ -32,6 +32,39 @@ SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 # step with app.js if the rating set ever changes.
 _IMBA_RATING_COUNT = 6
 
+# Protomaps ships five basemap sprite flavors, but templates/app.js only ever
+# requests two (see basemapFlavor()). The other three are ~80 KB per map of
+# atlas that no code path can reach — and because the service worker precaches
+# the whole build tree, that was bandwidth every rider spent, not just server
+# disk.
+#
+# DRIFT WARNING, in both directions:
+#   * Adding a flavor to basemapFlavor() in app.js REQUIRES adding it to
+#     _SPRITE_FLAVORS_USED here. Otherwise the atlas 404s at runtime and the
+#     basemap loses every icon — offline, permanently.
+#   * This is a DROP-list, not a keep-list: a file whose name doesn't match a
+#     known flavor is always copied. So a new upstream flavor ships unused
+#     (harmless, caught at the next size review) rather than some needed file
+#     being silently dropped.
+_SPRITE_FLAVORS_USED = ("light", "dark")
+_SPRITE_FLAVORS_ALL = ("light", "dark", "grayscale", "black", "white")
+
+
+def _unused_sprite_files(directory, names):
+    """`shutil.copytree` ignore hook: skip atlases for unrequested flavors.
+
+    Sprite files are named ``<flavor>[@2x].{png,json}``. Directories always
+    pass through so the version subdirectory is still walked.
+    """
+    drop = set()
+    for name in names:
+        if not os.path.isfile(os.path.join(directory, name)):
+            continue
+        flavor = name.split(".", 1)[0].split("@", 1)[0]
+        if flavor in _SPRITE_FLAVORS_ALL and flavor not in _SPRITE_FLAVORS_USED:
+            drop.add(name)
+    return drop
+
 
 def _engine_app_version():
     """Return the engine's app version as ("<count>", "YYYY-MM-DD").
@@ -1246,8 +1279,10 @@ def copy_assets(config, output_dir):
             if os.path.exists(sprites_dst):
                 shutil.rmtree(sprites_dst)
             os.makedirs(sprites_dst, exist_ok=True)
-            shutil.copytree(ver_src, ver_dst)
-            console.info(f"Copied sprites ({sprite_version})")
+            shutil.copytree(ver_src, ver_dst, ignore=_unused_sprite_files)
+            console.info(
+                f"Copied sprites ({sprite_version}, "
+                f"{'/'.join(_SPRITE_FLAVORS_USED)})")
             sprites_injected_dirs.append(ver_dst)
         else:
             console.warn(f"Sprites {sprite_version} not found at {ver_src}")
@@ -1255,8 +1290,9 @@ def copy_assets(config, output_dir):
     elif os.path.exists(sprites_src) and os.listdir(sprites_src):
         if os.path.exists(sprites_dst):
             shutil.rmtree(sprites_dst)
-        shutil.copytree(sprites_src, sprites_dst)
-        console.info("Copied sprites (all versions)")
+        shutil.copytree(sprites_src, sprites_dst, ignore=_unused_sprite_files)
+        console.info(
+            f"Copied sprites (all versions, {'/'.join(_SPRITE_FLAVORS_USED)})")
         # Inject into every version directory found.
         for entry in sorted(os.listdir(sprites_dst)):
             sub = os.path.join(sprites_dst, entry)

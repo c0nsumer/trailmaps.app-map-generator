@@ -151,7 +151,7 @@ function mapPaintTokens(scheme) {
 // Basemap flavor + sprite atlas for the active scheme. Only "light" and
 // "dark" are ever requested; copy_assets in template_inject.py ships exactly
 // these two atlases and nothing else, so adding a flavor here means adding it
-// to _SPRITE_FLAVORS there too or the atlas 404s.
+// to _SPRITE_FLAVORS_USED there too, or the atlas 404s.
 function basemapFlavor(scheme) {
     const s = scheme || currentColorScheme();
     return s === "dark" ? "dark" : "light";
