@@ -609,17 +609,19 @@ body::after {
  * Populated by app.js (buildDifficultyKey); ships hidden and is
  * revealed only once at least one glyph is in place. */
 .opt-key-strip {
-    /* Forces its own line inside the wrapping row. The basis must
-     * subtract the indent below: at a plain 100% the margin pushed the
-     * strip's right edge 40px past the row, so a full set of ratings
-     * (imba 1-4, or more) overflowed instead of wrapping. Sized to the
-     * row, the strip's own flex-wrap absorbs any number of ratings. */
-    flex: 0 0 calc(100% - 40px);
+    /* Forces its own line inside the wrapping row. */
+    flex: 0 0 100%;
     display: flex;
     flex-wrap: wrap;
+    /* Centered legend rather than indented under the row's label: a
+     * full rating set (imba 1-4, or more) can fill the row's width,
+     * and the earlier 40px label-alignment indent left "Extremely
+     * Difficult" pressed against the row's right edge. Centering
+     * splits the slack symmetrically, and wrapped lines read as a
+     * legend rather than a ragged left-aligned list. */
+    justify-content: center;
     gap: 4px 14px;
-    /* 28px swatch + 12px row gap = aligned under the row's label. */
-    margin: 2px 0 0 40px;
+    margin: 2px 0 0;
     padding: 0;
     list-style: none;
 }
