@@ -194,7 +194,6 @@ visits, each key prefixed with the map's slug (for example,
 - `mtb.difficulty`: boolean (IMBA difficulty symbols)
 - `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.colorScheme`: "light", "dark", or "auto"
-- `mtb.highContrast`: boolean (high-contrast "sunlight" mode)
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
 - `mtb.routePanelExpanded`: boolean (routes panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)

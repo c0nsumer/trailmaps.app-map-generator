@@ -672,35 +672,6 @@
                         </div>
                     </div>
 
-                    <!-- High contrast — an axis ORTHOGONAL to Appearance,
-                         not a fourth scheme button: it composes with
-                         Light/Dark so dark + high contrast exists too. For
-                         a phone in direct sun, where the screen's effective
-                         contrast collapses and mid-tones go first. Swaps the
-                         Protomaps flavor to grayscale/black, flattens
-                         hillshade, maxes label halos, widens trails, and
-                         enlarges markers.
-
-                         First visit defaults from the OS
-                         prefers-contrast: more signal (resolved pre-paint by
-                         the bootstrap in <head>); after that the rider's
-                         choice persists. Wired in setupFloatingChrome. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-high-contrast" aria-pressed="false">
-                        <span class="layer-swatch contrast-swatch" aria-hidden="true">
-                            <!-- mdi:contrast-circle (Apache 2.0, Pictogrammers). -->
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4V20A8,8 0 0,1 4,12A8,8 0 0,1 12,4Z"/>
-                            </svg>
-                        </span>
-                        <span class="opt-toggle-row-text">
-                            <span class="opt-toggle-row-label">High Contrast</span>
-                            <span class="opt-toggle-row-help">Easier to read in bright sun.</span>
-                        </span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="High Contrast">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="false">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="true">Off</button>
-                        </div>
-                    </div>
                 </div>
             </section>
 
