@@ -3775,17 +3775,17 @@ function buildAboutModalContent() {
 
     // Offline readiness \u2014 diagnostic row, not a feature advertisement
     // (same spirit as the version row: a line you consult when
-    // troubleshooting). Built only when PWA is on, ships hidden, and
-    // stays hidden unless the service worker returns a real answer \u2014
-    // no controller yet, no storage, or an unknown total all leave it
-    // out rather than claiming something. Report only: the precache
-    // already resumes on every page load, so there is nothing here for
-    // a rider to trigger. refreshOfflineStatus() fills and reveals it
-    // while the modal is open.
-    if (CONFIG.pwa) {
-        const { row, dd } = detailRow("Offline", "");
+    // troubleshooting). Always built, and every state is spelled out
+    // (not enabled / unsupported / needs HTTPS / inactive / saving /
+    // saved) so someone troubleshooting a map they didn't build has a
+    // string to relay instead of a missing row. Report only: the
+    // precache already resumes on every page load, so there is nothing
+    // here for a rider to trigger. refreshOfflineStatus() keeps it
+    // current while the modal is open; "Checking." only shows for the
+    // instant before the first refresh lands.
+    {
+        const { row, dd } = detailRow("Offline", "Checking.");
         row.id = "offline-status";
-        row.classList.add("hidden");
         dd.id = "offline-status-help";
     }
 
@@ -9980,16 +9980,15 @@ let _offlineStatusSettled = false;
 // MessagePort. Asking the controller is both simpler than enumerating
 // clients and the right semantics: it describes the cache currently
 // serving this page, which is what "offline right now" means.
-// Resolves null on any doubt so callers can stay quiet.
+// Resolves null on any doubt; refreshOfflineStatus turns that into
+// an explicit "Status unavailable." (the environment gates — PWA off,
+// no SW support, no controller — are also reported there, so this
+// only needs the defensive re-check).
 function _queryPrecacheStatus() {
     return new Promise((resolve) => {
-        if (!CONFIG.pwa || !("serviceWorker" in navigator)) {
-            resolve(null);
-            return;
-        }
-        const sw = navigator.serviceWorker.controller;
+        const sw = ("serviceWorker" in navigator)
+            && navigator.serviceWorker.controller;
         if (!sw) {
-            // First load before clients.claim(), or PWA off. Nothing to ask.
             resolve(null);
             return;
         }
@@ -10010,18 +10009,58 @@ function _queryPrecacheStatus() {
     });
 }
 
+// Every state is spelled out rather than hiding the row on doubt: a
+// rider troubleshooting "why doesn't offline work?" on a map they
+// didn't build needs a string they can read off and relay, and a
+// hidden row can't be relayed. Permanent states (off / unsupported /
+// insecure / ready) settle and stop the poll; transient ones
+// (inactive / unknown) keep polling while the modal is open, since a
+// first-visit worker activation flips them on its own.
 async function refreshOfflineStatus() {
     const row = document.getElementById("offline-status");
     const help = document.getElementById("offline-status-help");
-    // Absent when PWA is off — buildAboutModalContent doesn't create
-    // the row at all then.
     if (!row || !help) return;
 
+    const settle = (text, state) => {
+        help.textContent = text;
+        row.dataset.state = state;
+        _offlineStatusSettled = true;
+        stopOfflineStatusPolling();
+    };
+
+    // Environment gates, most specific first. The curator's choice,
+    // then the browser's abilities. The HTTPS case matters for
+    // self-hosters: browsers expose service workers only in secure
+    // contexts, so a plain-HTTP deploy looks like "no SW support"
+    // unless called out explicitly.
+    if (!CONFIG.pwa) {
+        settle("Not enabled for this map.", "off");
+        return;
+    }
+    if (!("serviceWorker" in navigator)) {
+        if (!window.isSecureContext) {
+            settle("Requires a secure (HTTPS) connection.", "insecure");
+        } else {
+            settle("Not supported by this browser.", "unsupported");
+        }
+        return;
+    }
+    if (!navigator.serviceWorker.controller) {
+        // First visit before the worker activates and claims the page,
+        // or a hard refresh (which deliberately bypasses the worker).
+        // Transient in the first case, so keep polling; the row flips
+        // to Saving by itself once the claim lands.
+        help.textContent = "Not active for this page load.";
+        row.dataset.state = "inactive";
+        return;
+    }
+
     const status = await _queryPrecacheStatus();
-    // No answer, or no byte weights to divide by: stay hidden. A missing
-    // row is honest; a row guessing at a state is not.
+    // No answer, or no byte weights to divide by. Keep polling: the
+    // worker may just have been idle-terminated mid-query.
     if (!status || !status.totalBytes) {
-        row.classList.add("hidden");
+        help.textContent = "Status unavailable.";
+        row.dataset.state = "unknown";
         return;
     }
 
@@ -10030,10 +10069,7 @@ async function refreshOfflineStatus() {
         // past 0-255 and the @2x sprite variants, which cache on fetch.
         // For an English map that covers the labels a rider will see, but
         // the wording shouldn't claim byte-for-byte completeness.
-        help.textContent = "Saved for offline use.";
-        row.dataset.state = "ready";
-        _offlineStatusSettled = true;
-        stopOfflineStatusPolling();
+        settle("Saved for offline use.", "ready");
     } else {
         // Clamp below 100: the sentinel is the only thing that means
         // done, and rounding must never contradict it.
@@ -10042,7 +10078,6 @@ async function refreshOfflineStatus() {
         help.textContent = `Saving for offline use, ${pct}% done.`;
         row.dataset.state = "saving";
     }
-    row.classList.remove("hidden");
 }
 
 // Poll only while the About modal is open — there's no value in

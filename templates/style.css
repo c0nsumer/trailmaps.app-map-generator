@@ -1629,10 +1629,9 @@ body::after {
 }
 
 .about-modal-detail-row {
-    /* The row div exists for show/hide (the Offline diagnostic row)
-     * and grouping; display:contents lets its dt/dd participate in
-     * the dl's grid directly. The global `.hidden` is !important, so
-     * it still wins for a hidden row. */
+    /* The row div exists for grouping (and the Offline row's
+     * data-state hook); display:contents lets its dt/dd participate
+     * in the dl's grid directly. */
     display: contents;
 }
 
