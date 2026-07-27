@@ -87,11 +87,18 @@ const MAP_PAINT_TOKENS = {
         labelText:  "#1a1a1a",
         // Halo doubles as a knockout mask where a name crosses a
         // one-way chevron glyph (chevrons are ignore-placement, so
-        // overlap is expected): near-opaque + 3 px wide (see the
+        // overlap is expected): opaque + 3 px wide (see the
         // text-halo-width on every trail/route label layer) makes
         // the text read in a clean pocket with the glyph passing
         // behind, no collision management involved.
-        labelHalo:  "rgba(255, 255, 255, 0.95)",
+        //
+        // Fully opaque, not 0.95. This value has only ever moved one way
+        // (0.9 -> 0.95 in b313248, when the halo took on the knockout
+        // job), and the residual few percent of bleed is invisible
+        // indoors while being exactly what fails in bright sun. Opaque
+        // also makes the knockout pocket cleaner, which was that
+        // commit's whole point.
+        labelHalo:  "#ffffff",
         // One-way chevron glyph image IDs (forward / reverse, per
         // scheme); registered by registerChevronPatterns, swapped via
         // setLayoutProperty icon-image on the decor-chevron-* layers.
@@ -115,7 +122,9 @@ const MAP_PAINT_TOKENS = {
     },
     dark: {
         labelText:  "#f0f0f0",
-        labelHalo:  "rgba(0, 0, 0, 0.85)",
+        // Opaque for the same reasons as light; dark started from an even
+        // lower 0.7 (raised to 0.85 in b313248) so it had further to go.
+        labelHalo:  "#000000",
         chevronFwd: "chevron-fwd-dark-bg",
         chevronRev: "chevron-rev-dark-bg",
         // Pure-black shadow deepens valleys BELOW the dark basemap

@@ -31,7 +31,11 @@
     --overlay-scrim: rgba(0, 0, 0, var(--scrim-opacity));
     --sheet-bg: rgba(255, 255, 255, 0.98);
     --sheet-text: #222;
-    --sheet-text-muted: #666;
+    /* 8.86:1 on the sheet (AAA). Was #666 at 5.74:1, which passes AA
+     * but not AAA — and this token carries the SMALLEST text in the
+     * UI (help lines, route stats, key names, finder meta), where
+     * contrast matters most and where glare eats it first. */
+    --sheet-text-muted: #4a4a4a;
     --sheet-border: #d8d8d8;
     --sheet-shadow: rgba(0, 0, 0, 0.18);
     --sheet-hover: rgba(0, 0, 0, 0.05);
@@ -122,9 +126,11 @@
     /* Feature-marker label (DOM text below the dot, painted directly
      * on the basemap). Mirrors MAP_PAINT_TOKENS for trail labels:
      * dark text + white halo on light basemap, light text + dark
-     * halo on dark basemap. */
+     * halo on dark basemap. Halo is opaque for the same reason the
+     * trail-label halo is — a partly-transparent halo is the first
+     * thing to disappear when the screen is washed out in sun. */
     --feature-label-color: #1e1e1e;
-    --feature-label-halo: rgba(255, 255, 255, 0.9);
+    --feature-label-halo: #ffffff;
     /* Toilet / drinking-water marker colors — fixed values (unlike
      * the CONFIG-driven POI colors, which app.js sets as :root vars
      * at boot; these two categories have no per-map config knob).
@@ -150,7 +156,9 @@
 [data-color-scheme="dark"] {
     --sheet-bg: rgba(28, 28, 30, 0.98);
     --sheet-text: #f0f0f0;
-    --sheet-text-muted: #a0a0a0;
+    /* 7.85:1 on the dark sheet (AAA). Was #a0a0a0 at 6.51:1 — below
+     * AAA, same as the light scheme's old value, so both moved. */
+    --sheet-text-muted: #b0b0b0;
     --sheet-border: #3c3c3e;
     --sheet-shadow: rgba(0, 0, 0, 0.6);
     --sheet-hover: rgba(255, 255, 255, 0.08);
@@ -190,7 +198,7 @@
     --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.5),
                               0 0 0 1px rgba(255, 255, 255, 0.1);
     --feature-label-color: #f0f0f0;
-    --feature-label-halo: rgba(0, 0, 0, 0.7);
+    --feature-label-halo: #000000;
 }
 
 * {
