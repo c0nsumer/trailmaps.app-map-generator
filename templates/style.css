@@ -538,6 +538,11 @@ body::after {
     color: var(--sheet-text);
     font: inherit;
     text-align: left;
+    /* Rows are controls, not copy: without this a double-click (a
+     * plausible way to rapid-toggle) word-selects the label text.
+     * Buttons get this for free; these rows are divs. */
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 /* Every toggle row opts into whole-row click via the
