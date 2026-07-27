@@ -100,6 +100,10 @@
      * Unifies a stray 0.15 on .highlight-chip-swatch with the 0.25 its
      * five siblings used. */
     --swatch-hairline: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    /* Corner radius for the thin line/bar route swatches (finder rows,
+     * popup, route panel, highlight chip's line variant). Five call sites
+     * that must agree: they're the same mark rendered on four surfaces. */
+    --swatch-line-radius: 2px;
     --swatch-outline: rgba(0, 0, 0, 0.08);
     /* Per-map accent palette. The build derives four base values from
      * one source color (logo pick / explicit hex / framework default)
@@ -1303,7 +1307,7 @@ body::after {
     display: inline-block;
     width: 14px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--swatch-line-radius);
     flex-shrink: 0;
     background: #888;
     /* Subtle outline so light-colored swatches (e.g. white trail
@@ -1320,7 +1324,7 @@ body::after {
 .highlight-chip-swatch.is-line {
     width: 14px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--swatch-line-radius);
     border: none;
     box-shadow: var(--swatch-hairline);
 }
@@ -1355,7 +1359,7 @@ body::after {
     display: inline-block;
     width: 14px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--swatch-line-radius);
     background: #ffec00;
     box-shadow: var(--swatch-hairline);
     flex-shrink: 0;
@@ -2138,7 +2142,7 @@ body::after {
     display: inline-block;
     width: 14px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--swatch-line-radius);
     flex-shrink: 0;
     box-shadow: var(--swatch-hairline);
 }
@@ -2308,7 +2312,10 @@ body::after {
      * and pushed the digits up off-center. */
     padding: 0 8px;
     height: 18px;
-    border-radius: 9px;
+    /* 999px, not the 9px (height/2) this used to carry. Identical
+     * rendering, but it matches the pill convention used everywhere else
+     * and can't silently stop being a pill if the height ever changes. */
+    border-radius: 999px;
     white-space: nowrap;
 }
 
@@ -3572,7 +3579,7 @@ body.modal-open .gpx-overlay.is-open {
     display: inline-block;
     width: 14px;
     height: 4px;
-    border-radius: 2px;
+    border-radius: var(--swatch-line-radius);
     flex-shrink: 0;
     background: #888;
     box-shadow: var(--swatch-hairline);
