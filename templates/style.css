@@ -109,10 +109,10 @@
      * ref ("23", "EAP-1") is hung off the existing OSM tag and
      * varies wildly in length. Everything else is the standard
      * square. */
-    --poi-marker-size: 24px;
-    --poi-marker-size-trailhead-w: 28px;
-    --poi-marker-size-trail-marker-h: 20px;
-    --poi-marker-size-trail-marker-min-w: 20px;
+    --poi-marker-size: 26px;
+    --poi-marker-size-trailhead-w: 30px;
+    --poi-marker-size-trail-marker-h: 22px;
+    --poi-marker-size-trail-marker-min-w: 22px;
     --poi-marker-radius: 4px;
     --poi-marker-border: 2px;
     --poi-marker-font-text: 13px;          /* P (parking) */
@@ -122,7 +122,24 @@
      * depth above the basemap. Options swatches use a different
      * shadow (a 1px dark outline for contrast against the sheet)
      * so this token isn't shared with .layer-swatch. */
-    --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* One shadow color for every marker "lift off the basemap" effect.
+     * The hub chip is an SVG polygon, so it needs filter: drop-shadow
+     * (box-shadow would trace its bounding rect, not the hexagon) and
+     * can't consume the composed token below — but it CAN share this
+     * color, which is what keeps the two in step. They had already
+     * drifted to 0.30 vs 0.35 by being copied rather than referenced. */
+    /* Icon+label column markers (feature dots, trail hubs) shift up by
+     * this much so the ICON lands on the coordinate rather than the
+     * column's midpoint. MapLibre anchors a marker element at its
+     * center; with a ~24 px icon plus a 3 px gap and a ~12 px label the
+     * element is ~39 px tall, so its center sits ~7.5 px below the
+     * icon's. Rounded to a whole pixel deliberately — a fractional
+     * translate lands the icon's border on a half-pixel and softens the
+     * edge. Single-icon markers (parking, trailhead, event) need no
+     * compensation and don't use this. */
+    --poi-marker-label-anchor-shift: -7px;
+    --poi-marker-shadow-color: rgba(0, 0, 0, 0.3);
+    --poi-marker-map-shadow: 0 1px 4px var(--poi-marker-shadow-color);
     /* Feature-marker label (DOM text below the dot, painted directly
      * on the basemap). Mirrors MAP_PAINT_TOKENS for trail labels:
      * dark text + white halo on light basemap, light text + dark
@@ -195,7 +212,8 @@
      * basemap tiles — drop shadow alone fades into the dark map.
      * Add a faint inner-edge ring (the second shadow) so the chip's
      * white border has some structural contrast against the basemap. */
-    --poi-marker-map-shadow: 0 1px 4px rgba(0, 0, 0, 0.5),
+    --poi-marker-shadow-color: rgba(0, 0, 0, 0.5);
+    --poi-marker-map-shadow: 0 1px 4px var(--poi-marker-shadow-color),
                               0 0 0 1px rgba(255, 255, 255, 0.1);
     --feature-label-color: #f0f0f0;
     --feature-label-halo: #000000;
@@ -1708,7 +1726,7 @@ body::after {
     display: flex;
     flex-direction: column;
     align-items: center;
-    transform: translateY(-7px);
+    transform: translateY(var(--poi-marker-label-anchor-shift));
     pointer-events: none;
 }
 
@@ -1718,9 +1736,12 @@ body::after {
     /* Allow the 2 px stroke and drop-shadow to extend beyond the
      * polygon's bounding box without being clipped to the SVG element. */
     overflow: visible;
-    /* Soft shadow lifts the chip off the basemap; same color family
-     * as .poi-marker's `--poi-marker-map-shadow`. */
-    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.35));
+    /* Soft shadow lifts the chip off the basemap. drop-shadow rather
+     * than box-shadow so the shadow follows the hexagon instead of its
+     * bounding rect; shares --poi-marker-shadow-color with .poi-marker
+     * so the two can't drift again (this was a hardcoded 0.35 against
+     * the token's 0.30). Dark mode follows automatically. */
+    filter: drop-shadow(0 1px 4px var(--poi-marker-shadow-color));
 }
 
 /* The hex polygon shape — fill comes from the per-map --hub-color
@@ -1742,32 +1763,21 @@ body::after {
  * sans-serif. */
 .hub-marker-letter {
     fill: var(--hub-text-color, #fff);
+    /* SVG USER UNITS, not CSS px — this text lives inside HUB_SVG's
+     * viewBox="0 0 24 24", so 12 means "half the glyph box" and scales
+     * with whatever size the <svg> is given. That's why the same markup
+     * serves the 24 px on-map chip, the Options swatch, and the finder
+     * row swatch with no per-context override.
+     *
+     * Deliberately NOT on the --poi-marker-font-* scale: those are
+     * absolute CSS px for DOM chips. Pinning this to 13px would break
+     * the proportion at every size except the default one. */
     font-size: 12px;
     font-weight: 700;
     font-family: inherit;
 }
 
-/* Hub name label — mirrors .feature-marker-label. DOM-rendered text
- * under the chip, with an 8-direction text-shadow stack for a 1 px
- * halo so glyphs read against any basemap. */
-.hub-marker-label {
-    margin-top: 3px;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.1;
-    color: var(--feature-label-color);
-    text-align: center;
-    white-space: nowrap;
-    text-shadow:
-        -1px -1px 0 var(--feature-label-halo),
-         1px -1px 0 var(--feature-label-halo),
-        -1px  1px 0 var(--feature-label-halo),
-         1px  1px 0 var(--feature-label-halo),
-         0   -1px 0 var(--feature-label-halo),
-         0    1px 0 var(--feature-label-halo),
-        -1px  0   0 var(--feature-label-halo),
-         1px  0   0 var(--feature-label-halo);
-}
+
 
 /* Toilets + drinking water — no popup wired (the marker IS the
  * signal). Mirror .trail-marker's pointer-events: none + cursor:
@@ -1821,29 +1831,20 @@ body::after {
  * basemap; the box-shadow lifts it a half-step off the map for
  * legibility. `pointer-events: none` lets clicks pass through to the
  * chip below (the chip is the popup trigger, not the label). */
+/* Event POI label — absolutely positioned rather than a flex child,
+ * because the event marker is a single icon rather than an icon+label
+ * column. Type treatment comes from the shared rule above; only the
+ * placement is special. Was a solid white chip (background, padding,
+ * 4 px radius, its own box-shadow); unified to the haloed-text language
+ * its siblings and the trail labels use. */
 .event-poi-marker-label {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 3px);
     left: 50%;
     transform: translateX(-50%);
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.92);
-    color: var(--sheet-text, #222);
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
     pointer-events: none;
 }
 
-/* Dark-scheme variant — semi-opaque dark pill with light text so the
- * label reads against a dark basemap. */
-[data-color-scheme="dark"] .event-poi-marker-label {
-    background: rgba(28, 28, 30, 0.92);
-    color: var(--sheet-text, #f0f0f0);
-}
 
 /* Description line under the popup-title for event POIs. Smaller
  * than the title, slightly muted, line-wraps cleanly inside the
@@ -1877,7 +1878,7 @@ body::after {
     display: flex;
     flex-direction: column;
     align-items: center;
-    transform: translateY(-7px);
+    transform: translateY(var(--poi-marker-label-anchor-shift));
     pointer-events: none;
 }
 
@@ -1890,14 +1891,26 @@ body::after {
     box-sizing: border-box;
 }
 
-/* Feature marker label — DOM-rendered text under the dot icon, sits
- * on the basemap. Light scheme: dark text + white halo (mirrors
- * MAP_PAINT_TOKENS.light for trail labels). Dark scheme: light
- * text + dark halo (mirrors MAP_PAINT_TOKENS.dark). The 8-direction
- * text-shadow stack fakes a 1 px halo around the glyphs since
- * text-stroke isn't reliable cross-browser. */
-.feature-marker-label {
-    margin-top: 3px;
+/* On-map DOM label text — ONE treatment for every marker label that
+ * sits directly on the basemap (feature dots, trail hubs, event POIs).
+ *
+ * Grouped deliberately. These were three separate rules; the feature and
+ * hub bodies were byte-for-byte identical, and the event label had
+ * drifted into a different design language entirely (a solid white chip
+ * with its own radius, background and shadow) plus a different text
+ * color, borrowed from --sheet-text. One rule makes that class of drift
+ * structurally impossible rather than merely discouraged.
+ *
+ * Light scheme: dark text + white halo (mirrors MAP_PAINT_TOKENS.light
+ * for the MapLibre trail labels, so DOM and GL text read as one system).
+ * Dark scheme: light text + dark halo. The 8-direction text-shadow stack
+ * fakes a 1 px halo because text-stroke isn't reliable cross-browser.
+ *
+ * Positioning is per-label and stays below; only the type treatment is
+ * shared. */
+.feature-marker-label,
+.hub-marker-label,
+.event-poi-marker-label {
     font-size: 11px;
     font-weight: 600;
     line-height: 1.1;
@@ -1913,6 +1926,12 @@ body::after {
          0    1px 0 var(--feature-label-halo),
         -1px  0   0 var(--feature-label-halo),
          1px  0   0 var(--feature-label-halo);
+}
+
+/* Feature + hub labels are flex-column children under their icon. */
+.feature-marker-label,
+.hub-marker-label {
+    margin-top: 3px;
 }
 
 /* ----- Popups ------------------------------------------------------ */
