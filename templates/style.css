@@ -1174,7 +1174,7 @@ body::after {
     background: var(--feature-color, #8e44ad);
     border: 2px solid var(--feature-ring-color, #fff);
     border-radius: 50%;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 4px var(--poi-marker-shadow-color);
     transform: translate(-50%, -50%);
     box-sizing: border-box;
     pointer-events: none;
@@ -1887,7 +1887,7 @@ body::after {
     height: 12px;
     border-radius: 50%;
     border: 2px solid var(--feature-ring-color, #fff);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 1px 4px var(--poi-marker-shadow-color);
     box-sizing: border-box;
 }
 
