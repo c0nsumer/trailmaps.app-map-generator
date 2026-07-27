@@ -165,9 +165,9 @@ self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "RESUME_PRECACHE") {
         backgroundPrecache();
     }
-    // Offline-readiness query for the Options status row. The page
-    // transfers a MessagePort and we answer on it, so there's no need to
-    // enumerate clients or broadcast to every open tab.
+    // Offline-readiness query for the About modal's Offline row. The
+    // page transfers a MessagePort and we answer on it, so there's no
+    // need to enumerate clients or broadcast to every open tab.
     if (event.data && event.data.type === "PRECACHE_STATUS") {
         const port = event.ports && event.ports[0];
         if (port) reportPrecacheStatus(port);

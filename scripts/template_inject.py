@@ -651,11 +651,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
         else ""
     )
     config_obj["dataDate"] = config.get("_data_date", "")
-    # Engine app version ("v<commit count>", commit date), shown in the
-    # About modal's App row as "trailmaps.app Map Generator v294
-    # (2026-07-17)". See _engine_app_version for the derivation and why
-    # it keys off templates/ instead of HEAD. Empty strings (git
-    # unavailable) leave the row as just the linked generator name.
+    # Engine app version (bare commit count, commit date), shown in the
+    # About modal's App row as "v294 (2026-07-17)". See
+    # _engine_app_version for the derivation and why it keys off
+    # templates/ instead of HEAD. Empty strings (git unavailable) make
+    # the runtime omit the row.
     config_obj["appVersion"], config_obj["appVersionDate"] = _engine_app_version()
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
     # Build-time scan for trail-property gates that surface Options
