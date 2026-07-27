@@ -442,29 +442,30 @@
                         </div>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-difficulty" data-poi="difficulty" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented opt-toggle-row-haskey" id="toggle-difficulty" data-poi="difficulty" aria-pressed="true">
                         <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
                         <span class="opt-toggle-row-label">Difficulty</span>
                         <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Difficulty">
                             <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
                             <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
                         </div>
+                        <!-- Difficulty rating key. The row's swatch shows one
+                             representative diamond; this names the actual IMBA
+                             ratings so a first-time visitor can read the on-map
+                             glyphs. Filled by app.js's buildDifficultyKey() from
+                             CONFIG.difficultyRatings (a build-time scan) so it
+                             lists only the ratings this map carries, and revealed
+                             only once a glyph lands.
+
+                             INSIDE the row, wrapping onto a second line via
+                             .opt-toggle-row-haskey. An earlier version made it a
+                             sibling to stop taps from flipping the toggle, but
+                             that cost the row its hover wash and its tap target
+                             over the key area, so the key read as a dead region.
+                             Being part of the row is the correct behaviour: one
+                             hover target, one tap target. -->
+                        <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty ratings"></ul>
                     </div>
-
-                    <!-- Difficulty rating key. The Difficulty row above
-                         shows one representative diamond; this names the
-                         actual IMBA ratings so a first-time visitor can
-                         read the on-map glyphs. Filled by app.js's
-                         buildDifficultyKey() from CONFIG.difficultyRatings
-                         (build-time scan) so it lists only the ratings this
-                         map carries, and revealed only once a glyph lands.
-
-                         Deliberately a SIBLING of the toggle row, not a
-                         child: wirePeekToggle() adds
-                         .opt-toggle-row-clickable, making the whole row a
-                         toggle target, so a tap on the key would flip
-                         Difficulty off. -->
-                    <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty ratings"></ul>
 
                     <!-- Direction arrows — controls visibility of the
                          decor-arrow MapLibre layer (chevrons placed

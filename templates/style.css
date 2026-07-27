@@ -597,21 +597,35 @@ body::after {
 
 /* ----- Symbol key strips (Difficulty ratings) ----------------------
  *
- * A wrapped grid of glyph + name pairs, rendered as a sibling directly
- * below the toggle row whose symbols it explains. Indented to line up
- * with that row's label rather than its swatch, so it reads as a
- * continuation of the row and not as a new control.
+ * A wrapped grid of glyph + name pairs living INSIDE the toggle row whose
+ * symbols it explains, on a second line. Indented to line up with that
+ * row's label rather than its swatch, so it reads as a continuation of
+ * the row rather than a new control.
+ *
+ * It has to be inside the row, not a sibling: the row carries the hover
+ * wash and the whole-row tap target (.opt-toggle-row-clickable), and a
+ * key sitting outside it looked and behaved like a dead region.
  *
  * Populated by app.js (buildDifficultyKey); ships hidden and is
  * revealed only once at least one glyph is in place. */
 .opt-key-strip {
+    /* Forces its own line inside the wrapping row. */
+    flex: 0 0 100%;
     display: flex;
     flex-wrap: wrap;
     gap: 4px 14px;
-    /* 10px row padding + 28px swatch + 12px row gap = label edge. */
-    margin: -2px 10px 8px 50px;
+    /* 28px swatch + 12px row gap = aligned under the row's label. */
+    margin: 2px 0 0 40px;
     padding: 0;
     list-style: none;
+}
+
+/* Rows carrying a key strip wrap so the strip lands on its own line.
+ * Scoped to a modifier rather than added to .opt-toggle-row, which ~13
+ * other rows share and where wrapping could drop a segmented pill onto a
+ * second line on a narrow screen. */
+.opt-toggle-row-haskey {
+    flex-wrap: wrap;
 }
 
 .opt-key-item {
@@ -639,10 +653,8 @@ body::after {
 }
 
 /* Follow the row's off state: when Difficulty is toggled off the glyphs
- * aren't on the map, so the key recedes with the row it belongs to.
- * Adjacent-sibling selector, which is exactly the DOM relationship the
- * markup guarantees. */
-.opt-toggle-row[aria-pressed="false"] + .opt-key-strip {
+ * aren't on the map, so the key recedes with the row it belongs to. */
+.opt-toggle-row[aria-pressed="false"] .opt-key-strip {
     opacity: 0.45;
 }
 

@@ -698,8 +698,8 @@ function difficultyIconDataUrl(imba) {
 
 // Fill in the difficulty rating key under the Options Difficulty row:
 // one glyph + official IMBA name per rating THIS map actually carries
-// (CONFIG.difficultyRatings, a build-time scan of mtb:scale:imba values
-// — see the trail-property scan in template_inject.py). Reuses
+// (CONFIG.difficultyRatings, a build-time scan of mtb:scale:imba values;
+// see the trail-property scan in template_inject.py). Reuses
 // difficultyIconDataUrl so the key and the on-map diamonds are the same
 // canvas render and can't drift apart.
 //
@@ -708,6 +708,12 @@ function difficultyIconDataUrl(imba) {
 // markup and is revealed only after at least one glyph lands, so a map
 // with an out-of-range tag value (imba=7 → working toggle, no drawable
 // rating) shows no empty strip.
+//
+// The strip lives INSIDE the toggle row (wrapping onto a second line) so
+// the row's hover wash and whole-row tap target cover it. It was briefly
+// a sibling, to stop a tap on the key from flipping the toggle, but that
+// left the key area inert on both hover and click, reading as dead
+// space. Toggling from the key is the correct behavior.
 //
 // The glyphs are scheme-independent (fixed fills + a white halo, see
 // drawDifficultyShape), so unlike chevronIconDataUrl below this needs no
