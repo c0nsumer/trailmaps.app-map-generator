@@ -1308,16 +1308,17 @@ def _validate_welcome(report, config):
     """Validate the optional `welcome` key.
 
     Three forms are accepted:
-      - omitted: framework default welcome modal renders
-      - false: welcome modal is suppressed entirely
+      - omitted: framework default welcome modal auto-opens on first visit
+      - false: first-visit auto-open is suppressed (the modal stays
+        reachable via the Options overlay's "How to use this map" row)
       - dict with optional title/body/show_controls_hint
     """
     welcome = config.get("welcome")
     if welcome is None:
         return
     if isinstance(welcome, bool):
-        # Only `false` is meaningful (disable). `true` is harmless
-        # but redundant — the welcome already renders by default —
+        # Only `false` is meaningful (no auto-open). `true` is harmless
+        # but redundant — the welcome already auto-opens by default —
         # so accept silently.
         return
     if not isinstance(welcome, dict):

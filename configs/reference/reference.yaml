@@ -361,7 +361,9 @@ relations:
 # About modal
 # ============================================================
 
-# Optional description / curator / links shown in the About modal.
+# Optional description / curator / links. `description` is the map's one
+# descriptive text and renders in the Welcome/Help modal; the About modal is
+# the technical surface (curator, links, versions, credits, offline status).
 # about:
 #   description: |
 #     Description text.
@@ -376,13 +378,14 @@ relations:
 # Welcome modal
 # ============================================================
 
-# First-visit modal. Omit for the default hint, false to suppress, or a dict
-# with optional title / body / show_controls_hint.
+# Welcome/Help modal: auto-opens on first visit, and reopens any time from
+# the Options overlay's "How to use this map" row. Omit for the default
+# content, false to suppress the first-visit auto-open (the Help row still
+# works), or a dict with optional title / body / show_controls_hint.
 #
-# `body` defaults to `about.description` — the map is described once, in About,
-# and the Welcome modal reuses it. Set `body` only when the first-visit text
-# should differ from the About text (an event map's "course opens at 9am"
-# belongs in Welcome, not About).
+# `body` defaults to `about.description` — the map is described once and this
+# modal shows it. Set `body` only when the text should differ from the
+# description (an event map's "course opens at 9am" belongs here).
 # welcome:
 #   title: ""
 #   body: |

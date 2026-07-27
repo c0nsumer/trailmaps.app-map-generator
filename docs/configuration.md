@@ -318,13 +318,13 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `about` | No | none | Object with optional `description`, `curator`, `links` keys. See [About this map block](#about-this-map-block). |
+| `about` | No | none | Object with optional `description`, `curator`, `links` keys. `description` renders in the Welcome/Help modal; the rest renders in the About modal, the technical surface. See [About this map block](#about-this-map-block). |
 
 ### Welcome modal
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `welcome` | No | framework default | First-visit modal. Three forms: omit (default controls hint), `false` (suppress entirely), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` defaults to `about.description`, so the map is described once and both modals reuse it; set `body` only when the first-visit text should differ from the About text (an event map's "course opens at 9am" belongs in Welcome, not About). Dismissal persists per-map in `localStorage`. |
+| `welcome` | No | framework default | Welcome/Help modal: auto-opens on first visit, and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` defaults to `about.description`, so the map is described once and this modal shows it; set `body` only when the text should differ from the description (an event map's "course opens at 9am" belongs here). The `title` applies to the first-visit auto-open; opened from the Help row, the modal is titled "How to use this map" to match the row. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
 
 ### Output
 
@@ -919,12 +919,19 @@ the appropriate link:
 
 ## About this map block
 
-The Options overlay includes an **About this map** action row (below Share and
-Install when those are visible). Tapping it opens a modal with information about
-the map. The modal header shows the map **title** on the left and, when `logo:`
-(or `icon:` as fallback) is configured, the brand **logo** on the right. The
-`about` YAML block is optional; when omitted, the modal still renders the
-always-on "Built with" section (data + build dates, framework credits).
+The Options overlay includes an **About this map** action row (below Share,
+Install, and **How to use this map**, when those are visible). Tapping it opens
+the map's technical modal: curator, related links, offline readiness, versions,
+and credits. The modal header shows the map **title** on the left and, when
+`logo:` (or `icon:` as fallback) is configured, the brand **logo** on the
+right. The `about` YAML block is optional; when omitted, the modal still
+renders the always-on "Built with" section (data + build dates, framework
+credits).
+
+The `description` key is authored here but renders in the Welcome/Help modal
+(the first-visit greeting, reopenable from the **How to use this map** row),
+not in About — the map is described once, and the descriptive and technical
+surfaces stay distinct.
 
 ```yaml
 about:
@@ -945,7 +952,7 @@ about:
 
 | Key | Required | Description |
 |---|---|---|
-| `description` | No | Paragraph of prose shown near the top of the modal. `\|`-style multi-line blocks preserve newlines. |
+| `description` | No | The map's descriptive prose, shown in the Welcome/Help modal (it doubles as the default `welcome.body`). `\|`-style multi-line blocks preserve newlines; blank lines separate paragraphs. |
 | `curator` | No | Single `{name, url}` object rendered under a "Map Curator" header. The name appears on the next line, as a hyperlink when `url` is set and plain text otherwise. |
 | `links` | No | List of `{label, url}` entries rendered as a bulleted list under a "More info" header: trail-system pages, club pages, a source repo, and so on. YAML order is the render order. |
 

@@ -3228,67 +3228,107 @@ async function init() {
     // About This Map modal
     initAbout();
 
-    // First-visit welcome modal (A.2). Self-suppresses after the first
-    // dismiss via localStorage flag. Per-map flag (key includes slug) so
-    // a user who's seen one map's welcome still sees another map's.
+    // Welcome / Help modal (A.2). Auto-opens on the first visit only
+    // (localStorage flag, per-map via the LS key prefix so a user
+    // who's seen one map's welcome still sees another map's), and
+    // stays reachable afterwards through the Options overlay's
+    // "How to use this map" row.
     initWelcomeModal();
 }
 
 // ============================================================
-// First-visit welcome modal (A.2)
+// Welcome / Help modal (A.2)
 // ============================================================
 //
 // Bridges the gap between landing on the map and understanding the
 // FAB stack / routes-vs-trails distinction / where the About button
-// lives. Shown ONCE per map per browser; dismissal stored in
+// lives. Auto-opens ONCE per map per browser; dismissal stored in
 // localStorage under `mtb.welcomed`. The LS helper already
 // per-map-prefixes every key with `<slug>.`, so this becomes
 // `<slug>.mtb.welcomed` on disk, no need to put the slug in the
-// key body. Subsequent visits skip it entirely (no flicker).
+// key body. Subsequent visits skip the auto-open (no flicker), but
+// the same modal reopens on demand from the Options overlay's
+// "How to use this map" row — the controls guide must not be a
+// one-shot.
 //
 // The body copy is built from CONFIG so it reflects the actual
 // features available on the current map (routes vs trails sections,
 // share button, install affordance) rather than describing things
 // that aren't there.
+const WELCOMED_FLAG_KEY = "mtb.welcomed";
+
 function initWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (!modal) return;
-    // Welcome can be suppressed entirely per-map by setting
-    // `welcome: false` in the YAML, useful for embeds or maps
-    // where the curator doesn't want a first-visit overlay.
+
+    const closeBtn = document.getElementById("welcome-modal-close");
+    const cta = document.getElementById("welcome-modal-cta");
+    if (closeBtn) closeBtn.addEventListener("click", dismissWelcomeModal);
+    if (cta) cta.addEventListener("click", dismissWelcomeModal);
+    // Escape lives in the consolidated document-level handler (with
+    // About / Options / Search) so a Help-opened modal sitting over
+    // the Options overlay closes one layer per press instead of
+    // collapsing the whole stack on a single keystroke.
+
+    // On-demand reopen. Wired even when `welcome: false` — that flag
+    // means "don't interrupt on first visit", not "this map has no
+    // help".
+    const helpBtn = document.getElementById("help-btn");
+    if (helpBtn) {
+        helpBtn.addEventListener("click", () => openWelcomeModal("help"));
+    }
+
+    // First-visit auto-open, suppressible per-map via `welcome: false`
+    // in the YAML (embeds, maps where the curator doesn't want a
+    // first-visit overlay).
     if (CONFIG.welcome === false) return;
-    const flagKey = "mtb.welcomed";
-    if (LS.get(flagKey) === true) return;
+    if (LS.get(WELCOMED_FLAG_KEY) === true) return;
+    // Open on the next frame so the floating chrome has settled into
+    // place first (otherwise the modal can flash before the brand +
+    // FAB stack render on slow first paints).
+    requestAnimationFrame(() => openWelcomeModal("welcome"));
+}
+
+// `source` distinguishes the first-visit auto-open ("welcome",
+// greeting title) from the Options Help row ("help", titled to match
+// the row that opened it). Content is identical either way and is
+// rebuilt on every open, which keeps the reopen path exercising the
+// same dynamic copy (search targets, GPX rows) as the first visit.
+function openWelcomeModal(source) {
+    const modal = document.getElementById("welcome-modal");
+    if (!modal) return;
 
     const welcome = (CONFIG.welcome && typeof CONFIG.welcome === "object")
         ? CONFIG.welcome : {};
     const showControlsHint = welcome.show_controls_hint !== false;
 
     const titleEl = document.getElementById("welcome-modal-title");
-    const bodyEl = document.getElementById("welcome-modal-body");
-    const closeBtn = document.getElementById("welcome-modal-close");
-    const cta = document.getElementById("welcome-modal-cta");
-
     if (titleEl) {
-        titleEl.textContent = welcome.title
-            || `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`;
+        titleEl.textContent = source === "help"
+            ? "How to use this map"
+            : (welcome.title
+                || `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`);
     }
 
-    // Body assembly. Three optional sections, each rendered only
-    // when there's something to say. Curator content first (so the
-    // map-specific intro reads as the headline), then the controls
-    // hint (skippable via show_controls_hint: false if the curator
-    // explained the controls in body), then the sober attribution
-    // footer (always, both legal cover and a thoughtful
-    // acknowledgment). All curator-supplied strings rendered as
-    // textContent to keep XSS surface minimal.
+    // Body assembly. Curator content first (so the map-specific intro
+    // reads as the headline), then the controls hint (skippable via
+    // show_controls_hint: false if the curator explained the controls
+    // in body). All curator-supplied strings rendered as textContent
+    // to keep XSS surface minimal.
+    const bodyEl = document.getElementById("welcome-modal-body");
     if (bodyEl) {
         bodyEl.innerHTML = "";
 
-        if (welcome.body) {
+        // Build-time resolution already defaults `welcome.body` from
+        // `about.description`; the runtime falls back to the raw
+        // description too so a `welcome: false` map (whose body is
+        // never resolved at build time) still shows its text when
+        // opened from the Help row.
+        const bodyText = welcome.body || (CONFIG.about || {}).description || "";
+        if (bodyText) {
             // Split body into paragraphs on blank lines so YAML's
             // `|` block scalar reads naturally without HTML.
-            const paragraphs = welcome.body.split(/\n\s*\n/);
+            const paragraphs = bodyText.split(/\n\s*\n/);
             for (const para of paragraphs) {
                 const text = para.trim();
                 if (!text) continue;
@@ -3304,31 +3344,23 @@ function initWelcomeModal() {
         }
     }
 
-    function dismissWelcome() {
-        LS.set(flagKey, true);
-        modal.classList.add("hidden");
-        syncModalOpenClass();
-    }
+    modal.classList.remove("hidden");
+    syncModalOpenClass();
+}
 
-    if (closeBtn) closeBtn.addEventListener("click", dismissWelcome);
-    if (cta) cta.addEventListener("click", dismissWelcome);
+// Dismissal marks the map welcomed regardless of how the modal was
+// opened — a rider who reached it via Help has either already seen
+// the first-visit showing or no longer needs it.
+function dismissWelcomeModal() {
+    LS.set(WELCOMED_FLAG_KEY, true);
+    const modal = document.getElementById("welcome-modal");
+    if (modal) modal.classList.add("hidden");
+    syncModalOpenClass();
+}
 
-    // Escape key dismisses too, matches About modal behavior so the
-    // keyboard pattern is consistent.
-    function onKeydown(e) {
-        if (e.key === "Escape" && !modal.classList.contains("hidden")) {
-            dismissWelcome();
-        }
-    }
-    document.addEventListener("keydown", onKeydown);
-
-    // Show the modal on the next frame so the floating chrome has
-    // settled into place first (otherwise the modal can flash before
-    // the brand + FAB stack render on slow first paints).
-    requestAnimationFrame(() => {
-        modal.classList.remove("hidden");
-        syncModalOpenClass();
-    });
+function isWelcomeOpen() {
+    const modal = document.getElementById("welcome-modal");
+    return !!modal && !modal.classList.contains("hidden");
 }
 
 // MDI SVG paths for the welcome controls hint. Same paths as the
@@ -3468,7 +3500,11 @@ function _welcomeOptionsDescription() {
     ];
     if (CONFIG.shareButton) items.push("share the view");
     if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
-    items.push("see info about this map");
+    // The two informational rows at the tail of Options: the Help row
+    // that reopens this very modal (worth telling a first-visit rider
+    // the guide isn't a one-shot) and the technical About modal.
+    items.push("reopen this guide");
+    items.push("see technical info about this map");
     // Capitalize the first letter of the joined imperative list so
     // it reads as a sentence; final period anchors it.
     const joined = _joinHumanList(items);
@@ -3598,11 +3634,16 @@ function syncModalOpenClass() {
 function openAboutModal() {
     document.getElementById("about-modal").classList.remove("hidden");
     syncModalOpenClass();
+    // Offline-readiness row is live only while the modal is up. Every
+    // close path (X, backdrop, Escape) funnels through closeAboutModal,
+    // so the stop side can't leak the interval.
+    startOfflineStatusPolling();
 }
 
 function closeAboutModal() {
     document.getElementById("about-modal").classList.add("hidden");
     syncModalOpenClass();
+    stopOfflineStatusPolling();
 }
 
 // Build an external link for the About modal. Validates the URL
@@ -3677,12 +3718,10 @@ function buildAboutModalContent() {
 
     const about = CONFIG.about || {};
 
-    // Description
-    if (about.description) {
-        const p = document.createElement("p");
-        p.textContent = about.description;
-        body.appendChild(p);
-    }
+    // No description here: the map's descriptive text is the Welcome /
+    // Help modal's content (reachable any time via the Options Help
+    // row). About is the technical surface — provenance, versions,
+    // credits, offline state.
 
     // Map Curator \u2014 h3 section with the curator's name on the next
     // line (optionally linked). "Curator" rather than "Author"
@@ -7700,11 +7739,6 @@ function setupFloatingChrome() {
             if (btn) btn.setAttribute("aria-pressed", "true");
         } else {
             overlay.classList.remove("is-open");
-            // Single choke point for stopping the offline-status poll:
-            // several paths close Options without going through
-            // closeOptionsOverlay (openSearchOverlay, the Esc chain, a
-            // backdrop tap), and each would otherwise leak the interval.
-            if (overlay === optionsOverlay) stopOfflineStatusPolling();
             if (btn) {
                 btn.setAttribute("aria-pressed", "false");
                 // Drop focus from the trigger. Chrome (unlike
@@ -7778,11 +7812,6 @@ function setupFloatingChrome() {
             setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(optionsOverlay, optionsBtn, true);
-        // Offline-readiness row is live only while the panel is up.
-        // (The stop side lives in setOverlayOpen, which every close path
-        // goes through — openSearchOverlay and the Esc handler close
-        // Options directly, bypassing closeOptionsOverlay.)
-        startOfflineStatusPolling();
     }
     function closeOptionsOverlay() {
         setOverlayOpen(optionsOverlay, optionsBtn, false);
@@ -7963,21 +7992,28 @@ function setupFloatingChrome() {
         });
     }
 
-    // When the About modal is up, the overlay Escape handlers must
-    // stand down, About sits on top of everything and owns the
-    // foreground. Without this guard a stray Escape would close the
-    // overlay behind the modal silently.
+    // When the About or Welcome/Help modal is up, the overlay Escape
+    // handlers must stand down, the modal sits on top of everything
+    // and owns the foreground. Without this guard a stray Escape
+    // would close the overlay behind the modal silently.
     function isAboutOpen() {
         const aboutModal = document.getElementById("about-modal");
         return aboutModal && !aboutModal.classList.contains("hidden");
     }
 
     // Escape = dismiss topmost state, one press at a time. Priority
-    // order: About modal > Options overlay > Search overlay >
-    // highlight. Consolidated handler so we don't have multiple
-    // listeners racing on the same keystroke.
+    // order: Welcome/Help modal > About modal > Options overlay >
+    // Search overlay > highlight. Consolidated handler so we don't
+    // have multiple listeners racing on the same keystroke. Welcome
+    // outranks About only nominally — the two modals never stack —
+    // but both must outrank the overlays: either can be opened from
+    // the Options rows and sit over the still-open panel.
     document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
+        if (isWelcomeOpen()) {
+            dismissWelcomeModal();
+            return;
+        }
         if (isAboutOpen()) {
             closeAboutModal();
             return;
@@ -8018,9 +8054,10 @@ function setupFloatingChrome() {
         const t = e.target;
         if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
                   t.tagName === "SELECT" || t.isContentEditable)) return;
-        // About sits on top of everything; opening search under it
-        // would be invisible. Same guard the Escape handler uses.
-        if (isAboutOpen()) return;
+        // The About and Welcome/Help modals sit on top of everything;
+        // opening search under them would be invisible. Same guards
+        // the Escape handler uses.
+        if (isAboutOpen() || isWelcomeOpen()) return;
         if (searchOverlay && searchOverlay.classList.contains("is-open")) {
             return;
         }
@@ -9894,7 +9931,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 }
 
 // ============================================================
-// Offline readiness status (Options row)
+// Offline readiness status (About modal row)
 // ============================================================
 //
 // Answers "can I use this map away from signal?", which nothing else in
@@ -9986,9 +10023,9 @@ async function refreshOfflineStatus() {
     row.classList.remove("hidden");
 }
 
-// Poll only while Options is open — there's no value in watching this
-// while the panel is shut, and each incomplete poll costs the worker a
-// cache.match per precache URL. Stops for good once saved.
+// Poll only while the About modal is open — there's no value in
+// watching this while it's shut, and each incomplete poll costs the
+// worker a cache.match per precache URL. Stops for good once saved.
 function startOfflineStatusPolling() {
     refreshOfflineStatus();
     if (_offlineStatusTimer || _offlineStatusSettled) return;

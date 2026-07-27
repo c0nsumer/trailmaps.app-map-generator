@@ -737,42 +737,25 @@
                     </button>
                     <!-- PWA end -->
 
-                    <!-- PWA start -->
-                    <!-- Offline readiness. The initial-load progress bar
-                         cannot answer this: it hides once the opening
-                         viewport is painted, while offline use needs the
-                         whole basemap + terrain archives, which Range
-                         requests never cache (see reportPrecacheStatus in
-                         sw.js). A rider can watch the bar finish, see a
-                         complete map, and still have no tile coverage.
-
-                         Ships hidden and stays hidden unless the service
-                         worker returns a real answer — no controller yet,
-                         no storage, or an unknown total all leave it out
-                         rather than claiming something. Report only: the
-                         precache already resumes on every page load, so
-                         there is nothing here for a rider to trigger.
-                         Wired by setupOfflineStatus() in app.js. -->
-                    <!-- No aria-live: the percentage refreshes every couple
-                         of seconds while Options is open, and announcing
-                         each tick would be noise. The row reads normally
-                         when a screen-reader user navigates to it. -->
-                    <div id="offline-status" class="opt-action-row is-static hidden">
+                    <!-- Help. Reopens the Welcome/Help modal on demand —
+                         the controls guide must not be a one-shot locked
+                         behind the first-visit auto-open. Title matches
+                         the modal's section heading word for word, and
+                         avoids "Get help", which on a trail map carries
+                         an unwanted emergency/SOS reading. -->
+                    <button id="help-btn" class="opt-action-row" type="button">
                         <span class="opt-action-icon" aria-hidden="true">
-                            <!-- mdi:cloud-download-outline (Apache 2.0, Pictogrammers).
-                                 Deliberately state-neutral: the help line
-                                 carries the state, so the icon never has to
-                                 contradict it mid-download. -->
+                            <!-- mdi:help-circle-outline (Apache 2.0,
+                                 Pictogrammers). Pairs with the About row's
+                                 information-outline sibling. -->
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M6.5,20Q4.22,20 2.61,18.43 1,16.85 1,14.58 1,12.63 2.17,11.1 3.35,9.57 5.25,9.15 5.88,6.85 7.75,5.43 9.63,4 12,4 14.93,4 16.96,6.04 19,8.07 19,11 20.73,11.2 21.86,12.5 23,13.78 23,15.5 23,17.38 21.69,18.69 20.38,20 18.5,20H13Q12.18,20 11.59,19.41 11,18.83 11,18V12.85L9.4,14.4L8,13L12,9L16,13L14.6,14.43L13,12.85V18H18.5Q19.55,18 20.27,17.27 21,16.55 21,15.5 21,14.45 20.27,13.73 19.55,13 18.5,13H17V11Q17,8.93 15.54,7.46 14.08,6 12,6 9.93,6 8.46,7.46 7,8.93 7,11H6.5Q5.05,11 4.03,12.03 3,13.05 3,14.5 3,15.95 4.03,16.98 5.05,18 6.5,18H9V20H6.5Z"/>
+                                <path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z"/>
                             </svg>
                         </span>
                         <span class="opt-action-text">
-                            <span class="opt-action-title">Offline map</span>
-                            <span class="opt-action-help" id="offline-status-help"></span>
+                            <span class="opt-action-title">How to use this map</span>
                         </span>
-                    </div>
-                    <!-- PWA end -->
+                    </button>
 
                     <button id="about-btn" class="opt-action-row" type="button">
                         <span class="opt-action-icon" aria-hidden="true">
@@ -795,11 +778,13 @@
         </div>
     </div>
 
-    <!-- Welcome modal — first-visit only. Reuses about-modal styling for
-         consistency (same backdrop + content card + close button). The
-         body is built by app.js so the per-map title (CONFIG.title) and
-         features (gated by show_trails / share_button /
-         pwa_install_prompt) are reflected in the copy. -->
+    <!-- Welcome / Help modal — auto-opens on first visit, reopenable
+         any time from the Options overlay's "How to use this map" row.
+         Reuses about-modal styling for consistency (same backdrop +
+         content card + close button). The body is built by app.js so
+         the per-map title (CONFIG.title) and features (gated by
+         show_trails / share_button / pwa_install_prompt) are
+         reflected in the copy. -->
     <div id="welcome-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
         <div class="about-modal-backdrop"></div>
         <div class="about-modal-content">
@@ -827,6 +812,48 @@
             </button>
             <h2 id="about-modal-title"></h2>
             <div id="about-modal-body"></div>
+            <!-- PWA start -->
+            <!-- Offline readiness. The initial-load progress bar
+                 cannot answer this: it hides once the opening
+                 viewport is painted, while offline use needs the
+                 whole basemap + terrain archives, which Range
+                 requests never cache (see reportPrecacheStatus in
+                 sw.js). A rider can watch the bar finish, see a
+                 complete map, and still have no tile coverage.
+
+                 Lives here (not the Options overlay) because it's
+                 device-state diagnostics, the About modal's beat.
+                 Static sibling of the JS-rebuilt body/tail divs so
+                 buildAboutModalContent's innerHTML resets can't
+                 clobber it.
+
+                 Ships hidden and stays hidden unless the service
+                 worker returns a real answer — no controller yet,
+                 no storage, or an unknown total all leave it out
+                 rather than claiming something. Report only: the
+                 precache already resumes on every page load, so
+                 there is nothing here for a rider to trigger.
+                 Wired by refreshOfflineStatus() in app.js. -->
+            <!-- No aria-live: the percentage refreshes every couple
+                 of seconds while About is open, and announcing
+                 each tick would be noise. The row reads normally
+                 when a screen-reader user navigates to it. -->
+            <div id="offline-status" class="opt-action-row is-static hidden">
+                <span class="opt-action-icon" aria-hidden="true">
+                    <!-- mdi:cloud-download-outline (Apache 2.0, Pictogrammers).
+                         Deliberately state-neutral: the help line
+                         carries the state, so the icon never has to
+                         contradict it mid-download. -->
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M6.5,20Q4.22,20 2.61,18.43 1,16.85 1,14.58 1,12.63 2.17,11.1 3.35,9.57 5.25,9.15 5.88,6.85 7.75,5.43 9.63,4 12,4 14.93,4 16.96,6.04 19,8.07 19,11 20.73,11.2 21.86,12.5 23,13.78 23,15.5 23,17.38 21.69,18.69 20.38,20 18.5,20H13Q12.18,20 11.59,19.41 11,18.83 11,18V12.85L9.4,14.4L8,13L12,9L16,13L14.6,14.43L13,12.85V18H18.5Q19.55,18 20.27,17.27 21,16.55 21,15.5 21,14.45 20.27,13.73 19.55,13 18.5,13H17V11Q17,8.93 15.54,7.46 14.08,6 12,6 9.93,6 8.46,7.46 7,8.93 7,11H6.5Q5.05,11 4.03,12.03 3,13.05 3,14.5 3,15.95 4.03,16.98 5.05,18 6.5,18H9V20H6.5Z"/>
+                    </svg>
+                </span>
+                <span class="opt-action-text">
+                    <span class="opt-action-title">Offline map</span>
+                    <span class="opt-action-help" id="offline-status-help"></span>
+                </span>
+            </div>
+            <!-- PWA end -->
             <div id="about-modal-tail"></div>
         </div>
     </div>
