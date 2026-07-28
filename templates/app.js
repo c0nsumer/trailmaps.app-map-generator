@@ -10201,10 +10201,19 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     // Auto-dismissing, informational, nothing to tap: the retroactive
     // explanation for anyone who missed the "Updating map" bar,
     // doubling as the good news that the data is current.
+    //
+    // The showToast call is deferred to a microtask because this block
+    // runs during script evaluation, before the toast section's `let`
+    // state further down the file has initialized. Calling it inline
+    // hits the temporal dead zone (a ReferenceError that the try/catch
+    // here would swallow), leaving a toast that's visible but has no
+    // auto-dismiss timer and no tap-to-dismiss listener — stuck until
+    // reload. The microtask runs once the whole script has evaluated,
+    // so the toast still appears before first paint.
     try {
         if (window.sessionStorage.getItem(SW_UPDATED_FLAG) === "1") {
             window.sessionStorage.removeItem(SW_UPDATED_FLAG);
-            showToast("Map updated to the latest version.");
+            queueMicrotask(() => showToast("Map updated to the latest version."));
         }
     } catch (_) { /* private mode: no flag, no toast */ }
 }
