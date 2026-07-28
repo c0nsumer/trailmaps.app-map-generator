@@ -568,7 +568,6 @@ scripts/            (abridged; supporting modules not listed)
   compute_route_stats.py     Per-route distance + USGS 3DEP elevation
   osm_diff.py         Diff a trail re-fetch against the previous snapshot
   tagging_report.py   OSM data-quality notes (gaps, not style preferences)
-  compare_elevation_sources.py  Diagnostic for elevation source comparisons
 
 templates/
   index.html          Map viewer page

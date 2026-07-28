@@ -115,16 +115,15 @@ the values may not match what you'd get from a phone or GPS device:
    Different methodologies, different results. Neither is "ground truth"; ground
    truth would require a survey-grade traverse.
 
-## Diagnostic tool
+## Historical note: the source-comparison tool
 
-`scripts/compare_elevation_sources.py` is kept in the repo as a permanent
-diagnostic. It can fetch elevations from multiple sources for the same routes
-and print a side-by-side comparison. Use it if a future alternative source
-becomes interesting, or if a specific map's numbers look suspect:
-
-```bash
-.venv/bin/python scripts/compare_elevation_sources.py --config configs/<slug>/<slug>.yaml --source 3dep
-```
-
-It has its own cache directory (`cache/comparison/`) so it never interferes with
-production builds.
+The elevation source was chosen with a since-removed diagnostic,
+`scripts/compare_elevation_sources.py`, which fetched the same routes from
+multiple sources and printed a side-by-side comparison. It was deleted in
+July 2026 after drifting out of sync with the production pipeline in ways
+that would have skewed any rerun (it read post-subway-expansion geometry
+without filtering stub features, never chained segments, and used the
+pre-hysteresis gain/loss algorithm). If a future alternative source becomes
+interesting, resurrect it from git history and re-align it with
+`compute_route_stats.py` first — or better, prototype the comparison against
+`compute_route_stats`' own helpers so the numbers are the shipped numbers.
