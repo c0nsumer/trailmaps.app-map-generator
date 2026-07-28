@@ -112,6 +112,10 @@ if [ ${#configs[@]} -eq 0 ]; then
     for d in "${CONFIGS_DIR}"/*/; do
         name="$(basename "$d")"
         [ "$name" = "example" ] && continue
+        # reference.yaml validates cleanly (it's the annotated schema),
+        # so without this skip a bare run would build the placeholder
+        # relation and rsync a junk "reference" map to production.
+        [ "$name" = "reference" ] && continue
         # Each map folder is expected to contain <slug>.yaml; skip any
         # stray directory that doesn't.
         [ -f "${CONFIGS_DIR}/${name}/${name}.yaml" ] || continue
