@@ -17,7 +17,12 @@ from datetime import datetime
 
 import console
 from event_mode import _apply_event_mode_to_relations
-from font_trimmer import copy_trimmed_fonts
+from font_trimmer import (
+    check_webfont_coverage,
+    collect_text_from_config,
+    collect_text_from_geojson,
+    copy_trimmed_fonts,
+)
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
@@ -1257,6 +1262,44 @@ def copy_assets(config, output_dir):
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
     copy_trimmed_fonts(output_dir, fonts_src)
+
+    # Self-hosted UI webfont - DOM chrome text (the PBF fonts above are
+    # map-canvas glyphs; these are @font-face files for HTML/CSS). Copied
+    # verbatim minus the .coverage.json sidecars, which are build-side
+    # metadata for the coverage check below and must not ship. The SW
+    # precache walk picks up whatever lands here automatically. Stale dir
+    # removed first so renaming/removing an asset drops it from output.
+    webfonts_src = os.path.join(project_root, "assets", "webfonts")
+    webfonts_dst = os.path.join(output_dir, "webfonts")
+    if os.path.isdir(webfonts_dst):
+        shutil.rmtree(webfonts_dst)
+    if os.path.isdir(webfonts_src):
+        os.makedirs(webfonts_dst)
+        copied = 0
+        for item in sorted(os.listdir(webfonts_src)):
+            if item.endswith(".coverage.json"):
+                continue
+            src_path = os.path.join(webfonts_src, item)
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, os.path.join(webfonts_dst, item))
+                copied += 1
+        console.info(f"Copied {copied} webfont file(s)")
+
+        # Chrome-font coverage check. Every string that can reach DOM
+        # chrome is build-time-known: trail/POI names (popups, routes
+        # panel, marker chips) plus curator config strings (brand,
+        # welcome, About). Basemap tile text is excluded on purpose -
+        # canvas labels render from the PBF glyphs, not the webfont
+        # (copy_trimmed_fonts warns for that side).
+        chrome_chars = set()
+        for geojson_name in ("trails.geojson", "pois.geojson"):
+            chrome_chars |= collect_text_from_geojson(
+                os.path.join(output_dir, geojson_name))
+        chrome_chars |= collect_text_from_config(config)
+        check_webfont_coverage(chrome_chars, webfonts_src)
+    else:
+        console.warn(
+            f"Webfonts not found at {webfonts_src} - UI chrome falls back to system fonts")
 
     # Sprites - only copy the version referenced by app.js. Parse the
     # version from the TEMPLATE source (templates/app.js), not the

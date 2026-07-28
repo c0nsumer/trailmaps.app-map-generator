@@ -226,7 +226,7 @@ their licenses and origins are listed here:
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
 | [PMTiles](https://github.com/protomaps/PMTiles) | Single-file tile archive format and JS reader | BSD-3-Clause |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers) | UI iconography (inline SVG) | Apache 2.0 |
-| [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (via Protomaps) | OFL 1.1 |
+| [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (via Protomaps) and the self-hosted Noto Sans UI webfont | OFL 1.1 |
 | [Pillow](https://python-pillow.org/) | Build-time icon and logo image processing | HPND |
 | [PyYAML](https://pyyaml.org/) | YAML config parsing | MIT |
 | [requests](https://requests.readthedocs.io/) | HTTP client for Overpass / 3DEP fetches | Apache 2.0 |
