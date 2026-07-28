@@ -310,6 +310,12 @@ def generate_service_worker(config, output_dir):
     # (PMTILES_FILES order is independent — it's only a suffix-match set for
     # the Range handler. CACHE_VERSION hashes all_files, not this list, so
     # reordering here does NOT bust any rider's cache.)
+    #
+    # The core-before-archives order is also load-bearing for the silent
+    # update swap: app.js auto-reloads onto a new version as soon as the
+    # non-.pmtiles subset ("core", per sw.js CORE_STATUS) is cached, so
+    # the small files must finish first for that gate to open within the
+    # swap's grace window.
     precache_urls.extend(pmtiles_files)
 
     # Compute cache version from actual file CONTENTS of every

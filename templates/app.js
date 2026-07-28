@@ -9863,34 +9863,56 @@ function rebuildBasemapLayers() {
 }
 
 // ============================================================
-// PWA update toast (B.7), shows an auto-dismissing toast with a
-// "Reload" button when the service worker has a new version waiting.
+// PWA updates: silent swap near page load, toast mid-session (B.7)
 // ============================================================
 //
-// PWAs in standalone mode have no built-in reload affordance, the
-// user would otherwise have to swipe up from the app switcher and
-// reopen, which is meaningful friction. The Reload button calls
-// skipWaiting on the waiting SW (via postMessage) then reloads on
-// the controllerchange event, all inside the existing standalone
-// window. One tap, no app close/reopen.
+// Two update experiences, chosen by WHEN the new version is found:
 //
-// Design intentionally simple:
-//   * No dismiss button.
-//   * Toast auto-dismisses after ~15s if the user doesn't interact.
-//   * No localStorage tracking of dismissals, every page load with
-//     a waiting SW shows the toast fresh.
+// Found near page load (the returning rider). Riders who reopened a
+// weeks-old map and were immediately toasted found the prompt
+// confusing ("I just opened this, why is it asking me things?"), and
+// tapping Later silently stranded them on stale data for the whole
+// session. So this path applies the update automatically: poll the
+// waiting SW's CORE_STATUS until its core files (everything in
+// PRECACHE_URLS except the .pmtiles archives: the page, app code,
+// styles, trail data) are verified cached, show the top loading bar
+// as an "Updating map" cue, then skipWaiting + one reload. The
+// reload is warm and offline-safe: core files come from the new
+// cache, tile archives fall back to the previous version's cache
+// (sw.js defers old-cache deletion until the new precache verifies
+// complete). Net rider experience: old map paints instantly, a thin
+// bar runs a few seconds, one quick refresh, current data, a
+// one-shot "Map updated" toast (via a sessionStorage flag set just
+// before the reload). View state survives via the URL hash.
 //
-// Why no per-version dismissal: a user who ignores the toast still
-// gets the update naturally on next app close+reopen (browser default
-// SW lifecycle: waiting SW activates as soon as all old-SW clients
-// close). So "ignore for now" is a valid path that doesn't strand
-// them on a stale version. The toast just nudges them to update
-// sooner if they want to without leaving the app.
+// Found mid-session (deploy while the map is open). Auto-reloading a
+// map someone is actively using would be hostile, so this keeps the
+// persistent toast with explicit Reload / Later actions. "Later" is
+// a safe choice: the next page load takes the silent path above, and
+// the browser lifecycle applies a waiting SW anyway once the last
+// old-SW client closes. Because browsers only re-check sw.js for a
+// long-open page on their own ~24h schedule, reg.update() runs on
+// each return to the foreground (throttled) so this toast actually
+// fires near the deploy instead of a day later.
+//
+// The boundary is SW_SILENT_SWAP_WINDOW_MS from page load. An update
+// whose core files aren't ready within it either found the rider
+// already invested in the session or a connection too slow to swap
+// seamlessly; both cases get the explicit toast (which also means
+// nobody is ever left stale with NO indication).
 //
 // CACHE_VERSION (content-hashed at build time) ticks on any deploy,
 // code, data, PMTiles, icons, so this fires for any rebuild.
 if (CONFIG.pwa && "serviceWorker" in navigator) {
+    const SW_SILENT_SWAP_WINDOW_MS = 60000;
+    const SW_CORE_POLL_MS = 1000;
+    // sessionStorage (not LS): scoped to this tab, survives exactly
+    // the one auto-reload, never leaks a stale "updated!" toast into
+    // tomorrow's visit.
+    const SW_UPDATED_FLAG = LS_PREFIX + "sw-updated";
+    const _pageLoadedAt = Date.now();
     let _hasShownUpdateToast = false;
+    let _silentSwapStarted = false;
 
     // Was this page navigation already controlled by a service worker?
     // Sampled by index.html's inline script BEFORE register(), false on a
@@ -9903,9 +9925,10 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     const wasControlled = !!window.__swControlledAtLoad;
 
     function showSwUpdateToast(reg) {
-        // Suppress within the current page load only. A future page
-        // load that finds a waiting SW will show the toast again,
-        // there's no persistent dismissal flag.
+        // Suppress within the current page load only, no persistent
+        // dismissal flag. A future page load that finds this SW still
+        // waiting applies it via the silent-swap path instead of
+        // re-prompting.
         if (_hasShownUpdateToast) return;
         _hasShownUpdateToast = true;
         showToast("Updated map available.", {
@@ -9916,9 +9939,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
             // criticality signal, so we default to "make sure they
             // see it" and let them defer via Later if mid-task. The
             // _hasShownUpdateToast guard above prevents re-showing
-            // in the same session after dismissal; next page load
-            // re-detects the waiting SW and surfaces the toast
-            // again, matching the Gmail / Google Docs pattern.
+            // in the same session after dismissal.
             //
             // Two labeled actions (Reload + Later) instead of
             // Reload + ×. Both choices are explicit text, reads
@@ -9930,8 +9951,9 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                 label: "Later",
                 onClick: () => {
                     // No-op, showToast dismisses after any action's
-                    // onClick. The toast will re-surface next page
-                    // load if the SW is still waiting.
+                    // onClick. If the SW is still waiting next page
+                    // load, the silent-swap path applies it without
+                    // asking again.
                 },
             }, {
                 label: "Reload",
@@ -9966,11 +9988,91 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
         });
     }
 
+    // Ask a specific worker (the WAITING one, not the controller)
+    // whether its core files are cached. Resolves false on timeout or
+    // any error: false just means "poll again / fall back to the
+    // toast", so it can never cause a swap onto a cold cache. The
+    // timeout also covers the one-deploy transition where the waiting
+    // sw.js predates CORE_STATUS and never answers.
+    function querySwCoreStatus(sw) {
+        return new Promise((resolve) => {
+            try {
+                const channel = new MessageChannel();
+                const timer = setTimeout(() => resolve(false), 3000);
+                channel.port1.onmessage = (e) => {
+                    clearTimeout(timer);
+                    resolve(!!(e.data && e.data.coreComplete));
+                };
+                sw.postMessage({ type: "CORE_STATUS" }, [channel.port2]);
+            } catch (_) {
+                resolve(false);
+            }
+        });
+    }
+
+    // The silent path: show the "Updating map" bar, poll the waiting
+    // worker until its core files are verified cached, then swap and
+    // reload. Hands off to the toast if the grace window expires
+    // first (slow connection) so the rider is never left stale with
+    // no indication at all.
+    async function trySilentSwap(reg) {
+        // One attempt per page load. A second updatefound during the
+        // window is still covered: the poll below reads reg.waiting
+        // fresh each pass, so it tracks the newest waiting worker.
+        if (_silentSwapStarted) return;
+        _silentSwapStarted = true;
+        if (window.__showMapUpdating) window.__showMapUpdating();
+        try {
+            while (Date.now() - _pageLoadedAt < SW_SILENT_SWAP_WINDOW_MS) {
+                const sw = reg.waiting;
+                if (!sw) {
+                    // Swap already happened elsewhere (another tab hit
+                    // Reload, or the browser promoted it). Our
+                    // controllerchange is not armed, so just stand
+                    // down; this page keeps running the old version.
+                    if (window.__hideMapUpdating) window.__hideMapUpdating();
+                    return;
+                }
+                if (await querySwCoreStatus(sw)) {
+                    // Flag BEFORE the reload so the next load (and
+                    // only it) shows the confirmation toast. Best
+                    // effort: private mode just skips the toast.
+                    try {
+                        window.sessionStorage.setItem(SW_UPDATED_FLAG, "1");
+                    } catch (_) { /* private mode */ }
+                    let reloaded = false;
+                    navigator.serviceWorker.addEventListener(
+                        "controllerchange",
+                        () => {
+                            if (reloaded) return;
+                            reloaded = true;
+                            window.location.reload();
+                        },
+                        { once: true }
+                    );
+                    sw.postMessage({ type: "SKIP_WAITING" });
+                    // Leave the bar up: the reload replaces the page
+                    // within moments, and the bar bridging the flash
+                    // is exactly the visual continuity we want.
+                    return;
+                }
+                await new Promise((r) => setTimeout(r, SW_CORE_POLL_MS));
+            }
+        } catch (_) {
+            // Unexpected failure in the polling machinery: fall
+            // through to the explicit toast below.
+        }
+        if (window.__hideMapUpdating) window.__hideMapUpdating();
+        showSwUpdateToast(reg);
+    }
+
     function watchForSwUpdate(reg) {
-        // Case A: a waiting SW is already present at page load
-        // (deploy happened while a different tab was open).
+        // Case A: a waiting SW is already present at page load (found
+        // in a previous session but never got to activate, e.g.
+        // another tab was open, or iOS kept the client alive). Its
+        // precache ran back then, so the swap is usually instant.
         if (reg.waiting && wasControlled) {
-            showSwUpdateToast(reg);
+            trySilentSwap(reg);
         }
         // Case B: a new SW is discovered during this session.
         reg.addEventListener("updatefound", () => {
@@ -9979,15 +10081,39 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
             installing.addEventListener("statechange", () => {
                 // "installed" + the page was already SW-controlled at
                 // load means this is an UPDATE (not a first install).
-                // First installs shouldn't show the reload toast,
-                // there's nothing to reload from. wasControlled is
-                // sampled before clients.claim() can fire, so unlike a
-                // live controller read it can't be tripped by claim on
-                // a first install (the Firefox-only false toast).
-                if (installing.state === "installed" && wasControlled) {
+                // First installs shouldn't prompt or swap, there's
+                // nothing to reload from. wasControlled is sampled
+                // before clients.claim() can fire, so unlike a live
+                // controller read it can't be tripped by claim on a
+                // first install (the Firefox-only false toast).
+                if (installing.state !== "installed" || !wasControlled) {
+                    return;
+                }
+                // Inside the grace window this is the returning-rider
+                // case (update discovered by the load-time check):
+                // silent. Past it, the rider is mid-session: prompt.
+                if (Date.now() - _pageLoadedAt < SW_SILENT_SWAP_WINDOW_MS) {
+                    trySilentSwap(reg);
+                } else {
                     showSwUpdateToast(reg);
                 }
             });
+        });
+        // Deploy-while-open detection. Browsers re-check sw.js for a
+        // long-lived page only on their own ~24h cadence; without
+        // this, the mid-session toast in practice almost never fired
+        // near the deploy. Checking on each return to the foreground
+        // catches the natural moment (rider glances at another app,
+        // comes back). Throttled: sw.js is small, but there's no
+        // reason to refetch it on every app switch. Seeded to page
+        // load, which itself performed a check via register().
+        let _lastSwUpdateCheck = _pageLoadedAt;
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState !== "visible") return;
+            const now = Date.now();
+            if (now - _lastSwUpdateCheck < 60000) return;
+            _lastSwUpdateCheck = now;
+            reg.update().catch(() => { /* offline, try again later */ });
         });
     }
 
@@ -10008,6 +10134,18 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     navigator.serviceWorker.ready.then((reg) => {
         if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
     }).catch(() => { /* no active SW, nothing to resume */ });
+
+    // Far side of a silent swap: the pre-reload page set this flag,
+    // so this load (and only this load) confirms what the flash was.
+    // Auto-dismissing, informational, nothing to tap: the retroactive
+    // explanation for anyone who missed the "Updating map" bar,
+    // doubling as the good news that the data is current.
+    try {
+        if (window.sessionStorage.getItem(SW_UPDATED_FLAG) === "1") {
+            window.sessionStorage.removeItem(SW_UPDATED_FLAG);
+            showToast("Map updated to the latest version.");
+        }
+    } catch (_) { /* private mode: no flag, no toast */ }
 }
 
 // ============================================================

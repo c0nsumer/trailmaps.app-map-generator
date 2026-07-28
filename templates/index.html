@@ -109,15 +109,26 @@
          suppressed while a modal (the first-visit welcome) is covering the
          map — the modal is the first-run loading screen in that case.
          app.js owns the HIDE via window.__hideMapLoading(), defined here
-         inline so it's safe to call before app.js has parsed. -->
+         inline so it's safe to call before app.js has parsed.
+
+         The same bar doubles as the "Updating map" indicator for the
+         silent service-worker update flow (the PWA update block in
+         app.js): __showMapUpdating() re-shows it while the new version's
+         core files download ahead of the automatic reload, so the reload
+         reads as part of one loading sequence instead of a random blink;
+         __hideMapUpdating() returns it to normal if the flow hands off
+         to the update toast instead. -->
     <div id="map-loading-bar" role="progressbar" aria-label="Loading map" aria-busy="true" hidden></div>
     <script>
     (function () {
         var bar = document.getElementById('map-loading-bar');
         if (!bar) return;
-        var done = false, revealTimer = null;
+        var done = false, updating = false, revealTimer = null;
         function hide() {
-            if (done) return;
+            // `updating` = the SW update flow owns the bar; the
+            // initial-load gates (map idle, 30s safety net) must not
+            // clear it out from under the pending auto-reload.
+            if (done || updating) return;
             done = true;
             clearTimeout(revealTimer);
             bar.classList.remove('visible');
@@ -142,6 +153,25 @@
         // idempotent, so app.js calling __hideMapLoading() first is fine.
         setTimeout(hide, 30000);
         window.__hideMapLoading = hide;
+        // Silent SW-update flow (app.js). Show is unconditional (no
+        // 400ms delay, no modal suppression): by the time an update is
+        // being applied the map is already usable underneath, and the
+        // bar is the only cue explaining the upcoming auto-reload.
+        window.__showMapUpdating = function () {
+            updating = true;
+            bar.setAttribute('aria-label', 'Updating map');
+            bar.setAttribute('aria-busy', 'true');
+            bar.hidden = false;
+            bar.classList.add('visible');
+        };
+        window.__hideMapUpdating = function () {
+            if (!updating) return;
+            updating = false;
+            bar.setAttribute('aria-label', 'Loading map');
+            bar.setAttribute('aria-busy', 'false');
+            bar.classList.remove('visible');
+            bar.hidden = true;
+        };
     })();
     </script>
 

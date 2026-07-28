@@ -59,8 +59,10 @@ const CACHE_NAME = `trail-map-${SW_CONFIG.CACHE_VERSION}`;
 //   basemap, no trail lines, indefinite hang. Leaving the new SW
 //   waiting keeps the OLD SW in control and its OLD cache intact, so
 //   the map keeps loading from cache regardless of connectivity; the
-//   update applies only when the rider explicitly reloads (ideally on
-//   a good connection) or next cold launch.
+//   update applies only once the page has verified this cache's core
+//   files are present (the silent swap: CORE_STATUS below), when the
+//   rider taps Reload on the mid-session toast, or on the next cold
+//   launch.
 //
 // backgroundPrecache() still runs at install time, filling the NEW
 // cache alongside the old one, so by the time the rider reloads the
@@ -115,7 +117,14 @@ async function backgroundPrecache() {
     _precacheRunning = true;
     try {
         const cache = await caches.open(CACHE_NAME);
-        if (await cache.match(PRECACHE_DONE_URL)) return;
+        if (await cache.match(PRECACHE_DONE_URL)) {
+            // Already complete. Old caches may still exist if the
+            // sentinel was written while this worker sat waiting
+            // (cleanup is active-only); the post-activation trigger
+            // lands here and finishes the job.
+            await cleanupOldCaches();
+            return;
+        }
         for (const url of SW_CONFIG.PRECACHE_URLS) {
             try {
                 if (await cache.match(url)) continue; // resume: already cached
@@ -140,24 +149,76 @@ async function backgroundPrecache() {
         }
         if (complete) {
             await cache.put(PRECACHE_DONE_URL, new Response("1"));
+            await cleanupOldCaches();
         }
     } finally {
         _precacheRunning = false;
     }
 }
 
+// Delete previous versions' caches. Deferred until (a) this worker is
+// the ACTIVE one: while we sit waiting, the old worker's pages are
+// still being served from those caches, and (b) our own precache has
+// verified complete, so the old-cache fallbacks in the fetch path
+// (regular requests offline, .pmtiles Range requests, the HEAD
+// precheck) are no longer needed.
+//
+// "Not yet active" is detected via the registration slots, NOT an
+// identity compare against `self`: registration.active holds a
+// ServiceWorker handle while `self` is the global scope, so
+// `reg.active !== self` is always true and silently blocked every
+// cleanup (the two-caches-forever bug). A worker that isn't active
+// occupies reg.installing or reg.waiting itself, so the null checks
+// below cover (a), and they also keep an active worker from deleting
+// a SUCCESSOR's half-filled cache when a RESUME_PRECACHE ping
+// arrives while a newer version installs alongside. The state check
+// is belt-and-suspenders where supported (it closes the sliver where
+// a just-made-redundant worker's in-flight precache lands between a
+// successor's slot transitions).
+async function cleanupOldCaches() {
+    const reg = self.registration;
+    if (reg.waiting || reg.installing) return;
+    if (
+        self.serviceWorker &&
+        self.serviceWorker.state !== "activating" &&
+        self.serviceWorker.state !== "activated"
+    ) {
+        return;
+    }
+    const keys = await caches.keys();
+    await Promise.all(
+        keys
+            .filter((k) => k.startsWith("trail-map-") && k !== CACHE_NAME)
+            .map((k) => caches.delete(k))
+    );
+}
+
 // ============================================================
-// Message handler — supports B.7 "Reload" toast button
+// Message handler — silent update swap + B.7 "Reload" toast
 // ============================================================
-// When the user taps "Reload" on the update toast, the page posts
-// {type: "SKIP_WAITING"} to this worker (the waiting one). We call
-// skipWaiting() so this version becomes active; the page then
-// observes `controllerchange` on navigator.serviceWorker and reloads
-// itself. Without this handshake, the new SW would stay in the
-// "waiting" state until every page using the old SW closed.
+// SKIP_WAITING is posted to this worker (the waiting one) by two
+// paths in app.js: the silent swap (after CORE_STATUS confirms this
+// cache's core files are present) and the rider tapping "Reload" on
+// the mid-session update toast. Either way we call skipWaiting() so
+// this version becomes active; the page then observes
+// `controllerchange` on navigator.serviceWorker and reloads itself.
+// Without this handshake, the new SW would stay in the "waiting"
+// state until every page using the old SW closed.
 self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "SKIP_WAITING") {
         self.skipWaiting();
+    }
+    // Core-readiness query for the silent update swap (see the PWA
+    // update block in app.js). The page polls the WAITING worker with
+    // this before posting SKIP_WAITING: "core" is every PRECACHE_URL
+    // except the .pmtiles archives, i.e. the set the post-swap reload
+    // must have from THIS cache (tile archives can fall back to the
+    // previous version's cache via handleRangeRequest; the page, app
+    // code, and trail data cannot). Answered on a transferred
+    // MessagePort, same pattern as PRECACHE_STATUS.
+    if (event.data && event.data.type === "CORE_STATUS") {
+        const port = event.ports && event.ports[0];
+        if (port) reportCoreStatus(port);
     }
     // Page pings this on every load (see the SW-registration block in
     // app.js) so a precache cut short by worker termination resumes.
@@ -173,6 +234,35 @@ self.addEventListener("message", (event) => {
         if (port) reportPrecacheStatus(port);
     }
 });
+
+// Answer a CORE_STATUS query: are all non-.pmtiles precache URLs in
+// this worker's cache? Resolves false on any doubt; the page treats
+// false as "keep waiting" and falls back to the update toast when its
+// grace window expires, so a wrong false costs a prompt, never a
+// broken swap.
+async function reportCoreStatus(port) {
+    let coreComplete = false;
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        if (await cache.match(PRECACHE_DONE_URL)) {
+            // Full precache verified — core is a subset.
+            coreComplete = true;
+        } else {
+            const pmtiles = new Set(SW_CONFIG.PMTILES_FILES || []);
+            coreComplete = true;
+            for (const url of SW_CONFIG.PRECACHE_URLS || []) {
+                if (pmtiles.has(url)) continue;
+                if (!(await cache.match(url))) {
+                    coreComplete = false;
+                    break;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("SW reportCoreStatus failed:", e);
+    }
+    port.postMessage({ type: "CORE_STATUS", coreComplete });
+}
 
 // Answer a PRECACHE_STATUS query with byte-weighted progress.
 //
@@ -224,21 +314,19 @@ async function reportPrecacheStatus(port) {
 }
 
 // ============================================================
-// Activate — clean up old caches
+// Activate — claim clients; old-cache cleanup is deferred
 // ============================================================
+// Old caches are deliberately NOT deleted here (they were, until the
+// silent-swap flow landed). They are what makes an early skipWaiting
+// safe: at swap time the new cache holds only the core files, and the
+// previous version's .pmtiles archives keep serving Range requests
+// (see handleRangeRequest) while the new precache trickles in. So a
+// rider who auto-updated in the parking lot and immediately lost
+// signal still has full offline tile coverage, just briefly from
+// last version's archives. cleanupOldCaches() deletes them only once
+// the new precache verifies complete.
 self.addEventListener("activate", (event) => {
-    event.waitUntil(
-        caches
-            .keys()
-            .then((keys) =>
-                Promise.all(
-                    keys
-                        .filter((k) => k.startsWith("trail-map-") && k !== CACHE_NAME)
-                        .map((k) => caches.delete(k))
-                )
-            )
-            .then(() => self.clients.claim())
-    );
+    event.waitUntil(self.clients.claim());
     // Resume any precache the install-time run didn't finish (the
     // worker may have been terminated mid-list while this version sat
     // waiting). Fire-and-forget OUTSIDE waitUntil — activation must
@@ -274,9 +362,17 @@ self.addEventListener("fetch", (event) => {
     // never be added. Synthesize a 200 with no body (HEAD has no
     // body anyway) from the GET cache entry so the precheck passes
     // and the subsequent Range requests find their cached blob.
+    // Current cache first, then any older cache: right after a
+    // silent swap the new cache may not hold terrain.pmtiles yet,
+    // but the previous version's copy can answer the precheck (the
+    // Range handler falls back to it the same way).
     if (event.request.method === "HEAD") {
         event.respondWith(
-            caches.match(event.request, { ignoreMethod: true }).then((cached) => {
+            (async () => {
+                const cache = await caches.open(CACHE_NAME);
+                const cached =
+                    (await cache.match(event.request, { ignoreMethod: true })) ||
+                    (await caches.match(event.request, { ignoreMethod: true }));
                 if (cached) {
                     return new Response(null, {
                         status: cached.status,
@@ -285,7 +381,7 @@ self.addEventListener("fetch", (event) => {
                     });
                 }
                 return fetch(event.request);
-            })
+            })()
         );
         return;
     }
@@ -311,31 +407,44 @@ self.addEventListener("fetch", (event) => {
     // ~50 ms of overhead when content hasn't changed (304 response,
     // no body) and free correctness when it has. Same
     // `cache: "no-cache"` posture as backgroundPrecache above.
+    //
+    // Lookups are scoped to the CURRENT cache (cache.match, not the
+    // global caches.match this used to call). Old caches now outlive
+    // activation until the new precache verifies complete, and the
+    // global lookup searches caches oldest-first, which would pin a
+    // freshly swapped rider to the oldest surviving version. Old
+    // caches are consulted only as a last resort when the network
+    // fetch itself fails: a slightly stale asset beats a dead page
+    // for a rider who updated moments before losing signal.
     event.respondWith(
-        caches.match(event.request).then((cached) => {
+        (async () => {
+            const cache = await caches.open(CACHE_NAME);
+            const cached = await cache.match(event.request);
             if (cached) return cached;
             const networkReq = new Request(event.request, { cache: "no-cache" });
-            return fetch(networkReq)
-                .then((response) => {
-                    // Cache successful same-origin GET responses
-                    // only. Skip opaque (cross-origin no-CORS),
-                    // partial (206 Range), and error responses —
-                    // none of those round-trip cleanly via the
-                    // Cache API for offline serving.
-                    if (
-                        response &&
-                        response.status === 200 &&
-                        response.type === "basic"
-                    ) {
-                        const clone = response.clone();
-                        caches
-                            .open(CACHE_NAME)
-                            .then((cache) => cache.put(event.request, clone))
-                            .catch(() => { /* best effort */ });
-                    }
-                    return response;
-                });
-        })
+            try {
+                const response = await fetch(networkReq);
+                // Cache successful same-origin GET responses
+                // only. Skip opaque (cross-origin no-CORS),
+                // partial (206 Range), and error responses —
+                // none of those round-trip cleanly via the
+                // Cache API for offline serving.
+                if (
+                    response &&
+                    response.status === 200 &&
+                    response.type === "basic"
+                ) {
+                    const clone = response.clone();
+                    cache.put(event.request, clone)
+                        .catch(() => { /* best effort */ });
+                }
+                return response;
+            } catch (err) {
+                const stale = await caches.match(event.request);
+                if (stale) return stale;
+                throw err;
+            }
+        })()
     );
 });
 
@@ -362,10 +471,18 @@ self.addEventListener("fetch", (event) => {
 async function handleRangeRequest(request) {
     const cache = await caches.open(CACHE_NAME);
 
-    // Match against the URL without Range header
-    const fullResponse = await cache.match(new Request(request.url));
+    // Match against the URL without Range header. Current cache
+    // first, then any older cache: right after a silent swap the new
+    // cache holds only the core files, and the previous version's
+    // archives (kept until the new precache verifies complete) cover
+    // the gap. A slightly stale basemap tile is indistinguishable
+    // from a current one; the trail DATA is already fresh, it comes
+    // from the new cache's core files, not from here.
+    const fullResponse =
+        (await cache.match(new Request(request.url))) ||
+        (await caches.match(new Request(request.url)));
     if (!fullResponse) {
-        // Not cached — pass through to network
+        // Not cached anywhere — pass through to network
         return fetch(request);
     }
 
