@@ -635,21 +635,31 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # after deploys that changed nothing. With an input-derived stamp,
     # a no-op rebuild is byte-identical.
     templates_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "templates")
-    date_inputs = [
+    template_inputs = [
         os.path.join(templates_dir, name)
         for name in ("app.js", "index.html", "style.css", "sw.js")
     ]
-    date_inputs += [config.get("_config_path"), config.get("logo"), config.get("icon")]
-    date_inputs += [(e or {}).get("path") for e in config.get("additional_logos") or []]
-    date_inputs += [(e or {}).get("geometry") for e in config.get("custom_routes") or []]
-    input_mtimes = [
-        os.path.getmtime(p) for p in date_inputs if isinstance(p, str) and os.path.isfile(p)
-    ]
-    config_obj["buildDate"] = (
-        datetime.fromtimestamp(max(input_mtimes)).strftime("%Y-%m-%d %H:%M")
-        if input_mtimes
-        else ""
-    )
+    # Map-side inputs: the config YAML plus every per-map asset it
+    # references. Stamped separately as configDate for the About
+    # modal's "Map config" row: curation moves independently of both
+    # the engine (App row) and the OSM fetch (Map data row), and
+    # before this a styling/schedule/asset edit updated the map with
+    # no visible change anywhere in About. Same mtime derivation (and
+    # the same fresh-clone caveat) as buildDate.
+    map_inputs = [config.get("_config_path"), config.get("logo"), config.get("icon")]
+    map_inputs += [(e or {}).get("path") for e in config.get("additional_logos") or []]
+    map_inputs += [(e or {}).get("geometry") for e in config.get("custom_routes") or []]
+
+    def _max_mtime_date(paths):
+        mtimes = [
+            os.path.getmtime(p) for p in paths if isinstance(p, str) and os.path.isfile(p)
+        ]
+        return (
+            datetime.fromtimestamp(max(mtimes)).strftime("%Y-%m-%d %H:%M") if mtimes else ""
+        )
+
+    config_obj["buildDate"] = _max_mtime_date(template_inputs + map_inputs)
+    config_obj["configDate"] = _max_mtime_date(map_inputs)
     config_obj["dataDate"] = config.get("_data_date", "")
     # Engine app version (bare commit count, commit date), shown in the
     # About modal's App row as "v294 (2026-07-17)". See

@@ -924,8 +924,9 @@ Install, and **How to use this map**, when those are visible). Tapping it opens
 the map's technical modal, headed "About this map" (with the brand **logo** on
 the right when `logo:`, or `icon:` as fallback, is configured). The body is a
 compact details block, one label:value row per fact — **Title** (the map's
-title), **Curator**, **Trail data** (data snapshot date), **App** (the engine
-version and date), and an **Offline** diagnostic row — followed by the
+title), **Curator**, **App** (the engine version and date), **Map config**
+(when this map's curation last changed), **Map data** (data snapshot date),
+and an **Offline** diagnostic row — followed by the
 **More info** links and a **Credits** section. The `about` YAML block is optional; when omitted, the modal still
 renders the framework-supplied rows and Credits.
 
@@ -956,17 +957,21 @@ about:
 
 The framework-supplied rows and sections, always shown:
 
-- **Trail data** row: `<date HH:MM>` (`_data_date`: the OSM snapshot timestamp
-  recorded when the trail data was last actually fetched, or the `.osm`
-  file's mtime for local-file maps; rendered in the build machine's local
-  time).
 - **App** row: `v<N> (<date>)` (the engine's commit count as of the last
   commit that touched `templates/`, plus that commit's date, so the version
   only advances when the shipped app code changes). The row is omitted when
-  the build can't consult git (e.g. a tarball checkout). A `buildDate` value
-  (newest mtime of the templates and the map's own inputs) is still injected
-  into `CONFIG` for the landing page's "Updated" line, but is not displayed
-  here.
+  the build can't consult git (e.g. a tarball checkout).
+- **Map config** row: `<date HH:MM>` (newest mtime of the config YAML and the
+  per-map assets it references — logo, icon, additional logos, custom-route
+  geometry). Moves when the map's curation changes, independently of the App
+  version and the data date, so a styling/schedule/asset edit is visible in
+  About. A `buildDate` value (the same inputs plus the engine templates) is
+  still injected into `CONFIG` for the landing page's "Updated" line, but is
+  not displayed here.
+- **Map data** row: `<date HH:MM>` (`_data_date`: the OSM snapshot timestamp
+  recorded when the trail data was last actually fetched, or the `.osm`
+  file's mtime for local-file maps; rendered in the build machine's local
+  time).
 - **Offline** row: a diagnostic line that always states something a
   troubleshooting user can relay: "Saved for offline use." / "Saving for
   offline use, N% done." when the service worker is active, or an explicit

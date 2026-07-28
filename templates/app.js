@@ -3891,10 +3891,13 @@ function buildAboutModalContent() {
             : (c.name || ""));
     }
 
-    if (CONFIG.dataDate) {
-        detailRow("Trail data", CONFIG.dataDate);
-    }
-
+    // The three "how fresh is this" rows, layered: the engine (App),
+    // this map's curation (Map config), the OSM fetch (Map data).
+    // Each moves independently — a styling/schedule/asset edit shows
+    // in Map config even though neither neighbor changed. "Map" not
+    // "Trail": config and data cover POIs, parking, and basemap
+    // choices, not just the trail lines.
+    //
     // App row is just the version + its commit date - the generator's
     // name and link live in Credits with the other attribution, so
     // this row stays a pure fact like its siblings. appVersion is the
@@ -3904,6 +3907,14 @@ function buildAboutModalContent() {
     if (CONFIG.appVersion) {
         detailRow("App", `v${CONFIG.appVersion}`
             + (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : ""));
+    }
+
+    if (CONFIG.configDate) {
+        detailRow("Map config", CONFIG.configDate);
+    }
+
+    if (CONFIG.dataDate) {
+        detailRow("Map data", CONFIG.dataDate);
     }
 
     // Offline readiness - diagnostic row, not a feature advertisement
