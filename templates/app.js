@@ -2478,10 +2478,23 @@ function consumeShareHash() {
     if (parts.length >= 5) {
         const kindCode = parts[3];
         const keyEnc = parts.slice(4).join("/"); // tolerate slashes in names
-        const key = decodeURIComponent(keyEnc);
-        if (kindCode === "r") highlight = { kind: "route", key };
-        else if (kindCode === "t") highlight = { kind: "trail", key };
-        else if (kindCode === "p") highlight = { kind: "poi", key };
+        // A truncated percent-escape (chat apps and SMS clients cut
+        // long URLs mid-escape) makes decodeURIComponent throw, and
+        // this runs synchronously inside init(): unguarded, one bad
+        // share link took down the whole app at boot. The camera
+        // coords above already parsed, so keep them and only drop
+        // the highlight.
+        let key = null;
+        try {
+            key = decodeURIComponent(keyEnc);
+        } catch (e) {
+            // Malformed escape — ignore the highlight portion.
+        }
+        if (key !== null) {
+            if (kindCode === "r") highlight = { kind: "route", key };
+            else if (kindCode === "t") highlight = { kind: "trail", key };
+            else if (kindCode === "p") highlight = { kind: "poi", key };
+        }
     }
     // Strip the hash regardless of url_hash setting; MapLibre will
     // start writing fresh hash if urlHash is true.
