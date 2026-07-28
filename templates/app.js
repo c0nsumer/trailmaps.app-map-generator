@@ -10793,8 +10793,10 @@ function updateLocationIndicator() {
 // ============================================================
 // Show a toast. Two forms:
 //
-//   showToast("message"): transient hint; auto-dismisses after 4s.
-//                                    The default for off-screen indicator
+//   showToast("message"): transient hint; auto-dismisses after 4s,
+//                                    or immediately on any tap/click
+//                                    (see _onToastOutsideTap). The
+//                                    default for off-screen indicator
 //                                    nudges, geolocation errors, copy
 //                                    confirmations, etc.
 //
@@ -10826,6 +10828,40 @@ function updateLocationIndicator() {
 // a field device whose "next launch" may be offline). A NEW persistent
 // toast replaces the stash, latest persistent wins.
 let _displacedPersistentToast = null;
+
+// Tap-anywhere acknowledgment for TRANSIENT toasts: armed while one
+// is visible, any pointerdown dismisses it instead of leaving it to
+// narrate over the rider's next action for the rest of its 4 s.
+// Strictly an observer — never preventDefault/stopPropagation — so
+// the tap still does exactly what it was going to do (start a pan,
+// open a popup, hit the Locate FAB); capture phase so a handler that
+// stops propagation can't keep the toast alive. pointerdown rather
+// than click because a pan is a drag (no click event), and any
+// interaction start is acknowledgment enough. Persistent toasts are
+// exempt: they exist to hold an explicit choice (Reload / Later) and
+// keep their labeled dismiss paths. The button guard covers a
+// hypothetical transient-with-actions toast (pointer-active via
+// .map-toast-actionable): dismissing on pointerdown would hide the
+// button before its own click could land.
+let _toastTapArmed = false;
+
+function _onToastOutsideTap(e) {
+    const el = document.getElementById("map-toast");
+    if (el && el.contains(e.target) && e.target.closest("button")) return;
+    dismissToast();
+}
+
+function _armToastOutsideTap() {
+    if (_toastTapArmed) return;
+    _toastTapArmed = true;
+    document.addEventListener("pointerdown", _onToastOutsideTap, true);
+}
+
+function _disarmToastOutsideTap() {
+    if (!_toastTapArmed) return;
+    _toastTapArmed = false;
+    document.removeEventListener("pointerdown", _onToastOutsideTap, true);
+}
 
 function _restoreDisplacedToast() {
     if (!_displacedPersistentToast) return;
@@ -10914,12 +10950,16 @@ function showToast(message, opts) {
     el.classList.add("visible");
 
     if (!persistent) {
+        _armToastOutsideTap();
         el._timeout = setTimeout(() => {
+            _disarmToastOutsideTap();
             el.classList.remove("visible");
             el.classList.add("hidden");
             // Bring back a persistent toast this transient displaced.
             _restoreDisplacedToast();
         }, 4000);
+    } else {
+        _disarmToastOutsideTap();
     }
 }
 
@@ -10930,6 +10970,7 @@ function showToast(message, opts) {
 function dismissToast() {
     const el = document.getElementById("map-toast");
     if (!el) return;
+    _disarmToastOutsideTap();
     clearTimeout(el._timeout);
     el._timeout = null;
     el.classList.remove("visible");
