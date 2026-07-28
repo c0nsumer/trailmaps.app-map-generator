@@ -123,12 +123,18 @@
     (function () {
         var bar = document.getElementById('map-loading-bar');
         if (!bar) return;
-        var done = false, updating = false, revealTimer = null;
+        var done = false, updating = false, hideWanted = false, revealTimer = null;
         function hide() {
+            if (done) return;
             // `updating` = the SW update flow owns the bar; the
             // initial-load gates (map idle, 30s safety net) must not
-            // clear it out from under the pending auto-reload.
-            if (done || updating) return;
+            // clear it out from under the pending auto-reload. The
+            // request is remembered, not dropped: these gates fire
+            // once, so a swallowed hide with no memory left done=false
+            // forever, and a reveal re-poll parked behind an open
+            // modal could then re-show the bar long after the map
+            // painted, with nothing left to ever hide it.
+            if (updating) { hideWanted = true; return; }
             done = true;
             clearTimeout(revealTimer);
             bar.classList.remove('visible');
@@ -168,9 +174,19 @@
             if (!updating) return;
             updating = false;
             bar.setAttribute('aria-label', 'Loading map');
-            bar.setAttribute('aria-busy', 'false');
-            bar.classList.remove('visible');
-            bar.hidden = true;
+            // Initial load finished before or during the update flow
+            // (done was set pre-flow, or its one-shot hide landed
+            // while `updating` swallowed it): nothing else will ever
+            // bring the bar down, so do it here. Otherwise the map is
+            // genuinely still loading — leave the bar up as the
+            // ordinary loading bar; the still-armed gates hide it.
+            if (done || hideWanted) {
+                done = true;
+                clearTimeout(revealTimer);
+                bar.classList.remove('visible');
+                bar.hidden = true;
+                bar.setAttribute('aria-busy', 'false');
+            }
         };
     })();
     </script>

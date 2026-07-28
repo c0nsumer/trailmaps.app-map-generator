@@ -3215,6 +3215,7 @@ async function init() {
         // safety net covers a stalled terrain header (rare, HEAD passed).
         const _hideBar = () => {
             if (window.__hideMapLoading) window.__hideMapLoading();
+            _signalMapSettled();
         };
         if (CONFIG.showTerrain && map.getSource("terrain") && _terrainTilesLoaded) {
             _terrainTilesLoaded.then(_hideBar);
@@ -4022,6 +4023,14 @@ function buildCustomStyle(layer, base) {
 // null when this map has no terrain. Set by addTerrainLayers(), consumed
 // by the initial-load progress bar's hide gate in the style.load handler.
 let _terrainTilesLoaded = null;
+
+// Resolved at the moment the initial-load bar hides for a settled
+// opening viewport (the style.load handler's _hideBar). Consumed by
+// the RESUME_PRECACHE nudge in the PWA update block: the resumed
+// precache's first gaps are usually the multi-MB tile archives, and
+// downloading those mid-boot starves the foreground tile fetches.
+let _signalMapSettled = () => {};
+const _mapSettled = new Promise((resolve) => { _signalMapSettled = resolve; });
 async function addTerrainLayers() {
     try {
         const resp = await fetch("terrain.pmtiles", { method: "HEAD" });
@@ -10061,11 +10070,28 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                         window.sessionStorage.setItem(SW_UPDATED_FLAG, "1");
                     } catch (_) { /* private mode */ }
                     let reloaded = false;
+                    // Activation normally follows skipWaiting within
+                    // milliseconds, but if controllerchange never
+                    // lands (activation stalled), the `updating`
+                    // latch would otherwise pin the bar on screen
+                    // forever — it blocks even the 30 s safety net.
+                    // Fall back to the explicit toast (its Reload
+                    // retries) and clear the confirmation flag so a
+                    // later still-stale load can't claim "updated".
+                    const fallback = setTimeout(() => {
+                        if (reloaded) return;
+                        try {
+                            window.sessionStorage.removeItem(SW_UPDATED_FLAG);
+                        } catch (_) { /* private mode */ }
+                        if (window.__hideMapUpdating) window.__hideMapUpdating();
+                        showSwUpdateToast(reg);
+                    }, 10000);
                     navigator.serviceWorker.addEventListener(
                         "controllerchange",
                         () => {
                             if (reloaded) return;
                             reloaded = true;
+                            clearTimeout(fallback);
                             window.location.reload();
                         },
                         { once: true }
@@ -10151,8 +10177,23 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     // truncated offline cache (UI assets present, multi-MB PMTiles
     // missing) until the next deploy. The SW's handler is a no-op
     // one cache.match once the precache-complete sentinel is written.
-    navigator.serviceWorker.ready.then((reg) => {
-        if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
+    //
+    // Deferred until the opening viewport has settled (or 30 s,
+    // matching the bar's safety net, so a boot error can't lose the
+    // nudge): the resume's first gaps are usually the tile archives,
+    // and downloading those during boot starves the foreground tile
+    // fetches. Worst right after a silent swap: the new cache holds
+    // only core files, and if the previous version's own precache
+    // never finished, its archives can't cover the Range fallbacks
+    // either, so the map streams from network exactly when an eager
+    // resume would saturate the connection.
+    navigator.serviceWorker.ready.then(async (reg) => {
+        if (!reg.active) return;
+        await Promise.race([
+            _mapSettled,
+            new Promise((resolve) => setTimeout(resolve, 30000)),
+        ]);
+        reg.active.postMessage({ type: "RESUME_PRECACHE" });
     }).catch(() => { /* no active SW, nothing to resume */ });
 
     // Far side of a silent swap: the pre-reload page set this flag,
