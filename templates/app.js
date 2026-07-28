@@ -10103,6 +10103,12 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                         window.sessionStorage.setItem(SW_UPDATED_FLAG, "1");
                     } catch (_) { /* private mode */ }
                     let reloaded = false;
+                    const onControllerChange = () => {
+                        if (reloaded) return;
+                        reloaded = true;
+                        clearTimeout(fallback);
+                        window.location.reload();
+                    };
                     // Activation normally follows skipWaiting within
                     // milliseconds, but if controllerchange never
                     // lands (activation stalled), the `updating`
@@ -10111,8 +10117,22 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                     // Fall back to the explicit toast (its Reload
                     // retries) and clear the confirmation flag so a
                     // later still-stale load can't claim "updated".
+                    //
+                    // The fallback must also DISARM the auto-reload:
+                    // once the toast is up, reloading is the rider's
+                    // decision. Left armed, a stalled activation
+                    // completing a minute later (or another tab
+                    // applying an update) would yank the page out
+                    // from under a rider who tapped "Later" — the
+                    // exact hostile mid-session reload this flow
+                    // exists to avoid.
                     const fallback = setTimeout(() => {
                         if (reloaded) return;
+                        reloaded = true;
+                        navigator.serviceWorker.removeEventListener(
+                            "controllerchange",
+                            onControllerChange
+                        );
                         try {
                             window.sessionStorage.removeItem(SW_UPDATED_FLAG);
                         } catch (_) { /* private mode */ }
@@ -10121,12 +10141,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                     }, 10000);
                     navigator.serviceWorker.addEventListener(
                         "controllerchange",
-                        () => {
-                            if (reloaded) return;
-                            reloaded = true;
-                            clearTimeout(fallback);
-                            window.location.reload();
-                        },
+                        onControllerChange,
                         { once: true }
                     );
                     sw.postMessage({ type: "SKIP_WAITING" });
