@@ -3633,12 +3633,14 @@ body.modal-open .gpx-overlay.is-open {
     cursor: pointer;
 }
 
-/* Row for the currently-highlighted route — same accent treatment
- * as the finder's keyboard-active row so "selected" reads the same
- * in both lists. */
+/* Row for the currently-highlighted route — the accent wash shared
+ * with the finder's keyboard-active row, minus its left-edge stripe:
+ * the stripe is a keyboard-scanning anchor for a list navigated by
+ * arrow keys, and this panel has no keyboard navigation. Selection
+ * here speaks the app's quieter state language (tinted wash, like
+ * the segmented controls' accent fill family). */
 .route-panel-row.is-active {
     background: color-mix(in srgb, var(--accent) 18%, transparent);
-    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Same swatch recipe as .finder-row-swatch — a short line segment,
