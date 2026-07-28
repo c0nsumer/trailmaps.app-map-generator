@@ -3679,6 +3679,18 @@ body.modal-open .gpx-overlay.is-open {
     cursor: pointer;
 }
 
+/* Hover wash matching the finder/Options rows, gated behind
+ * (any-hover: hover) like the .opt rows above: this panel stays open
+ * after a tap, so an ungated :hover would leave a sticky wash on
+ * touch. Must precede .is-active below - the two selectors tie on
+ * specificity, so source order lets the accent wash win while the
+ * pointer rests on the active row. */
+@media (any-hover: hover) {
+    .route-panel-row:hover {
+        background: var(--sheet-hover);
+    }
+}
+
 /* Row for the currently-highlighted route - the accent wash shared
  * with the finder's keyboard-active row, minus its left-edge stripe:
  * the stripe is a keyboard-scanning anchor for a list navigated by
