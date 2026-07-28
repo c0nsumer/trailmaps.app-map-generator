@@ -1474,6 +1474,16 @@ body::after {
     line-height: 1.5;
 }
 
+/* The dialog panels receive programmatic focus on open (tabindex="-1",
+   dialogFocusIn in app.js) purely as the screen-reader/Tab entry
+   point. They aren't interactive themselves, so suppress the focus
+   ring a keyboard-triggered open would otherwise draw around the
+   whole card; the controls inside keep their own focus styles. */
+.about-modal-content:focus,
+.options-overlay-panel:focus {
+    outline: none;
+}
+
 .about-modal-close {
     position: absolute;
     top: 8px;

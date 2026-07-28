@@ -449,7 +449,10 @@
          dismissed by Close X, Esc, tap on the backdrop, or tapping
          the Options FAB again. -->
     <div id="options-overlay" class="options-overlay" role="dialog" aria-modal="true" aria-labelledby="options-overlay-title" hidden>
-        <div class="options-overlay-panel">
+        <!-- tabindex="-1": initial focus target on open, so the
+             labelled dialog is announced and Tab starts inside it
+             (dialogFocusIn in app.js). -->
+        <div class="options-overlay-panel" tabindex="-1">
             <div class="options-overlay-header">
                 <h2 id="options-overlay-title" class="options-overlay-title">Options</h2>
                 <button id="options-close" class="overlay-close-btn" type="button" aria-label="Close options">
@@ -833,7 +836,8 @@
          reflected in the copy. -->
     <div id="welcome-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
         <div class="about-modal-backdrop"></div>
-        <div class="about-modal-content">
+        <!-- tabindex="-1": initial focus target on open (dialogFocusIn). -->
+        <div class="about-modal-content" tabindex="-1">
             <button class="about-modal-close" aria-label="Close" id="welcome-modal-close">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="12" y2="12"/>
@@ -849,7 +853,8 @@
     <!-- About modal -->
     <div id="about-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="about-modal-title">
         <div class="about-modal-backdrop"></div>
-        <div class="about-modal-content">
+        <!-- tabindex="-1": initial focus target on open (dialogFocusIn). -->
+        <div class="about-modal-content" tabindex="-1">
             <button class="about-modal-close" aria-label="Close">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="12" y2="12"/>

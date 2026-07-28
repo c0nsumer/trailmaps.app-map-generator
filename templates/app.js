@@ -3278,6 +3278,85 @@ async function init() {
 // that aren't there.
 const WELCOMED_FLAG_KEY = "mtb.welcomed";
 
+// ============================================================
+// Dialog focus management (Options / Welcome / About)
+// ============================================================
+// The three aria-modal="true" dialogs tell assistive tech the
+// background is inert, but aria-modal moves no focus by itself:
+// keyboard focus stayed behind on the trigger, so a screen-reader
+// user who opened About could Tab onto FABs they can't perceive. On
+// open, focus moves to the dialog's panel (tabindex="-1" in
+// index.html, so the labelled dialog itself is announced rather than
+// whichever control happens to come first); while open, Tab wraps
+// within the dialog; on a KEYBOARD-initiated close, focus returns to
+// where it was. Pointer-initiated closes deliberately restore
+// nothing: the FAB triggers are blurred on close by design (see
+// setOverlayOpen's blur comment — Chrome's click-focus plus a later
+// Escape drew an unwanted focus ring), and a tap needs no tab
+// position. The return target is remembered per-dialog because
+// Welcome can stack over Options and must unwind to it, not past it.
+let _lastInputWasKeyboard = false;
+document.addEventListener("keydown", () => { _lastInputWasKeyboard = true; }, true);
+document.addEventListener("pointerdown", () => { _lastInputWasKeyboard = false; }, true);
+
+const _DIALOG_FOCUSABLE = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+function _dialogFocusables(dialog) {
+    // getClientRects filters hidden controls (display:none rows in
+    // collapsed accordion sections, feature-gated buttons).
+    return Array.from(dialog.querySelectorAll(_DIALOG_FOCUSABLE)).filter(
+        (el) => el.getClientRects().length > 0
+    );
+}
+
+function dialogFocusIn(dialog, panelSelector) {
+    if (!dialog) return;
+    dialog._returnFocus =
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement !== document.body
+            ? document.activeElement
+            : null;
+    if (!dialog._trapWired) {
+        dialog._trapWired = true;
+        dialog.addEventListener("keydown", (e) => {
+            if (e.key !== "Tab") return;
+            const items = _dialogFocusables(dialog);
+            if (!items.length) return;
+            const first = items[0];
+            const last = items[items.length - 1];
+            const active = document.activeElement;
+            // The !contains branches catch focus that escaped (or
+            // started on the tabindex="-1" panel) and pull it back
+            // to the wrap point instead of letting Tab walk the
+            // aria-hidden background.
+            if (e.shiftKey && (active === first || !dialog.contains(active))) {
+                last.focus();
+                e.preventDefault();
+            } else if (!e.shiftKey && (active === last || !dialog.contains(active))) {
+                first.focus();
+                e.preventDefault();
+            }
+        });
+    }
+    const panel = panelSelector ? dialog.querySelector(panelSelector) : dialog;
+    if (panel) panel.focus({ preventScroll: true });
+}
+
+function dialogFocusOut(dialog) {
+    if (!dialog) return;
+    const target = dialog._returnFocus;
+    dialog._returnFocus = null;
+    if (!_lastInputWasKeyboard) return;
+    if (target && target.isConnected) target.focus();
+}
+
 function initWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (!modal) return;
@@ -3367,6 +3446,7 @@ function openWelcomeModal(source) {
 
     modal.classList.remove("hidden");
     syncModalOpenClass();
+    dialogFocusIn(modal, ".about-modal-content");
 }
 
 // Dismissal marks the map welcomed regardless of how the modal was
@@ -3377,6 +3457,7 @@ function dismissWelcomeModal() {
     const modal = document.getElementById("welcome-modal");
     if (modal) modal.classList.add("hidden");
     syncModalOpenClass();
+    dialogFocusOut(modal);
 }
 
 function isWelcomeOpen() {
@@ -3679,8 +3760,10 @@ function syncModalOpenClass() {
 }
 
 function openAboutModal() {
-    document.getElementById("about-modal").classList.remove("hidden");
+    const modal = document.getElementById("about-modal");
+    modal.classList.remove("hidden");
     syncModalOpenClass();
+    dialogFocusIn(modal, ".about-modal-content");
     // Offline-readiness row is live only while the modal is up. Every
     // close path (X, Close button, backdrop, Escape) funnels through
     // closeAboutModal, so the stop side can't leak the interval.
@@ -3688,9 +3771,11 @@ function openAboutModal() {
 }
 
 function closeAboutModal() {
-    document.getElementById("about-modal").classList.add("hidden");
+    const modal = document.getElementById("about-modal");
+    modal.classList.add("hidden");
     syncModalOpenClass();
     stopOfflineStatusPolling();
+    dialogFocusOut(modal);
 }
 
 // Build an external link for the About modal. Validates the URL
@@ -7909,9 +7994,11 @@ function setupFloatingChrome() {
             setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(optionsOverlay, optionsBtn, true);
+        dialogFocusIn(optionsOverlay, ".options-overlay-panel");
     }
     function closeOptionsOverlay() {
         setOverlayOpen(optionsOverlay, optionsBtn, false);
+        dialogFocusOut(optionsOverlay);
     }
     function toggleOptionsOverlay() {
         if (!optionsOverlay) return;
