@@ -377,6 +377,10 @@ def generate_service_worker(config, output_dir):
             pass
 
     sw_config = {
+        # Cache Storage is per-origin and production serves every map
+        # as a path on one origin, so cache names must carry the slug
+        # (see the CACHE_PREFIX comment in sw.js).
+        "CACHE_SCOPE": config["slug"],
         "CACHE_VERSION": cache_version,
         "PRECACHE_URLS": precache_urls,
         "PRECACHE_BYTES": precache_bytes,

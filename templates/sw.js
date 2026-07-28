@@ -4,6 +4,12 @@
 // touches at runtime is cached on-fetch by the handler below.
 //
 // Config is injected at build time by build.py:
+//   SW_CONFIG.CACHE_SCOPE    — the map's slug. Cache Storage is
+//                              per-ORIGIN, not per-SW-scope, and
+//                              multiple maps are served as paths on
+//                              one origin, so every cache name must
+//                              carry the slug or one map's cleanup
+//                              deletes its neighbors' offline caches
 //   SW_CONFIG.CACHE_VERSION  — hash-based cache version string,
 //                              computed over EVERY file in the
 //                              build (not just precached ones)
@@ -18,7 +24,20 @@
 
 /*__SW_CONFIG__*/
 
-const CACHE_NAME = `trail-map-${SW_CONFIG.CACHE_VERSION}`;
+// All of THIS map's caches share the slug-scoped prefix; cleanup
+// below only ever deletes within it. localStorage learned this same
+// origin-not-scope lesson long ago (see the `<slug>.mtb.*` key
+// namespace in app.js).
+const CACHE_PREFIX = `trail-map-${SW_CONFIG.CACHE_SCOPE}-`;
+const CACHE_NAME = `${CACHE_PREFIX}${SW_CONFIG.CACHE_VERSION}`;
+
+// Pre-slug cache names were `trail-map-<12 hex chars>` with no map
+// identity. They can't be attributed to a map, so the first slugged
+// version to clean up deletes them all — a one-time migration cost
+// (the affected maps re-precache on their next online visit), versus
+// the old behavior which cross-deleted on EVERY cleanup. Anchored so
+// slugged names can never match.
+const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 
 // ============================================================
 // Install — complete immediately, precache in background
@@ -188,7 +207,11 @@ async function cleanupOldCaches() {
     const keys = await caches.keys();
     await Promise.all(
         keys
-            .filter((k) => k.startsWith("trail-map-") && k !== CACHE_NAME)
+            .filter(
+                (k) =>
+                    (k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME) ||
+                    LEGACY_CACHE_RE.test(k)
+            )
             .map((k) => caches.delete(k))
     );
 }
