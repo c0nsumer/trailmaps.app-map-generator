@@ -101,6 +101,26 @@ def test_custom_routes_without_relations_is_valid():
     assert errors == [], errors
 
 
+def test_custom_route_oneway_reversible_rejected():
+    # 'reversible' needs a direction_schedule.per_route entry, which is
+    # keyed by OSM relation id; a custom route can never satisfy it, so
+    # blessing it here guaranteed a template_inject build failure.
+    with _geojson_file() as geom:
+        base = {"id": "loop", "name": "Loop", "color": "#08c", "geometry": geom}
+        for ow, ok in (("yes", True), ("-1", True), ("", True), ("reversible", False)):
+            cfg = {
+                "name": "C",
+                "slug": "c",
+                "title": "C Map",
+                "custom_routes": [dict(base, oneway=ow)],
+            }
+            errors, _ = validate_config(cfg)
+            if ok:
+                assert errors == [], (ow, errors)
+            else:
+                assert any("reversible" in e for e in errors), errors
+
+
 def test_no_geometry_source_rejected():
     # No relations, no custom_routes, no event_mode.routes → nothing to render.
     cfg = {"name": "N", "slug": "n", "title": "N Map"}

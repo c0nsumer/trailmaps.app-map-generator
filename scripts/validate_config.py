@@ -1112,13 +1112,25 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
             report.err(f"{where}.{sk}", f"must be string, got {type(entry[sk]).__name__}")
 
     # Optional `oneway`: drives the existing direction-arrow renderer.
-    # Accepts the same vocabulary as the OSM `oneway=` tag.
+    # Accepts the OSM `oneway=` vocabulary MINUS 'reversible': a
+    # reversible route needs a direction_schedule.per_route entry to
+    # resolve today's direction, and those are keyed by OSM relation
+    # id — custom routes have none, so template_inject's schedule
+    # check would fail every build with advice impossible to follow.
     if "oneway" in entry:
         ow = entry["oneway"]
-        if ow not in ("yes", "-1", "reversible", ""):
+        if ow == "reversible":
             report.err(
                 f"{where}.oneway",
-                f"must be one of 'yes', '-1', 'reversible', "
+                "'reversible' is not supported on custom routes "
+                "(direction_schedule.per_route entries are keyed by OSM "
+                "relation id); use 'yes' or '-1' and point the geometry "
+                "in the direction of travel",
+            )
+        elif ow not in ("yes", "-1", ""):
+            report.err(
+                f"{where}.oneway",
+                f"must be one of 'yes', '-1', "
                 f"or '' (empty for no arrows), got {ow!r}",
             )
 
