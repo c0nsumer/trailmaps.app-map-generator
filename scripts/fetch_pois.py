@@ -28,6 +28,22 @@ from config_io import load_config_for_fetch as load_config
 from geodesy import haversine_m
 from overpass import query as overpass_query
 
+# Every show_* flag that gates a POI category in build_pois_geojson.
+# build.py iterates this same tuple for its skip-the-fetch-entirely
+# gate and the dry-run summary, so a POI type added here is reflected
+# there automatically. (The gate previously hand-listed five of the
+# seven flags: a config with only show_toilets or show_drinking_water
+# enabled wrote an empty pois.geojson and never fetched.)
+POI_SHOW_FLAGS = (
+    "show_markers",
+    "show_features",
+    "show_parking",
+    "show_trailheads",
+    "show_hubs",
+    "show_toilets",
+    "show_drinking_water",
+)
+
 
 def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
     """Fetch trail-relevant POI nodes from Overpass API.

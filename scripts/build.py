@@ -52,7 +52,7 @@ from event_mode import (
     _event_mode_background_style,
 )
 from fetch_basemap import fetch_basemap
-from fetch_pois import fetch_pois
+from fetch_pois import POI_SHOW_FLAGS, fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
@@ -807,16 +807,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- POI fetching ----
     console.step("POI fetching (gated by show_* keys):")
-    for key, default in (
-        ("show_markers", True),
-        ("show_features", True),
-        ("show_parking", True),
-        ("show_trailheads", True),
-        ("show_hubs", True),
-        ("show_toilets", True),
-        ("show_drinking_water", True),
-    ):
-        on = bool(config.get(key, default))
+    for key in POI_SHOW_FLAGS:
+        on = bool(config.get(key, True))
         console.info(f"{key}: {'YES' if on else 'no'}")
     if config.get("show_trailheads", True):
         th = config.get("trailheads") or []
@@ -1370,13 +1362,7 @@ def main(argv=None):
     # `_enrich_trails_geojson` pass earlier in main() does that
     # for custom routes); POIs now follow the same convention.
     pois_path = os.path.join(output_dir, "pois.geojson")
-    if (
-        not config.get("show_markers", True)
-        and not config.get("show_features", True)
-        and not config.get("show_parking", True)
-        and not config.get("show_trailheads", True)
-        and not config.get("show_hubs", True)
-    ):
+    if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
         console.step("POIs: Skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w", encoding="utf-8") as f:
