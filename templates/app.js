@@ -3858,7 +3858,7 @@ function buildAboutModalContent() {
     // row). About is the technical surface — provenance, versions,
     // credits, offline state.
 
-    // Details block \u2014 one label:value row per map fact, spec-sheet
+    // Details block - one label:value row per map fact, spec-sheet
     // style, instead of an h3 section per one-line fact (which made
     // the modal tall and repetitive). Rows render only when their
     // fact exists.
@@ -3882,7 +3882,7 @@ function buildAboutModalContent() {
 
     // "Curator" rather than "Author" because the framework just
     // generates the map; the human chooses the data, configures the
-    // styling, and decides what's shown \u2014 that's curation, not
+    // styling, and decides what's shown - that's curation, not
     // authorship of the underlying data.
     if (about.curator && (about.curator.name || about.curator.url)) {
         const c = about.curator;
@@ -3895,7 +3895,7 @@ function buildAboutModalContent() {
         detailRow("Trail data", CONFIG.dataDate);
     }
 
-    // App row is just the version + its commit date \u2014 the generator's
+    // App row is just the version + its commit date - the generator's
     // name and link live in Credits with the other attribution, so
     // this row stays a pure fact like its siblings. appVersion is the
     // bare commit count ("294"); the "v" is presentation, so it lives
@@ -3906,7 +3906,7 @@ function buildAboutModalContent() {
             + (CONFIG.appVersionDate ? ` (${CONFIG.appVersionDate})` : ""));
     }
 
-    // Offline readiness \u2014 diagnostic row, not a feature advertisement
+    // Offline readiness - diagnostic row, not a feature advertisement
     // (same spirit as the version row: a line you consult when
     // troubleshooting). Always built, and every state is spelled out
     // (not enabled / unsupported / needs HTTPS / inactive / saving /
@@ -3924,7 +3924,7 @@ function buildAboutModalContent() {
 
     body.appendChild(details);
 
-    // More info \u2014 single section combining what was previously two
+    // More info - single section combining what was previously two
     // (more_information + extra_links). Curator-supplied bulleted
     // list of related links: official trail-system pages, club
     // pages, related orgs, etc. Order matches the YAML.
@@ -3942,12 +3942,12 @@ function buildAboutModalContent() {
         body.appendChild(ul);
     }
 
-    // Credits \u2014 pure attribution: the generator itself first (its
+    // Credits - pure attribution: the generator itself first (its
     // version is the App details row above), then data sources and
     // libraries. Always rendered. Terrain credit is conditional on
-    // show_terrain \u2014 no point crediting a source whose tiles aren't
+    // show_terrain - no point crediting a source whose tiles aren't
     // loaded for this map. (CONFIG.buildDate still exists but is not
-    // shown anywhere here \u2014 the landing-page "Updated" line consumes
+    // shown anywhere here - the landing-page "Updated" line consumes
     // it.)
     const creditsHeader = document.createElement("h3");
     creditsHeader.textContent = "Credits";
@@ -3978,11 +3978,11 @@ function buildAboutModalContent() {
         credit("Terrain tiles \u00a9 ",
             "https://mapterhorn.com",
             "Mapterhorn",
-            " \u2014 aggregates public-domain elevation sources (USGS 3DEP, EU-DEM, JAXA AW3D30, etc.).");
+            " (Aggregates public-domain elevation sources; USGS 3DEP, EU-DEM, JAXA AW3D30, etc.).");
     }
     // USGS 3DEP credit is shown only when the map actually displays
     // route elevation. Detected at runtime by looking for any route
-    // metadata entry with computed elevation_gain_m \u2014 present iff
+    // metadata entry with computed elevation_gain_m - present iff
     // show_route_elevation was true at build time AND the 3DEP fetch
     // succeeded. Avoids crediting a data source whose output isn't
     // actually surfaced to the rider.
@@ -9564,8 +9564,8 @@ function setupInteractions() {
     //      taps must land within the line's rendered pixel width to
     //      register, which feels broken on iOS. The map-wide handler
     //      below uses a TRAIL_TAP_BUFFER_PX-radius bounding box
-    //      around e.point \u2014 12 CSS px \u2248 Material's 48 dp tap target
-    //      on a 2\u00D7 display \u2014 so taps near a line still register.
+    //      around e.point - 12 CSS px \u2248 Material's 48 dp tap target
+    //      on a 2\u00D7 display - so taps near a line still register.
     //
     //   2. Resolve to the single tapped trail, then union that trail's
     //      routes in one pass. A way shared across N OSM routes renders
@@ -9585,7 +9585,7 @@ function setupInteractions() {
     // The per-layer mouseenter/mouseleave handlers remain in
     // attachTrailHoverHandlers because cursor feedback IS layer-scoped
     // (we only want `cursor: pointer` over the actual rendered line,
-    // not the buffered halo) and is desktop-only \u2014 iOS doesn't fire
+    // not the buffered halo) and is desktop-only - iOS doesn't fire
     // mouse events.
     //
     // Buffer sizes are platform-tiered. Field-tested findings:
@@ -9615,7 +9615,7 @@ function setupInteractions() {
                     && (navigator.maxTouchPoints || 0) > 1);
             return isIOS ? 12 : 6;
         } catch (_) {
-            // matchMedia missing or threw \u2014 fall back to a middle
+            // matchMedia missing or threw - fall back to a middle
             // ground that won't feel broken on any platform.
             return 6;
         }
@@ -9741,7 +9741,7 @@ function setupInteractions() {
     }
 
     function attachTrailHoverHandlers(layerId) {
-        // Cursor feedback only \u2014 desktop hover. iOS / Android touch
+        // Cursor feedback only - desktop hover. iOS / Android touch
         // doesn't fire these events; click handling is map-wide
         // (below) with a buffered hit-test.
         map.on("mouseenter", layerId, () => {
@@ -9760,7 +9760,7 @@ function setupInteractions() {
     // Single map-wide click handler. Runs once per click regardless
     // of how many trail-casing layers the buffered hit-test crosses.
     // Uses a TRAIL_TAP_BUFFER_PX-radius bounding box around the tap
-    // point \u2014 platform-tiered (iOS 12 / Android 6 / desktop 4) per
+    // point - platform-tiered (iOS 12 / Android 6 / desktop 4) per
     // the design rationale comment above.
     map.on("click", (e) => {
         if (poiMarkerTapped) return;
@@ -9812,7 +9812,7 @@ function setupInteractions() {
 
         let html = "";
         if (trailName) {
-            // trailName comes from OSM `name=` tag \u2014 UNTRUSTED.
+            // trailName comes from OSM `name=` tag - UNTRUSTED.
             // Escape to neutralize any vandalism (script tags,
             // event handlers) in OSM data. Data URLs are
             // self-generated, not OSM strings.
