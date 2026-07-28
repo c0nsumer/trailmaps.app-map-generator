@@ -1472,6 +1472,16 @@ def main(argv=None):
     # ---- Terrain planning ----
     if not config.get("show_terrain", True):
         post_messages.append("Terrain: Disabled in config (show_terrain: false)")
+        # A previous build's archive must not survive the flip: the SW
+        # sweep hashes and precaches everything in output_dir, so a
+        # stale terrain.pmtiles (up to ~30 MB) would keep shipping to
+        # every rider's phone for a layer the runtime never enables
+        # (showTerrain gates the HEAD probe in app.js).
+        if os.path.exists(terrain_path):
+            _clear_signature(terrain_path)
+            os.remove(terrain_path)
+            post_messages.append(
+                "Terrain: Removed stale terrain.pmtiles left by a previous build")
     elif args.no_terrain:
         post_messages.append("Terrain: Skipped (--no-terrain)")
     else:
@@ -1587,6 +1597,18 @@ def main(argv=None):
             console.blank()
     else:
         console.step("PWA disabled — skipping service worker generation")
+        # A previous build's sw.js must not survive the flip. Deployed,
+        # it answers already-installed riders' periodic update checks
+        # byte-identically, so their registered SW never updates and
+        # keeps serving the old cache indefinitely. Removing it makes
+        # the update check 404, which is the documented signal for the
+        # browser to unregister the worker. Sidecars go with it so the
+        # rsync tree carries no orphaned encodings.
+        for name in ("sw.js", "sw.js.gz", "sw.js.zst", "sw.js.br"):
+            stale = os.path.join(output_dir, name)
+            if os.path.exists(stale):
+                os.remove(stale)
+                console.info(f"Removed stale {name} left by a previous build")
 
     # Step 8: Precompress static assets (MUST be after the service worker —
     # see precompress_assets). Skipped with --no-precompress.
