@@ -554,6 +554,10 @@ body::after {
 .opt-toggle-row-clickable {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
+    /* Governs the press wash's fade-OUT on release (and the hover
+     * fade-in on desktop); :active below zeroes it so the wash lands
+     * the instant the finger goes down. */
+    transition: background 0.2s;
 }
 
 /* (any-hover: hover), not (hover: hover): Chrome on Linux can decide
@@ -567,6 +571,20 @@ body::after {
     .opt-toggle-row-clickable:hover {
         background: var(--sheet-hover);
     }
+}
+
+/* Touch press feedback. The platform tap-highlight is suppressed
+ * above and the hover wash is hover-gated, so a phone tap otherwise
+ * gave no press feedback at all — the state change was the only
+ * signal. Same wash as hover: instant on press (transition zeroed),
+ * fading out over the base transition on release. The rows' analog
+ * of the .fab:active press cue. Browsers withhold :active during
+ * touch-scroll detection, so dragging the panel doesn't strobe rows.
+ * Tapping an inner segment also washes its row (:active applies to
+ * ancestors), which reads correctly — the row owns that state. */
+.opt-toggle-row-clickable:active {
+    background: var(--sheet-hover);
+    transition: background 0s;
 }
 
 .opt-toggle-row .layer-swatch {
@@ -882,22 +900,40 @@ body::after {
     cursor: pointer;
     font: inherit;
     color: var(--sheet-text);
-    transition: background 0.1s;
+    transition: background 0.2s;
 }
 
-.opt-action-row:hover {
+/* Hover gated behind (any-hover: hover) like the toggle rows above;
+ * ungated, a phone tap left a sticky hover wash on Help/About until
+ * something else took focus. */
+@media (any-hover: hover) {
+    .opt-action-row:hover {
+        background: var(--sheet-hover);
+    }
+}
+
+/* Touch press feedback — same rationale and mechanics as
+ * .opt-toggle-row-clickable:active above. */
+.opt-action-row:active {
     background: var(--sheet-hover);
+    transition: background 0s;
 }
 
 /* Non-interactive variant — used for the install row on iOS, where
  * the icon + label appear for visual consistency with Android but
  * the actual install flow happens in the browser chrome (Share →
- * Add to Home Screen). Suppresses the pointer cursor + hover wash
- * so the row doesn't read as a tap target whose tap does nothing. */
+ * Add to Home Screen). Suppresses the pointer cursor + hover and
+ * press washes so the row doesn't read as a tap target whose tap
+ * does nothing. */
 .opt-action-row.is-static {
     cursor: default;
 }
-.opt-action-row.is-static:hover {
+@media (any-hover: hover) {
+    .opt-action-row.is-static:hover {
+        background: transparent;
+    }
+}
+.opt-action-row.is-static:active {
     background: transparent;
 }
 
