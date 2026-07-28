@@ -4053,8 +4053,13 @@ let _terrainTilesLoaded = null;
 let _signalMapSettled = () => {};
 const _mapSettled = new Promise((resolve) => { _signalMapSettled = resolve; });
 async function addTerrainLayers() {
+    // fetchWithTimeout, not bare fetch: loadTrails awaits this probe
+    // BEFORE creating any trail layer, so on "reported but dead"
+    // cellular a hung HEAD would hold the entire map (basemap only,
+    // no trails, no error) for the browser's native timeout. A bounded
+    // failure just means "no terrain", which the catch already handles.
     try {
-        const resp = await fetch("terrain.pmtiles", { method: "HEAD" });
+        const resp = await fetchWithTimeout("terrain.pmtiles", 20000, { method: "HEAD" });
         if (!resp.ok) return;
     } catch {
         return;
@@ -4487,11 +4492,11 @@ function routeSwatchModel(info) {
 // reaches the timeout, so this only ever bites a genuine network
 // stall. 20 s is generous enough not to abort a slow-but-real download
 // of these (small) GeoJSON files; bump it if a map's data grows large.
-async function fetchWithTimeout(resource, ms = 20000) {
+async function fetchWithTimeout(resource, ms = 20000, options = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ms);
     try {
-        return await fetch(resource, { signal: controller.signal });
+        return await fetch(resource, { ...options, signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }
