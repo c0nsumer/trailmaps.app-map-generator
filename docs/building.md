@@ -40,7 +40,7 @@ hosting the output, see [`deployment.md`](deployment.md).
     warning. Everything else works normally.
 - Optional, contributors only: Node.js for the template lint (see
   [Template lint](#template-lint-contributors-only)). **Not needed to
-  build maps** — the `package.json` at the repo root is dev tooling,
+  build maps** - the `package.json` at the repo root is dev tooling,
   not a build dependency; there is no JS build step.
 
 ## Building a map
@@ -312,7 +312,7 @@ The runtime templates (`templates/app.js`, `templates/sw.js`) are
 plain JavaScript with no build step: nothing ever compiles them, so a
 reference to an identifier that doesn't exist (say, a refactor
 removed a helper another code path still calls) parses fine, ships
-silently, and throws at runtime — where one exception can take out
+silently, and throws at runtime - where one exception can take out
 the whole app boot. An ESLint pass with only the `no-undef` rule
 enabled catches that class of mistake statically.
 
@@ -331,8 +331,8 @@ corepack pnpm lint       # or: npm run lint
 Once installed, it also runs automatically as part of
 `python -m pytest scripts/tests/` (via `test_eslint.py`); on machines
 without Node.js or without the install step, that test skips cleanly.
-The rule set is deliberately minimal — `no-undef` only, configured in
-`eslint.config.mjs` — so it never argues about style. `CONFIG` and
+The rule set is deliberately minimal - `no-undef` only, configured in
+`eslint.config.mjs` - so it never argues about style. `CONFIG` and
 `SW_CONFIG` are declared there as known globals because the build
 injects them into the templates at build time.
 

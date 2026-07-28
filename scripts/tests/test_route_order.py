@@ -1,4 +1,4 @@
-"""Tests for route_order.py — side-stable parallel route ordering.
+"""Tests for route_order.py - side-stable parallel route ordering.
 
 Run from repo root:
     python -m pytest scripts/tests/test_route_order.py -v
@@ -169,7 +169,7 @@ def test_score_counts_separation():
 
 
 def test_score_flips_dominate_separations():
-    """1 flip is worse than 999 separations — tiebreaker is strict."""
+    """1 flip is worse than 999 separations - tiebreaker is strict."""
     # Construct an order that has 1 flip but 0 separations vs.
     # an order with 0 flips but some separations: the first wins on
     # the primary objective, so its score is HIGHER.
@@ -197,7 +197,7 @@ def test_local_search_improves_from_bad_start():
 
 
 # ---------------------------------------------------------------------------
-# compute_route_order() — top-level driver
+# compute_route_order() - top-level driver
 # ---------------------------------------------------------------------------
 
 
@@ -273,7 +273,7 @@ def test_rerun_with_previous_order_is_noop():
     previous routeOrder byte-for-byte, even when other orderings tie.
 
     Before the fix the tiebreak was pure lex-min, so any equally-optimal
-    ordering that sorted smaller would beat the previous order — and
+    ordering that sorted smaller would beat the previous order - and
     which tied ordering got *discovered* depended on the hash-randomized
     shuffle base, so multi-mode maps churned a new routeOrder on every
     build. That changed trails.geojson + app.js and fired a spurious PWA
@@ -286,7 +286,7 @@ def test_rerun_with_previous_order_is_noop():
     order, flips, seps = compute_route_order(routes, [], previous_order=prev)
     assert order == prev
     assert (flips, seps) == (0, 0)
-    # Feeding the result back in stays put — the build feedback loop.
+    # Feeding the result back in stays put - the build feedback loop.
     again, _, _ = compute_route_order(routes, [], previous_order=order)
     assert again == prev
 
@@ -323,7 +323,7 @@ def test_separation_tiebreaker_engages():
     separations.
 
     Setup: ``[X, Y]`` adjacent to ``[X, Y, Z]``. With order
-    ``[X, Z, Y]`` the corridor ``[X, Y, Z]`` renders as ``[X, Z, Y]`` —
+    ``[X, Z, Y]`` the corridor ``[X, Y, Z]`` renders as ``[X, Z, Y]`` -
     Z is between X and Y, breaking their partnership. With order
     ``[X, Y, Z]`` both corridors keep X and Y adjacent. Both orderings
     have 0 flips, so the tiebreaker must pick the second.
@@ -391,7 +391,7 @@ def test_enumerate_modes_summer_winter_overlap():
 
 
 # ---------------------------------------------------------------------------
-# build_corridor_adjacencies() — mode filtering
+# build_corridor_adjacencies() - mode filtering
 # ---------------------------------------------------------------------------
 
 
@@ -407,7 +407,7 @@ def test_adjacency_filters_invisible_routes():
     full = build_corridor_adjacencies(features)
     assert len(full) == 1
 
-    # Hide X: both signatures collapse to {A, B} — same signature on
+    # Hide X: both signatures collapse to {A, B} - same signature on
     # both sides of the junction → no adjacency.
     filtered = build_corridor_adjacencies(features, visible_routes={"A", "B"})
     assert len(filtered) == 0
@@ -421,7 +421,7 @@ def test_adjacency_handles_empty_visible_set():
 
 
 # ---------------------------------------------------------------------------
-# compute_route_orders() — per-mode driver
+# compute_route_orders() - per-mode driver
 # ---------------------------------------------------------------------------
 
 
@@ -443,7 +443,7 @@ def test_compute_route_orders_single_mode():
 def test_compute_route_orders_dedups_identical_subsets():
     """If two mode keys produce the same visible subset, share the order."""
     routes_meta = {
-        # No emergency routes — summer == summer_emergency, but only
+        # No emergency routes - summer == summer_emergency, but only
         # summer is enumerated since emergency is empty.
         "A": {"summer": True, "winter": True, "emergency": False},
         "B": {"summer": True, "winter": True, "emergency": False},
@@ -462,7 +462,7 @@ def test_compute_route_orders_dedups_identical_subsets():
 
 def test_ramba_regression():
     """RAMBA optimization stays at ≤2 sign flips across the union
-    adjacency (defensive ceiling — current empirical is 1)."""
+    adjacency (defensive ceiling - current empirical is 1)."""
     p = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -473,7 +473,7 @@ def test_ramba_regression():
     )
     p = os.path.abspath(p)
     if not os.path.exists(p):
-        # Build artifacts not present — skip in CI; useful only when
+        # Build artifacts not present - skip in CI; useful only when
         # running locally with a built map.
         import pytest
 
@@ -493,8 +493,8 @@ def test_previous_order_wins_score_ties():
     """Rebuild stability: among equal-score orderings, the previous
     build's order is reproduced byte-for-byte instead of drifting to a
     different but equally-optimal one. (This seeding path was dead in
-    production for a while — build.py now feeds previous_order from
-    the prior build's expanded output — so pin it here.)"""
+    production for a while - build.py now feeds previous_order from
+    the prior build's expanded output - so pin it here.)"""
     routes = ["100", "200", "300"]
     # No adjacencies → every ordering scores 0 → pure tiebreak.
     order, _, _ = compute_route_order(routes, [])

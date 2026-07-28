@@ -19,7 +19,7 @@ from event_mode import _apply_event_mode_to_custom_routes  # noqa: E402
 
 def test_load_config_coerces_digit_string_relation_keys(tmp_path):
     """The validator blesses quoted keys ('1234567') for the
-    per-relation override dicts, but the injector looks up by INT —
+    per-relation override dicts, but the injector looks up by INT -
     a quoted key used to produce a clean build with the override
     silently dropped. load_config coerces once, up front."""
     from build import load_config

@@ -80,7 +80,7 @@ comments edited, sections renamed, drift from the template's structure.
 This tool produces a sibling `<input>-cleaned.yaml` that adopts the
 template's structure (section dividers, key ordering, default-value
 documentation comments) while preserving every value the production
-file explicitly set — and every curator comment along with it.
+file explicitly set - and every curator comment along with it.
 
 The original file is never modified. Review the cleaned output and
 swap it in manually when satisfied. One behavior worth knowing
@@ -128,14 +128,14 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 - Comments the placement heuristics can't attach anywhere (e.g. a
   commented-out chunk trailing below a set block) are appended under a
   `# --- Unplaced comments carried from the previous file
-  (review/relocate) ---` header — misplaced but kept, never lost.
+  (review/relocate) ---` header - misplaced but kept, never lost.
   Relocate them by hand while reviewing the output.
 
 ### Verification
 
 After writing, the tool re-parses both files and compares: if the
 cleaned output would parse to different data than the original, it
-deletes the output and exits non-zero. The gate is always on — the
+deletes the output and exits non-zero. The gate is always on - the
 tool cannot hand back a config that behaves differently. The output
 should also pass `validate_config.py` and build via `build.py`; any
 gate failure means the cleaner mishandled something, file an issue.
@@ -144,8 +144,8 @@ gate failure means the cleaner mishandled something, file an issue.
 
 Diagnostic that lists every OpenStreetMap relation (route) a map is
 built from, one per line as `<id>\t<name>`. Super-relations are
-expanded to their child routes — the leaves that actually produce
-geometry — exactly as the build does, and clipped relations are marked
+expanded to their child routes - the leaves that actually produce
+geometry - exactly as the build does, and clipped relations are marked
 `[clipped]`.
 
 Operates purely from the local cache by default: it reconstructs the

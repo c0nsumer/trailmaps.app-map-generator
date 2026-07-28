@@ -34,14 +34,14 @@ _IMBA_RATING_COUNT = 6
 
 # Protomaps ships five basemap sprite flavors, but templates/app.js only ever
 # requests two (see basemapFlavor()). The other three are ~80 KB per map of
-# atlas that no code path can reach — and because the service worker precaches
+# atlas that no code path can reach - and because the service worker precaches
 # the whole build tree, that was bandwidth every rider spent, not just server
 # disk.
 #
 # DRIFT WARNING, in both directions:
 #   * Adding a flavor to basemapFlavor() in app.js REQUIRES adding it to
 #     _SPRITE_FLAVORS_USED here. Otherwise the atlas 404s at runtime and the
-#     basemap loses every icon — offline, permanently.
+#     basemap loses every icon - offline, permanently.
 #   * This is a DROP-list, not a keep-list: a file whose name doesn't match a
 #     known flavor is always copied. So a new upstream flavor ships unused
 #     (harmless, caught at the next size review) rather than some needed file
@@ -72,7 +72,7 @@ def _engine_app_version():
     <count> is the repo's commit count as of the last commit that touched
     templates/ (the shipped app code), and the date is that commit's
     commit date. Keying off templates/ rather than HEAD means the version
-    only advances when the app a rider runs actually changes — a
+    only advances when the app a rider runs actually changes - a
     scripts-only engine commit leaves every map's app.js bytes (and
     therefore the content-hashed CACHE_VERSION) untouched, so installed
     riders aren't forced through a full re-precache for deploys that
@@ -119,7 +119,7 @@ def _engine_app_version():
 #
 # The runtime persists user-facing toggle states (POI visibility,
 # season mode, Emergency, labels, Difficulty) in localStorage under
-# `mtb.*` keys — there are no `*_default_on` config knobs. House
+# `mtb.*` keys - there are no `*_default_on` config knobs. House
 # defaults live in app.js. The `show_*` fields below gate *data
 # fetching* and *build-time asset generation* (e.g. show_markers:
 # false skips the Overpass query entirely; show_difficulty: false
@@ -141,7 +141,7 @@ CONFIG_SPEC = [
     ("max_zoom", "maxZoom", 18),
     # Build-time data gates (skip fetching / sprite-gen when False).
     # `show_markers` merges guideposts + emergency access points into
-    # one "trail marker" category — they render identically now.
+    # one "trail marker" category - they render identically now.
     ("show_markers", "showMarkers", True),
     ("show_features", "showFeatures", True),
     ("show_parking", "showParking", True),
@@ -163,12 +163,12 @@ CONFIG_SPEC = [
     # UI gate for the Finder + Labels dropdown. Where routes and trails
     # overlap so heavily that listing both adds noise, turning trails
     # off hides the Trails Finder section and the Trails Labels option.
-    # (Routes are always surfaced — a geometry source is required, so
+    # (Routes are always surfaced - a geometry source is required, so
     # every map has a key.)
     ("show_trails", "showTrails", True),
     # Build-time data gate for the direction-arrow layer. When False,
     # no arrows are placed on any oneway trail and the Options toggle
-    # row is hidden — even if `direction_arrows` is in `forced_visible`
+    # row is hidden - even if `direction_arrows` is in `forced_visible`
     # (the show gate wins). Use for aesthetic maps that should never
     # display directional indicators regardless of the underlying OSM
     # tagging. Default True mirrors every other show_* gate's
@@ -183,7 +183,7 @@ CONFIG_SPEC = [
     # Labels segmented control is hidden in Options and the rider's
     # persisted choice is ignored. Validated at build time against
     # show_trails so the lock can't contradict a hidden section.
-    # Default "" (empty string) rather than None — None is the
+    # Default "" (empty string) rather than None - None is the
     # "required key" sentinel for inject_config_into_template's loop;
     # the runtime check is `CONFIG.forcedLabels ? lock : free` which
     # treats "" as the unset/free state.
@@ -216,14 +216,14 @@ CONFIG_SPEC = [
     # map_dim_on_highlight is true) AND the Search / Options / About menu
     # backdrops (via the --scrim-opacity CSS var, published in init()).
     # One value so the in-map wash and the menu backdrops share a single
-    # density — moving between a highlight and an open menu reads as one
+    # density - moving between a highlight and an open menu reads as one
     # continuous wash. Lower keeps the surrounding network legible (you
     # can still trace the connecting trails needed to reach the
     # highlighted one); higher is a stronger dim. Default 0.40.
     ("scrim_opacity", "scrimOpacity", 0.40),
     # When true (the default), a highlighted route/trail gets a soft
     # amber selection glow beneath the ribbon so it reads as "selected"
-    # at a glance — including dark/black routes that would otherwise be
+    # at a glance - including dark/black routes that would otherwise be
     # easy to lose. Set false to drop back to the outline + stroke ribbon
     # with no glow.
     ("highlight_glow", "highlightGlow", True),
@@ -278,8 +278,8 @@ CONFIG_SPEC = [
     # via beforeinstallprompt; iOS Safari Add-to-Home-Screen
     # instructions). Default true; set false for maps that don't want
     # install promotion (e.g. a personal/family map). When false, the
-    # beforeinstallprompt handler is not registered at all — silencing
-    # Chrome's "page must call prompt()" warning — and the custom
+    # beforeinstallprompt handler is not registered at all - silencing
+    # Chrome's "page must call prompt()" warning - and the custom
     # Install button is hidden everywhere.
     ("pwa_install_prompt", "pwaInstallPrompt", True),
 ]
@@ -292,7 +292,7 @@ def gpx_download_entries(config):
     copies src → gpx/<basename> in the build output, and
     inject_config_into_template emits each meta dict ({name, url}) as
     CONFIG.gpxDownloads. Filenames are preserved verbatim so riders get
-    a file identical — name included — to one distributed by the
+    a file identical - name included - to one distributed by the
     event's official source; the url is percent-encoded because
     official filenames may contain spaces. Entries are assumed
     validated (validate_config._validate_event_gpx) and paths resolved
@@ -331,7 +331,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # keep their original "relation" names since they take OSM
     # relation IDs as input; the values populate route info on the JS
     # side. (winter_relations is consumed earlier, in enrichment's
-    # bucket-flag pass — the runtime reads bucket flags, not a
+    # bucket-flag pass - the runtime reads bucket flags, not a
     # per-route season field.)
     relation_colors = config.get("relation_colors") or {}
     dashed_relations = config.get("dashed_relations") or {}
@@ -347,17 +347,17 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #         reverse_days: [...]
     #
     # An explicit per-route entry always wins, even if its reverse_days is
-    # empty — that's the way to opt one route out of the system-wide
+    # empty - that's the way to opt one route out of the system-wide
     # default. Relations NOT mentioned under per_route fall back to the
     # default.
     #
-    # Relations are just the grouping handle here — relations themselves don't
+    # Relations are just the grouping handle here - relations themselves don't
     # have direction; their member ways do.
     #
     # Day-token vocabulary (weekdays + even_days/odd_days parity tokens,
     # accept-prefix matching, canonical snake_case emitted into
     # CONFIG.directionSchedules) is shared with the validator via
-    # validate_config.match_day_token — single source of truth, so the
+    # validate_config.match_day_token - single source of truth, so the
     # injector can't accept a token the validator rejects or vice versa.
 
     def _normalise_days(days_in, error_label):
@@ -387,9 +387,9 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Per-relation overrides. Two-pass processing so super-relation
     # entries (auto-expanded via metadata.super_relation_expansions)
     # propagate to children, but explicit per-child entries always win:
-    #   Pass 1 — process every entry whose key is a LEAF (or absent
+    #   Pass 1 - process every entry whose key is a LEAF (or absent
     #            from the expansion table). These take precedence.
-    #   Pass 2 — process super-relation entries, fanning out to
+    #   Pass 2 - process super-relation entries, fanning out to
     #            children only if the child wasn't already set in
     #            Pass 1.
     # This lets a curator write `per_route: { 99999999: { reverse_days:
@@ -411,7 +411,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
             (spec or {}).get("reverse_days"),
             f"direction_schedule.per_route[{rel_id}].reverse_days",
         )
-        # Even an empty list is recorded — that's how a user opts a single
+        # Even an empty list is recorded - that's how a user opts a single
         # route out of the system-wide default.
         sched_processed[int(rel_id)] = {"reverse_days": days}
 
@@ -448,7 +448,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Validate oneway=reversible features against the resolved schedules.
     # fetch_trails.py performs the same check against raw OSM data, but it
     # only runs when the GeoJSON is being (re)built. A "config-only" rebuild
-    # — `build.py <config>` without --refresh-trails — reuses the cached
+    # - `build.py <config>` without --refresh-trails - reuses the cached
     # GeoJSON and would otherwise skip the check. We re-validate here so the
     # build always fails when a reversible way has no schedule covering it,
     # regardless of whether trails were refetched this run.
@@ -600,7 +600,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["eventPoiColor"] = em.get("poi_color", "")
     config_obj["hasEventPois"] = bool(em.get("pois"))
     # gpxDownloads: entries for the GPX download sheet ({name, url}).
-    # Empty on maps without event_mode.gpx — the FAB markup is stripped
+    # Empty on maps without event_mode.gpx - the FAB markup is stripped
     # from index.html at build time in that case (see copy_templates),
     # so the runtime only reads this when the FAB exists.
     config_obj["gpxDownloads"] = [meta for _src, _base, meta in gpx_download_entries(config)]
@@ -616,8 +616,8 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultTrailCap"] = "round"
 
     # buildDate answers "when did this map's app last change": the
-    # engine templates PLUS the map's own build inputs — the config YAML
-    # and the assets it references — so a curator editing a title or
+    # engine templates PLUS the map's own build inputs - the config YAML
+    # and the assets it references - so a curator editing a title or
     # swapping a logo moves it even though no engine code changed. It is
     # NOT displayed in the About modal (appVersion below replaced it
     # there); it survives in CONFIG because the website repo's
@@ -628,7 +628,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # metadata.data_timestamp into the src snapshot, which moves
     # dataDate).
     #
-    # Derived from input mtimes — NOT datetime.now(): a wall-clock
+    # Derived from input mtimes - NOT datetime.now(): a wall-clock
     # stamp made every rebuild produce different app.js bytes, which
     # bust the content-hashed CACHE_VERSION and forced every installed
     # rider through full cache eviction + re-precache (up to ~30 MB)
@@ -735,7 +735,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Welcome/Help modal config. Three forms accepted: omitted (None →
     # framework default), false (first-visit auto-open suppressed), or
     # a dict with title/body/show_controls_hint. Distinguish
-    # "explicitly false" from "omitted" — `or` would collapse both to
+    # "explicitly false" from "omitted" - `or` would collapse both to
     # None, which the runtime would interpret as "use defaults" and
     # still auto-open.
     #
@@ -745,7 +745,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # error), so there is no defaulting between keys anymore.
     welcome = config.get("welcome") if "welcome" in config else None
     if welcome is not False:
-        # An empty dict means "nothing configured" — emit None so the
+        # An empty dict means "nothing configured" - emit None so the
         # runtime takes the framework default rather than an object
         # that says nothing.
         welcome = welcome if isinstance(welcome, dict) and welcome else None
@@ -778,9 +778,9 @@ def inject_config_into_template(template_content, config, trails_geojson):
     else:
         config_obj["forcedVisible"] = []
     # Accent palette: resolved at build time (see _accent_palette
-    # stash in build.py). The build always produces a 4-value palette —
+    # stash in build.py). The build always produces a 4-value palette -
     # a deep light-mode shade + a lightened dark-mode shade, each with
-    # its best on-accent text color — from the logo pick / explicit
+    # its best on-accent text color - from the logo pick / explicit
     # hex / framework default. app.js sets the four BASE vars on :root
     # and style.css maps --accent / --on-accent per [data-color-scheme],
     # so the accent reads correctly in both schemes.
@@ -791,7 +791,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["onAccentDark"] = accent_palette.get("onDark")
 
     # Per-type POI counts (computed from pois.geojson at build
-    # time — see _poi_counts stash). Drives the dynamic Welcome
+    # time - see _poi_counts stash). Drives the dynamic Welcome
     # Search line so it only mentions place types actually present
     # on this map.
     config_obj["poiCounts"] = config.get("_poi_counts") or {}
@@ -815,7 +815,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
 # Pillow-readable raster extensions used by the icon-source resolver
 # below. SVG and PDF aren't readable by Pillow, so a logo with one of
-# those extensions can't fall back to icon source — generate_icons
+# those extensions can't fall back to icon source - generate_icons
 # would crash. Defined at module scope so resolve_icon_source() and
 # the icon-generation call site (copy_assets) share one definition.
 _PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
@@ -826,7 +826,7 @@ def resolve_icon_source(config, project_root):
 
     Three input shapes, in priority order:
       1. config["icon"]: explicit. Returned as-is when set (any value,
-         even non-raster, is the curator's call — generate_icons will
+         even non-raster, is the curator's call - generate_icons will
          flag the failure if Pillow can't read it).
       2. config["logo"]: automatic fallback when icon: is unset, but
          only when the logo file exists AND has a Pillow-readable
@@ -836,7 +836,7 @@ def resolve_icon_source(config, project_root):
 
     Used by both copy_templates (to decide whether to keep the icons
     HTML block) AND copy_assets (to decide whether to call
-    generate_icons). One function so they can't drift — the previous
+    generate_icons). One function so they can't drift - the previous
     bug was copy_templates checking only `icon:` while copy_assets
     also accepted `logo:`, producing builds with manifest+icons on
     disk but no <link rel="manifest"> in the HTML.
@@ -891,14 +891,14 @@ def copy_templates(config, output_dir, trails_geojson):
                 content,
             )
 
-            # Open Graph + Twitter Card metadata. Always-on (no gate) —
+            # Open Graph + Twitter Card metadata. Always-on (no gate) -
             # benefits search engines and the Share-button preview cards
             # equally. Values are HTML-attribute-escaped to survive
             # quotes / ampersands in trail-system names + descriptions.
             og_title = config.get("title") or config.get("name") or "Trail Map"
             # The map's one descriptive text lives at welcome.body
             # (about.description was retired). `welcome: false` and
-            # omitted both leave no prose — fall through to the title.
+            # omitted both leave no prose - fall through to the title.
             welcome_cfg = config.get("welcome")
             welcome_cfg = welcome_cfg if isinstance(welcome_cfg, dict) else {}
             og_description_raw = (welcome_cfg.get("body") or "").strip()
@@ -923,7 +923,7 @@ def copy_templates(config, output_dir, trails_geojson):
             )
 
             # Strip the Share button section when share_button: false.
-            # Default true — the section's `hidden` class is only used
+            # Default true - the section's `hidden` class is only used
             # to keep the section invisible until app.js reveals it.
             if not config.get("share_button", True):
                 content = re.sub(
@@ -934,7 +934,7 @@ def copy_templates(config, output_dir, trails_geojson):
                 )
 
             # Strip the GPX download FAB + sheet when the map has no
-            # event_mode.gpx entries (the common case) — same pattern
+            # event_mode.gpx entries (the common case) - same pattern
             # as the Share strip so non-event maps carry no dead markup.
             if not gpx_download_entries(config):
                 content = re.sub(
@@ -944,7 +944,7 @@ def copy_templates(config, output_dir, trails_geojson):
                     flags=re.DOTALL,
                 )
 
-            # Brand title — substitute the map's title text into both
+            # Brand title - substitute the map's title text into both
             # the alt= on the brand-img (used by screen readers + as a
             # fallback when the image is missing) AND the brand-title
             # span text (shown when no logo is configured at all). Same
@@ -954,7 +954,7 @@ def copy_templates(config, output_dir, trails_geojson):
 
             # Brand-img CLS-prevention dimensions. process_logo() stashes
             # the actual written pixel dimensions on config["_brand_img_dims"]
-            # (or (None, None) when it couldn't determine them — Pillow
+            # (or (None, None) when it couldn't determine them - Pillow
             # missing, SVG without viewBox, etc.). Substitute width/height
             # into the <img> tag when known; otherwise emit the empty
             # string so the tag stays valid HTML and we accept a small
@@ -964,7 +964,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # HTML attrs only set the aspect ratio used by the browser
             # to reserve layout box before image bytes arrive.
             #
-            # fetchpriority="high" is unconditional in the template — it
+            # fetchpriority="high" is unconditional in the template - it
             # makes the brand-img the LCP image regardless of whether we
             # could determine dims. Browsers without fetchpriority support
             # ignore the attribute (no regression).
@@ -987,7 +987,7 @@ def copy_templates(config, output_dir, trails_geojson):
             bootstrap_slug = json.dumps(slug)  # JS string-safe
             bootstrap_default = json.dumps(default_scheme)
             # Accent base vars, baked into the pre-paint bootstrap so the
-            # per-map accent is correct on the FIRST frame — before app.js
+            # per-map accent is correct on the FIRST frame - before app.js
             # (which carries CONFIG) has downloaded. Without this, a slow
             # first load paints accent-colored chrome (notably the
             # initial-load progress bar) with style.css's default
@@ -1053,7 +1053,7 @@ def copy_templates(config, output_dir, trails_geojson):
             )
             content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
             # Static brand-color substitutions: the theme-color meta
-            # (no-JS fallback — the bootstrap re-points it per scheme
+            # (no-JS fallback - the bootstrap re-points it per scheme
             # on first frame), the Safari pinned-tab mask-icon tint,
             # and the legacy Windows tile color all take the light
             # accent shade. replace() catches every occurrence. No-op
@@ -1084,10 +1084,10 @@ def copy_templates(config, output_dir, trails_geojson):
                     flags=re.DOTALL,
                 )
 
-            # Additional (secondary) brand images — event + sponsor logos
+            # Additional (secondary) brand images - event + sponsor logos
             # stacked under the primary logo in #brand. Rendered in
             # copy_assets() into logo-N.webp / logo-N.svg with per-logo
-            # dark-mode invert. Build the <img> tags here (alt="" — these
+            # dark-mode invert. Build the <img> tags here (alt="" - these
             # are decorative co-branding; the primary logo/alt already
             # names the map for screen readers), or strip the placeholder
             # block entirely when no additional logos are configured.
@@ -1110,7 +1110,7 @@ def copy_templates(config, output_dir, trails_geojson):
             else:
                 # [ \t]* (not \s*) so we consume only this line's own
                 # indentation, not the newline after the preceding doc
-                # comment — otherwise the stripped block would pull the
+                # comment - otherwise the stripped block would pull the
                 # <span> up onto the comment's line.
                 content = re.sub(
                     r"[ \t]*<!-- Additional logos start -->.*?<!-- Additional logos end -->\n",
@@ -1137,7 +1137,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # Strip icon links when no icon source is resolvable.
             # Uses the same fallback logic as copy_assets so a config
             # with `logo:` set but no `icon:` keeps the manifest /
-            # apple-touch / theme-color links — the icons get
+            # apple-touch / theme-color links - the icons get
             # generated from the logo and the HTML correctly points
             # at them. (Without this consistency, the HTML strip
             # would remove the manifest link even though copy_assets
@@ -1177,13 +1177,13 @@ def copy_assets(config, output_dir):
         candidate = os.path.join(project_root, icon_path)
         if os.path.isfile(candidate):
             logo_src = candidate
-            console.info("No logo configured — using icon as logo")
+            console.info("No logo configured - using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)
         # Capture the written logo's pixel dimensions so copy_templates
         # can substitute them into the brand-img element's HTML
-        # width/height attributes (CLS prevention — browsers reserve
+        # width/height attributes (CLS prevention - browsers reserve
         # layout box from these before image bytes arrive). Returns
         # (None, None) for unrecognized SVGs / Pillow-missing / etc.;
         # copy_templates falls back to omitting the attributes in that
@@ -1195,7 +1195,7 @@ def copy_assets(config, output_dir):
     # SVG → dimensioned SVG) into logo-2 / logo-3 / … and stacked under
     # the primary in the #brand element by copy_templates. Display-only:
     # they never feed icon generation, accent derivation, the About modal,
-    # or og:image — all of that stays keyed to the primary `logo:`.
+    # or og:image - all of that stays keyed to the primary `logo:`.
     rendered_additional = []
     for idx, entry in enumerate(config.get("additional_logos") or [], start=2):
         if not isinstance(entry, dict):
@@ -1223,22 +1223,22 @@ def copy_assets(config, output_dir):
         )
     config["_additional_logos_rendered"] = rendered_additional
 
-    # Icons — generated from the resolved source image. Source resolution
+    # Icons - generated from the resolved source image. Source resolution
     # (icon: → logo: → none) is shared with the HTML icons-block strip in
     # copy_templates via resolve_icon_source(); the manifest is written
     # inside generate_icons().
     icon_path = resolve_icon_source(config, project_root)
     if icon_path and icon_path != config.get("icon", ""):
-        # The fallback fired — the resolved source is the logo, not
+        # The fallback fired - the resolved source is the logo, not
         # an explicit icon: setting. Log it so the curator knows.
-        console.info("No icon configured — using logo as icon source")
+        console.info("No icon configured - using logo as icon source")
     if icon_path:
         icon_src = os.path.join(project_root, icon_path)
         generate_icons(icon_src, output_dir, config)
     else:
-        console.info("No icon configured — skipping icon generation")
+        console.info("No icon configured - skipping icon generation")
 
-    # GPX downloads — curator-supplied course files, copied verbatim
+    # GPX downloads - curator-supplied course files, copied verbatim
     # with filenames preserved (riders get a file identical, name
     # included, to one distributed by the event's official source).
     # Stale gpx/ from a prior build is removed first so deleting the
@@ -1258,10 +1258,10 @@ def copy_assets(config, output_dir):
     fonts_src = os.path.join(project_root, "assets", "fonts")
     copy_trimmed_fonts(output_dir, fonts_src)
 
-    # Sprites — only copy the version referenced by app.js. Parse the
+    # Sprites - only copy the version referenced by app.js. Parse the
     # version from the TEMPLATE source (templates/app.js), not the
     # output dir: copy_assets runs before copy_templates (a hard
-    # ordering constraint — see the call site in build.py), so the
+    # ordering constraint - see the call site in build.py), so the
     # output's app.js at this point is the PREVIOUS build's. Reading it
     # meant one broken deploy after every sprite-version bump: v4
     # sprites copied alongside an app.js referencing v5.
@@ -1306,7 +1306,7 @@ def copy_assets(config, output_dir):
         console.info("Download from: https://github.com/protomaps/basemaps-assets")
 
     # Inject the SDF clip-continuation arrowhead into each copied atlas so
-    # the renderer can tint it per-route via icon-color. Idempotent — a no-op
+    # the renderer can tint it per-route via icon-color. Idempotent - a no-op
     # on rebuilds where the icon is already present.
     sdf_1x = os.path.join(project_root, "assets", "extras", "clip-arrow.sdf.png")
     sdf_2x = os.path.join(project_root, "assets", "extras", "clip-arrow.sdf@2x.png")
@@ -1315,7 +1315,7 @@ def copy_assets(config, output_dir):
             inject_clip_arrow(sprite_dir, sdf_1x, sdf_2x)
     else:
         console.warn(
-            "clip-arrow SDF assets missing — continuation "
+            "clip-arrow SDF assets missing - continuation "
             "arrowheads will not render. Run "
             "`python assets/extras/generate_clip_arrow.py` to regenerate."
         )

@@ -6,7 +6,7 @@ TEMPLATE'S structure (section dividers, key ordering, default-value
 documentation comments) and the PRODUCTION'S set values filled in.
 
 The intent is housekeeping: production configs accumulate cruft over
-time as they're maintained by hand — keys reordered, comments edited,
+time as they're maintained by hand - keys reordered, comments edited,
 sections renamed, etc. This tool re-aligns a config to the canonical
 template without losing any explicitly-set values or any curator
 comments.
@@ -17,7 +17,7 @@ Usage:
         --template configs/reference/reference-minimal.yaml
 
 The output file is `<input-stem>-cleaned.yaml` in the same directory.
-The original file is never modified — review the cleaned output and
+The original file is never modified - review the cleaned output and
 swap it in manually when satisfied.
 
 Behaviour:
@@ -32,10 +32,10 @@ Behaviour:
   generic `# key: default` line for that key, so saved alternatives
   keep their place instead of being flattened back to the default.
 - Keys production neither sets nor stashes appear as the template's
-  commented `# key: default` lines — every supported option stays
+  commented `# key: default` lines - every supported option stays
   visible at its default.
 - LIVE (uncommented) template keys that production does NOT set are
-  commented out rather than copied — the cleaned output must never
+  commented out rather than copied - the cleaned output must never
   inherit a template placeholder value (e.g. the example `relations:`
   ID on a custom-route-only map that legitimately omits the key).
 - Production keys that don't appear anywhere in the template are
@@ -44,10 +44,10 @@ Behaviour:
   forgot, or key the curator added that the template doesn't model).
 - Comments the placement heuristics can't attach anywhere are
   appended under `# --- Unplaced comments carried from the previous
-  file (review/relocate) ---` — misplaced but kept, never lost.
+  file (review/relocate) ---` - misplaced but kept, never lost.
 - Hard gate: after writing, the output is re-parsed and compared to
   the original. Any difference in parsed data deletes the output and
-  aborts — the tool cannot hand back a config that behaves
+  aborts - the tool cannot hand back a config that behaves
   differently from the file it was given.
 """
 
@@ -80,14 +80,14 @@ KEY_LINE_RE = re.compile(r"^(?:#\s)?([A-Za-z_][A-Za-z0-9_]*)\s*:")
 LIVE_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
 # Commented-out known-key line: a curator's stashed alternative.
-# Tolerant of `#key:` with no space after the hash — real configs
+# Tolerant of `#key:` with no space after the hash - real configs
 # contain that form.
 STASH_KEY_RE = re.compile(r"^#\s*([A-Za-z_][A-Za-z0-9_]*)\s*:")
 
 # A continuation line for a commented multi-line block looks like
 # `#   sub: val` or `#     - item` (`#` followed by 2+ spaces then
 # content). Plain `# Some prose` (one space, content) is NOT a
-# continuation — it's a fresh comment.
+# continuation - it's a fresh comment.
 COMMENTED_CONTINUATION_RE = re.compile(r"^#\s{2,}\S")
 
 # Commented list items (`# - 123`, `#- name: ...`) continue a stashed
@@ -97,7 +97,7 @@ COMMENTED_LIST_ITEM_RE = re.compile(r"^#\s*-(?!-)")
 
 DIVIDER_RE = re.compile(r"^#\s*(-{3,}|={3,})")
 
-# Zero-indent sequence item (`- name: Main` at column 0) — valid YAML
+# Zero-indent sequence item (`- name: Main` at column 0) - valid YAML
 # that several production configs use under `trailheads:`/`parking:`.
 # It continues the preceding key's block despite not being indented.
 ZERO_INDENT_ITEM_RE = re.compile(r"^-(\s|$)")
@@ -171,7 +171,7 @@ def find_block_end_prod(lines, start):
     does, and `find_block_end`'s other callers depend on blank lines
     terminating a block, so that function stays untouched. Here a
     blank or full-line comment is interior only when the block's own
-    content resumes after it — otherwise it terminates the block.
+    content resumes after it - otherwise it terminates the block.
     """
     line = lines[start]
     commented = line.lstrip().startswith("#")
@@ -264,7 +264,7 @@ def _index_production(prod_lines, is_boilerplate):
             block = prod_lines[i:end]
             if all(not line.strip() or is_boilerplate(line) for line in block):
                 # Template residue (the template's own commented
-                # default carried around) — the template re-supplies
+                # default carried around) - the template re-supplies
                 # it at its canonical position.
                 i = end
                 continue
@@ -300,7 +300,7 @@ def _index_production(prod_lines, is_boilerplate):
 def _assert_same_data(production_path, output_path):
     """Hard gate: the cleaned file must parse to exactly the same
     data as the original. Anything else deletes the output and aborts
-    — the tool physically cannot hand back a config that behaves
+    - the tool physically cannot hand back a config that behaves
     differently."""
     with open(production_path, encoding="utf-8") as f:
         original = yaml.safe_load(f)
@@ -311,18 +311,18 @@ def _assert_same_data(production_path, output_path):
         # The reordering produced output that doesn't even PARSE (e.g.
         # an anchor's alias moved above its definition). This used to
         # escape as an unhandled traceback with the broken *-cleaned
-        # file left on disk — directly contradicting the module's
+        # file left on disk - directly contradicting the module's
         # guarantee. Same posture as the inequality path: delete, abort.
         os.remove(output_path)
         sys.exit(
-            f"ERROR: cleaned output is not valid YAML ({e}) — "
+            f"ERROR: cleaned output is not valid YAML ({e}) - "
             "aborted, no file written. (Anchors/aliases reordered "
             "across blocks are a known cause.)"
         )
     if original != cleaned:
         os.remove(output_path)
         sys.exit(
-            "ERROR: cleaned output would change parsed values — "
+            "ERROR: cleaned output would change parsed values - "
             "aborted, no file written"
         )
 
@@ -337,7 +337,7 @@ def clean_config(template_path, production_path, output_path):
 
     def is_boilerplate(line):
         # A production line the template already supplies (verbatim
-        # modulo indentation) or a section divider — never carried,
+        # modulo indentation) or a section divider - never carried,
         # the template's own copy wins.
         s = line.strip()
         return s in template_stripped or bool(DIVIDER_RE.match(s))
@@ -367,11 +367,11 @@ def clean_config(template_path, production_path, output_path):
             output_lines.extend(stashes[key])
             i = find_block_end(template_lines, i)
         elif key is not None and not line.lstrip().startswith("#"):
-            # Template key is LIVE (uncommented — the template's
+            # Template key is LIVE (uncommented - the template's
             # always-set examples: name / slug / title / relations)
             # but production doesn't set it. Copying the block
             # verbatim would smuggle the template's placeholder value
-            # into the cleaned output — this bit the two
+            # into the cleaned output - this bit the two
             # custom-route-only event maps, whose legitimately-omitted
             # `relations:` gained the template's example ID. Comment
             # the block out instead ("# " + line matches the
@@ -398,7 +398,7 @@ def clean_config(template_path, production_path, output_path):
             output_lines.extend(prod_lines[s:e])
 
     # Safety net: anything the heuristics couldn't place is carried
-    # at the end — misplaced but kept, never lost.
+    # at the end - misplaced but kept, never lost.
     unplaced = []
     for k, block in stashes.items():
         if k not in emitted_stashes:
@@ -507,7 +507,7 @@ def main():
     if summary["unplaced_comments"]:
         print(
             f"  {summary['unplaced_comments']} comment line(s) carried to "
-            f"the unplaced-comments section — review and relocate by hand"
+            f"the unplaced-comments section - review and relocate by hand"
         )
 
 

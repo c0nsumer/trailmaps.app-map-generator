@@ -11,7 +11,7 @@ types, out-of-range enum values, illegal cross-references between keys,
 malformed colors, malformed bboxes, missing required keys, and missing
 asset files.
 
-All errors are collected then reported together — the goal is "fix the
+All errors are collected then reported together - the goal is "fix the
 config in one pass" rather than "fix one error, rerun, fix the next".
 Exit code is 0 on success, 1 on any error. Warnings (e.g. file-not-found
 for assets that may be populated later) print but do not fail the build.
@@ -32,7 +32,7 @@ import yaml
 
 # Top-level keys that are required. Empty values still fail.
 # A geometry source (`relations` / `custom_routes` / `event_mode.routes`) is
-# deliberately NOT listed here — it's enforced separately by
+# deliberately NOT listed here - it's enforced separately by
 # _validate_geometry_source below, which accepts ANY of the three so a
 # race/event or route-only map can ship a GeoJSON route with no OSM relations.
 # `title` is NOT required: build.load_config derives it as "{name} Map"
@@ -140,7 +140,7 @@ KNOWN_KEYS = {
     "logo": str,
     "icon": str,
     # Secondary brand images (event + sponsor logos) stacked vertically
-    # under the primary `logo:`. Display-only — never drive icon
+    # under the primary `logo:`. Display-only - never drive icon
     # generation / accent / About / og:image. See _validate_additional_logos.
     "additional_logos": list,
     "about": dict,
@@ -254,7 +254,7 @@ def match_day_token(token):
 
     Accepts the full token or any unambiguous prefix of length >= 3
     ("mon" → "monday", "even" → "even_days"). Single source of truth
-    for the accept-prefix rule — template_inject._normalise_days
+    for the accept-prefix rule - template_inject._normalise_days
     consumes this too, so the validator and the injector can't drift.
     """
     tl = str(token).strip().lower()
@@ -269,7 +269,7 @@ def match_day_token(token):
 VALID_LINE_CAPS = {"butt", "round", "square"}
 
 HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
-# Colors can also be CSS named colors. We don't enumerate the full set —
+# Colors can also be CSS named colors. We don't enumerate the full set -
 # instead we accept anything matching a tame ASCII identifier alongside
 # the hex form. This is permissive on purpose: CSS color names are stable
 # and a typo like "wite" would render as transparent at the browser, not
@@ -362,7 +362,7 @@ def _validate_unknown_keys(report, config):
         if key in KNOWN_KEYS:
             continue
         # Internal fields populated by the build pipeline shouldn't error
-        # if they leak in (defensive — users won't write these).
+        # if they leak in (defensive - users won't write these).
         if key.startswith("_"):
             continue
         # Legacy keys get a pointed migration message from their
@@ -374,7 +374,7 @@ def _validate_unknown_keys(report, config):
             continue
         suggestions = difflib.get_close_matches(key, KNOWN_KEYS.keys(), n=2)
         hint = (
-            f" — did you mean {' or '.join(repr(s) for s in suggestions)}?" if suggestions else ""
+            f" - did you mean {' or '.join(repr(s) for s in suggestions)}?" if suggestions else ""
         )
         report.err(key, f"unknown top-level key{hint}")
 
@@ -405,7 +405,7 @@ def _validate_enums(report, config):
         if v not in VALID_LABELS:
             report.err("forced_labels", f"must be one of {sorted(VALID_LABELS)}, got {v!r}")
         else:
-            # Cross-check against show_trails — locking the rider into
+            # Cross-check against show_trails - locking the rider into
             # the trails labels mode when trails are hidden would render
             # no labels at all and surface no UI to recover. Catch at
             # build time. (Routes are always present, so 'routes' never
@@ -414,7 +414,7 @@ def _validate_enums(report, config):
                 report.err(
                     "forced_labels",
                     "'trails' is invalid when show_trails: false "
-                    "— trail labels can't render. Use 'routes' or "
+                    "- trail labels can't render. Use 'routes' or "
                     "'none', or remove show_trails: false.",
                 )
 
@@ -443,7 +443,7 @@ def _validate_enums(report, config):
     # plan was to sample our own terrain raster for elevation gain.
     # The shipping implementation uses USGS 3DEP's getSamples HTTP
     # endpoint instead, which is independent of the hillshade layer
-    # (Mapterhorn). The two settings are orthogonal — elevation stats
+    # (Mapterhorn). The two settings are orthogonal - elevation stats
     # can be enabled with terrain off, and vice versa. No cross-key
     # check needed.)
 
@@ -510,7 +510,7 @@ def _validate_geometry(report, config):
             )
 
     # scrim_opacity: alpha (0..1) of the shared scrim (in-map highlight
-    # wash + menu backdrops). Outside that range is meaningless — the app
+    # wash + menu backdrops). Outside that range is meaningless - the app
     # clamps, but flag it at build so a typo (e.g. 40 instead of 0.40) is
     # caught rather than silently turning the whole map black.
     if (
@@ -555,7 +555,7 @@ def _reject_unknown_keys(report, where, mapping, allowed):
 
     Every nested dict the injector consumes must run through this (or
     an equivalent bespoke check): the confirmed validator holes all
-    shared one signature — a nested block gained consumers without
+    shared one signature - a nested block gained consumers without
     gaining unknown-key rejection, so a typo'd sub-key (`colour`,
     `reverse_day`) produced a clean, warning-free build with the
     curator's override silently dropped (or worse, misinterpreted).
@@ -565,7 +565,7 @@ def _reject_unknown_keys(report, where, mapping, allowed):
             continue
         suggestions = difflib.get_close_matches(str(k), sorted(allowed), n=2)
         hint = (
-            f" — did you mean {' or '.join(repr(s) for s in suggestions)}?"
+            f" - did you mean {' or '.join(repr(s) for s in suggestions)}?"
             if suggestions
             else ""
         )
@@ -632,7 +632,7 @@ def _validate_colors(report, config):
         elif isinstance(dtc, dict):
             # The dict form's full shape is consumed by the injector
             # (color / pattern / cap → CONFIG.defaultTrail*). All three
-            # need validating — a typo'd `colour:` used to sail through
+            # need validating - a typo'd `colour:` used to sail through
             # and silently yield the default gray.
             _reject_unknown_keys(
                 report, "default_trail_color", dtc, {"color", "pattern", "cap"}
@@ -753,7 +753,7 @@ def _validate_weekdays(report, config):
                     report.err(where, f"expected dict, got {type(spec).__name__}")
                     continue
                 # Unknown keys AND a missing reverse_days are both
-                # errors here — worse than inert: the injector records
+                # errors here - worse than inert: the injector records
                 # any per_route entry as an override, and an entry whose
                 # reverse_days didn't parse becomes an EMPTY override,
                 # which is the documented mechanism for opting a route
@@ -787,7 +787,7 @@ def _validate_dashed_relations(report, config):
         elif isinstance(spec, dict):
             # `colors` is documented (docs/configuration.md
             # "Alternating-color dashes") and consumed by the injector
-            # (dashColors) but used to be entirely unvalidated — a
+            # (dashColors) but used to be entirely unvalidated - a
             # string value or typo'd key flowed straight to the runtime.
             _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
             if "pattern" in spec and not _is_dash_pattern(spec["pattern"]):
@@ -848,14 +848,14 @@ def _validate_additional_logos(report, config):
     logo, one or more sponsor logos) rendered stacked under the primary
     `logo:` in the top-left brand element. Each entry is a mapping:
 
-        - path: str (required) — config-relative image path (raster or SVG),
+        - path: str (required) - config-relative image path (raster or SVG),
           processed through the same pipeline as `logo:`.
-        - invert_dark: bool (optional, default true) — auto-invert this
+        - invert_dark: bool (optional, default true) - auto-invert this
           logo in dark mode. Set false for colored / photographic sponsor
           logos that shouldn't be inverted.
 
     Display-only: these never drive icon/favicon generation, accent-color
-    derivation, the About modal, or og:image — all of that stays keyed to
+    derivation, the About modal, or og:image - all of that stays keyed to
     the primary `logo:`. File existence is checked in _validate_paths.
     """
     al = config.get("additional_logos")
@@ -884,7 +884,7 @@ def _validate_paths(report, config, config_dir):
     """Asset path existence. logo / icon / osm_file and every
     custom_routes[].geometry path are checked via os.path.isfile. Relative
     paths resolve against ``config_dir`` (the directory holding the YAML
-    file) — every per-map asset lives next to its config. Missing paths
+    file) - every per-map asset lives next to its config. Missing paths
     are errors; surfacing them here gives a clear single message naming
     the config and field rather than an opaque build failure.
 
@@ -922,7 +922,7 @@ def _validate_paths(report, config, config_dir):
                 )
                 return False
         except ValueError:
-            # commonpath raises on cross-drive paths (Windows) — same
+            # commonpath raises on cross-drive paths (Windows) - same
             # outcome: reject as unsafe for our local-fs assumption.
             report.err(key, f"path resolution failed: {p} (cross-drive or invalid)")
             return False
@@ -988,7 +988,7 @@ def _validate_paths(report, config, config_dir):
                 if not os.path.isfile(full):
                     report.err(key, f"file not found: {p} (resolved to {full})")
 
-        # event_mode.gpx.routes[].file — curator-supplied .gpx assets,
+        # event_mode.gpx.routes[].file - curator-supplied .gpx assets,
         # same relative-to-config-dir semantics.
         em_gpx = em.get("gpx")
         if isinstance(em_gpx, dict) and isinstance(em_gpx.get("routes"), list):
@@ -1031,7 +1031,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
     """Validate a single custom-route-shaped dict. Used by both
     `_validate_custom_routes` (for top-level `custom_routes:` entries)
     and `_validate_event_mode` (for inline `event_mode.routes:`
-    entries — they share the schema).
+    entries - they share the schema).
 
     Updates `seen_ids` in place so the caller can carry duplicate-id
     detection across multiple lists.
@@ -1052,7 +1052,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
             )
         else:
             seen_ids.add(cid)
-        # Collision with OSM relation ids — compare stringified.
+        # Collision with OSM relation ids - compare stringified.
         if cid in osm_ids:
             report.err(
                 f"{where}.id",
@@ -1115,7 +1115,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
     # Accepts the OSM `oneway=` vocabulary MINUS 'reversible': a
     # reversible route needs a direction_schedule.per_route entry to
     # resolve today's direction, and those are keyed by OSM relation
-    # id — custom routes have none, so template_inject's schedule
+    # id - custom routes have none, so template_inject's schedule
     # check would fail every build with advice impossible to follow.
     if "oneway" in entry:
         ow = entry["oneway"]
@@ -1271,7 +1271,7 @@ def _validate_default_visible(report, config):
 def _validate_renamed_keys(report, config):
     """Hard-error on legacy keys whose only fate is a one-for-one
     rename. Listed in _LEGACY_KEYS so the unknown-key fuzzy matcher
-    doesn't try to suggest spelling fixes for them — the error
+    doesn't try to suggest spelling fixes for them - the error
     message here points at the new name directly.
     """
     if "suppress_path_labels" in config:
@@ -1290,7 +1290,7 @@ def _validate_forced_visible(report, config):
     Same shape as `default_visible` (shared _check_layer_list).
 
     Semantics differ from default_visible: a layer named in
-    forced_visible is rendered with its toggle hidden — the rider has
+    forced_visible is rendered with its toggle hidden - the rider has
     no off affordance, and any persisted localStorage state is
     ignored. Use for safety-critical layers (direction arrows on flow
     trails, e.g.) or maps where a layer must always be present.
@@ -1330,7 +1330,7 @@ def _validate_welcome(report, config):
         return
     if isinstance(welcome, bool):
         # Only `false` is meaningful (no auto-open). `true` is harmless
-        # but redundant — the welcome already auto-opens by default —
+        # but redundant - the welcome already auto-opens by default -
         # so accept silently.
         return
     if not isinstance(welcome, dict):
@@ -1360,7 +1360,7 @@ def _validate_about(report, config):
     # when About became a purely technical surface (curator, links,
     # versions, credits, offline status) and the Welcome/Help modal
     # became the home of the map's descriptive text. Hard-cut like the
-    # renames below — same one-curator, small-config-set reasoning.
+    # renames below - same one-curator, small-config-set reasoning.
     if "description" in about:
         report.err(
             "about.description",
@@ -1372,7 +1372,7 @@ def _validate_about(report, config):
     # "more info" links into two arrays (more_information,
     # extra_links) rendered as separate sections; the new schema
     # consolidates them into one `links:` array rendered as a single
-    # "More info" section. Hard-cut rather than aliased — the framework
+    # "More info" section. Hard-cut rather than aliased - the framework
     # has one curator and a small, known config set, so cleaner end
     # state beats deprecation-period cruft.
     for legacy in ("more_information", "extra_links"):
@@ -1392,7 +1392,7 @@ def _validate_about(report, config):
                 if not isinstance(link, dict) or "label" not in link or "url" not in link:
                     report.err(f"about.links[{i}]", "each entry must be {label, url}")
     # `author` was renamed to `curator` to better describe the role
-    # — the framework generates the map; the human curates the data
+    # - the framework generates the map; the human curates the data
     # and config. Hard cut to match the more_information / extra_links
     # consolidation; one curator and a small known config set make
     # alias logic more cost than benefit.
@@ -1493,7 +1493,7 @@ def _validate_event_mode(report, config):
     # id present somewhere in this config).
     if isinstance(featured, list):
         # Build the set of valid string IDs (top-level custom_routes
-        # only — inline event_mode.routes are featured by definition,
+        # only - inline event_mode.routes are featured by definition,
         # so referencing one in `featured` would be redundant).
         valid_string_ids = set()
         if isinstance(cr, list):
@@ -1645,7 +1645,7 @@ def _validate_event_gpx(report, gpx):
 
     Filenames are preserved into the build output (`gpx/<basename>`),
     so two entries whose files share a basename would silently
-    overwrite each other — rejected here.
+    overwrite each other - rejected here.
 
     File existence is checked in `_validate_paths` alongside the other
     per-map asset paths (it has the config-dir context).
@@ -1689,7 +1689,7 @@ def _validate_event_gpx(report, gpx):
         if reserved:
             report.err(
                 where,
-                f"source key(s) {sorted(reserved)} not implemented yet — "
+                f"source key(s) {sorted(reserved)} not implemented yet - "
                 f"GPX generation from relations/routes is planned; for "
                 f"now supply a prepared file via `file:`",
             )
@@ -1711,7 +1711,7 @@ def _validate_event_gpx(report, gpx):
             report.err(
                 f"{where}.file",
                 f"duplicate filename {base!r} (also used by "
-                f"event_mode.gpx.routes[{seen_basenames[base]}]) — "
+                f"event_mode.gpx.routes[{seen_basenames[base]}]) - "
                 f"filenames are preserved into the build's gpx/ dir, "
                 f"so entries must not share a basename",
             )
@@ -1723,7 +1723,7 @@ def _validate_geometry_source(report, config):
     """A map needs at least one geometry source to render.
 
     Historically that was always `relations` (a non-empty list of OSM
-    relation IDs). It can now instead — or additionally — come from
+    relation IDs). It can now instead - or additionally - come from
     `custom_routes` or inline `event_mode.routes` (raw GeoJSON), so a
     race/event map can ship a route alone with no OSM relations at all.
 
@@ -1802,7 +1802,7 @@ def _validate_slug(report, config):
 def validate_config(config, *, config_path=None):
     """Validate a loaded config dict.
 
-    Returns (errors, warnings) — both lists of pre-formatted strings.
+    Returns (errors, warnings) - both lists of pre-formatted strings.
     Caller decides whether warnings should print or be silent.
 
     ``config_path`` (or ``config["_config_dir"]`` set by build.py's
@@ -1874,7 +1874,7 @@ def assert_spec_coverage():
     HANDLED_SPECIALLY (built into the runtime via custom logic).
 
     Catches the common failure where a new config key is added with a
-    validator entry but never reaches the frontend — silent breakage that
+    validator entry but never reaches the frontend - silent breakage that
     used to ship to production. Run via `validate_config.py --check-spec`
     and any time CONFIG_SPEC or KNOWN_KEYS changes.
     """

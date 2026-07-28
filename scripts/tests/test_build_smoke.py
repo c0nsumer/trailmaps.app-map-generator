@@ -1,8 +1,8 @@
 """Smoke test guarding the build.py module split.
 
 Imports the whole build package (a circular import or a symbol left behind by
-the split would raise) and dry-runs the bundled example config end to end —
-no network, no file writes — so the orchestration path stays wired together.
+the split would raise) and dry-runs the bundled example config end to end -
+no network, no file writes - so the orchestration path stays wired together.
 
 Run from repo root:
     python -m pytest scripts/tests/test_build_smoke.py -v

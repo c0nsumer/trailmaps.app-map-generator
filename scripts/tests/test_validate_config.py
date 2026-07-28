@@ -1,4 +1,4 @@
-"""Tests for validate_config.py — a representative slice of the config linter.
+"""Tests for validate_config.py - a representative slice of the config linter.
 
 The validator is large and was previously untested; these cover the core
 contract (clean config passes; common mistakes are caught) rather than every
@@ -158,7 +158,7 @@ def test_relation_names_non_string_value_rejected():
 
 @contextlib.contextmanager
 def _gpx_file():
-    """Yield the path to a temp .gpx file (content irrelevant — the
+    """Yield the path to a temp .gpx file (content irrelevant - the
     validator only checks existence; files are copied verbatim)."""
     with tempfile.NamedTemporaryFile("w", suffix=".gpx", delete=False) as f:
         f.write("<gpx/>")
@@ -189,7 +189,7 @@ def test_event_gpx_missing_name_rejected():
 
 def test_event_gpx_reserved_source_key_rejected():
     # `relation:` / `route:` are reserved for the deferred generation
-    # feature — rejected with a forward-looking message, not silently
+    # feature - rejected with a forward-looking message, not silently
     # accepted or treated as a generic unknown key.
     errors = _gpx_errors({"routes": [{"name": "Course", "relation": -129}]})
     assert any("not implemented" in e for e in errors), errors
@@ -256,7 +256,7 @@ def test_per_route_spec_shape_validated():
     errs = _errors(direction_schedule={"per_route": {123: {"reverse_day": ["monday"]}}})
     assert any("reverse_day" in e and "did you mean" in e for e in errs), errs
     # A spec whose reverse_days didn't parse becomes an EMPTY override
-    # (disabling reversal for the route) — so its absence is an error...
+    # (disabling reversal for the route) - so its absence is an error...
     assert any("missing reverse_days" in e for e in errs), errs
     # ...while an explicit empty list is the documented opt-out.
     assert _errors(direction_schedule={"per_route": {123: {"reverse_days": []}}}) == []

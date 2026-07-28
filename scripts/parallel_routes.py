@@ -1,7 +1,7 @@
 """Subway-style parallel-route smoothing.
 
 Eliminates the visible "junction step" artifact that shows up where
-routes that share a corridor diverge — without that, route A's line
+routes that share a corridor diverge - without that, route A's line
 literally jumps sideways at the junction node when its `shared_routes`
 set changes between adjacent segments.
 
@@ -16,8 +16,8 @@ corridor positions correctly at every zoom level.
 
 This replaces an earlier draft that baked the perpendicular offset
 into the geometry of a single bezier-curve stub at z14's pixel scale.
-That approach worked at z14 but rendered the stub 5–20× too far from
-the corridor at z16–z18 (because corridor offset is paint-time and
+That approach worked at z14 but rendered the stub 5-20× too far from
+the corridor at z16-z18 (because corridor offset is paint-time and
 scales with zoom, while baked geometry doesn't), producing the
 "floating squiggles disconnected from the corridor" artifact most
 visible on RAMBA at typical close-in viewing zooms.
@@ -26,7 +26,7 @@ Why it has to be N micro-features and not a single stub:
 - MapLibre's `line-offset` paint property cannot be data-driven
   per-vertex via line-progress (only line-color and line-pattern
   support that). So the offset for any single feature is a single
-  scalar — to interpolate the offset along a trail we need separate
+  scalar - to interpolate the offset along a trail we need separate
   features each with their own constant offset.
 
 To prevent the corridor B's main rendering from doubling-up with the
@@ -34,7 +34,7 @@ transition zone, the host corridor's first vertex is replaced with
 the transition zone's endpoint. The micro-features REPLACE that
 ~10 m section of B's geometry instead of overlaying it. The original
 first vertex is stashed in `_subwayOriginalCoord0` so re-runs
-(idempotency) and toggle-off restoration both work cleanly — see
+(idempotency) and toggle-off restoration both work cleanly - see
 the restore step in enrichment.py's _enrich_trails_geojson.
 
 Caveats:
@@ -53,7 +53,7 @@ from geodesy import natural_key as _natural_key
 
 # Number of micro-features per transition zone. Higher = smoother
 # fade AND tighter tangent matching at the endpoints (which is what
-# eliminates the "spike" artifact at corner junctions — see notes
+# eliminates the "spike" artifact at corner junctions - see notes
 # inside apply_subway_style). At N=16, the first/last micro-feature
 # segment direction is within ~4° of corridor A / B's tangent for a
 # 90° corner; at N=8 it's ~9°. Worth the doubled feature count.
@@ -71,7 +71,7 @@ _TRANSITION_FIRST_SEGMENT_FRACTION = 0.8
 # bends) where two ways meet at a bend node. MapLibre's `line-offset`
 # paint expression offsets each rendered segment INDEPENDENTLY by
 # `perp_local * offset_index`, so at a sharp internal vertex the
-# adjacent offset segments don't meet up — visible "tab" / "kink"
+# adjacent offset segments don't meet up - visible "tab" / "kink"
 # artifact for any route with non-zero offset_index. The artifact is
 # especially obvious in multi-route corridors where 4+ parallel
 # routes all show the same kink at the same vertex.
@@ -92,7 +92,7 @@ _SHARP_BEND_THRESHOLD_DEG = 25.0
 
 # How far back from the sharp vertex (in meters) we tuck the
 # smoothing arc on each side. Larger = smoother visual but larger
-# trail-shape distortion. 3m is a good balance — at z16 that's
+# trail-shape distortion. 3m is a good balance - at z16 that's
 # ~12px, easily visible as smoothing but small relative to corridor
 # length. Capped per-vertex to 45% of each adjacent segment length
 # so adjacent smoothed vertices never overlap.
@@ -100,7 +100,7 @@ _SMOOTH_TUCK_M = 3.0
 
 # Number of intermediate vertices in each smoothed arc. With 6
 # samples through a 90° bend, each pair of adjacent arc vertices
-# has a bend angle of 90/5 = 18° — well below the threshold, so
+# has a bend angle of 90/5 = 18° - well below the threshold, so
 # re-smoothing is a no-op (idempotent).
 _SMOOTH_ARC_SAMPLES = 6
 
@@ -116,7 +116,7 @@ def _offset_index_for_route(route_id, shared_routes, route_order=None, baselines
     """Mirror app.js's `computeOffsetsAndFilter()` math at build time.
 
     Returns ``position + baseline(corridor)`` when ``baselines`` is
-    provided (the stable-lane model — see corridor_baselines.py), else
+    provided (the stable-lane model - see corridor_baselines.py), else
     the legacy centered offset ``position - (n-1)/2``.
 
     ``route_order`` (optional list of route IDs from
@@ -207,7 +207,7 @@ def _sample_cubic_bezier(p0, p1, p2, p3, n_samples):
 # each end before turning toward the other side. 0.55 is the
 # canonical value for approximating a quarter-circle with a bezier
 # (and is what _smooth_sharp_corners uses, via
-# _SMOOTH_HANDLE_FRACTION); transitions use 0.5 — slightly tighter —
+# _SMOOTH_HANDLE_FRACTION); transitions use 0.5 - slightly tighter -
 # to keep the curve from overshooting on shallow bends while still
 # visibly arcing on sharp corners.
 _BEZIER_HANDLE_FRACTION = 0.5
@@ -247,7 +247,7 @@ def _is_continuation_pair(coords_a, end_a, coords_b, end_b):
     branch / X-crossing).
 
     Both tangents point INTO the junction, so a true continuation
-    has them pointing in OPPOSING directions — dot product near -1.
+    has them pointing in OPPOSING directions - dot product near -1.
     A perpendicular branch has dot ~0; a U-turn has dot ~+1.
     Threshold: dot < 0 catches anything bent up to 90°."""
     t_a = _tangent_meters_into_junction(coords_a, end_a)
@@ -325,7 +325,7 @@ def _smooth_sharp_corners(coords):
         # smoothing arcs at adjacent sharp corners never overlap.
         tuck_m = min(_SMOOTH_TUCK_M, l_in * 0.45, l_out * 0.45)
         if tuck_m < 0.3:
-            # Sub-30cm tuck wouldn't read as smoothing anyway —
+            # Sub-30cm tuck wouldn't read as smoothing anyway -
             # leave the vertex alone.
             continue
 
@@ -335,7 +335,7 @@ def _smooth_sharp_corners(coords):
         deg_per_m_lon = 1.0 / (cos_lat * METERS_PER_DEGREE_LAT)
         deg_per_m_lat = 1.0 / METERS_PER_DEGREE_LAT
 
-        # Tuck endpoints — on the line from v_prev to v_curr (resp.
+        # Tuck endpoints - on the line from v_prev to v_curr (resp.
         # v_curr to v_next), tuck_m back from v_curr.
         p_in = [
             v_curr[0] - unit_in_m[0] * tuck_m * deg_per_m_lon,
@@ -399,16 +399,16 @@ def apply_subway_style(
 ):
     """Single-mode subway-style smoother. Mutates trails_geojson.
 
-    Pass 1 — sharp-corner smoothing: every LineString feature gets
+    Pass 1 - sharp-corner smoothing: every LineString feature gets
     its sharp internal vertices replaced with smooth bezier arcs
     (see _smooth_sharp_corners). This addresses the line-offset
     artifact at sharp internal corners that's INDEPENDENT of
-    corridor-set changes — i.e. a multi-route corridor with a sharp
+    corridor-set changes - i.e. a multi-route corridor with a sharp
     bend in its centerline used to render visible "tabs" on each
     parallel route, even when no route was joining or branching at
     the bend.
 
-    Pass 2 — junction transition zones: at each corridor-set-changing
+    Pass 2 - junction transition zones: at each corridor-set-changing
     junction (where a route's `shared_routes` set changes between
     adjacent features), inject N=_TRANSITION_SAMPLES micro-features
     forming a cubic bezier that smoothly fades the route's
@@ -427,7 +427,7 @@ def apply_subway_style(
         runtime line offsets consistent.
     visible_routes : iterable of str or None.
         When provided, each feature's effective shared_routes is
-        FILTERED to this subset during transition detection — so
+        FILTERED to this subset during transition detection - so
         the transitions emitted reflect the corridor structure as
         the user sees it in that mode. Features whose shared_routes
         becomes empty after filtering are skipped.
@@ -446,7 +446,7 @@ def apply_subway_style(
     corners or the number of transitions).
 
     Pre-condition: features have already been per-route-stitched by
-    `merge_consecutive_ways` in fetch_trails.py — each feature
+    `merge_consecutive_ways` in fetch_trails.py - each feature
     represents one corridor of constant `shared_routes` set within
     its route.
     """
@@ -460,7 +460,7 @@ def apply_subway_style(
     #     from the smoothed-corridor first/last segments (which
     #     happen to match the original direction since smoothing
     #     only touches internal vertices, not endpoints), and
-    #   - the host's truncation lands on a smooth corridor — no
+    #   - the host's truncation lands on a smooth corridor - no
     #     downstream kink past the truncation point.
     _smooth_corridor_features(features)
 
@@ -520,7 +520,7 @@ def apply_subway_style(
     # transitions for joining routes) can re-use them. Without this,
     # a route that JOINS at a junction (has only a START endpoint
     # there, no incoming corridor) would have its host truncated to
-    # the bezier endpoint AS IF it had a transition — but since no
+    # the bezier endpoint AS IF it had a transition - but since no
     # transition is generated for it, the rider sees a 9.57m gap
     # where the joining route is invisible. The fade-in pass uses
     # the captured bezier geometry to render the joining route
@@ -548,7 +548,7 @@ def apply_subway_style(
             # (rid, junction) pair, then keep only the SINGLE most
             # aligned one. Without this dedup, a 3-corridor junction
             # would generate three pair-wise transitions for routes
-            # in all three corridors — they'd visually overlap at the
+            # in all three corridors - they'd visually overlap at the
             # junction, multiplying the bezier-bulge artifact and
             # producing the visible "spike" at sharp Y-junctions.
             # The most-aligned pair represents the route's natural
@@ -566,7 +566,7 @@ def apply_subway_style(
                     sig_a = _shared_set_signature(_effective_shared(feat_a))
                     sig_b = _shared_set_signature(_effective_shared(feat_b))
                     # An empty sig means the feature has no visible
-                    # routes in this mode — skip; the rider never sees
+                    # routes in this mode - skip; the rider never sees
                     # this corridor here.
                     if not sig_a or not sig_b:
                         continue
@@ -585,7 +585,7 @@ def apply_subway_style(
 
                     # Continuation-pair sharpness: how aligned are
                     # the two corridors? dot of into-junction
-                    # tangents — a true straight continuation gives
+                    # tangents - a true straight continuation gives
                     # dot ≈ -1 (vectors point opposite). Branching
                     # corridors give dot near 0. The MOST aligned
                     # pair (most-negative dot) is the route's natural
@@ -641,7 +641,7 @@ def apply_subway_style(
             # Pick the "host" side for the transition zone.
             # Prefer to host on whichever side has a "start"
             # endpoint (so we ride along its outgoing
-            # geometry). If both ends are "end" we skip — no
+            # geometry). If both ends are "end" we skip - no
             # natural outgoing direction to ride along.
             if end_b == "start":
                 host_coords = coords_b
@@ -664,7 +664,7 @@ def apply_subway_style(
                 p_junction = coords_a[0]
                 p_next = coords_a[1]
             else:
-                # Both are "end" — neither corridor heads
+                # Both are "end" - neither corridor heads
                 # away from the junction.
                 continue
 
@@ -685,7 +685,7 @@ def apply_subway_style(
                 # transition that won't read visually anyway.
                 continue
 
-            # Bezier-curve transition zone — replaces the
+            # Bezier-curve transition zone - replaces the
             # earlier straight-line implementation, which
             # produced visible spikes/kinks at corner
             # junctions because the transition's first
@@ -695,7 +695,7 @@ def apply_subway_style(
             # painted its last pixel using its own local
             # perpendicular (perp_A). At a corner perp_A ≠
             # perp_B, so the same junction node rendered at
-            # two different offset positions — the spike.
+            # two different offset positions - the spike.
             #
             # Fix: trace the transition along a cubic bezier
             # whose tangent matches the incoming corridor at
@@ -710,7 +710,7 @@ def apply_subway_style(
             tangent_host_into = _tangent_meters_into_junction(host_coords, "start")
             tangent_host_out = (-tangent_host_into[0], -tangent_host_into[1])
             if tangent_in == (0.0, 0.0) or tangent_host_out == (0.0, 0.0):
-                # Degenerate corridor — no usable tangent.
+                # Degenerate corridor - no usable tangent.
                 continue
 
             # Adaptive bezier shape based on corner sharpness.
@@ -728,7 +728,7 @@ def apply_subway_style(
             # Bulge scales ~linearly with span AND with handle,
             # so for a 90° bend (sharpness=1) the combined
             # shrink (span 10→1.5m, handle 0.5→0.15) takes the
-            # bulge from 2.2m down to ~0.05m — well under one
+            # bulge from 2.2m down to ~0.05m - well under one
             # pixel even at z21. Trade-off: tighter handle
             # gives slightly worse tangent matching at first/
             # last segment, but with N=16 samples the first
@@ -764,11 +764,11 @@ def apply_subway_style(
             # Delta-aware cap. The unconditional 1.5m cap previously
             # used here localized lateral drift nicely for SMALL offset
             # shifts (e.g. +1.5 → +1.0 when one route leaves a 4-wide
-            # corridor) — those want a tight transition that reads as
+            # corridor) - those want a tight transition that reads as
             # a clean junction marker, not a slow tilt.
             #
-            # But for LARGE shifts — and especially sign-flip shifts
-            # where the route's offset crosses zero — 1.5m is too
+            # But for LARGE shifts - and especially sign-flip shifts
+            # where the route's offset crosses zero - 1.5m is too
             # short. The route's parallel line has to traverse the
             # full corridor width within ~6px (at z16), which reads as
             # a "snap" or "switch" rather than a deliberate lane
@@ -784,12 +784,12 @@ def apply_subway_style(
             # change rather than stepping.
             # Delta-aware bezier span cap. Two regimes:
             #
-            # - "Big" shifts — sign flips (offset crosses zero) OR
+            # - "Big" shifts - sign flips (offset crosses zero) OR
             #   shifts of ≥ 1 offset unit. These read as a hard snap
             #   if compressed into a 1.5m bezier; we allow up to ~6m
             #   so the lateral movement renders as a deliberate arc.
             #
-            # - "Small" shifts — within-side movements of < 1 offset
+            # - "Small" shifts - within-side movements of < 1 offset
             #   unit (corridor breathing, center-transitions). The
             #   bezier stays at the 1.5m cap. This keeps junctions
             #   visually crisp: longer beziers at multi-branch
@@ -805,7 +805,7 @@ def apply_subway_style(
                 span_eff = min(span_eff, 1.5)
             if span_eff <= 0.3:
                 # If sharpness pushed span below the visible-noise
-                # floor, skip the transition altogether — the offset
+                # floor, skip the transition altogether - the offset
                 # shift will happen abruptly at the junction node,
                 # which at this scale is invisible against the host
                 # corridor's normal rendering.
@@ -846,7 +846,7 @@ def apply_subway_style(
             # adjacent pair becomes one micro-feature with an
             # interpolated offset_index (midpoint
             # interpolation of the segment's t range).
-            # NB: use `k` not `i` in the inner loops below —
+            # NB: use `k` not `i` in the inner loops below -
             # the outer pair-iteration uses `i` and a regular
             # `for i` would shadow it.
             points = _sample_cubic_bezier(p0, p1, p2, p3, _TRANSITION_SAMPLES + 1)
@@ -893,7 +893,7 @@ def apply_subway_style(
                         "trail_name": "",
                         "imba_difficulty": "",
                         "oneway": "",
-                        # Direct offset_index — app.js's
+                        # Direct offset_index - app.js's
                         # computeOffsetsAndFilter honors
                         # the property when isStub is true
                         # instead of recomputing from
@@ -906,7 +906,7 @@ def apply_subway_style(
                     micro["properties"]["mode"] = mode_tag
                 new_micro_features.append(micro)
 
-            # Mark the host's first vertex for truncation —
+            # Mark the host's first vertex for truncation -
             # the transition zone REPLACES the host's first
             # span_m of geometry instead of overlaying it.
             # Without this, corridor B's main rendering would
@@ -917,7 +917,7 @@ def apply_subway_style(
             #
             # If the same host has multiple transitions on
             # the same start (rare Y-junction case), we keep
-            # the FIRST recorded endpoint — they all sample
+            # the FIRST recorded endpoint - they all sample
             # against the same first segment with the same
             # span_m, so the endpoint is identical anyway.
             truncation_key = (rid, host_idx_for_truncation)
@@ -926,12 +926,12 @@ def apply_subway_style(
 
     # ---- Pass 3: fade-in for joining routes ----------------------
     # A route that JOINS at a junction (its only feature there is a
-    # START — no END/incoming corridor) currently gets no transition
+    # START - no END/incoming corridor) currently gets no transition
     # because there's no continuation pair. But the OTHER routes at
     # the junction DO get transitions, which truncates the host
     # corridor's coords[0] forward by span_eff meters. The joining
     # route's host shares this same corridor (same OSM way), so its
-    # coords[0] is ALSO at the original junction node — but no
+    # coords[0] is ALSO at the original junction node - but no
     # truncation has been applied to it. Result: the joining route
     # renders along its full host geometry from coords[0] (junction)
     # onward, but the OTHER routes only render from bezier_endpoint
@@ -966,14 +966,14 @@ def apply_subway_style(
             ends = [e for e in endpoints if e[1] == "end"]
             if not starts:
                 # No outgoing feature for this route at the junction.
-                # Pure leaving route — skip (could be future "fade
+                # Pure leaving route - skip (could be future "fade
                 # out" extension; for now leave the abrupt
                 # disappearance, which mirrors the abrupt-appearance
                 # case we used to leave at junctions before this
                 # pass existed).
                 continue
             if ends:
-                # Has both START and END — already handled by Pass 2's
+                # Has both START and END - already handled by Pass 2's
                 # candidate-picking + transition emission.
                 continue
 
@@ -986,11 +986,11 @@ def apply_subway_style(
             # (where it actually lives, downstream of the junction).
             host_offset_value = _offset_index_for_route(rid, host_sig, route_order, baselines)
             if host_offset_value == 0:
-                # Centered route in odd-count corridor — no visible
+                # Centered route in odd-count corridor - no visible
                 # offset shift even if it appeared abruptly. Skip.
                 continue
 
-            # Compute the "neighbor's offset" — the offset of the
+            # Compute the "neighbor's offset" - the offset of the
             # closest existing route in the INCOMING (smaller)
             # corridor on the same side as the joining route. If the
             # joining route's offset is +2.5 and the incoming
@@ -1001,7 +1001,7 @@ def apply_subway_style(
             # route's position and peels outward.
             incoming_count = len(incoming_sig)
             if incoming_count == 0:
-                # Can't compute neighbor offset — skip.
+                # Can't compute neighbor offset - skip.
                 continue
             incoming_max_abs = (incoming_count - 1) / 2.0
             sign = 1.0 if host_offset_value > 0 else -1.0
@@ -1042,7 +1042,7 @@ def apply_subway_style(
                     micro["properties"]["mode"] = mode_tag
                 new_micro_features.append(micro)
 
-            # Mark this route's host for truncation too — same
+            # Mark this route's host for truncation too - same
             # endpoint as the other routes at this junction (the
             # bezier ends at points[-1]).
             truncation_key = (rid, host_idx)
@@ -1052,14 +1052,14 @@ def apply_subway_style(
     # ---- Truncations ---------------------------------------------
     # Two paths:
     #
-    # Single-mode (mode_tag is None — legacy behavior):
+    # Single-mode (mode_tag is None - legacy behavior):
     #   Apply truncations IN-PLACE on each host feature. Stash the
     #   original first vertex in _subwayOriginalCoord0 so build.py's
     #   _enrich_trails_geojson can restore it on re-runs and the
     #   truncation doesn't compound.
     #
     # Multi-mode (mode_tag is set):
-    #   Emit a TRUNCATED HOST VARIANT — a copy of the host with the
+    #   Emit a TRUNCATED HOST VARIANT - a copy of the host with the
     #   truncated coords[0] and the active mode_tag. Mark the original
     #   host with `_subwayHasVariants: True` so the multi-mode driver
     #   (apply_subway_style_modes) knows to remove or otherwise gate
@@ -1115,7 +1115,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None
       - For each such host, emit "pass-through" variants tagged with
         any mode that DIDN'T truncate (so the host still renders, just
         un-truncated, in those modes).
-      - Remove the original host from the feature list — its rendering
+      - Remove the original host from the feature list - its rendering
         is now fully delegated to the per-mode variants.
 
     Untouched hosts (no truncation in any mode) stay in the feature
@@ -1126,7 +1126,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None
 
     Parameters
     ----------
-    trails_geojson : dict — the full trails geojson to mutate in place.
+    trails_geojson : dict - the full trails geojson to mutate in place.
     route_orders : dict {mode_key: list of route_ids} from
         route_order.compute_route_orders.
     modes : dict {mode_key: frozenset of route_ids} from
@@ -1143,7 +1143,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None
     """
     baselines = baselines or {}
     if not route_orders or not modes:
-        # Degenerate — no modes to process. Fall back to single-mode.
+        # Degenerate - no modes to process. Fall back to single-mode.
         return apply_subway_style(trails_geojson)
 
     # Sort mode keys for determinism. Pass 1 (smoothing) is idempotent
@@ -1176,13 +1176,13 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None
 
     # Group host variants by their parent (route_id, original_first_coord).
     # We use route_id + the variant's geometry beyond coords[0] to
-    # identify the matching original — since coords[1:] is unchanged
+    # identify the matching original - since coords[1:] is unchanged
     # in every variant, that's a stable key.
     def _host_key(feat):
         props = feat.get("properties") or {}
         rid = str(props.get("route_id") or "")
         coords = (feat.get("geometry") or {}).get("coordinates") or []
-        # Coords[1:] is mode-independent — use the FIRST non-coord[0]
+        # Coords[1:] is mode-independent - use the FIRST non-coord[0]
         # vertex as the key suffix. That's enough to identify the host.
         suffix = tuple(coords[1]) if len(coords) >= 2 else ()
         return (rid, suffix)
@@ -1214,7 +1214,7 @@ def apply_subway_style_modes(trails_geojson, route_orders, modes, baselines=None
         # variants append in a deterministic, process-independent order.
         missing_modes = [m for m in sorted_modes if m not in existing_modes]
         for mk in missing_modes:
-            # Emit a pass-through variant — same coords, tagged for
+            # Emit a pass-through variant - same coords, tagged for
             # the missing mode.
             pt_props = dict(props)
             pt_props.pop("_subwayHasVariants", None)

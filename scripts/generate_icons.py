@@ -4,7 +4,7 @@
 Generates all favicon/icon variants from a single source image using
 Pillow. Optionally generates safari-pinned-tab.svg via potrace.
 
-Source may be any aspect ratio — non-square images are auto-padded
+Source may be any aspect ratio - non-square images are auto-padded
 to square (centered, transparent background) before resizing. Use
 a square source if you want a specific framing; otherwise the
 auto-pad gives reasonable defaults.
@@ -29,7 +29,7 @@ except ImportError:
 
 # Icon sizes to generate: (filename, width, height, composite_on_white).
 # The 192 + 512 pair satisfies Chrome's WebAPK install criteria for
-# Android — without 512x512, Chrome can fall back to a "shortcut"
+# Android - without 512x512, Chrome can fall back to a "shortcut"
 # install that has weaker integration (e.g. shows the package name
 # rather than the app name in the uninstall toast). 256 is kept for
 # legacy reasons; some older docs/configurations reference it.
@@ -66,7 +66,7 @@ def _pad_to_square(img):
     - PNG icons with composite_on_white=True (apple-touch-icon,
       which iOS forbids transparency on): the existing
       _composite_on_white step pastes the padded RGBA onto a white
-      background, so transparent padding becomes white — same
+      background, so transparent padding becomes white - same
       result as if the curator had padded the source to white
       themselves.
     - favicon.ico: ICO format supports transparency natively.
@@ -106,8 +106,8 @@ def generate_png_icons(source_img, output_dir):
 def _detect_bleed_color(img, default=(255, 255, 255, 255)):
     """Pick the maskable bleed color from the source's corners.
 
-    A *full-bleed* source — an opaque background painted edge-to-edge,
-    like the bicycle placeholder's green field — must bleed in its own
+    A *full-bleed* source - an opaque background painted edge-to-edge,
+    like the bicycle placeholder's green field - must bleed in its own
     background color. Filling the maskable margin with white instead
     leaves the logo's square sitting on a white field, and the OEM
     circle/squircle mask then reveals that white as a ring: the logo
@@ -140,7 +140,7 @@ def _detect_bleed_color(img, default=(255, 255, 255, 255)):
 
 def _rgba_to_hex(color):
     """Format an (R, G, B, …) tuple as a ``#rrggbb`` string. Alpha is
-    dropped — PWA manifest colors are opaque."""
+    dropped - PWA manifest colors are opaque."""
     r, g, b = color[0], color[1], color[2]
     return f"#{r:02x}{g:02x}{b:02x}"
 
@@ -156,7 +156,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     the tile edge-to-edge under any mask.
 
     Without a maskable icon, Chrome on Android wraps the (non-maskable)
-    icon in its own white circle as a safe fallback — which is why a
+    icon in its own white circle as a safe fallback - which is why a
     plain `purpose: "any"` icon renders as a small badge floating in a
     larger white circle instead of filling the home-screen tile.
 
@@ -166,7 +166,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     via `_detect_bleed_color`: a full-bleed source (e.g. the bicycle
     placeholder's green field) bleeds in its own color so the tile is a
     solid field edge-to-edge under any mask, while a logo on a
-    transparent/white backplate keeps white — matching the manifest
+    transparent/white backplate keeps white - matching the manifest
     `background_color` and the apple-touch-icon's white composite.
     """
     if bg_color is None:
@@ -248,7 +248,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
 def generate_manifest(config, output_dir, bg_color=None):
     """Generate a PWA web manifest with app name from config.
 
-    The manifest drives Chrome's WebAPK install on Android — Android's
+    The manifest drives Chrome's WebAPK install on Android - Android's
     uninstall toast and home-screen label both come from these fields.
     Notably:
 
@@ -296,7 +296,7 @@ def generate_manifest(config, output_dir, bg_color=None):
     title = config.get("title", "Trail Map")
     # background_color paints the PWA launch splash. Match it to the icon's
     # detected bleed field (passed from generate_icons) so a full-bleed
-    # colored icon — e.g. the green placeholder — gets a splash matching
+    # colored icon - e.g. the green placeholder - gets a splash matching
     # its tile instead of a white flash. A transparent/white-backplate logo
     # resolves to the white default, so the common case is unchanged.
     # theme_color paints the installed-WebAPK status bar from launch
@@ -355,7 +355,7 @@ def generate_icons(source_path, output_dir, config):
     Returns True if icons were generated, False if Pillow is unavailable.
     """
     if Image is None:
-        console.warn("Pillow not installed — skipping icon generation")
+        console.warn("Pillow not installed - skipping icon generation")
         console.info("         Install: pip install Pillow")
         return False
 
@@ -380,13 +380,13 @@ def generate_icons(source_path, output_dir, config):
     # crop or pad by hand. We now auto-pad to square (centered on a
     # transparent canvas of side = max(w, h)) so any logo aspect
     # ratio can flow through icon generation. The print line is the
-    # curator's signal that padding happened — if they want a tighter
+    # curator's signal that padding happened - if they want a tighter
     # crop or a colored background, they can pre-process the source
     # themselves; otherwise this is "good enough" for every variant.
     if img.width != img.height:
         side = max(img.width, img.height)
         console.info(
-            f"Icon source {img.width}x{img.height} is not square — "
+            f"Icon source {img.width}x{img.height} is not square - "
             f"padding to {side}x{side} with transparent background."
         )
         img = _pad_to_square(img)

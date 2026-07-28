@@ -1,4 +1,4 @@
-"""Tests for generate_icons.py — maskable-icon bleed + manifest colour.
+"""Tests for generate_icons.py - maskable-icon bleed + manifest colour.
 
 Run from repo root:
     python -m pytest scripts/tests/test_generate_icons.py -v
@@ -24,7 +24,7 @@ from generate_icons import (  # noqa: E402
 )
 from PIL import Image  # noqa: E402
 
-GREEN = (58, 107, 62, 255)  # #3a6b3e — the placeholder's full-bleed field
+GREEN = (58, 107, 62, 255)  # #3a6b3e - the placeholder's full-bleed field
 WHITE = (255, 255, 255, 255)
 
 
@@ -61,14 +61,14 @@ def test_nonuniform_corners_fall_back_to_default():
 
 
 def test_rgb_source_is_detected():
-    # Sources are often RGB (no alpha) — must still be seen as full-bleed.
+    # Sources are often RGB (no alpha) - must still be seen as full-bleed.
     rgb = Image.new("RGB", (256, 256), GREEN[:3])
     assert _detect_bleed_color(rgb) == GREEN
 
 
 def test_maskable_full_bleed_has_no_white_ring():
     """Regression: a full-bleed green source must produce a maskable
-    icon that is green to the corner — not a green square floating on a
+    icon that is green to the corner - not a green square floating on a
     white field (which the OEM circle mask reveals as a white ring)."""
     with tempfile.TemporaryDirectory() as d:
         # The real pipeline creates icons/ in generate_png_icons before

@@ -81,7 +81,7 @@ def _check_ratings(features, show_difficulty):
 
     The missing-rating check is narrower, and deliberately so. It requires
     both that the map shows difficulty AND that at least one trail is already
-    rated — i.e. that rating coverage is PARTIAL. On a map where nobody has
+    rated - i.e. that rating coverage is PARTIAL. On a map where nobody has
     tagged difficulty at all, listing every named trail would be asking for
     tags purely so this renderer has something to draw (and the Difficulty
     control is auto-hidden on such maps anyway, so nothing is even missing
@@ -252,7 +252,7 @@ def summarize(findings):
     if not findings.get("total"):
         return []
     lines = []
-    # (key, singular, plural) — a report that says "1 relations" reads as a bug
+    # (key, singular, plural) - a report that says "1 relations" reads as a bug
     # in the report rather than a finding worth acting on.
     labels = [
         ("probable_gaps",
@@ -276,7 +276,7 @@ def summarize(findings):
 
 
 def format_report(findings, slug):
-    out = [f"# OSM data notes — {slug}", ""]
+    out = [f"# OSM data notes - {slug}", ""]
     out.append("These are gaps and inconsistencies in the underlying OSM data,")
     out.append("not rendering preferences. Nothing here asks you to tag for the")
     out.append("renderer: every item is a fact that is missing, contradictory,")
@@ -318,7 +318,7 @@ def format_report(findings, slug):
     )
     section(
         "Out-of-range mtb:scale:imba values", findings["invalid_ratings"],
-        lambda t: f"way `{t[0]}` ({t[1] or 'unnamed'}): `{t[2]}` — "
+        lambda t: f"way `{t[0]}` ({t[1] or 'unnamed'}): `{t[2]}` - "
                   f"valid values are 0-5",
     )
     if findings.get("difficulty_checked"):
@@ -336,7 +336,7 @@ def format_report(findings, slug):
     )
     section(
         "Relations with no colour", findings["routes_missing_colour"],
-        lambda t: f"`{t[0]}` {t[1] or '(unnamed)'} — "
+        lambda t: f"`{t[0]}` {t[1] or '(unnamed)'} - "
                   f"https://www.openstreetmap.org/relation/{t[0]}",
         note="The map falls back to its default trail color, so these routes "
              "are indistinguishable from each other in the key.",

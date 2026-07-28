@@ -3,11 +3,11 @@
 Solves the Metro-Line Node Crossing Minimization (MLNCM) problem as
 formalized by Bast, Brosi & Storandt (LOOM, ACM TSAS 2019). Given a
 set of routes and the corridor adjacencies they share, computes a
-global routeOrder array that minimizes the number of sign-flips —
+global routeOrder array that minimizes the number of sign-flips -
 routes crossing the corridor centerline between adjacent corridors.
 
 Secondary objective: minimize partner separations (LOOM's MLNCM-S
-variant) as a strict tiebreaker — partner routes that travel
+variant) as a strict tiebreaker - partner routes that travel
 together stay visually adjacent in the rendered offset stack.
 
 Mode awareness
@@ -36,7 +36,7 @@ of PYTHONHASHSEED. Empirically converges to within 1 sign-flip of
 optimum on every map in our network.
 
 ILP-based optimal solutions (LOOM Section 3.2) are not implemented
-here — heuristic is sufficient for our scale (≤15 routes per map).
+here - heuristic is sufficient for our scale (≤15 routes per map).
 
 References
 ==========
@@ -66,7 +66,7 @@ def build_corridor_adjacencies(features, visible_routes=None):
     tuple of route IDs in the corridor (matches MapLibre/runtime
     rendering exactly).
 
-    Stubs (features with ``isStub: true``) are skipped — they're
+    Stubs (features with ``isStub: true``) are skipped - they're
     output of a previous subway-style pass, not input.
 
     Parameters
@@ -127,7 +127,7 @@ def build_corridor_adjacencies(features, visible_routes=None):
 
 
 # Weight applied to separation count in the lexicographic objective.
-# The full flip count is multiplied by 1000 so it always dominates —
+# The full flip count is multiplied by 1000 so it always dominates -
 # the optimizer will never trade away a sign flip to reduce
 # separations. Separations only break ties between flip-count-equal
 # orderings.
@@ -141,7 +141,7 @@ def score(order, adjacencies):
     "Full sign flip": a shared route changes from a positive offset in
     one corridor to a negative offset in the adjacent corridor (or
     vice versa). Center-transitions (offset 0 → non-zero, or
-    non-zero → 0) are NOT counted — they're not visually "switching
+    non-zero → 0) are NOT counted - they're not visually "switching
     sides" and counting them dilutes the optimization signal.
 
     "Separation": two routes that are adjacent in one corridor's
@@ -149,7 +149,7 @@ def score(order, adjacencies):
     in the next corridor (positions differ by >1, meaning some other
     route slid between them). LOOM's MLNCM-S secondary objective.
 
-    The 1000:1 weight ratio guarantees ``flips`` dominates — the
+    The 1000:1 weight ratio guarantees ``flips`` dominates - the
     optimizer prefers any ordering with one fewer flip over an
     ordering with up to 1000 fewer separations.
     """
@@ -247,7 +247,7 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previou
         Random seed for shuffle reproducibility.
     previous_order : list of str or None.
         If provided, seeds restart 0 from this order. Used by the
-        build pipeline to maintain stability across rebuilds —
+        build pipeline to maintain stability across rebuilds -
         topology unchanged → routeOrder unchanged.
 
     Returns
@@ -257,7 +257,7 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previou
     # Natural-sort the route set up front so the random-restart shuffle
     # base order does not depend on the caller's iteration order.
     # Callers pass list(frozenset), whose order is hash-seed-dependent
-    # across processes (PYTHONHASHSEED unset) — without this sort, a
+    # across processes (PYTHONHASHSEED unset) - without this sort, a
     # fixed seed produces a different shuffle sequence each build, so the
     # ordering churns build-to-build even with identical input geometry.
     routes_str = sorted((str(r) for r in route_ids), key=_natural_key)
@@ -293,12 +293,12 @@ def compute_route_order(route_ids, adjacencies, *, restarts=30, seed=42, previou
             rng.shuffle(start)
         order, s = local_search(start, adjacencies)
         # Candidate ranking (lexicographic tuple, lower wins):
-        #   1. score — primary flip objective + separation tiebreak.
+        #   1. score - primary flip objective + separation tiebreak.
         #   2. 0 if this order equals the previous build's order, else 1
-        #      — an unchanged-topology rebuild reproduces the prior order
+        #      - an unchanged-topology rebuild reproduces the prior order
         #      byte-for-byte (a true no-op) rather than drifting to a
         #      different but equally-optimal ordering.
-        #   3. the order tuple — lex tiebreak for the first build (no
+        #   3. the order tuple - lex tiebreak for the first build (no
         #      previous_order), reproducible across processes.
         key = (s, 0 if order == prev_seed else 1, tuple(order))
         if best_key is None or key < best_key:
@@ -332,7 +332,7 @@ def enumerate_modes(routes_metadata):
     dict {mode_key: frozenset(route_ids)} where mode_key is one of
     "summer", "summer_emergency", "winter", "winter_emergency".
 
-    Mode_key naming is stable — runtime app.js builds the same keys
+    Mode_key naming is stable - runtime app.js builds the same keys
     from seasonMode + emergencyOn to look up the active routeOrder.
     """
 
@@ -363,7 +363,7 @@ def compute_route_orders(
     """Compute one routeOrder per distinct visible mode.
 
     Modes with identical visible-route subsets share a single
-    optimization run — the same ordering is reused. The output dict
+    optimization run - the same ordering is reused. The output dict
     is keyed by every active mode_key, even when subsets are duped,
     so the runtime can do a simple dictionary lookup.
 
@@ -392,7 +392,7 @@ def compute_route_orders(
     if not modes:
         return {}, {}
 
-    # Dedup by visible subset — modes with identical visible-route
+    # Dedup by visible subset - modes with identical visible-route
     # sets share the optimization (one run, identical output).
     subset_to_keys = defaultdict(list)
     for mode_key, subset in modes.items():
@@ -406,7 +406,7 @@ def compute_route_orders(
         adjacencies = build_corridor_adjacencies(features, visible_routes=subset)
 
         # Seed from any of this subset's mode_keys that have a prior
-        # order — they're all equivalent because the subset is the
+        # order - they're all equivalent because the subset is the
         # same. First key wins for determinism.
         prev = None
         for k in mode_keys:

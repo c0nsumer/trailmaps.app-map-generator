@@ -141,7 +141,7 @@ def test_welcome_false_stays_suppressed():
 
 
 def test_welcome_dict_without_body_keeps_its_other_keys():
-    """No defaulting from `about` — the retired `about.description` must
+    """No defaulting from `about` - the retired `about.description` must
     never leak back into the welcome body."""
     config = {
         **BASE,

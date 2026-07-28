@@ -102,7 +102,7 @@ to `scripts/build.py`. Omit `--output-dir` / `--cache-dir` and the legacy
 The project runs from a checkout as above; it is not meant to be installed
 with `pip install .` (the `pyproject.toml` exists to declare the Python floor,
 not to package a distribution). Likewise, the `package.json` is optional dev
-tooling — an ESLint check for contributors editing the runtime templates —
+tooling - an ESLint check for contributors editing the runtime templates -
 not a build dependency; you do not need Node.js or `npm install` to build
 maps (see [Template lint](docs/building.md#template-lint-contributors-only)).
 

@@ -1,7 +1,7 @@
 """Shared helpers for the pmtiles CLI (basemap + terrain extraction).
 
 Previously fetch_basemap.py and fetch_terrain.py each carried their own
-copy of the CLI discovery and the extract-subprocess block — and both
+copy of the CLI discovery and the extract-subprocess block - and both
 pointed ``pmtiles extract`` directly at the deploy-target path, so a
 failed or interrupted extract left a partial ``.pmtiles`` where
 generate_service_worker would sweep it into the precache list and ship
@@ -37,14 +37,14 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom):
     """Run ``pmtiles extract`` atomically. Returns True on success.
 
     Extracts to ``<output_path>.tmp`` and ``os.replace``s into place
-    only when the CLI exits 0 and the file exists — an interrupted or
+    only when the CLI exits 0 and the file exists - an interrupted or
     failed extract can never leave a partial archive at the deploy
     path. Any ``.tmp`` residue (this run's failure, or a previous
     run's interruption) is removed. ``.tmp`` files are also excluded
     from the service-worker sweep and the deploy rsync as a second
     fence (see _is_build_only_artifact in build.py).
 
-    Echoes the CLI's stdout/stderr through console.info — pmtiles
+    Echoes the CLI's stdout/stderr through console.info - pmtiles
     reports its progress on stderr.
     """
     tmp_path = output_path + ".tmp"

@@ -96,7 +96,7 @@ def _apply_event_mode_to_custom_routes(config):
         for entry in inline_routes:
             if isinstance(entry, dict) and not entry.get("oneway"):
                 entry["oneway"] = "yes"
-        # forced_visible: "all" already covers direction_arrows — and
+        # forced_visible: "all" already covers direction_arrows - and
         # list() on the STRING would explode it into
         # ['a','l','l','direction_arrows'], corrupting the config (the
         # injector's == "all" check then misses and every genuinely

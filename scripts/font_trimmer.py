@@ -43,7 +43,7 @@ SCRIPT_FONT_BLOCKS = {
 # the configured language, the generic `name`, and the secondary
 # `name2`/`name3` slots. The app pins lang="en" (app.js), so these are the
 # only fields whose glyphs can ever be requested at runtime. Scanning ONLY
-# these — instead of every tile property — stops untranslated `name:ko` /
+# these - instead of every tile property - stops untranslated `name:ko` /
 # `name:ja` / `pgf:name:hi` fields (present in planet-extract basemaps for
 # i18n but never rendered here) from dragging in whole CJK / Hangul /
 # Devanagari glyph ranges, and the Devanagari face, that no client ever
@@ -121,7 +121,7 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
                 mm.close()
     except (FileNotFoundError, OSError, ValueError) as e:
         # ValueError: mmap refuses zero-byte files ("cannot mmap an empty
-        # file") — a truncated/failed basemap fetch shouldn't crash the
+        # file") - a truncated/failed basemap fetch shouldn't crash the
         # font scan; fall through with whatever chars we have (none).
         console.warn(f"Could not read basemap for font scan: {e}")
     return chars
@@ -164,9 +164,9 @@ def determine_needed_faces(chars, available_faces):
                     needed.add(face)
                     break
         else:
-            # Unknown face not in basemap or script list — skip with warning
+            # Unknown face not in basemap or script list - skip with warning
             console.warn(
-                f"Unknown font face '{face}' — skipping "
+                f"Unknown font face '{face}' - skipping "
                 f"(add to SCRIPT_FONT_BLOCKS in font_trimmer.py if needed)"
             )
 
@@ -195,8 +195,8 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_chars = collect_text_from_pmtiles(basemap_path)
     if basemap_chars is None:
-        # PMTiles libraries not available — fall back to full copy
-        console.warn("pmtiles/mapbox-vector-tile not installed — copying all fonts")
+        # PMTiles libraries not available - fall back to full copy
+        console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
         shutil.copytree(fonts_src, fonts_dst)
         return
     all_chars.update(basemap_chars)
@@ -205,9 +205,9 @@ def copy_trimmed_fonts(output_dir, fonts_src):
         all_chars.update(collect_text_from_geojson(os.path.join(output_dir, geojson_name)))
 
     if not all_chars:
-        # No text found (unlikely) — basemap was probably skipped
+        # No text found (unlikely) - basemap was probably skipped
         if not os.path.exists(basemap_path):
-            console.warn("No basemap found — copying all fonts")
+            console.warn("No basemap found - copying all fonts")
             shutil.copytree(fonts_src, fonts_dst)
             return
 
@@ -239,7 +239,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
                 total_copied += os.path.getsize(src_path)
                 copied += 1
 
-        console.info(f"Font: {face} — {copied}/{len(all_pbfs)} ranges")
+        console.info(f"Font: {face} - {copied}/{len(all_pbfs)} ranges")
 
     # Also copy non-font files (like OFL.txt license)
     for item in os.listdir(fonts_src):

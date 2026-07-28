@@ -1,4 +1,4 @@
-"""Tests for osm_diff.py — snapshot comparison for refresh vetting.
+"""Tests for osm_diff.py - snapshot comparison for refresh vetting.
 
 Covers the two design properties the module exists to guarantee:
 

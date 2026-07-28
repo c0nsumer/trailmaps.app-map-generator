@@ -1,4 +1,4 @@
-"""Tests for corridor_baselines.py — stable-lane offset baselines.
+"""Tests for corridor_baselines.py - stable-lane offset baselines.
 
 Run from repo root:
     python -m pytest scripts/tests/test_corridor_baselines.py -v
@@ -122,7 +122,7 @@ def test_mid_bundle_insertion_is_minimal_and_brackets_newcomer():
     forces the two flanks apart by exactly one lane total (irreducible);
     the newcomer must land between its neighbors. Whether that one lane is
     taken symmetrically (A,C each 0.5) or by a single route is a tie the
-    drift term breaks — both are movement-optimal, so we pin the invariant
+    drift term breaks - both are movement-optimal, so we pin the invariant
     (minimal total movement, correct bracketing), not the split."""
     order = ["A", "B", "C"]
     feats = [
@@ -153,7 +153,7 @@ def test_isolated_corridor_is_centered():
 
 
 def test_large_lambda_recovers_centered_formula():
-    """LAMBDA -> infinity must reproduce the old centered offsets — the
+    """LAMBDA -> infinity must reproduce the old centered offsets - the
     back-compat anchor."""
     saved_w, saved_d = CB._DRIFT_WEIGHT, CB._MAX_DRIFT
     CB._DRIFT_WEIGHT = 1e9

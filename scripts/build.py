@@ -20,7 +20,7 @@ import shutil
 import sys
 from datetime import UTC, datetime
 
-if sys.version_info < (3, 11):  # noqa: UP036 — runtime gate FOR older Pythons
+if sys.version_info < (3, 11):  # noqa: UP036 - runtime gate FOR older Pythons
     sys.exit(
         f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
         "See README.md / docs/building.md."
@@ -73,12 +73,12 @@ VENDOR_LIBS = {
 # ---------------------------------------------------------------------------
 # Coordinate precision for the rendered trails.geojson
 # ---------------------------------------------------------------------------
-# 6 decimal places is ~11 cm at these latitudes — far finer than the
+# 6 decimal places is ~11 cm at these latitudes - far finer than the
 # underlying OSM geometry's real accuracy or anything visible on screen,
 # yet it strips the trailing float noise (the subway-style parallel-offset
 # math emits up to 15 dp) that both bloats the file and, being high-entropy,
 # resists gzip. Rounding the render output roughly halves the GZIPPED size
-# of trails.geojson — the largest text asset every visitor fetches and
+# of trails.geojson - the largest text asset every visitor fetches and
 # JSON-parses on load. Only the expanded render output is rounded;
 # trails.src.geojson keeps full precision so the next build re-expands from
 # clean geometry.
@@ -123,11 +123,11 @@ def _minify_assets(output_dir):
     whitespace + comments + safe redundancies. ~30-50% file-size
     reduction on each.
 
-    Vendor libs (vendor/*.js) are NOT minified — upstream ships them
+    Vendor libs (vendor/*.js) are NOT minified - upstream ships them
     in production form already, and re-minifying risks breaking the
     upstream's intended behavior.
 
-    Errors are logged but don't abort the build — the unminified file
+    Errors are logged but don't abort the build - the unminified file
     stays in place, so the deploy still ships a working (just larger)
     artifact.
     """
@@ -159,17 +159,17 @@ def _minify_assets(output_dir):
             console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
             console.warn(
-                f"{lib} not installed — {fname} left unminified. Run: .venv/bin/pip install {lib}"
+                f"{lib} not installed - {fname} left unminified. Run: .venv/bin/pip install {lib}"
             )
         except (OSError, UnicodeDecodeError) as e:
-            console.warn(f"failed to minify {fname} ({e}) — left unminified")
+            console.warn(f"failed to minify {fname} ({e}) - left unminified")
 
 
 def download_vendor_libs(output_dir, cache_dir):
     """Download CDN dependencies to vendor/ for offline use.
 
     Downloads are cached in cache/vendor/ so subsequent builds skip the
-    fetch. The cache filename embeds a hash of the source URL — the
+    fetch. The cache filename embeds a hash of the source URL - the
     version lives only in the URL, so a bare-filename cache key meant a
     VENDOR_LIBS version bump silently kept shipping the previously
     cached library to every map until someone happened to --force.
@@ -214,7 +214,7 @@ def download_vendor_libs(output_dir, cache_dir):
 def generate_service_worker(config, output_dir):
     """Generate service worker with precache list from build output.
 
-    Must run LAST — after all other files are in place so the precache
+    Must run LAST - after all other files are in place so the precache
     list is complete.
     """
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -228,21 +228,21 @@ def generate_service_worker(config, output_dir):
         sw_content = f.read()
 
     # Walk the build tree once to collect every DEPLOYED file (for the
-    # CACHE_VERSION hash — see comment below on why), then filter that
+    # CACHE_VERSION hash - see comment below on why), then filter that
     # down to PRECACHE_URLS by dropping all but the essential glyph
     # PBFs. The trim keeps PRECACHE_URLS at ~30 entries for a typical
     # map instead of ~537 (full glyph parade), which removed the
     # parallel-glyph storm that competed with MapLibre's foreground
     # rendering on first visit. Glyph ranges outside 0-255 flow through
-    # the SW's cache-on-fetch handler — whatever the rider's view
+    # the SW's cache-on-fetch handler - whatever the rider's view
     # actually needs gets pulled from the network on first use and
     # cached for offline as a side effect of normal use. See sw.js
     # install/fetch handlers for the runtime half of this design.
     #
     # Build-only cache artifacts (trails.src.geojson and every .sig
     # sidecar) are dropped up front, before they reach either the hash
-    # or the precache list. The runtime never fetches them — app.js
-    # reads trails.geojson and the .pmtiles directly — and
+    # or the precache list. The runtime never fetches them - app.js
+    # reads trails.geojson and the .pmtiles directly - and
     # build_and_deploy.sh excludes them from the server tree. Leaving
     # them in PRECACHE_URLS made the SW background-fetch each one on
     # every install, logging a 404 per file against the (correctly)
@@ -307,7 +307,7 @@ def generate_service_worker(config, output_dir):
     # UI offline-ready fast and leaves the big sequential pull for last;
     # the rider's actual viewport is served meanwhile via cache-on-fetch +
     # Range passthrough, so deferring the full archives costs nothing.
-    # (PMTILES_FILES order is independent — it's only a suffix-match set for
+    # (PMTILES_FILES order is independent - it's only a suffix-match set for
     # the Range handler. CACHE_VERSION hashes all_files, not this list, so
     # reordering here does NOT bust any rider's cache.)
     #
@@ -324,7 +324,7 @@ def generate_service_worker(config, output_dir):
     # editing app.js / style.css / index.html without touching trails
     # or POIs left the cache version unchanged, so the service worker
     # happily served the stale cached JS/CSS to every previously-
-    # installed visitor — fixes "appeared to do nothing" until they
+    # installed visitor - fixes "appeared to do nothing" until they
     # manually cleared site data.
     #
     # CRITICAL: hash over all_files, not precache_urls. PRECACHE_URLS
@@ -357,7 +357,7 @@ def generate_service_worker(config, output_dir):
     # bytes (a ~2 MB basemap plus an 8-30 MB terrain against ~3 MB of
     # everything else). A count-based percentage would therefore sit near
     # 90% while the only files that actually matter at the trailhead were
-    # still missing, then jump to 100% — worse than no number at all.
+    # still missing, then jump to 100% - worse than no number at all.
     #
     # Keyed by URL rather than positional, so reordering precache_urls
     # (as the .pmtiles tail-append above already does) can't silently
@@ -403,7 +403,7 @@ def generate_service_worker(config, output_dir):
 # Compressible static assets are gzip- and zstd-compressed once at build
 # time. A precompressed-aware static server (Caddy `precompressed`, nginx
 # `gzip_static`/`brotli_static`, …) then ships the compressed bytes with
-# zero request-time CPU — and at higher levels than on-the-fly encoding
+# zero request-time CPU - and at higher levels than on-the-fly encoding
 # would risk for latency. The sidecars are a portable convention: a server
 # without precompressed support simply ignores them and serves the
 # original, so the build output stays host-agnostic. The runtime never
@@ -432,8 +432,8 @@ def _is_build_only_artifact(rel_path):
     """True for files generated only for the build's own bookkeeping that must
     never reach the server: signature sidecars (.sig), the pre-enrichment
     geometry base (.src.geojson), and in-progress atomic-write temp files
-    (.tmp — a hard-killed pmtiles extract can leave one behind). Dropped from
-    the SW hash/precache AND skipped by precompression — otherwise a
+    (.tmp - a hard-killed pmtiles extract can leave one behind). Dropped from
+    the SW hash/precache AND skipped by precompression - otherwise a
     `.src.geojson.gz` would slip past the rsync `*.src.geojson` exclude. Keep
     in sync with the --exclude list in tools/build_and_deploy.sh.
     """
@@ -479,7 +479,7 @@ def precompress_assets(output_dir):
     count = orig_total = comp_total = 0
     for root, _dirs, files in os.walk(output_dir):
         for fname in files:
-            # Don't compress build-only artifacts — they aren't deployed,
+            # Don't compress build-only artifacts - they aren't deployed,
             # and their .gz/.zst wouldn't match the rsync excludes.
             if _is_build_only_artifact(fname):
                 continue
@@ -516,7 +516,7 @@ def precompress_assets(output_dir):
             f"(-{100 * (1 - comp_total / orig_total):.0f}%)"
         )
     if _zstd is None:
-        console.warn("compression.zstd unavailable — wrote gzip sidecars only")
+        console.warn("compression.zstd unavailable - wrote gzip sidecars only")
 
 
 def load_config(config_path):
@@ -525,14 +525,14 @@ def load_config(config_path):
 
     Every per-map asset lives alongside its config (``configs/<slug>/``),
     so paths like ``logo: logo.webp`` resolve to
-    ``<repo>/configs/<slug>/logo.webp`` — the user doesn't have to repeat
+    ``<repo>/configs/<slug>/logo.webp`` - the user doesn't have to repeat
     the slug in every path. Absolute paths in the YAML are passed through
     unchanged (useful for shared assets outside the repo).
 
     Resolved keys: ``logo``, ``icon``, ``osm_file``, every
     ``custom_routes[].geometry``, and every ``additional_logos[].path``.
     All other paths (``output_dir``,
-    ``base_layers[].url``, etc.) stay in their original form — they're
+    ``base_layers[].url``, etc.) stay in their original form - they're
     either repo-relative or external URLs.
     """
     with open(config_path, encoding="utf-8") as f:
@@ -569,7 +569,7 @@ def load_config(config_path):
         for entry in em.get("routes") or []:
             if isinstance(entry, dict) and "geometry" in entry:
                 entry["geometry"] = _resolve(entry["geometry"])
-        # event_mode.gpx.routes[].file — curator-supplied .gpx assets,
+        # event_mode.gpx.routes[].file - curator-supplied .gpx assets,
         # same semantics again.
         em_gpx = em.get("gpx")
         if isinstance(em_gpx, dict):
@@ -577,8 +577,8 @@ def load_config(config_path):
                 if isinstance(entry, dict) and "file" in entry:
                     entry["file"] = _resolve(entry["file"])
 
-    # Per-relation override dicts accept quoted YAML keys ("1234567") —
-    # the validator explicitly blesses int-coercible strings — but the
+    # Per-relation override dicts accept quoted YAML keys ("1234567") -
+    # the validator explicitly blesses int-coercible strings - but the
     # injector looks routes up by INT key, so a quoted key used to
     # produce a clean, warning-free build with the override silently
     # dropped (and event mode's synthesized background entries could
@@ -598,8 +598,8 @@ def load_config(config_path):
     # supplies an explicit `title` override (worth it only where the
     # curated string carries information the derivation can't, e.g.
     # "Custer's Last Stand Route Map"). Resolved once here so every
-    # downstream reader — template_inject's og:title and brand title,
-    # generate_icons' manifest name, build.py's own log lines — sees
+    # downstream reader - template_inject's og:title and brand title,
+    # generate_icons' manifest name, build.py's own log lines - sees
     # the same string without repeating the fallback.
     #
     # A name already ending in " Map" would derive "… Map Map". The
@@ -644,7 +644,7 @@ def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001,
         coords = feature.get("geometry", {}).get("coordinates", [])
         # Index rather than unpack: the GeoJSON spec allows a third
         # (elevation) element per position, and GPX→GeoJSON converters
-        # commonly emit it — custom-route geometry is baked in verbatim,
+        # commonly emit it - custom-route geometry is baked in verbatim,
         # so `for lon, lat in coords` crashed on any curator route file
         # carrying elevations.
         for pos in coords:
@@ -657,7 +657,7 @@ def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001,
     if min_lon == float("inf"):
         raise ValueError(
             "No trail geometry found to compute bounding box. "
-            "This usually means the Overpass API returned empty data — "
+            "This usually means the Overpass API returned empty data - "
             "try running the build again, or set an explicit 'bbox' in the config."
         )
 
@@ -679,7 +679,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 
     The tight `bbox` frames the trails for the initial view; the expanded
     bbox returned here drives `maxBounds` (the pan wall) and the basemap/
-    terrain PMTiles extraction footprint — so when the user pans to the
+    terrain PMTiles extraction footprint - so when the user pans to the
     edge they still see real map tiles rather than the empty fallback.
 
     `pan_padding=0.5` adds 50% of the greater dimension's extent to each
@@ -705,7 +705,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 # ---------------------------------------------------------------------
 # basemap.pmtiles and terrain.pmtiles are large (~5-30 MB each) and slow
 # to extract (Mapterhorn / Protomaps planet pulls). We previously cached
-# them by output-path existence only — change `pan_bbox`, `pan_padding`,
+# them by output-path existence only - change `pan_bbox`, `pan_padding`,
 # or `*_maxzoom` and the *old* PMTiles silently stayed because the file
 # was still there.
 #
@@ -882,7 +882,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.info(f"distance_units: {config.get('distance_units', 'mi')}")
     console.blank()
 
-    console.step("Dry run complete — no files written, no network calls made.")
+    console.step("Dry run complete - no files written, no network calls made.")
 
 
 def apply_default_brand(config, project_root):
@@ -910,7 +910,7 @@ def apply_default_brand(config, project_root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
-    # Remote data never updates on its own — cached responses are served
+    # Remote data never updates on its own - cached responses are served
     # regardless of age, so an unflagged rebuild is offline and
     # reproducible. The --refresh family is the only way to pull fresh
     # data for an unchanged config (config edits still trigger the
@@ -1025,7 +1025,7 @@ def main(argv=None):
     # after validation (which judges the curator's real config) so it
     # also shows up in --dry-run's branding summary below.
     if apply_default_brand(config, project_root):
-        console.info("No logo/icon configured — using the bundled placeholder bike icon")
+        console.info("No logo/icon configured - using the bundled placeholder bike icon")
 
     # Path resolution precedence: CLI flag > config field > legacy default.
     # CLI-flag paths resolve against the current working directory so the
@@ -1079,8 +1079,8 @@ def main(argv=None):
     # Rebuild-stability seed: the previous build's EXPANDED output is
     # the only place its shipped routeOrders / corridorBaselines
     # survive (trails.src.geojson is snapshotted pre-enrichment, before
-    # they exist). Read them now — before a refetch overwrites the file
-    # — and inject them into the fresh base below, so enrichment's
+    # they exist). Read them now - before a refetch overwrites the file
+    # - and inject them into the fresh base below, so enrichment's
     # optimizers can reproduce an unchanged topology's ordering
     # byte-for-byte and move as few routes as possible when topology
     # does change. First build (or unreadable output): unseeded, as
@@ -1094,7 +1094,7 @@ def main(argv=None):
                 if prev_meta.get(key):
                     stability_seed[key] = prev_meta[key]
         except (OSError, ValueError):
-            pass  # corrupt/partial previous output — build unseeded
+            pass  # corrupt/partial previous output - build unseeded
 
     auto_refetch_reason = None
     refresh_trails = args.refresh or args.refresh_trails
@@ -1146,7 +1146,7 @@ def main(argv=None):
             # fires when a sidecar exists, so every rerun died on this
             # bare json.load until the user knew to pass --trails.
             # Match the content-guard philosophy: a bad base is never
-            # reused — refetch.
+            # reused - refetch.
             console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
             trails_geojson = _fetch_and_snapshot()
         else:
@@ -1186,7 +1186,7 @@ def main(argv=None):
                 .strftime("%Y-%m-%d %H:%M")
             )
         except ValueError:
-            pass  # unrecognized stamp — fall through to the mtime path
+            pass  # unrecognized stamp - fall through to the mtime path
     if not config["_data_date"]:
         # Base predates the metadata stamp (or is a route-only map with
         # no OSM data): fall back to the old mtime derivation. A
@@ -1264,7 +1264,7 @@ def main(argv=None):
             console.warn(
                 f"Map has {oneway_count} one-way trail segment(s) "
                 "but direction_arrows is not in default_visible. Riders "
-                "won't see directional indicators on first visit — "
+                "won't see directional indicators on first visit - "
                 "consider adding 'direction_arrows' to default_visible "
                 "(or use default_visible: all)."
             )
@@ -1273,7 +1273,7 @@ def main(argv=None):
     # (summer/winter/emergency) on every route, append any user-defined
     # custom_routes, and compute per-route distance/elevation stats
     # (inside enrichment, on canonical geometry BEFORE the subway pass
-    # expands it — see compute_and_attach's docstring). Idempotent —
+    # expands it - see compute_and_attach's docstring). Idempotent -
     # safe to re-run against a cached trails.geojson that's already
     # been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir)
@@ -1294,7 +1294,7 @@ def main(argv=None):
     # at fetch time above; the expanded output is never reused as a cache.)
     #
     # Trim coordinate precision on the render output only (see
-    # COORD_PRECISION) — roughly halves the gzipped transfer size and speeds
+    # COORD_PRECISION) - roughly halves the gzipped transfer size and speeds
     # up the client-side JSON.parse. Done in place right before serialization;
     # the only later reader (compute_bbox_from_trails) is unaffected by ~cm
     # rounding since it re-rounds the derived bbox to 4 dp anyway.
@@ -1348,7 +1348,7 @@ def main(argv=None):
     console.blank()
 
     # Step 2: Fetch POIs (skip when every POI category is disabled).
-    # Otherwise ALWAYS re-run fetch_pois — even on a no-flag rebuild —
+    # Otherwise ALWAYS re-run fetch_pois - even on a no-flag rebuild -
     # so config-defined POIs (parking, trailheads, event_mode.pois)
     # take effect on the next build automatically. The OSM portion
     # still hits the Overpass cache internally, so the cost of the
@@ -1381,7 +1381,7 @@ def main(argv=None):
     # markers. Both are user-visible POIs from the rider's
     # perspective, so both should count toward the Search line.
     #
-    # MUST run below the fetch_pois call above — this block used to
+    # MUST run below the fetch_pois call above - this block used to
     # sit before Step 2, reading the PREVIOUS build's pois.geojson:
     # zero counts on a first build, one-build-stale counts after.
     poi_counts = {}
@@ -1499,7 +1499,7 @@ def main(argv=None):
                 elif os.path.exists(terrain_path):
                     # Terrain failure is soft (the build continues and the
                     # runtime's HEAD-probe disables hillshade when the file
-                    # is absent) — but regen was triggered because the
+                    # is absent) - but regen was triggered because the
                     # PREVIOUS file no longer matches this build's
                     # bbox/zoom. Fetches are atomic, so what's on disk is
                     # that stale wrong-extent file; leaving it would ship
@@ -1507,7 +1507,7 @@ def main(argv=None):
                     os.remove(terrain_path)
                     console.warn(
                         "terrain regen failed; removed the previous "
-                        "terrain.pmtiles (wrong extent) — hillshade is "
+                        "terrain.pmtiles (wrong extent) - hillshade is "
                         "disabled until a build fetches terrain successfully"
                     )
 
@@ -1550,9 +1550,9 @@ def main(argv=None):
     # Step 5.5: Minify app.js + style.css unless --no-minify was passed. Runs
     # AFTER copy_templates (which writes the files we minify) and
     # BEFORE generate_service_worker (which hashes file contents into
-    # CACHE_VERSION — so the SW's hash refers to the final minified
+    # CACHE_VERSION - so the SW's hash refers to the final minified
     # bytes the rider downloads). Vendor libs (download_vendor_libs
-    # below) are NOT touched — we serve whatever upstream ships.
+    # below) are NOT touched - we serve whatever upstream ships.
     if args.minify:
         console.step("Minifying assets...")
         _minify_assets(output_dir)
@@ -1563,7 +1563,7 @@ def main(argv=None):
     download_vendor_libs(output_dir, cache_dir)
     console.blank()
 
-    # Step 7: Generate service worker (MUST be last — needs complete file list)
+    # Step 7: Generate service worker (MUST be last - needs complete file list)
     if config.get("pwa", True):
         console.step("Generating PWA assets...")
         generate_service_worker(config, output_dir)
@@ -1573,7 +1573,7 @@ def main(argv=None):
         manifest_path = os.path.join(output_dir, "icons", "site.webmanifest")
         if not os.path.exists(manifest_path):
             pwa_warnings.append(
-                "No web manifest (site.webmanifest) — set 'icon:' (or "
+                "No web manifest (site.webmanifest) - set 'icon:' (or "
                 "'logo:') in your config so icons + manifest are generated "
                 "from a source image"
             )
@@ -1586,17 +1586,17 @@ def main(argv=None):
             )
             if not has_icon:
                 pwa_warnings.append(
-                    "Web manifest exists but no icon PNGs found — "
+                    "Web manifest exists but no icon PNGs found - "
                     "the browser needs at least one icon to show an install prompt"
                 )
         if pwa_warnings:
             console.blank()
-            console.info("PWA WARNINGS — the app will not be installable until fixed:")
+            console.info("PWA WARNINGS - the app will not be installable until fixed:")
             for w in pwa_warnings:
                 console.info(f"  • {w}")
             console.blank()
     else:
-        console.step("PWA disabled — skipping service worker generation")
+        console.step("PWA disabled - skipping service worker generation")
         # A previous build's sw.js must not survive the flip. Deployed,
         # it answers already-installed riders' periodic update checks
         # byte-identically, so their registered SW never updates and
@@ -1610,7 +1610,7 @@ def main(argv=None):
                 os.remove(stale)
                 console.info(f"Removed stale {name} left by a previous build")
 
-    # Step 8: Precompress static assets (MUST be after the service worker —
+    # Step 8: Precompress static assets (MUST be after the service worker -
     # see precompress_assets). Skipped with --no-precompress.
     if args.precompress:
         console.step("Precompressing static assets...")

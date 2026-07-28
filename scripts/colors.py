@@ -15,7 +15,7 @@ import console
 
 
 def _relative_luminance(rgb):
-    """WCAG relative luminance for an (r, g, b) triple in 0–255.
+    """WCAG relative luminance for an (r, g, b) triple in 0-255.
 
     Used by the accent-color contrast warning + the auto-darken loop
     in derive_accent. Formula from WCAG 2.x; sRGB linearization +
@@ -50,7 +50,7 @@ def _rgb_to_hex(rgb):
 
 def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_boost=0.0):
     """Darken an RGB triple in HSL-space until it hits target_contrast
-    against `against` (white by default — the assumption is white text
+    against `against` (white by default - the assumption is white text
     on accent background). Returns the (possibly modified) triple.
 
     Walks lightness down in small steps. With sat_boost > 0, also nudges
@@ -86,14 +86,14 @@ def derive_accent(image_path):
     a (r, g, b) triple or None if no candidate qualifies (caller
     falls back to the framework default).
 
-    SVG inputs aren't supported — Pillow can't open them. The
+    SVG inputs aren't supported - Pillow can't open them. The
     caller is expected to fall back to the icon (typically PNG)
     when the logo is vector.
     """
     try:
         from PIL import Image
     except ImportError:
-        console.warn("Pillow not installed — cannot derive accent_color")
+        console.warn("Pillow not installed - cannot derive accent_color")
         return None
     try:
         img = Image.open(image_path).convert("RGBA")
@@ -101,7 +101,7 @@ def derive_accent(image_path):
         console.warn(f"could not open {image_path} for accent derivation: {exc}")
         return None
     img.thumbnail((100, 100))
-    # Iterate raw RGBA bytes — Image.getdata() is deprecated in
+    # Iterate raw RGBA bytes - Image.getdata() is deprecated in
     # Pillow 11+ and slated for removal in Pillow 14. tobytes() returns
     # a flat byte buffer in (R, G, B, A) order which we walk in groups
     # of four. Faster too, no per-pixel tuple allocation.
@@ -131,7 +131,7 @@ def derive_accent(image_path):
     return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
-# Framework default accent — used verbatim as the light shade when no
+# Framework default accent - used verbatim as the light shade when no
 # accent_color is configured, and as the base for the derived dark
 # shade. Keep in sync with --accent-light in templates/style.css :root.
 FRAMEWORK_DEFAULT_ACCENT = "#1D6FA5"
@@ -141,7 +141,7 @@ FRAMEWORK_DEFAULT_ACCENT = "#1D6FA5"
 _ON_ACCENT_LIGHT = "#FFFFFF"
 _ON_ACCENT_DARK = "#14140F"
 
-# Dark-mode sheet background (#1c1c1e) — the surface the dark-mode accent
+# Dark-mode sheet background (#1c1c1e) - the surface the dark-mode accent
 # shade must read against. Matches --sheet-bg in style.css's dark block.
 _DARK_SHEET_BG = (28, 28, 30)
 
@@ -158,7 +158,7 @@ _LIGHT_SAT_BOOST = 0.015       # saturation nudge per darken step
 
 def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
     """Lighten an RGB triple in HSL-space until it hits target_contrast
-    against `against` (the dark sheet bg by default — the assumption is
+    against `against` (the dark sheet bg by default - the assumption is
     the accent reading as a link / fill on the dark sheet). Mirror of
     _darken_for_contrast for the dark-mode accent shade.
 
@@ -166,7 +166,7 @@ def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
     shade stays vivid rather than washing out to pastel. In
     practice 4.5 vs the dark sheet is reached at moderate lightness
     (L <= ~0.65 across hues), so the result keeps the base's saturation
-    and never approaches neon/white — no separate desaturation cap is
+    and never approaches neon/white - no separate desaturation cap is
     needed. Bails after a fixed number of iterations.
     """
     import colorsys
@@ -199,8 +199,8 @@ def _best_text_color(accent_rgb):
 def _palette_from_base(base_rgb, darken_light):
     """Derive the 4-value accent palette from a single base (r, g, b).
 
-    - light shade: the base verbatim, OR — on the "auto" path
-      (`darken_light`) — deepened + saturated for vividness,
+    - light shade: the base verbatim, OR - on the "auto" path
+      (`darken_light`) - deepened + saturated for vividness,
       which also keeps white-on-accent pills legible. Explicit hex /
       framework default are used verbatim, so light mode is unchanged.
     - dark shade: the base LIGHTENED until it reads AA against the dark
@@ -235,7 +235,7 @@ def resolve_accent_palette(config, project_root, cache_dir):
     Returns a dict of hex strings:
         {"light": ..., "dark": ..., "onLight": ..., "onDark": ...}
 
-    The accent serves two roles that conflict in dark mode — white-text
+    The accent serves two roles that conflict in dark mode - white-text
     pills want a DARK accent, while links / focus rings on the dark
     sheet want a LIGHT accent. So we derive a deep light-mode shade and
     a lightened dark-mode shade from one base, plus the best on-accent
@@ -267,7 +267,7 @@ def _resolve_accent_base(config, project_root, cache_dir):
 
     base_rgb is the (r, g, b) the palette is derived from; darken_light
     says whether the LIGHT shade should be darkened for white-text
-    legibility (True only for the "auto" pixel-pick — explicit hex and
+    legibility (True only for the "auto" pixel-pick - explicit hex and
     the framework default are trusted verbatim so light mode is
     unchanged); is_default flags the framework-default fallback (unset,
     or "auto" that couldn't produce a color) so the caller can skip the
@@ -287,8 +287,8 @@ def _resolve_accent_base(config, project_root, cache_dir):
 
 def _derive_accent_cached(config, project_root, cache_dir):
     """Run derive_accent on the logo (falling back to icon), cached by
-    source content hash. Returns the RAW (r, g, b) pixel pick —
-    pre-contrast-adjustment — so the palette can be recomputed cheaply
+    source content hash. Returns the RAW (r, g, b) pixel pick -
+    pre-contrast-adjustment - so the palette can be recomputed cheaply
     on every build without re-walking the image, and so palette-math
     changes never need a cache-version bump. Returns None (with a
     warning) when no raster source exists or no color qualifies.
@@ -303,7 +303,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
         if not os.path.isfile(abs_path):
             continue
         if abs_path.lower().endswith(".svg"):
-            # Pillow can't read SVG — try the next candidate.
+            # Pillow can't read SVG - try the next candidate.
             continue
         candidates.append(abs_path)
     if not candidates:
@@ -316,7 +316,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
     source = candidates[0]
 
     # Cache by content hash so re-builds skip the Pillow walk. We store
-    # the RAW pick (not a finished shade) — see the docstring.
+    # the RAW pick (not a finished shade) - see the docstring.
     accent_cache_dir = os.path.join(cache_dir, "derive_accent")
     os.makedirs(accent_cache_dir, exist_ok=True)
     with open(source, "rb") as f:
@@ -327,7 +327,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
             with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
             raw_pick = cached.get("raw")
-            # Old-format entries stored a darkened "hex" and no "raw" —
+            # Old-format entries stored a darkened "hex" and no "raw" -
             # treat those as a miss and re-derive (one-time migration).
             if isinstance(raw_pick, list) and len(raw_pick) == 3:
                 return tuple(raw_pick)
@@ -358,8 +358,8 @@ def _warn_low_contrast_palette(palette):
     WCAG AA against its OWN background: the light shade vs the white
     sheet, the dark shade vs the dark sheet (#1c1c1e).
 
-    Each shade only ever renders in its own scheme, so — unlike the old
-    single-color check — we no longer test one value against both
+    Each shade only ever renders in its own scheme, so - unlike the old
+    single-color check - we no longer test one value against both
     backgrounds. The on-accent text color is picked for max contrast by
     construction, so only the foreground-on-sheet role (links / focus
     rings) needs a warning.

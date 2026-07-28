@@ -3,7 +3,7 @@
 
 Queries the Overpass API for five POI categories within the configured
 bounding box (guideposts, emergency access points, attractions, toilets,
-drinking water — see fetch_pois_from_osm), merges in the config-specified
+drinking water - see fetch_pois_from_osm), merges in the config-specified
 POIs (parking, trailheads, hubs, event-mode POIs), and outputs a GeoJSON
 file.
 
@@ -20,7 +20,7 @@ import os
 import cli
 import console
 
-# Shared narrow-resolution loader (handles ``osm_file:`` only — the
+# Shared narrow-resolution loader (handles ``osm_file:`` only - the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
@@ -58,7 +58,7 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
     Each maps to a distinct ``poi_type`` in the output GeoJSON; runtime
     toggle visibility per category.
 
-    Toilets and drinking water are queried as both nodes AND ways —
+    Toilets and drinking water are queried as both nodes AND ways -
     OSM mappers commonly tag the toilet building polygon (a closed
     way) rather than placing a node. ``out center;`` asks Overpass
     to compute the centroid of any non-node geometry so the rest of
@@ -86,7 +86,7 @@ def _dedup_osm_pois(features):
     other into a single feature.
 
     Catches the common OSM modeling pattern where the same physical
-    amenity is tagged twice — once as a way (building=yes +
+    amenity is tagged twice - once as a way (building=yes +
     amenity=toilets, the building footprint, whose Overpass-computed
     center coord we use) AND once as a node (a separate
     amenity=toilets node at or near the entrance). These represent
@@ -98,7 +98,7 @@ def _dedup_osm_pois(features):
 
     Two POIs are duplicates iff they share the same poi_type, the type
     is one where the double-tagging pattern actually occurs (toilets /
-    drinking_water — the building-footprint amenities), AND their
+    drinking_water - the building-footprint amenities), AND their
     coordinates are within 10m haversine distance. Other types are
     never collapsed: distinct guideposts genuinely stand <10m apart at
     junction clusters, and merging them dropped their individual ref
@@ -109,10 +109,10 @@ def _dedup_osm_pois(features):
     tagged-once name doesn't get lost to its untagged twin).
 
     The 10m threshold catches the building-center-vs-node-coord
-    offset (typically 0–5m) without merging genuinely-distinct
+    offset (typically 0-5m) without merging genuinely-distinct
     same-type facilities (e.g., two outhouses at a trailhead are
     usually 15m+ apart). Cost is O(n²) per type but n is small
-    (typically 5–50 POIs of each type per map), so well under 1ms.
+    (typically 5-50 POIs of each type per map), so well under 1ms.
 
     Logs a one-line summary of how many duplicates collapsed so the
     curator sees the OSM data structure surfacing up.
@@ -172,11 +172,11 @@ def build_pois_geojson(
     config_hubs: optional list of curator-supplied trail-hub waypoints
     (named on-trail intersections riders use as wayfinding landmarks).
     Same shape as ``config_trailheads`` but rendered as a separate POI
-    type — see runtime ``addHubMarkers`` for the visual treatment.
+    type - see runtime ``addHubMarkers`` for the visual treatment.
 
     config: optional reference to the full per-map config dict. When
     provided, show_* flags gate each POI type at the GeoJSON-emit step
-    — a type with show_X: false is excluded from the output entirely,
+    - a type with show_X: false is excluded from the output entirely,
     so it doesn't appear in counts, search index, or anywhere else
     downstream (not just suppressed from rendering). Backwards-
     compatible default of None means "show everything," matching the
@@ -249,7 +249,7 @@ def build_pois_geojson(
                         # OSM `access` tag (yes/no/permissive/private) helps
                         # riders know whether they can actually use it.
                         "access": tags.get("access", ""),
-                        # OSM `fee` tag (yes/no) — same reason.
+                        # OSM `fee` tag (yes/no) - same reason.
                         "fee": tags.get("fee", ""),
                     },
                 }
@@ -273,14 +273,14 @@ def build_pois_geojson(
 
     # Collapse OSM-side duplicates of the same type within ~10m of
     # each other. OSM commonly tags the same amenity twice (once as
-    # a building way + once as a node at/near the entrance — both
+    # a building way + once as a node at/near the entrance - both
     # come back from the Overpass query as separate elements). Without
     # this pass, the search overlay reports the doubled raw count
     # ("Toilets × 12") while the map renders only the visible distinct
     # markers (8) because the second stacks on top of the first.
     # See _dedup_osm_pois for the threshold rationale.
     # Curator-supplied POIs (parking, trailheads, event) are added
-    # below this pass — they're hand-entered and don't need it.
+    # below this pass - they're hand-entered and don't need it.
     features = _dedup_osm_pois(features)
 
     # Parking from YAML config
@@ -315,7 +315,7 @@ def build_pois_geojson(
                 }
             )
 
-    # Trail hubs from YAML config — named on-trail intersections riders
+    # Trail hubs from YAML config - named on-trail intersections riders
     # use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct
     # POI type from Trailheads because riders can't drive to them: the
     # runtime renders them with the name inline (no popup, no directions
@@ -390,7 +390,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     else:
         osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh)
 
-    # Count by type — guideposts + emergency access points are merged
+    # Count by type - guideposts + emergency access points are merged
     # into a single "markers" bucket.
     marker_count = sum(
         1

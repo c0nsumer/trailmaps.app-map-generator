@@ -3,7 +3,7 @@
 
 Primary path: extract pre-built Terrarium terrain tiles for the
 configured bounding box from the Mapterhorn project using ``pmtiles
-extract`` — no GDAL stack needed, and the only path that works with a
+extract`` - no GDAL stack needed, and the only path that works with a
 stock ``requirements.txt`` install.
 
 Fallback: build the tiles locally from SRTM elevation data (download,
@@ -25,7 +25,7 @@ import console
 import yaml
 from pmtiles_util import extract, find_pmtiles_cli
 
-# Mapterhorn (Protomaps terrain) — pre-built Terrarium-encoded RGB PMTiles
+# Mapterhorn (Protomaps terrain) - pre-built Terrarium-encoded RGB PMTiles
 # This is the simpler alternative to building from SRTM
 MAPTERHORN_URL = "https://download.mapterhorn.com/planet.pmtiles"
 
@@ -38,19 +38,19 @@ def load_config(config_path):
 def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     """Extract terrain tiles from Mapterhorn (Protomaps' terrain PMTiles).
 
-    This is the simplest approach — Mapterhorn provides pre-built terrain
+    This is the simplest approach - Mapterhorn provides pre-built terrain
     RGB tiles in Terrarium encoding, packaged as PMTiles. We just extract
     the bounding box we need.
     """
     # Missing CLI is a soft failure, NOT sys.exit: terrain is non-fatal
     # by design (build.py continues without hillshade), and an exit
-    # here killed the whole build — or re-raised SystemExit out of the
-    # parallel-fetch thread pool — when only the terrain layer was at
+    # here killed the whole build - or re-raised SystemExit out of the
+    # parallel-fetch thread pool - when only the terrain layer was at
     # stake. Returning False falls through to the SRTM path and then
     # to fetch_terrain's could-not-generate warning.
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
-        console.error("pmtiles CLI not found — cannot extract terrain.")
+        console.error("pmtiles CLI not found - cannot extract terrain.")
         console.info("Install: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
         return False
 
@@ -62,7 +62,7 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
 
     # Atomic (via pmtiles_util.extract): a failed/interrupted extract
     # can't leave a partial terrain.pmtiles at the deploy path. That
-    # matters more here than for the basemap — terrain failure is
+    # matters more here than for the basemap - terrain failure is
     # NON-fatal (build.py continues without hillshade), so a partial
     # file wouldn't stop the build and would be precached and shipped.
     return extract(pmtiles_cli, terrain_url, output_path, padded, maxzoom)
@@ -208,7 +208,7 @@ def fetch_terrain(config_or_path, output_path):
         return True
 
     console.warn("Could not generate terrain tiles.")
-    console.info("The map will work without terrain — hillshade will be disabled.")
+    console.info("The map will work without terrain - hillshade will be disabled.")
     return False
 
 

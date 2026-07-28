@@ -1,4 +1,4 @@
-"""Tests for compute_route_stats.py — per-route distance and the
+"""Tests for compute_route_stats.py - per-route distance and the
 canonical-geometry guard.
 
 The guard is the regression fence for a bug that has now happened
@@ -93,7 +93,7 @@ from compute_route_stats import (  # noqa: E402
 def test_chain_segments_reassembles_a_loop():
     # A closed loop delivered as three segments in arbitrary order and
     # direction (the shape OSM relations actually produce) must chain
-    # into one continuous closed traversal — every hidden break makes
+    # into one continuous closed traversal - every hidden break makes
     # gain/loss diverge on the loop.
     a, b, c, d = [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]
     chains = _chain_segments(
@@ -141,8 +141,8 @@ def test_break_markers_survive_smoothing_and_block_deltas():
     # neighbors, bridging every segment break.
     out = _smooth_elevations([0.0, 10.0, None, 50.0, 60.0], 3)
     assert out[2] is None
-    assert out[1] == 5.0  # avg(0, 10) — never reaches 50
-    assert out[3] == 55.0  # avg(50, 60) — never reaches 10
+    assert out[1] == 5.0  # avg(0, 10) - never reaches 50
+    assert out[3] == 55.0  # avg(50, 60) - never reaches 10
     # Two plateaus 100 m apart across a break: no phantom gain.
     assert _gain_loss_from_samples([0.0, 0.0, 0.0, None, 100.0, 100.0, 100.0]) == (0, 0)
 
@@ -162,7 +162,7 @@ class _FakeResp:
 
 def test_splice_places_samples_by_location_id(monkeypatch):
     # The service may omit a point and return the rest out of order.
-    # Placement must key on locationId — an enumeration index would
+    # Placement must key on locationId - an enumeration index would
     # shift every elevation after the gap onto the wrong coordinate.
     coords = [[-83.0, 42.0], [-83.001, 42.0], None, [-83.002, 42.0]]
     resp = _FakeResp(
@@ -229,7 +229,7 @@ def test_no_data_cache_marker_skips_api(tmp_path, monkeypatch):
 def test_refuses_subway_expanded_geometry(marker):
     # The multi-mode subway pass replaces a truncated host with one
     # full-length variant PER MODE, all carrying the host's route_id.
-    # Stats computed on that output count the host once per mode — the
+    # Stats computed on that output count the host once per mode - the
     # guard must refuse rather than silently inflate.
     g = _fc()
     g["features"].append(_feat("100", _SEG_B, **{marker: True, "mode": "summer"}))

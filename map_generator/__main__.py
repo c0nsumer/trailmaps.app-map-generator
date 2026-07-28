@@ -13,7 +13,7 @@ keeps working in parallel.
 import os
 import sys
 
-if sys.version_info < (3, 11):  # noqa: UP036 — runtime gate FOR older Pythons
+if sys.version_info < (3, 11):  # noqa: UP036 - runtime gate FOR older Pythons
     sys.exit(
         f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
         "See README.md / docs/building.md."
@@ -46,7 +46,7 @@ def main(argv=None):
     # Bootstrap sys.path so `scripts.build` and its sibling imports
     # (fetch_trails, fetch_pois, …) resolve regardless of cwd. `python -m`
     # adds the package's parent dir to sys.path[0], which is the repo root
-    # here — but only when invoked that way. Adding it explicitly keeps
+    # here - but only when invoked that way. Adding it explicitly keeps
     # the shim importable from arbitrary entry points too.
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if repo_root not in sys.path:

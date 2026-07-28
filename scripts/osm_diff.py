@@ -39,7 +39,7 @@ from geodesy import haversine_m, natural_key
 _LENGTH_NOISE_M = 20.0
 
 # Caps on how many items any one section lists. Anything dropped is stated
-# explicitly in the output — a silently truncated list reads as "that's
+# explicitly in the output - a silently truncated list reads as "that's
 # everything" when it isn't.
 _MAX_LIST = 40
 _MAX_CONSOLE = 5
@@ -67,7 +67,7 @@ def _feature_length_m(feature):
                 total += haversine_m(line[i - 1][0], line[i - 1][1],
                                      line[i][0], line[i][1])
             except (TypeError, IndexError):
-                # Malformed coordinate pair — skip the segment rather than
+                # Malformed coordinate pair - skip the segment rather than
                 # abort the whole report over one bad vertex.
                 continue
     return total
@@ -297,7 +297,7 @@ def summarize(diff, units="mi"):
 
 def format_report(diff, slug, units="mi"):
     """Full Markdown report. Pure."""
-    out = [f"# OSM refresh diff — {slug}", ""]
+    out = [f"# OSM refresh diff - {slug}", ""]
     out.append(f"- Previous data timestamp: `{diff['data_timestamp_old'] or 'unknown'}`")
     out.append(f"- New data timestamp: `{diff['data_timestamp_new'] or 'unknown'}`")
     out.append(f"- Ways: {diff['way_count_old']} → {diff['way_count_new']}")
@@ -337,7 +337,7 @@ def format_report(diff, slug, units="mi"):
     section("Routes removed", diff["routes_removed"],
             lambda t: f"`{t[0]}` {t[1] or '(unnamed)'}")
     section("Route field changes", diff["route_changes"],
-            lambda c: f"`{c['id']}` {c['name'] or '(unnamed)'} — "
+            lambda c: f"`{c['id']}` {c['name'] or '(unnamed)'} - "
                       f"{c['field']}: `{c['old']}` → `{c['new']}`")
     section("Trails added", diff["trails_added"], lambda n: n)
     section("Trails removed", diff["trails_removed"], lambda n: n)
@@ -346,7 +346,7 @@ def format_report(diff, slug, units="mi"):
                       f"{r['new'] or '(unnamed)'} ({r['ways']} ways)")
     section("Tag changes", diff["tag_changes"],
             lambda c: f"way `{c['way_id']}` "
-                      f"({c['trail'] or 'unnamed'}) — {c['tag']}: "
+                      f"({c['trail'] or 'unnamed'}) - {c['tag']}: "
                       f"`{c['old'] or '(none)'}` → `{c['new'] or '(none)'}`")
     section("Length changes", diff["length_changes"],
             lambda c: f"{c['trail']}: "

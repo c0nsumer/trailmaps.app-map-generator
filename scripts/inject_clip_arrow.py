@@ -1,8 +1,8 @@
 """Inject the SDF clip-continuation arrowhead into copied sprite atlases.
 
 The framework ships pre-built Protomaps sprite atlases (assets/sprites/v4/)
-in five theme variants × two pixel ratios. Those atlases are raster-only —
-none of the icons have `sdf: true` — so we can't tint any of them at runtime.
+in five theme variants × two pixel ratios. Those atlases are raster-only -
+none of the icons have `sdf: true` - so we can't tint any of them at runtime.
 
 This module extends each *copied* atlas in `build/{slug}/sprites/v4/` (we
 never modify the source assets in `assets/sprites/v4/`) with one extra

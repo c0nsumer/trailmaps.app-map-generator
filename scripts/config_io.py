@@ -8,7 +8,7 @@ lives here as the single source of truth.
 
 The full build.py load_config is richer (resolves ``logo``,
 ``icon``, ``osm_file``, and every
-``custom_routes[].geometry``) — that path is the standard one when
+``custom_routes[].geometry``) - that path is the standard one when
 running through ``build.py``. The trimmed version in this module is
 the one fetch_trails and fetch_pois use when invoked directly from
 the CLI for ad-hoc data refreshes.
@@ -26,7 +26,7 @@ def load_config_for_fetch(config_path):
     Equivalent to the narrow load_config previously duplicated in
     fetch_trails.py and fetch_pois.py. Renamed to make it obvious
     this is the *minimal* version (used by the standalone fetch
-    entry-points) — build.py keeps its own richer load_config that
+    entry-points) - build.py keeps its own richer load_config that
     resolves every per-map asset path.
     """
     with open(config_path, encoding="utf-8") as f:

@@ -30,7 +30,7 @@ USER_AGENT = "mtb-map-framework (+https://nuxx.net)"
 MAX_RETRIES = 10
 # Client-side timeout per HTTP request. MUST be >= the largest server-side
 # [timeout:N] any caller's query grants itself (currently 300 in
-# fetch_trails' bulk ways query) — the server budget is meaningless if the
+# fetch_trails' bulk ways query) - the server budget is meaningless if the
 # client hangs up first. When these disagreed (120 client vs 300 server), a
 # legitimately slow query on a large map was killed client-side, retried
 # 10x with each retry restarting the server-side work from scratch, then
@@ -58,10 +58,10 @@ EMPTY_RETRY_LIMIT = 2
 # Maximum acceptable replication lag for an Overpass mirror's snapshot,
 # measured by the response's `osm3s.timestamp_osm_base` vs. wall clock.
 # Overpass instances replicate independently and can fall days behind
-# without raising any error — they'll cheerfully serve a stale snapshot. If
+# without raising any error - they'll cheerfully serve a stale snapshot. If
 # a response is older than this threshold, raise StaleSnapshotError and
 # retry the endpoint on the backoff schedule. 24h is generous; the endpoint
-# is usually within minutes of upstream. Applies to LIVE responses only — cached
+# is usually within minutes of upstream. Applies to LIVE responses only - cached
 # responses are served regardless of age (re-querying is explicit, via
 # the --refresh flags).
 MAX_OSM_BASE_LAG = timedelta(hours=24)
@@ -133,7 +133,7 @@ def _check_snapshot_freshness(data, server):
             tzinfo=UTC
         )
     except ValueError:
-        return  # unrecognized format — don't reject on parse failure
+        return  # unrecognized format - don't reject on parse failure
     lag = datetime.now(UTC) - osm_base
     if lag > MAX_OSM_BASE_LAG:
         raise StaleSnapshotError(
@@ -161,7 +161,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             POIs in an area with none).
         refresh: If True, skip reading any cached response (the fresh
             result still overwrites the cache entry). This is how
-            `build.py --refresh` re-fetches ONE map's data — the cache
+            `build.py --refresh` re-fetches ONE map's data - the cache
             directory is shared by every map, so deleting it wholesale
             would throw away the other maps' responses (and it used to).
 
@@ -192,7 +192,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             except (OSError, ValueError) as e:
                 # Truncated/corrupt cache file (e.g. written before cache
                 # writes were atomic). Delete it and fall through to a
-                # fresh fetch — a bad cache entry must never wedge builds.
+                # fresh fetch - a bad cache entry must never wedge builds.
                 console.warn(f"Discarding unreadable cache ({type(e).__name__}): {cp}")
                 try:
                     os.remove(cp)
@@ -237,7 +237,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                 raise PartialResponseError(remark.strip())
 
             if require_elements and not data.get("elements"):
-                # Empty response is ambiguous — it may be a transient
+                # Empty response is ambiguous - it may be a transient
                 # server hiccup, OR the query is correctly formed but
                 # matches no data (e.g. typo'd relation ID, deleted
                 # relation). Retry up to EMPTY_RETRY_LIMIT to ride out
@@ -248,7 +248,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                     console.warn(f"{server} returned 0 elements {empty_attempts} times in a row.")
                     console.info(
                         "This usually means the query is "
-                        "correct but no data exists — check your "
+                        "correct but no data exists - check your "
                         "relation IDs for typos."
                     )
                     console.info("Continuing with empty data; downstream may produce an empty map.")

@@ -1,8 +1,8 @@
-"""Tests for tools/clean_config.py — the template re-alignment tool.
+"""Tests for tools/clean_config.py - the template re-alignment tool.
 
 Two invariants matter most:
 - The cleaned output parses to exactly the same data as the original.
-  The tool enforces this itself (equality gate) — a wrong splice
+  The tool enforces this itself (equality gate) - a wrong splice
   aborts and deletes the output instead of handing back a config that
   behaves differently.
 - Curator comments survive: set blocks are spliced verbatim (inline
@@ -109,10 +109,10 @@ def test_comment_line_inside_set_mapping_block_survives(tmp_path):
         "name: X\nslug: x\nrelations: [1]\n"
         "dashed_relations:\n"
         "  110: [4, 4]\n"
-        "  # 111: [4, 4] # Murray Lake — stashed until signage is in\n"
+        "  # 111: [4, 4] # Murray Lake - stashed until signage is in\n"
         "  222: [1, 1]\n",
     )
-    assert "  # 111: [4, 4] # Murray Lake — stashed until signage is in" in text
+    assert "  # 111: [4, 4] # Murray Lake - stashed until signage is in" in text
     parsed = yaml.safe_load(text)
     assert parsed["dashed_relations"] == {110: [4, 4], 222: [1, 1]}
 
@@ -159,7 +159,7 @@ def test_no_space_stash_is_carried(tmp_path):
 
 def test_boilerplate_is_not_duplicated(tmp_path):
     # Production carries the template's own commented default around
-    # verbatim — the output must contain it exactly once (the
+    # verbatim - the output must contain it exactly once (the
     # template's copy).
     _, text = _run(
         tmp_path,
@@ -185,7 +185,7 @@ def test_leading_comment_carried_but_divider_is_not(tmp_path):
 
 def test_unplaced_comment_lands_in_carry_over_section(tmp_path):
     # A lone comment separated from every block by blank lines
-    # attaches to nothing — the safety net keeps it at the end.
+    # attaches to nothing - the safety net keeps it at the end.
     summary, text = _run(
         tmp_path,
         "name: X\nslug: x\n\n# TODO check this later\n\nrelations: [1]\n",
@@ -211,7 +211,7 @@ def test_assert_same_data_removes_output_and_exits(tmp_path):
 
 def test_cleaning_is_idempotent(tmp_path):
     # Cleaning a file, then cleaning the RESULT, must be byte-identical
-    # — otherwise every re-run churns the diff.
+    # - otherwise every re-run churns the diff.
     prod_text = (
         "# Curator note about the map\n"
         "name: X\n"

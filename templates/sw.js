@@ -4,22 +4,22 @@
 // touches at runtime is cached on-fetch by the handler below.
 //
 // Config is injected at build time by build.py:
-//   SW_CONFIG.CACHE_SCOPE    — the map's slug. Cache Storage is
+//   SW_CONFIG.CACHE_SCOPE    - the map's slug. Cache Storage is
 //                              per-ORIGIN, not per-SW-scope, and
 //                              multiple maps are served as paths on
 //                              one origin, so every cache name must
 //                              carry the slug or one map's cleanup
 //                              deletes its neighbors' offline caches
-//   SW_CONFIG.CACHE_VERSION  — hash-based cache version string,
+//   SW_CONFIG.CACHE_VERSION  - hash-based cache version string,
 //                              computed over EVERY file in the
 //                              build (not just precached ones)
-//   SW_CONFIG.PRECACHE_URLS  — priority list for background fill
-//                              (omits most glyph PBFs — those flow
+//   SW_CONFIG.PRECACHE_URLS  - priority list for background fill
+//                              (omits most glyph PBFs - those flow
 //                              through cache-on-fetch)
-//   SW_CONFIG.PRECACHE_BYTES — {url: size} for the above, so the page
+//   SW_CONFIG.PRECACHE_BYTES - {url: size} for the above, so the page
 //                              can weight offline progress by bytes
 //                              instead of by file count
-//   SW_CONFIG.PMTILES_FILES  — list of .pmtiles filenames for
+//   SW_CONFIG.PMTILES_FILES  - list of .pmtiles filenames for
 //                              Range request handling
 
 /*__SW_CONFIG__*/
@@ -33,14 +33,14 @@ const CACHE_NAME = `${CACHE_PREFIX}${SW_CONFIG.CACHE_VERSION}`;
 
 // Pre-slug cache names were `trail-map-<12 hex chars>` with no map
 // identity. They can't be attributed to a map, so the first slugged
-// version to clean up deletes them all — a one-time migration cost
+// version to clean up deletes them all - a one-time migration cost
 // (the affected maps re-precache on their next online visit), versus
 // the old behavior which cross-deleted on EVERY cleanup. Anchored so
 // slugged names can never match.
 const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 
 // ============================================================
-// Install — complete immediately, precache in background
+// Install - complete immediately, precache in background
 // ============================================================
 // Install used to block on cache.addAll(PRECACHE_URLS), which on
 // first visit pulled ~20 MB across hundreds of files (full PMTiles,
@@ -62,7 +62,7 @@ const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 //
 // We deliberately do NOT call skipWaiting() here. A new SW installs
 // but stays in the "waiting" state until either the rider taps
-// "Reload" on the update toast (which posts SKIP_WAITING — see the
+// "Reload" on the update toast (which posts SKIP_WAITING - see the
 // message handler below) or every old-SW client closes. This is the
 // standard double-buffered update model, and it matters most on poor
 // connectivity:
@@ -70,8 +70,8 @@ const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 //   skipWaiting() on install would activate the new SW immediately,
 //   and the activate handler below deletes the previous cache. The
 //   new cache is still empty at that moment (backgroundPrecache is
-//   fire-and-forget and the large files — trails.geojson, the
-//   PMTiles — haven't downloaded yet). On a flaky cellular link the
+//   fire-and-forget and the large files - trails.geojson, the
+//   PMTiles - haven't downloaded yet). On a flaky cellular link the
 //   tiny sw.js squeaks through and triggers the swap, but the big
 //   files then stall, so the page is left fetching required data
 //   (loadTrails) from an empty cache over a dead network: blank
@@ -101,14 +101,14 @@ const PRECACHE_DONE_URL = "__precache-complete__";
 
 // Re-entrancy guard: install / activate / page pings can overlap
 // (e.g. a RESUME_PRECACHE message arriving while the install-time
-// run is mid-list) — one runner at a time is enough.
+// run is mid-list) - one runner at a time is enough.
 let _precacheRunning = false;
 
 async function backgroundPrecache() {
     // Sequential cache.add (not cache.addAll) so we trickle through
     // the connection one request at a time, leaving bandwidth for
     // foreground MapLibre fetches. cache: "no-cache" forces
-    // revalidation against the server via conditional GET — Caddy
+    // revalidation against the server via conditional GET - Caddy
     // serves most assets with max-age=86400, so the default fetch
     // could blindly cache yesterday's HTTP-cached bytes for up to
     // 24 h post-deploy. Revalidation gives the same freshness
@@ -123,7 +123,7 @@ async function backgroundPrecache() {
     // RESUMABLE: the browser is free to terminate this worker while
     // the fire-and-forget loop is still trickling (Chrome ~30 s idle,
     // Safari sooner), and `install` never re-fires for the same SW
-    // version — the multi-MB .pmtiles at the tail of PRECACHE_URLS
+    // version - the multi-MB .pmtiles at the tail of PRECACHE_URLS
     // were the most likely casualties, leaving a rider with UI assets
     // cached but no tile archives at the trailhead. So the run is
     // idempotent (already-cached URLs are skipped) and re-triggered
@@ -156,7 +156,7 @@ async function backgroundPrecache() {
                 console.warn("SW backgroundPrecache failed:", url, e);
             }
         }
-        // Mark complete only when every URL is really present — a
+        // Mark complete only when every URL is really present - a
         // failed add above must leave the sentinel absent so the next
         // trigger retries the gaps.
         let complete = true;
@@ -217,7 +217,7 @@ async function cleanupOldCaches() {
 }
 
 // ============================================================
-// Message handler — silent update swap + B.7 "Reload" toast
+// Message handler - silent update swap + B.7 "Reload" toast
 // ============================================================
 // SKIP_WAITING is posted to this worker (the waiting one) by two
 // paths in app.js: the silent swap (after CORE_STATUS confirms this
@@ -268,7 +268,7 @@ async function reportCoreStatus(port) {
     try {
         const cache = await caches.open(CACHE_NAME);
         if (await cache.match(PRECACHE_DONE_URL)) {
-            // Full precache verified — core is a subset.
+            // Full precache verified - core is a subset.
             coreComplete = true;
         } else {
             const pmtiles = new Set(SW_CONFIG.PMTILES_FILES || []);
@@ -291,8 +291,8 @@ async function reportCoreStatus(port) {
 //
 // Why bytes and not a file count: PRECACHE_URLS is ~30 entries, but the
 // .pmtiles archives at its tail are most of the payload. Counting files
-// would report ~90% while the tile archives — the only thing that makes
-// the map usable away from signal — were still absent.
+// would report ~90% while the tile archives - the only thing that makes
+// the map usable away from signal - were still absent.
 //
 // Note the asymmetry this reports on: normal browsing can never cache
 // those archives. MapLibre reads them with Range requests, the fetch
@@ -337,7 +337,7 @@ async function reportPrecacheStatus(port) {
 }
 
 // ============================================================
-// Activate — claim clients; old-cache cleanup is deferred
+// Activate - claim clients; old-cache cleanup is deferred
 // ============================================================
 // Old caches are deliberately NOT deleted here (they were, until the
 // silent-swap flow landed). They are what makes an early skipWaiting
@@ -352,13 +352,13 @@ self.addEventListener("activate", (event) => {
     event.waitUntil(self.clients.claim());
     // Resume any precache the install-time run didn't finish (the
     // worker may have been terminated mid-list while this version sat
-    // waiting). Fire-and-forget OUTSIDE waitUntil — activation must
+    // waiting). Fire-and-forget OUTSIDE waitUntil - activation must
     // not block on a ~20 MB background fill.
     backgroundPrecache();
 });
 
 // ============================================================
-// Fetch — cache-first for same-origin, with Range request
+// Fetch - cache-first for same-origin, with Range request
 // support for PMTiles files
 // ============================================================
 self.addEventListener("fetch", (event) => {
@@ -379,7 +379,7 @@ self.addEventListener("fetch", (event) => {
     // HEAD requests: satisfy from the GET cache. cache.match by
     // default is method-aware, so a cached GET won't match a HEAD
     // lookup. addTerrainLayers in app.js does a HEAD precheck on
-    // terrain.pmtiles before adding the source — offline, the GET
+    // terrain.pmtiles before adding the source - offline, the GET
     // is cached but a strict match would miss, the fetch would
     // fall through to network, fail, and the terrain layer would
     // never be added. Synthesize a 200 with no body (HEAD has no
@@ -421,7 +421,7 @@ self.addEventListener("fetch", (event) => {
     // The network fallback uses `cache: "no-cache"` to force the
     // browser to revalidate against the server via a conditional
     // GET (If-Modified-Since / If-None-Match). Without this, the
-    // default fetch honours the browser's HTTP cache — and Caddy
+    // default fetch honours the browser's HTTP cache - and Caddy
     // ships most assets with `Cache-Control: public, max-age=86400`,
     // so for up to 24 h post-deploy a SW cache miss could blindly
     // return yesterday's HTTP-cached bytes to the page (visible
@@ -449,7 +449,7 @@ self.addEventListener("fetch", (event) => {
                 const response = await fetch(networkReq);
                 // Cache successful same-origin GET responses
                 // only. Skip opaque (cross-origin no-CORS),
-                // partial (206 Range), and error responses —
+                // partial (206 Range), and error responses -
                 // none of those round-trip cleanly via the
                 // Cache API for offline serving.
                 if (
@@ -483,13 +483,13 @@ self.addEventListener("fetch", (event) => {
 //
 // If the full file hasn't been precached yet (rider zoomed into a
 // fresh visit before background precache caught up), the cache.match
-// below misses and we fall back to network — Caddy serves the
+// below misses and we fall back to network - Caddy serves the
 // Range request directly. The PMTiles slice is correct either way;
 // the only difference is whether the bytes came from cache or
 // network. Once the background precache eventually fetches the full
 // file, subsequent Range requests slice from cache.
 //
-// Blob.slice() creates a lightweight view — not a copy.
+// Blob.slice() creates a lightweight view - not a copy.
 // ============================================================
 async function handleRangeRequest(request) {
     const cache = await caches.open(CACHE_NAME);
@@ -505,7 +505,7 @@ async function handleRangeRequest(request) {
         (await cache.match(new Request(request.url))) ||
         (await caches.match(new Request(request.url)));
     if (!fullResponse) {
-        // Not cached anywhere — pass through to network
+        // Not cached anywhere - pass through to network
         return fetch(request);
     }
 
@@ -514,7 +514,7 @@ async function handleRangeRequest(request) {
     const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
 
     if (!match) {
-        // Malformed Range header — return full response
+        // Malformed Range header - return full response
         return new Response(blob, {
             status: 200,
             headers: fullResponse.headers,
@@ -532,7 +532,7 @@ async function handleRangeRequest(request) {
     // archive to the new one (backgroundPrecache lands it mid-session,
     // then cleanup deletes the old cache); without validators that
     // switch is invisible and the client slices the new archive at the
-    // old directory's offsets — garbage tiles until reload.
+    // old directory's offsets - garbage tiles until reload.
     const headers = {
         "Content-Type": "application/octet-stream",
         "Content-Range": `bytes ${start}-${end}/${blob.size}`,

@@ -45,7 +45,7 @@ def _clear_signature(output_path):
     fetching: a signature must only ever vouch for the file the SAME
     run wrote. Without this, an interrupted regen could leave the
     previous build's sidecar next to whatever state the interruption
-    left behind — e.g. the user deletes basemap.pmtiles to force a
+    left behind - e.g. the user deletes basemap.pmtiles to force a
     refetch (sidecar remains), the regen dies, and the next build sees
     file-plus-matching-sig and accepts it indefinitely."""
     try:
@@ -59,7 +59,7 @@ def _clear_signature(output_path):
 def _trails_fetch_fingerprint(config):
     """Stable hash of every config key fetch_trails() consumes. When
     this changes between builds, the cached trails.geojson is stale
-    even though it exists on disk — adding a relation to
+    even though it exists on disk - adding a relation to
     clipped_relations, swapping osm_file, or editing direction_schedule
     all flip the hash and force a refetch.
 

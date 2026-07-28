@@ -18,12 +18,12 @@ import console
 # to ~2× this on its longer side so retina displays render cleanly without
 # us shipping the original (often much larger) source.
 #
-# LOGO_DESKTOP_H was previously 80 — that left square icons (e.g. DTE's
+# LOGO_DESKTOP_H was previously 80 - that left square icons (e.g. DTE's
 # icon-as-logo fallback) processed to 160×160 = ~12KB, but the actual
 # rendered size is 48×48. Lowered to 48 to match the CSS max-height,
 # which shrinks square-icon outputs to ~96×96 = ~1-2KB, a ~10× saving
 # (Lighthouse image-delivery-insight ~11KB savings on DTE). Wide
-# wordmarks unchanged — they remain width-bound at 200px.
+# wordmarks unchanged - they remain width-bound at 200px.
 LOGO_DESKTOP_W = 200
 LOGO_DESKTOP_H = 48
 
@@ -64,7 +64,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(source_path, encoding="utf-8") as f:
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        console.warn(f"Could not read SVG ({e}) — copying verbatim")
+        console.warn(f"Could not read SVG ({e}) - copying verbatim")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
@@ -153,7 +153,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(new_text)
     except OSError as e:
-        console.warn(f"Could not write SVG ({e}) — copying verbatim")
+        console.warn(f"Could not write SVG ({e}) - copying verbatim")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
@@ -180,8 +180,8 @@ def process_logo(source_path, output_path):
     Without this, e.g. `<svg width="100%" height="100%" viewBox="0 0 600 600">`
     renders at 0x0 inside an <img>.
 
-    Returns (width, height) integers — the dimensions actually written to
-    output_path — for the caller to substitute into the brand-img HTML
+    Returns (width, height) integers - the dimensions actually written to
+    output_path - for the caller to substitute into the brand-img HTML
     width/height attributes (CLS prevention). Returns (None, None) when
     dimensions can't be determined (e.g., Pillow missing, SVG without
     pixel size + viewBox, IO failure); callers should fall back to
@@ -194,7 +194,7 @@ def process_logo(source_path, output_path):
     try:
         from PIL import Image
     except ImportError:
-        console.warn(f"Pillow not installed — copying logo verbatim to {output_path}")
+        console.warn(f"Pillow not installed - copying logo verbatim to {output_path}")
         shutil.copy2(source_path, output_path)
         return (None, None)
 
@@ -207,7 +207,7 @@ def process_logo(source_path, output_path):
         aspect = src_w / src_h
         # Bounding-box decision: wider than the target box -> width-bound,
         # else height-bound. (target box aspect = LOGO_DESKTOP_W /
-        # LOGO_DESKTOP_H — see constants at top of file)
+        # LOGO_DESKTOP_H - see constants at top of file)
         if aspect >= LOGO_DESKTOP_W / LOGO_DESKTOP_H:
             render_w = LOGO_DESKTOP_W
             render_h = LOGO_DESKTOP_W / aspect
@@ -237,7 +237,7 @@ def process_logo(source_path, output_path):
         console.info(f"Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
         return (out_w, out_h)
     except Exception as e:
-        console.warn(f"Failed to process logo ({e}) — copying source verbatim")
+        console.warn(f"Failed to process logo ({e}) - copying source verbatim")
         try:
             shutil.copy2(source_path, output_path)
         except Exception as e2:

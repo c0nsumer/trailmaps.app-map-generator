@@ -13,7 +13,7 @@ This replaces the old per-corridor *centered* offset
 and therefore shifts every route sideways ("breathing") whenever a
 route joins or leaves a corridor. On dense shared networks (RAMBA),
 ~100% of the residual lateral movement was this re-centering rather than
-real route crossings — the dominant visual defect (casings flipping
+real route crossings - the dominant visual defect (casings flipping
 sides, jerking when a route branches off). LOOM ordering
 (``route_order.py``) already drives real crossings to zero; this module
 removes the breathing the LOOM flip metric never modeled.
@@ -41,7 +41,7 @@ Scale is tiny (<=15 routes, tens of corridors).
 LAMBDA is intentionally small: movement dominates (stable lanes); drift
 only breaks ties between movement-optimal solutions and, with the clamp,
 bounds how far a bundle sits off-center. LAMBDA -> infinity recovers the
-old centered formula exactly (each b_c -> -(n_c - 1)/2) — the back-compat
+old centered formula exactly (each b_c -> -(n_c - 1)/2) - the back-compat
 anchor pinned by the tests.
 
 Mode awareness mirrors route_order: one baseline map per visible mode.
@@ -63,7 +63,7 @@ _DRIFT_WEIGHT = 0.001
 # 0.5 is the "parity quantum": the gap between an odd-count bundle
 # (centered on a lane) and an even-count bundle (centered between lanes).
 # Allowing exactly this much drift lets a bundle absorb a count-parity
-# change WITHOUT shifting any route — which is the breathing we're killing.
+# change WITHOUT shifting any route - which is the breathing we're killing.
 # Empirically on RAMBA this is the knee: at 0.5, lateral movement is
 # already fully minimal (only the irreducible packing moves from LOOM's
 # separations remain), while the bundle stays ~3 px off the trail. Larger
@@ -106,7 +106,7 @@ def offset_index(route_id, shared_routes, rank, baselines):
 
     ``offset = position + baseline(corridor)``. Falls back to the legacy
     centered offset (``position - (n-1)/2``) when the corridor has no
-    baseline — e.g. a custom route added after baselines were computed.
+    baseline - e.g. a custom route added after baselines were computed.
     This is the single source of truth the runtime mirrors; keep in sync
     with computeOffsetsAndFilter in app.js.
     """
@@ -145,8 +145,8 @@ def _weighted_median(points):
 def _solve(keys, anchors, incident, seed):
     """Clamped coordinate descent from ``seed``. Returns {key: baseline}.
 
-    ``incident[k]`` is a list of (other_key, d) — one entry per shared
-    route on each adjacency incident to k — contributing the term
+    ``incident[k]`` is a list of (other_key, d) - one entry per shared
+    route on each adjacency incident to k - contributing the term
     ``|b_k - (b_other - d)|``. ``anchors[k] = -(n_k - 1)/2`` is the
     centered baseline (the drift target and clamp center).
     """
@@ -222,7 +222,7 @@ def compute_baselines_for_mode(features, visible, rank, *, previous=None):
     edge_terms = []
     for sig_a, sig_b, shared in build_corridor_adjacencies(features, visible_routes=visible):
         fa, fb = frozenset(sig_a), frozenset(sig_b)
-        # Skip adjacencies touching a solo segment (size-1 sig) — solos
+        # Skip adjacencies touching a solo segment (size-1 sig) - solos
         # are not optimized nodes.
         if fa not in keymap or fb not in keymap:
             continue
@@ -303,11 +303,11 @@ def compute_corridor_baselines(
 
     Parameters
     ----------
-    routes_metadata : dict {route_id: info} — drives mode enumeration.
+    routes_metadata : dict {route_id: info} - drives mode enumeration.
     features : list of GeoJSON features (post-enrichment, pre-stub).
-    route_orders : dict {mode_key: [route_id, ...]} — the LOOM orderings.
+    route_orders : dict {mode_key: [route_id, ...]} - the LOOM orderings.
     previous_baselines : dict {mode_key: {corridor_key: baseline}} or None
-        — from a prior build's metadata, for rebuild stability.
+        - from a prior build's metadata, for rebuild stability.
 
     Returns
     -------

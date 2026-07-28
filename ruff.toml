@@ -18,7 +18,7 @@ extend-exclude = [
     ".venv",
     ".claude",
     "assets",
-    # Untracked, experimental — paired with the accent-per-mode plan and
+    # Untracked, experimental - paired with the accent-per-mode plan and
     # still being iterated on. Lint it once it stabilizes.
     "tools/preview_accents.py",
 ]
@@ -30,9 +30,9 @@ extend-exclude = [
 # codebase without improving correctness.
 select = ["E", "F", "I", "UP", "B"]
 ignore = [
-    "E501", # line too long — many deliberate long URLs / f-strings
-    # Pairwise-window zips — zip(line, line[1:]) for consecutive-vertex
-    # walks — are pervasive and deliberately unequal-length; annotating
+    "E501", # line too long - many deliberate long URLs / f-strings
+    # Pairwise-window zips - zip(line, line[1:]) for consecutive-vertex
+    # walks - are pervasive and deliberately unequal-length; annotating
     # every one with strict=False is noise without a correctness win.
     "B905",
 ]

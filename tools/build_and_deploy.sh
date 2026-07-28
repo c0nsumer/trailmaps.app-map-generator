@@ -154,14 +154,14 @@ format_seconds() {
     fi
 }
 
-# Quick SSH connectivity probe — saves you from finding out an hour into a
+# Quick SSH connectivity probe - saves you from finding out an hour into a
 # rebuild that the key isn't loaded. Hits the deploy host with BatchMode so
 # it fails fast instead of prompting.
 ssh_precheck() {
     local dest="$1"
     local host="${dest%%:*}"
     if [[ "$host" != *@* && "$host" != *.* ]]; then
-        # Doesn't look like a remote spec — skip the check.
+        # Doesn't look like a remote spec - skip the check.
         return 0
     fi
     if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
@@ -175,7 +175,7 @@ ssh_precheck() {
 
 # Ensure the deploy destination directory exists before rsync runs. rsync
 # creates the innermost leaf directory on its own, but bails out if any
-# intermediate path component is missing — and even the leaf case is only
+# intermediate path component is missing - and even the leaf case is only
 # reliable with certain rsync versions. An explicit `mkdir -p` covers both
 # (and is a no-op when the directory already exists), which matters most on
 # the first deploy of a newly-added map.
@@ -233,7 +233,7 @@ if command -v node >/dev/null 2>&1; then
     done
     echo "OK"
 else
-    echo "warn: node not found — skipping JS syntax check"
+    echo "warn: node not found - skipping JS syntax check"
 fi
 echo ""
 
@@ -272,7 +272,7 @@ fi
 # ── Main loop ─────────────────────────────────────────────────
 
 echo "Maps: ${configs[*]}"
-$DRY_RUN && echo "(dry-run mode — nothing will be built or transferred)"
+$DRY_RUN && echo "(dry-run mode - nothing will be built or transferred)"
 echo ""
 
 succeeded=()
@@ -293,7 +293,7 @@ for name in "${configs[@]}"; do
     if $BUILD; then
         echo "━━━ Building ${name} ━━━"
         # scripts/build.py produces ready-to-deploy artifacts by
-        # default (minification on, etc.) — quality-posture
+        # default (minification on, etc.) - quality-posture
         # decisions live in the build pipeline, not in this helper.
         # If you need unminified output for local debug via this
         # script (rare; usually you'd just call build.py directly),

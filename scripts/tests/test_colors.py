@@ -1,4 +1,4 @@
-"""Tests for colors.py — WCAG colour math + accent resolution.
+"""Tests for colors.py - WCAG colour math + accent resolution.
 
 Run from repo root:
     python -m pytest scripts/tests/test_colors.py -v
@@ -94,7 +94,7 @@ def test_vividness_deepens_auto_light_shade():
 
 
 def test_vividness_skips_verbatim_light_shade():
-    # Explicit hex / framework default (darken_light=False) are verbatim —
+    # Explicit hex / framework default (darken_light=False) are verbatim -
     # vividness must NOT deepen them.
     p = _palette_from_base((72, 152, 32), darken_light=False)
     assert p["light"] == "#489820"

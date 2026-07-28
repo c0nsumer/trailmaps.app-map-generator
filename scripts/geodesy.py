@@ -6,7 +6,7 @@ lane-assignment pipeline sorts by (natural_key, coord_key).
 Previously duplicated across fetch_pois.py / compute_route_stats.py
 (haversine) and route_order.py / parallel_routes.py /
 corridor_baselines.py (keys); consolidating here means one place to
-tune — and, for the keys, one exact output for every consumer, which
+tune - and, for the keys, one exact output for every consumer, which
 matters because lane order depends on it.
 
 The runtime (templates/app.js) carries its own haversine because
@@ -21,7 +21,7 @@ import re
 
 # Mean Earth radius in meters. Matches the convention used by every
 # Python script in the build pipeline. Off by ~0.1% from the WGS84
-# equatorial radius (templates/app.js:EARTH_RADIUS_M = 6378137) — the
+# equatorial radius (templates/app.js:EARTH_RADIUS_M = 6378137) - the
 # inconsistency is intentional and irrelevant at trail scales.
 EARTH_R_M = 6371000.0
 
@@ -109,7 +109,7 @@ def natural_key(s):
     ``(1, str)`` for non-digit runs. The type marker ensures sorting
     works on MIXED-TYPE id lists (e.g. OSM relation ids like
     ``"12345678"`` alongside custom event-mode ids like
-    ``"event_stage_1"``) — without it, Python 3 raises
+    ``"event_stage_1"``) - without it, Python 3 raises
     ``TypeError`` when comparing ``int`` with ``str`` in tuple
     element-wise comparison.
 

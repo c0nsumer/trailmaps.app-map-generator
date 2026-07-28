@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 import cli
 import console
 
-# Shared narrow-resolution loader (handles ``osm_file:`` only — the
+# Shared narrow-resolution loader (handles ``osm_file:`` only - the
 # full path-resolution path lives in build.py for the standard
 # pipeline). Imported under the historical name so call sites stay
 # unchanged.
@@ -51,7 +51,7 @@ def _parse_relations(data):
     """Parse relation elements from an Overpass response into a dict.
 
     Entries are the shared six-field info dict (osm_parser.relation_info
-    — same shape as the local-.osm path) plus `members`, preserved so
+    - same shape as the local-.osm path) plus `members`, preserved so
     super-relation expansion can identify type=relation member
     references. The original Overpass `out tags;` directive omits
     members; the caller must use `out body;` (or equivalent) to
@@ -96,7 +96,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
                     children.
         osm_base:   the response's osm3s.timestamp_osm_base ("...Z" UTC
                     string), "" when absent. The OSM snapshot the data
-                    came from — durable across rebuilds because it
+                    came from - durable across rebuilds because it
                     lives inside the (cached) response body, unlike a
                     file mtime.
     """
@@ -128,13 +128,13 @@ out body;
 
     # Surface input IDs the response didn't contain. Without this, a
     # route relation deleted upstream in OSM (or a typo'd ID) silently
-    # vanished from the map on the next refetch — the only signal was
+    # vanished from the map on the next refetch - the only signal was
     # the aggregate "Found N relation(s)" count. The local-file path
     # warns per missing ID (osm_parser.py); keep the two in lockstep.
     for rid in all_input_ids:
         if rid not in all_rels:
             console.warn(
-                f"Relation {rid} not returned by Overpass — deleted "
+                f"Relation {rid} not returned by Overpass - deleted "
                 f"upstream, or a typo in the config? Its route will be "
                 f"missing from the map."
             )
@@ -169,7 +169,7 @@ out body;
     clipped = {}
     for rel_id, info in all_rels.items():
         if rel_id in expanded_parents:
-            # Super-relation parent — drop. Its children carry the
+            # Super-relation parent - drop. Its children carry the
             # bucket assignment via the expansions map.
             continue
         if rel_id in clipped_set:
@@ -195,7 +195,7 @@ def fetch_all_ways_bulk(relation_ids, cache_dir=None, refresh=False):
     Returns (all_ways, osm_base):
         all_ways: dict of {relation_id: {way_id: way_dict, ...}, ...}
         osm_base: the response's osm3s.timestamp_osm_base ("...Z" UTC
-                  string), "" when absent — see fetch_all_relations.
+                  string), "" when absent - see fetch_all_relations.
     """
     if not relation_ids:
         return {}, ""
@@ -250,8 +250,8 @@ def _resolve_oneway(tags):
     """Return the effective oneway value for direction-arrow purposes.
 
     OSM uses two relevant tags:
-      * ``oneway``         — generic restriction, traditionally for vehicles
-      * ``oneway:bicycle`` — bicycle-specific override
+      * ``oneway``         - generic restriction, traditionally for vehicles
+      * ``oneway:bicycle`` - bicycle-specific override
 
     For an MTB map, ``oneway:bicycle`` is the more authoritative signal:
     it lets curators mark MTB-only direction without affecting hikers
@@ -383,7 +383,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
                 coords = prev_coords[:-1] + coords
                 member_way_ids.insert(0, prev_way_id)
             elif tuple(prev_coords[0]) == start_node:
-                # Reversal would invert direction — keep one-way ways separate.
+                # Reversal would invert direction - keep one-way ways separate.
                 if is_oneway:
                     break
                 visited.add(prev_way_id)
@@ -410,7 +410,7 @@ def clip_line_to_bbox(coords, bbox):
     """Clip a LineString's coordinates to a bounding box.
 
     Uses Liang-Barsky line-segment clipping. Returns a list of
-    (coords, start_clipped, end_clipped) triples — one LineString may produce
+    (coords, start_clipped, end_clipped) triples - one LineString may produce
     multiple segments when it exits and re-enters the bbox. The boolean
     flags indicate whether the start/end of each output segment was created
     by the clip (i.e. that endpoint coincides with the bbox boundary because
@@ -471,7 +471,7 @@ def clip_line_to_bbox(coords, bbox):
 
         result = intersect_segment(x1, y1, x2, y2)
         if result is None:
-            # Segment entirely outside — flush current. The accumulator's
+            # Segment entirely outside - flush current. The accumulator's
             # last coord must be on the bbox (since the next original vertex
             # was outside), so its end is clip-created.
             flush(end_clipped=True)
@@ -485,7 +485,7 @@ def clip_line_to_bbox(coords, bbox):
             current.append([cx1, cy1])
             current_start_clipped = this_start_clipped
         elif abs(current[-1][0] - cx1) > 1e-9 or abs(current[-1][1] - cy1) > 1e-9:
-            # Discontinuity — flush and start a new segment. The flushed
+            # Discontinuity - flush and start a new segment. The flushed
             # tail's end and the new segment's start are both clip-created
             # (the gap traversed the bbox boundary).
             flush(end_clipped=True)
@@ -503,7 +503,7 @@ def _compass_bearing(p1, p2):
     """Compass bearing (degrees clockwise from north) FROM p1 TO p2.
 
     Inputs are [lon, lat] pairs. Uses a simple equirectangular approximation
-    (Δlon · cos(lat)) — at trail scale this is within fractions of a degree
+    (Δlon · cos(lat)) - at trail scale this is within fractions of a degree
     of the true great-circle bearing, plenty for orienting an arrowhead.
     Returns a value in [0, 360).
     """
@@ -795,10 +795,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # even if they don't have seasonal=winter in OSM). Expand through
     # the fetch-time super-relation map BEFORE tagging, so a curator
     # listing one super-relation in `winter_relations` propagates
-    # seasonal=winter to every child route — the parent itself is gone
+    # seasonal=winter to every child route - the parent itself is gone
     # (replaced by children in `relations`). Same logic applies in
     # build.py for summer/emergency bucket flags via the persisted
-    # expansion mapping. Shared by both fetch paths — this block used
+    # expansion mapping. Shared by both fetch paths - this block used
     # to be maintained twice.
     winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
     for rel_id in winter_relation_ids:
@@ -812,7 +812,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
     # Validate oneway=reversible ways. These are trails that change direction
     # by schedule (the canonical OSM tag for that case) and have no inherent
-    # forward direction — they are only meaningful with a direction schedule
+    # forward direction - they are only meaningful with a direction schedule
     # on one of their parent relations (or a system-wide default schedule).
     # Fail the build with a precise list of offending ways otherwise; the
     # framework would otherwise silently render them as static one-ways in
@@ -827,7 +827,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     #     system-wide default.
     #   - A super-relation key fans out to every child route, except
     #     where a child has its own explicit entry (which always wins).
-    #     Mirrors the two-pass logic in template_inject.py — leaves
+    #     Mirrors the two-pass logic in template_inject.py - leaves
     #     first, then supers fill in unset children.
     sched_block = config.get("direction_schedule") or {}
     sched_raw = sched_block.get("per_route") or {}
@@ -979,7 +979,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         # relations sharing a boundary-crossing way produce identical points
         # and would otherwise stack as overlapping arrows. We collapse them
         # into a single feature whose `route_ids` array lists every sharing
-        # route — the renderer's filter uses `in` against the array so the
+        # route - the renderer's filter uses `in` against the array so the
         # arrow stays visible as long as ANY of its routes is shown.
         groups = {}
         for ep in clip_endpoints:
@@ -1010,7 +1010,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
                     # CONFIG.routes' keying). Without this, the
                     # runtime's visible_count loop in app.js sees
                     # ints here but compares against a Set of
-                    # strings — every match fails, every shared
+                    # strings - every match fails, every shared
                     # endpoint reads as visible_count=0, and the
                     # multi-route "fill black" branch never fires.
                     "route_ids": [str(r) for r in g["route_ids"]],
@@ -1030,7 +1030,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     console.info(f"Generated {len(geojson['features'])} features")
 
     # Warn when show_difficulty is enabled but no way carries an
-    # mtb:scale:imba tag — same posture as the POI fetch's
+    # mtb:scale:imba tag - same posture as the POI fetch's
     # show_* warnings in fetch_pois.py. The runtime auto-hides
     # the Difficulty toggle anyway (CONFIG.hasDifficultyTrails),
     # but the build-time note tells the curator "the toggle you
@@ -1076,7 +1076,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     size_kb = os.path.getsize(output_path) / 1024
     console.info(f"Wrote {output_path} ({size_kb:.1f} KB)")
 
-    # Write clip_endpoints.geojson sibling — the renderer reads it (when
+    # Write clip_endpoints.geojson sibling - the renderer reads it (when
     # present) to draw continuation arrowheads at clip-created endpoints.
     # Stale files are removed when the current build has none, so a config
     # that drops `clipped_relations` doesn't leave orphan endpoints behind.

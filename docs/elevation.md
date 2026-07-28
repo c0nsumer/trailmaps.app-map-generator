@@ -125,5 +125,5 @@ that would have skewed any rerun (it read post-subway-expansion geometry
 without filtering stub features, never chained segments, and used the
 pre-hysteresis gain/loss algorithm). If a future alternative source becomes
 interesting, resurrect it from git history and re-align it with
-`compute_route_stats.py` first — or better, prototype the comparison against
+`compute_route_stats.py` first - or better, prototype the comparison against
 `compute_route_stats`' own helpers so the numbers are the shipped numbers.

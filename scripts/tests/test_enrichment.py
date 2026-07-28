@@ -1,4 +1,4 @@
-"""Tests for enrichment.py — relation_names display-name overrides and the
+"""Tests for enrichment.py - relation_names display-name overrides and the
 per-relation override typo guard.
 
 Run from repo root:

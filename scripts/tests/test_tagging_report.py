@@ -1,4 +1,4 @@
-"""Tests for tagging_report.py — OSM data-quality notes.
+"""Tests for tagging_report.py - OSM data-quality notes.
 
 The checks that matter most here are the ones that keep the report from
 nagging: an ordinary branch junction must not read as a broken connection,
@@ -96,7 +96,7 @@ def test_far_apart_endpoints_are_not_a_gap():
 
 
 def test_no_ratings_anywhere_does_not_nag():
-    """A map where nobody tagged difficulty gets no missing-rating list —
+    """A map where nobody tagged difficulty gets no missing-rating list -
     that would be asking for tags on the renderer's behalf, and the
     Difficulty control is auto-hidden on such maps anyway."""
     snap = _snap([
@@ -165,7 +165,7 @@ def test_orphan_trail_marker_detected_and_scoped_to_on_trail_types():
         # On the trail: fine.
         {"properties": {"poi_type": "trail_marker", "ref": "24"},
          "geometry": {"type": "Point", "coordinates": [-87.595, 46.50]}},
-        # Parking is curator-placed and off-trail BY DESIGN — never flagged.
+        # Parking is curator-placed and off-trail BY DESIGN - never flagged.
         {"properties": {"poi_type": "parking", "name": "Lot A"},
          "geometry": {"type": "Point", "coordinates": [-87.50, 46.60]}},
     ]}

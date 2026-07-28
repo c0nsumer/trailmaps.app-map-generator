@@ -27,7 +27,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         emergency = id in emergency_access_relations
         summer    = id in summer_relations
                     OR  (not winter AND not emergency)
-      "Summer is the default" — a plain OSM route with no seasonal tag and
+      "Summer is the default" - a plain OSM route with no seasonal tag and
       no inclusion in any of the three lists is summer-only.
       ``summer_relations`` is the opt-back-in list for year-round routes
       (the RAMBA SBR pattern: ridden in summer AND groomed in winter).
@@ -273,7 +273,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                         # Custom routes don't have OSM `oneway=` tags on
                         # individual segments (the GeoJSON has no per-
                         # segment OSM metadata). Curators opt in via
-                        # the entry-level `oneway:` field — typically
+                        # the entry-level `oneway:` field - typically
                         # set automatically when event_mode.direction_arrows
                         # is true (see _apply_event_mode_to_custom_routes).
                         # Empty string means no arrows.
@@ -286,7 +286,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                 trails_geojson["features"].append(new_feat)
                 appended += 1
 
-        # Metadata.routes entry — shape mirrors OSM-sourced routes plus
+        # Metadata.routes entry - shape mirrors OSM-sourced routes plus
         # the three bucket flags and isCustom.
         info = {
             "name": cname,
@@ -350,9 +350,9 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
             changed = True
 
     # ----- Per-route distance / elevation stats -----
-    # Computed HERE — after custom routes are appended and any prior
+    # Computed HERE - after custom routes are appended and any prior
     # expansion has been stripped/restored above, but BEFORE the subway
-    # pass below — so stats always run on canonical geometry. The
+    # pass below - so stats always run on canonical geometry. The
     # multi-mode subway pass REPLACES each truncated host feature with
     # one full-length variant per active mode, every variant carrying
     # the same route_id, so computing stats on the expanded output
@@ -378,7 +378,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
     # routeOrders / corridorBaselines are injected by build.py from the
     # PREVIOUS build's expanded output (the canonical base never carries
-    # them — it's snapshotted pre-enrichment). They seed the optimizers
+    # them - it's snapshotted pre-enrichment). They seed the optimizers
     # below for rebuild stability and are overwritten (or popped) before
     # this build's output is written.
     previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
@@ -430,7 +430,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
             )
             changed = True
     else:
-        # No modes detected — fall back to legacy single-mode behavior.
+        # No modes detected - fall back to legacy single-mode behavior.
         trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
         trails_geojson.setdefault("metadata", {}).pop("corridorBaselines", None)
         added = apply_subway_style(trails_geojson)
@@ -446,7 +446,7 @@ def _route_modes_from_orders(routes_metadata):
     that route_order.enumerate_modes would produce.
 
     Small helper so the corridor-baseline pass computes modes the
-    same way as route_order.compute_route_orders does internally —
+    same way as route_order.compute_route_orders does internally -
     they need to agree on which mode keys are active.
     """
     from route_order import enumerate_modes

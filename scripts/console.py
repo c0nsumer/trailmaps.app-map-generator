@@ -1,6 +1,6 @@
 """Consistent console output for the build pipeline.
 
-A deliberately small wrapper over ``print()`` — not the stdlib ``logging``
+A deliberately small wrapper over ``print()`` - not the stdlib ``logging``
 module, which carries more machinery (loggers, handlers, propagation) than a
 single-process build CLI needs. The point is one prefix/indent vocabulary and
 a single verbosity dial, so every script's output reads the same.
@@ -19,16 +19,16 @@ Verbosity is set once from the CLI via :func:`set_verbosity`:
     normal   + step / info / blank                (default)
 
 Everything goes to stdout today; routing diagnostics elsewhere would be a
-one-line change here rather than a sweep across every caller — which is the
+one-line change here rather than a sweep across every caller - which is the
 whole reason this indirection exists.
 """
 
 import sys
 
-# Trail/POI names carry accents and typographic dashes/arrows (—, →). Under a
+# Trail/POI names carry accents and typographic dashes/arrows (-, →). Under a
 # non-UTF-8 locale (bare debian:11 images, cron, LANG=C) stdout defaults to
 # ASCII and printing those raises UnicodeEncodeError. Force UTF-8 stdio once,
-# at first import — idempotent, and a no-op when stdout is already UTF-8 or has
+# at first import - idempotent, and a no-op when stdout is already UTF-8 or has
 # been replaced by something without .reconfigure (e.g. pytest capture).
 for _stream in (sys.stdout, sys.stderr):
     try:

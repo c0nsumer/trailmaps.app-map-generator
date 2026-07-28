@@ -1,4 +1,4 @@
-"""Tests for build.generate_service_worker — the precache list, cache
+"""Tests for build.generate_service_worker - the precache list, cache
 versioning, and config injection that every PWA rider depends on.
 
 A regression here ships silently (the SW is generated, never executed at

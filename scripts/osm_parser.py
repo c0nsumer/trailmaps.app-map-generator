@@ -85,7 +85,7 @@ def relation_info(rel_id, tags):
     return {
         "id": rel_id,
         "name": tags.get("name", f"Route {rel_id}"),
-        # None when OSM has no colour tag — runtime layered fallback:
+        # None when OSM has no colour tag - runtime layered fallback:
         # relation_colors → default_trail_color → #808080 build-time default.
         "colour": tags.get("colour"),
         "ref": tags.get("ref", ""),
@@ -98,7 +98,7 @@ def detect_super_expansions(input_ids, relations):
     """Find which input IDs are super-relations, one level deep.
 
     A super-relation has at least one type=relation member that is
-    itself present in ``relations`` (the available set — parsed .osm
+    itself present in ``relations`` (the available set - parsed .osm
     file or Overpass response). Members pointing at relations we don't
     have fall through to the leaf path: we can't render what we don't
     have. A super-relation containing another super treats the inner
@@ -127,7 +127,7 @@ def extract_source_relations(parsed, relation_ids):
     """Extract route relations for every entry in `relation_ids`.
 
     Each ID may be a leaf route relation OR a super-relation (a
-    relation whose members are themselves type=relation entries — the
+    relation whose members are themselves type=relation entries - the
     OSM convention for grouping multiple route relations under a
     single umbrella). Super-relations are expanded into their child
     routes; the parent itself is dropped from the result (a super-
@@ -142,7 +142,7 @@ def extract_source_relations(parsed, relation_ids):
 
     Returns (resolved, expansions) where:
         resolved: {rel_id: {"id", "name", "colour", "ref", "route",
-                            "seasonal"}, ...} — leaf-route entries
+                            "seasonal"}, ...} - leaf-route entries
                   only (parents replaced by children)
         expansions: {parent_id: [child_id, ...]} for any input IDs
                     that were expanded as super-relations. Empty when
@@ -230,7 +230,7 @@ def extract_guideposts(parsed, bbox):
     """Extract trail-relevant POI nodes within a bounding box.
 
     Despite the legacy name, this also yields tourism=attraction,
-    amenity=toilets, and amenity=drinking_water — both the node form
+    amenity=toilets, and amenity=drinking_water - both the node form
     AND closed-way (building polygon) form for the two amenity tags,
     matching the Overpass query in fetch_pois_from_osm(). Building
     polygons are reduced to a single (lon, lat) via _way_centroid()
@@ -273,7 +273,7 @@ def extract_guideposts(parsed, bbox):
                 }
             )
 
-    # Building-polygon toilets / drinking water — common enough in OSM
+    # Building-polygon toilets / drinking water - common enough in OSM
     # (mappers trace the building rather than placing a node) that
     # ignoring them leaves obvious gaps. Centroid → point, bbox-filter
     # on the centroid (matches Overpass's bbox-on-center semantics).

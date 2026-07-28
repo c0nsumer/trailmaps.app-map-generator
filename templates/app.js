@@ -171,7 +171,7 @@ const FEATURED_WIDTH_MULTIPLIER = 1.5;
 // makeOffsetExpr()'s steps (3/5/8) are chosen to exceed the FILL stops
 // (2/4/7) by ~1 px so adjacent routes in a shared corridor keep a visible
 // gap. Anything that scales these widths MUST scale that offset in lockstep,
-// or lanes overlap instead of separating — a 1.3x multiplier here did exactly
+// or lanes overlap instead of separating - a 1.3x multiplier here did exactly
 // that at z14+ before it was removed.
 const TRAIL_WIDTH_STOPS = {
     // Visible casing uses the wider "solid-route" stops so it extends
@@ -593,7 +593,7 @@ function drawArrow(ctx, size, fillColor, haloColor) {
 // shader pins tile height to screen-space line width but
 // parameterizes the along-line axis in tile units (pattern_size.x
 // is divided by tileZoomRatio), so a rigid glyph stretches up to 2×
-// with fractional zoom between tile cuts — fine for dashes,
+// with fractional zoom between tile cuts - fine for dashes,
 // shape-destroying for arrowheads. Symbols render pixel-rigid at
 // every zoom and rotate to the local line direction. With
 // icon-allow-overlap + icon-ignore-placement they are collision-
@@ -1662,7 +1662,7 @@ function updateDecorationsSource() {
 // Add the decor layers (trail-name, route-name, diamond, plus the
 // -pt point variants), kind-filtered with a tier gate
 // (`min_zoom <= zoom`) so density grows with zoom. Direction arrows
-// are NOT decoration points — they live on the separate
+// are NOT decoration points - they live on the separate
 // decor-chevron-* line-symbol layers.
 //
 // Icons (diamond) use `icon-allow-overlap: true` because their
@@ -2041,7 +2041,7 @@ let eventPoiMarkers = [];
 // references stay live. Code that must cover EVERY marker type
 // (obstacle gathering, dim-state, the tap guard in
 // setupInteractions) iterates this registry instead of hand-listing
-// arrays — a new POI type registered here is picked up everywhere at
+// arrays - a new POI type registered here is picked up everywhere at
 // once. (toilet/water/hub were each once forgotten at one of those
 // sites back when the lists were maintained by hand.)
 const POI_MARKER_ARRAYS = {
@@ -2085,7 +2085,7 @@ let _followUserOnGeolocate = false;
 //     fields (coords.heading / coords.speed) that EVERY geolocation
 //     fix already carries, computed by the device's OS before the
 //     fix reaches the browser. The app does no movement inference of
-//     its own and keeps no position history — each fix is read and
+//     its own and keeps no position history - each fix is read and
 //     discarded, and the only retained location state remains the
 //     single latest `userLocation`, exactly as before this feature.
 //     A live compass reading always wins over the per-fix course.
@@ -2488,7 +2488,7 @@ function consumeShareHash() {
         try {
             key = decodeURIComponent(keyEnc);
         } catch (e) {
-            // Malformed escape — ignore the highlight portion.
+            // Malformed escape - ignore the highlight portion.
         }
         if (key !== null) {
             if (kindCode === "r") highlight = { kind: "route", key };
@@ -3269,7 +3269,7 @@ async function init() {
 // `<slug>.mtb.welcomed` on disk, no need to put the slug in the
 // key body. Subsequent visits skip the auto-open (no flicker), but
 // the same modal reopens on demand from the Options overlay's
-// "How to use this map" row — the controls guide must not be a
+// "How to use this map" row - the controls guide must not be a
 // one-shot.
 //
 // The body copy is built from CONFIG so it reflects the actual
@@ -3291,7 +3291,7 @@ const WELCOMED_FLAG_KEY = "mtb.welcomed";
 // within the dialog; on a KEYBOARD-initiated close, focus returns to
 // where it was. Pointer-initiated closes deliberately restore
 // nothing: the FAB triggers are blurred on close by design (see
-// setOverlayOpen's blur comment — Chrome's click-focus plus a later
+// setOverlayOpen's blur comment - Chrome's click-focus plus a later
 // Escape drew an unwanted focus ring), and a tap needs no tab
 // position. The return target is remembered per-dialog because
 // Welcome can stack over Options and must unwind to it, not past it.
@@ -3370,7 +3370,7 @@ function initWelcomeModal() {
     // the Options overlay closes one layer per press instead of
     // collapsing the whole stack on a single keystroke.
 
-    // On-demand reopen. Wired even when `welcome: false` — that flag
+    // On-demand reopen. Wired even when `welcome: false` - that flag
     // means "don't interrupt on first visit", not "this map has no
     // help".
     const helpBtn = document.getElementById("help-btn");
@@ -3391,7 +3391,7 @@ function initWelcomeModal() {
 
 // `source` distinguishes the first-visit auto-open ("welcome",
 // greeting title) from the Options Help row ("help", titled with the
-// map name — repeating the row's "How to use this map" label as the
+// map name - repeating the row's "How to use this map" label as the
 // title read as redundant). Content is identical either way and is
 // rebuilt on every open, which keeps the reopen path exercising the
 // same dynamic copy (search targets, GPX rows) as the first visit.
@@ -3450,7 +3450,7 @@ function openWelcomeModal(source) {
 }
 
 // Dismissal marks the map welcomed regardless of how the modal was
-// opened — a rider who reached it via Help has either already seen
+// opened - a rider who reached it via Help has either already seen
 // the first-visit showing or no longer needs it.
 function dismissWelcomeModal() {
     LS.set(WELCOMED_FLAG_KEY, true);
@@ -3823,7 +3823,7 @@ function buildAboutModalContent() {
     const titleEl = document.getElementById("about-modal-title");
     const body = document.getElementById("about-modal-body");
     const tail = document.getElementById("about-modal-tail");
-    // Static header — matches the Options row that opens the modal.
+    // Static header - matches the Options row that opens the modal.
     // The map's own title is a details row below: the header names the
     // surface, the rows state the facts.
     titleEl.textContent = "About this map";
@@ -3855,7 +3855,7 @@ function buildAboutModalContent() {
 
     // No description here: the map's descriptive text is the Welcome /
     // Help modal's content (reachable any time via the Options Help
-    // row). About is the technical surface — provenance, versions,
+    // row). About is the technical surface - provenance, versions,
     // credits, offline state.
 
     // Details block - one label:value row per map fact, spec-sheet
@@ -3893,7 +3893,7 @@ function buildAboutModalContent() {
 
     // The three "how fresh is this" rows, layered: the engine (App),
     // this map's curation (Map config), the OSM fetch (Map data).
-    // Each moves independently — a styling/schedule/asset edit shows
+    // Each moves independently - a styling/schedule/asset edit shows
     // in Map config even though neither neighbor changed. "Map" not
     // "Trail": config and data cover POIs, parking, and basemap
     // choices, not just the trail lines.
@@ -8200,7 +8200,7 @@ function setupFloatingChrome() {
     // order: Welcome/Help modal > About modal > Options overlay >
     // Search overlay > highlight. Consolidated handler so we don't
     // have multiple listeners racing on the same keystroke. Welcome
-    // outranks About only nominally — the two modals never stack —
+    // outranks About only nominally - the two modals never stack -
     // but both must outrank the overlays: either can be opened from
     // the Options rows and sit over the still-open panel.
     document.addEventListener("keydown", (e) => {
@@ -8454,7 +8454,7 @@ function setupFloatingChrome() {
     // Whole-row advance for segmented multi-option rows (Labels /
     // Season / Appearance). Binary rows toggle on a row tap
     // (wirePeekToggle above); these cycle to the next option, which is
-    // the same gesture generalized — a binary toggle IS a two-state
+    // the same gesture generalized - a binary toggle IS a two-state
     // cycle. Clicks inside the segmented pill are excluded here (one
     // guard) instead of per-button stopPropagation, so buttons wired
     // elsewhere don't each need to remember it. Buttons are re-queried
@@ -8604,7 +8604,7 @@ function setupFloatingChrome() {
                     on ? "visible" : "none");
             }
         }, "difficulty");
-        // Reveal the rating key only on this path — the branches that
+        // Reveal the rating key only on this path - the branches that
         // hide the row leave the strip hidden as it ships.
         buildDifficultyKey();
     } else if (difficultyBtn) {
@@ -9789,7 +9789,7 @@ function setupInteractions() {
         // finder, and labels key off. The casing features carry every
         // relation the way belongs to, so without this a summer popup
         // advertised winter-only routes (and vice versa). The popup
-        // still opens when every membership is filtered out — the
+        // still opens when every membership is filtered out - the
         // trail itself is visible, so its name/difficulty/one-way
         // rows remain useful; only the "Part of" section drops.
         const matchedRoutes = routeIds
@@ -10216,7 +10216,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                     // milliseconds, but if controllerchange never
                     // lands (activation stalled), the `updating`
                     // latch would otherwise pin the bar on screen
-                    // forever — it blocks even the 30 s safety net.
+                    // forever - it blocks even the 30 s safety net.
                     // Fall back to the explicit toast (its Reload
                     // retries) and clear the confirmation flag so a
                     // later still-stale load can't claim "updated".
@@ -10226,7 +10226,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                     // decision. Left armed, a stalled activation
                     // completing a minute later (or another tab
                     // applying an update) would yank the page out
-                    // from under a rider who tapped "Later" — the
+                    // from under a rider who tapped "Later" - the
                     // exact hostile mid-session reload this flow
                     // exists to avoid.
                     const fallback = setTimeout(() => {
@@ -10358,7 +10358,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
     // state further down the file has initialized. Calling it inline
     // hits the temporal dead zone (a ReferenceError that the try/catch
     // here would swallow), leaving a toast that's visible but has no
-    // auto-dismiss timer and no tap-to-dismiss listener — stuck until
+    // auto-dismiss timer and no tap-to-dismiss listener - stuck until
     // reload. The microtask runs once the whole script has evaluated,
     // so the toast still appears before first paint.
     try {
@@ -10376,7 +10376,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
 // Answers "can I use this map away from signal?", which nothing else in
 // the UI can. The initial-load progress bar hides once the opening
 // viewport is painted; offline use needs the whole basemap + terrain
-// archives, and those never arrive through normal browsing — MapLibre
+// archives, and those never arrive through normal browsing - MapLibre
 // reads them with Range requests, and the SW caches only status-200
 // basic responses (handleRangeRequest passes a miss straight through
 // without storing). Only backgroundPrecache's full-file cache.add gets
@@ -10399,8 +10399,8 @@ let _offlineStatusSettled = false;
 // clients and the right semantics: it describes the cache currently
 // serving this page, which is what "offline right now" means.
 // Resolves null on any doubt; refreshOfflineStatus turns that into
-// an explicit "Status unavailable." (the environment gates — PWA off,
-// no SW support, no controller — are also reported there, so this
+// an explicit "Status unavailable." (the environment gates - PWA off,
+// no SW support, no controller - are also reported there, so this
 // only needs the defensive re-check).
 function _queryPrecacheStatus() {
     return new Promise((resolve) => {
@@ -10498,7 +10498,7 @@ async function refreshOfflineStatus() {
     }
 }
 
-// Poll only while the About modal is open — there's no value in
+// Poll only while the About modal is open - there's no value in
 // watching this while it's shut, and each incomplete poll costs the
 // worker a cache.match per precache URL. Stops for good once saved.
 function startOfflineStatusPolling() {
@@ -10648,8 +10648,8 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
         // and help text ("Add to home screen" / "Tap Share, then Add to
         // Home Screen" instead of the Android-side "Install this app" /
         // "Add to your home screen for offline access."). iOS has no
-        // programmatic install API — there's no real "install," just a
-        // home-screen shortcut — so the wording avoids overclaiming, and
+        // programmatic install API - there's no real "install," just a
+        // home-screen shortcut - so the wording avoids overclaiming, and
         // the actual flow lives in the browser chrome (Share → Add to
         // Home Screen). The row is tagged .is-static to suppress the
         // tap-target affordance. The icon stays for visual consistency
@@ -10992,7 +10992,7 @@ let _displacedPersistentToast = null;
 // Tap-anywhere acknowledgment for TRANSIENT toasts: armed while one
 // is visible, any pointerdown dismisses it instead of leaving it to
 // narrate over the rider's next action for the rest of its 4 s.
-// Strictly an observer — never preventDefault/stopPropagation — so
+// Strictly an observer - never preventDefault/stopPropagation - so
 // the tap still does exactly what it was going to do (start a pan,
 // open a popup, hit the Locate FAB); capture phase so a handler that
 // stops propagation can't keep the toast alive. pointerdown rather
