@@ -524,12 +524,27 @@ async function handleRangeRequest(request) {
     const start = parseInt(match[1]);
     const end = match[2] ? parseInt(match[2]) : blob.size - 1;
 
+    // Forward the cached response's validators. The pmtiles client
+    // reads the archive's header/root directory once and caches it in
+    // memory, then relies on ETag/Last-Modified drift across Range
+    // responses to notice the archive changed underneath it. After a
+    // silent swap, ranges here can migrate from the old version's
+    // archive to the new one (backgroundPrecache lands it mid-session,
+    // then cleanup deletes the old cache); without validators that
+    // switch is invisible and the client slices the new archive at the
+    // old directory's offsets — garbage tiles until reload.
+    const headers = {
+        "Content-Type": "application/octet-stream",
+        "Content-Range": `bytes ${start}-${end}/${blob.size}`,
+        "Content-Length": end - start + 1,
+    };
+    for (const name of ["ETag", "Last-Modified"]) {
+        const value = fullResponse.headers.get(name);
+        if (value) headers[name] = value;
+    }
+
     return new Response(blob.slice(start, end + 1), {
         status: 206,
-        headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Range": `bytes ${start}-${end}/${blob.size}`,
-            "Content-Length": end - start + 1,
-        },
+        headers,
     });
 }
