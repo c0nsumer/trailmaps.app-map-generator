@@ -3297,8 +3297,9 @@ function initWelcomeModal() {
 }
 
 // `source` distinguishes the first-visit auto-open ("welcome",
-// greeting title) from the Options Help row ("help", titled to match
-// the row that opened it). Content is identical either way and is
+// greeting title) from the Options Help row ("help", titled with the
+// map name — repeating the row's "How to use this map" label as the
+// title read as redundant). Content is identical either way and is
 // rebuilt on every open, which keeps the reopen path exercising the
 // same dynamic copy (search targets, GPX rows) as the first visit.
 function openWelcomeModal(source) {
@@ -3312,7 +3313,7 @@ function openWelcomeModal(source) {
     const titleEl = document.getElementById("welcome-modal-title");
     if (titleEl) {
         titleEl.textContent = source === "help"
-            ? "How to use this map"
+            ? (CONFIG.title || CONFIG.name || "How to use this map")
             : (welcome.title
                 || `Welcome to ${CONFIG.title || CONFIG.name || "this trail map"}`);
     }
@@ -3453,12 +3454,12 @@ function _welcomeSearchDescription() {
     if (counts.trailhead)      poiNames.push("trailheads");
     if (counts.hub)            poiNames.push("hubs");
     if (counts.feature)        poiNames.push("features");
+    // Markers are searchable by their ref ("Marker 12") and looking
+    // one up is a real rider task (meeting point, emergency
+    // reference), so they earn a mention like the amenities do.
+    if (counts.trail_marker)   poiNames.push("trail markers");
     if (counts.drinking_water) poiNames.push("water");
     if (counts.toilet)         poiNames.push("toilets");
-    // Trail markers are intentionally NOT mentioned, they're
-    // numbered guideposts / emergency-access points scattered
-    // through the trail network, not search targets in the way
-    // amenities and features are.
 
     if (poiNames.length) {
         targets.push(`places (${poiNames.join(", ")})`);
@@ -3485,25 +3486,49 @@ function _searchTargets() {
     return targets;
 }
 
+// CONFIG.routes and CONFIG.customRoutes are objects keyed by route id.
+// True when any route's info carries `<flag>: true` (e.g. "winter",
+// "emergency"). Shared by setupFloatingChrome (Season-row reveal,
+// Emergency toggle) and the welcome copy's season clause, so the copy
+// and the Options overlay can't disagree about which controls exist.
+function anyRouteHas(flag) {
+    const check = (coll) => coll && Object.values(coll).some(
+        (r) => r && typeof r === "object" && r[flag] === true);
+    return !!(check(CONFIG.routes) || check(CONFIG.customRoutes));
+}
+
 // Build the Options row description from what affordances are
 // actually wired into this map. The lead clause ("turn map markers
 // and overlays on or off") covers the most rider-relevant action,
-// the layer toggles, in concrete language; appearance follows as
-// the other always-present display control; share / install /
-// About each appear only when their corresponding feature is
-// enabled. "Season" is omitted from the default copy because
-// detecting "this map has both summer + winter routes" requires
-// extra build-time plumbing, added separately if needed.
+// the layer toggles, in concrete language; every clause after it is
+// gated on the same condition that reveals the corresponding Options
+// row, so the copy promises exactly what the overlay delivers.
+// Emergency Access is deliberately not mentioned: a first-visit
+// orientation is not the place to advertise emergency tooling.
 function _welcomeOptionsDescription() {
     const items = [
         "turn map markers and overlays on or off",
-        // Appearance segmented control (Light / Dark / Auto) is
-        // always present in the Options overlay, so this entry is
-        // unconditional. Mention only "light and dark" rather than
-        // enumerate Auto, the welcome is a quick orientation, not
-        // a feature spec.
-        "switch between light and dark mode",
     ];
+    // Labels clause only when the segmented control is interactive
+    // (not event-mode/forced) AND offers the routes-vs-trails choice;
+    // a Routes/None-only row is adequately covered by the lead clause.
+    if (!CONFIG.eventModeActive && !CONFIG.forcedLabels
+            && CONFIG.showTrails !== false) {
+        items.push("switch labels between routes and trails");
+    }
+    if (anyRouteHas("winter")) {
+        items.push("switch between summer and winter routes");
+    }
+    // Appearance segmented control (Light / Dark / Auto) is
+    // always present in the Options overlay, so this entry is
+    // unconditional. Mention only "light and dark" rather than
+    // enumerate Auto, the welcome is a quick orientation, not
+    // a feature spec.
+    items.push("switch between light and dark mode");
+    // Same gate as the "Map style" section reveal: any configured
+    // base layer means the Basemap selector is showing (a Default
+    // option is always added alongside, so there's a real choice).
+    if ((CONFIG.baseLayers || []).length) items.push("change the map style");
     if (CONFIG.shareButton) items.push("share the view");
     if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
     // The two informational rows at the tail of Options: the Help row
@@ -3602,13 +3627,15 @@ function initAbout() {
     const closeBtn = modal.querySelector(".about-modal-close");
 
     btn.addEventListener("click", openAboutModal);
-    // Close via the X, Escape, or backdrop click, matches the
-    // dismissal pattern of the Search and Options overlays so any
-    // window over the map closes the same way.
+    // Close via the X, bottom Close button, Escape, or backdrop click,
+    // matches the dismissal pattern of the Search and Options overlays
+    // so any window over the map closes the same way.
     closeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         closeAboutModal();
     });
+    const cta = document.getElementById("about-modal-cta");
+    if (cta) cta.addEventListener("click", closeAboutModal);
     // Backdrop dismissal: click on the backdrop layer (outside the
     // .about-modal-content card) closes. The `e.target === backdrop`
     // discriminator means clicks inside the card don't bubble out
@@ -3641,8 +3668,8 @@ function openAboutModal() {
     document.getElementById("about-modal").classList.remove("hidden");
     syncModalOpenClass();
     // Offline-readiness row is live only while the modal is up. Every
-    // close path (X, backdrop, Escape) funnels through closeAboutModal,
-    // so the stop side can't leak the interval.
+    // close path (X, Close button, backdrop, Escape) funnels through
+    // closeAboutModal, so the stop side can't leak the interval.
     startOfflineStatusPolling();
 }
 
@@ -8133,13 +8160,6 @@ function setupFloatingChrome() {
     const seasonButtons = seasonField
         ? Array.from(seasonField.querySelectorAll(".opt-segmented-btn"))
         : [];
-    // CONFIG.routes and CONFIG.customRoutes are objects keyed by route id.
-    // A route participates in winter mode iff its info carries `winter: true`.
-    const anyRouteHas = (flag) => {
-        const check = (coll) => coll && Object.values(coll).some(
-            (r) => r && typeof r === "object" && r[flag] === true);
-        return check(CONFIG.routes) || check(CONFIG.customRoutes);
-    };
     const hasWinter = anyRouteHas("winter");
     if (seasonField && hasWinter && seasonButtons.length) {
         const reflectSeason = () => {

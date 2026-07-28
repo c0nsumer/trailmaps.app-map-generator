@@ -556,7 +556,14 @@ body::after {
     -webkit-tap-highlight-color: transparent;
 }
 
-@media (hover: hover) {
+/* (any-hover: hover), not (hover: hover): Chrome on Linux can decide
+ * the PRIMARY pointer is a non-hovering one when a touchscreen or
+ * touch-like device is attached, which killed this wash under a real
+ * mouse (Firefox kept it). any-hover asks "can anything hover" —
+ * true for mouse/trackpad even alongside touch, still false on pure
+ * touch devices, so the sticky-tap-hover rationale (see the .fab
+ * hover gate) is preserved. */
+@media (any-hover: hover) {
     .opt-toggle-row-clickable:hover {
         background: var(--sheet-hover);
     }
@@ -1484,12 +1491,12 @@ body::after {
     justify-content: center;
 }
 
-/* Welcome modal CTA: primary action button at the bottom of the
-   first-visit modal. Uses the per-map accent (var(--accent), mapped
-   per scheme from CONFIG.accentLight/accentDark) so it tracks
+/* Modal CTA: primary dismiss button at the bottom of the Welcome and
+   About modals. Uses the per-map accent (var(--accent), mapped per
+   scheme from CONFIG.accentLight/accentDark) so it tracks
    accent_color overrides including "auto", matching the rest of the
    accent-aware UI. */
-.welcome-modal-cta {
+.modal-cta {
     display: block;
     width: 100%;
     margin-top: 16px;
@@ -1505,8 +1512,8 @@ body::after {
     -webkit-tap-highlight-color: transparent;
 }
 
-.welcome-modal-cta:hover,
-.welcome-modal-cta:focus-visible {
+.modal-cta:hover,
+.modal-cta:focus-visible {
     background: var(--accent-strong);
     border-color: var(--accent-strong);
     outline: none;
@@ -2801,14 +2808,17 @@ body:has(.gpx-overlay.is-open) .route-panel {
     position: relative;
 }
 
-/* Gate hover behind (hover: hover) so it only applies to real pointers
- * (mouse / trackpad). On touch, :hover sticks to the last-tapped element
- * until the next tap elsewhere — which left the Reset View FAB (a
- * momentary action with no pressed/active state to mask it) stuck gray
- * after a tap. The stateful FABs (Locate, Search, Options) hid the same
- * latent bug behind their post-tap state/accent fill. Matches the
- * (hover: hover) guard already used on .opt-toggle-row-clickable. */
-@media (hover: hover) {
+/* Gate hover behind (any-hover: hover) so it only applies to real
+ * pointers (mouse / trackpad). On touch, :hover sticks to the
+ * last-tapped element until the next tap elsewhere — which left the
+ * Reset View FAB (a momentary action with no pressed/active state to
+ * mask it) stuck gray after a tap. The stateful FABs (Locate, Search,
+ * Options) hid the same latent bug behind their post-tap state/accent
+ * fill. any-hover rather than hover: Chrome on Linux can report the
+ * primary pointer as non-hovering when a touch device is attached,
+ * which disabled this wash under a real mouse. Matches the guard on
+ * .opt-toggle-row-clickable. */
+@media (any-hover: hover) {
     .fab:hover {
         /* --pill-bg is "subtly different from sheet bg" — light gray on
          * light mode (darker than sheet), darker gray on dark mode
