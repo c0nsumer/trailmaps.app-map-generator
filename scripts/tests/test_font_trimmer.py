@@ -26,15 +26,15 @@ from font_trimmer import (  # noqa: E402
 def test_committed_webfont_assets_consistent():
     # The @font-face in templates/style.css hard-references this
     # filename; a rename must break loudly here, not at runtime.
-    woff2 = os.path.join(WEBFONTS_DIR, "NotoSans-latin.woff2")
+    woff2 = os.path.join(WEBFONTS_DIR, "Inter-latin.woff2")
     assert os.path.isfile(woff2), "bundled UI webfont missing"
     with open(os.path.join(REPO_ROOT, "templates", "style.css"), encoding="utf-8") as f:
-        assert "webfonts/NotoSans-latin.woff2" in f.read()
+        assert "webfonts/Inter-latin.woff2" in f.read()
 
-    sidecar = os.path.join(WEBFONTS_DIR, "NotoSans-latin.coverage.json")
+    sidecar = os.path.join(WEBFONTS_DIR, "Inter-latin.coverage.json")
     with open(sidecar, encoding="utf-8") as f:
         data = json.load(f)
-    assert data["font"] == "NotoSans-latin.woff2"
+    assert data["font"] == "Inter-latin.woff2"
     ranges = data["codepoint_ranges"]
     assert ranges == sorted(ranges), "sidecar ranges must be sorted"
     for start, end in ranges:

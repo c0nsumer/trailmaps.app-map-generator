@@ -7590,14 +7590,14 @@ const HUB_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
     // "H" centered horizontally via text-anchor=middle. SVG <text>'s
     // `y` is the BASELINE, not the visual center, so to place the
     // optical center of a capital letter at the hex center (y=12),
-    // baseline = 12 + cap_height/2. The bundled UI font (Noto Sans,
-    // via font-family:inherit; see the @font-face in style.css) has
-    // cap-height 0.714, so the ideal is 12 + 0.714*12/2 = 16.28; the
-    // hand-tuned 16.2 sits 0.08 units high - sub-pixel at every
-    // rendered size, and identical on every platform now that the
-    // font is bundled. SVG dominant-baseline=central is unreliable
-    // across browsers and varies per font; explicit y is the
-    // portable form.
+    // baseline = 12 + cap_height/2. The bundled UI font (Inter, via
+    // font-family:inherit; see the @font-face in style.css) has
+    // cap-height 0.7275, so the ideal is 12 + 0.7275*12/2 = 16.37;
+    // the hand-tuned 16.2 sits 0.17 units high - still sub-pixel at
+    // every rendered size, and identical on every platform now that
+    // the font is bundled. SVG dominant-baseline=central is
+    // unreliable across browsers and varies per font; explicit y is
+    // the portable form.
     + '<text class="hub-marker-letter" x="12" y="16.2" text-anchor="middle">H</text>'
     + '</svg>';
 

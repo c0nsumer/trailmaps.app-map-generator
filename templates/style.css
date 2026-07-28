@@ -21,20 +21,25 @@
 
 /* Self-hosted UI font, so DOM chrome renders identically on every OS
  * instead of falling to the platform system font (SF on Apple, Segoe
- * on Windows, Roboto on Android, fontconfig's pick on Linux) - and so
- * chrome matches the typeface the map canvas already locks to via the
- * PBF glyph fonts. One variable-weight file (wght 100-900) covers the
- * 400/500/600/700 the UI uses; latin subset only. Characters outside
- * the subset fall back per-glyph to the system stack below, which is
- * exactly the pre-bundling behavior - the build warns when that would
- * happen (font_trimmer.check_webfont_coverage). The .woff2 is walked
- * into the SW precache like any other asset, so offline loads render
- * it from cache. unicode-range is Google Fonts' latin declaration for
- * this subset; glyphs missing from the file within the range still
- * fall through cleanly. */
+ * on Windows, Roboto on Android, fontconfig's pick on Linux). Inter:
+ * purpose-built for UI text at small sizes, proportioned like the
+ * system faces it replaces, and its variable axes (wght 100-900 +
+ * opsz 14-32, which browsers apply automatically via default
+ * font-optical-sizing) cover every weight the UI uses in one latin
+ * subset file. Deliberately NOT the canvas label face - the basemap
+ * keeps its Noto Sans PBF glyphs; chrome optimizes for UI legibility
+ * instead. (Noto Sans was tried first for canvas/chrome unity and
+ * rejected on look plus its tall ascent shifting text low in fixed
+ * boxes.) Characters outside the subset fall back per-glyph to the
+ * system stack below, exactly the pre-bundling behavior - the build
+ * warns when that would happen (font_trimmer.check_webfont_coverage).
+ * The .woff2 is walked into the SW precache like any other asset, so
+ * offline loads render it from cache. unicode-range is Google Fonts'
+ * latin declaration for this subset; glyphs missing from the file
+ * within the range still fall through cleanly. */
 @font-face {
-    font-family: "Noto Sans";
-    src: url("webfonts/NotoSans-latin.woff2") format("woff2");
+    font-family: "Inter";
+    src: url("webfonts/Inter-latin.woff2") format("woff2");
     font-weight: 100 900;
     font-style: normal;
     font-display: swap;
@@ -313,7 +318,7 @@ body {
     /* Bundled font first (see the @font-face at the top of this file);
      * the system stack behind it is the per-glyph and load-failure
      * fallback, matching pre-bundling behavior exactly. */
-    font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: var(--sheet-text);
     background: var(--page-bg);
     /* Block page-level pinch-zoom across all UI chrome (FABs,
@@ -1762,7 +1767,7 @@ body::after {
  * (same-specificity later rule wins; style.css loads after the vendor
  * sheet). Sizes/line-height stay as vendor set them. */
 .maplibregl-map {
-    font-family: "Noto Sans", "Helvetica Neue", Arial, Helvetica, sans-serif;
+    font-family: "Inter", "Helvetica Neue", Arial, Helvetica, sans-serif;
 }
 
 .maplibregl-ctrl-group {
@@ -1796,19 +1801,19 @@ body::after {
      * vendor's `12px/20px` font shorthand on .maplibregl-map - correct
      * today, but a silent dependency that would break centering if the
      * vendor value ever changed. Single-line geometry is exact at any
-     * font; a wrapped chip grows in clean 20px steps. */
+     * font; a wrapped chip grows in clean 20px steps.
+     *
+     * No optical nudge on top of this: with the bundled Inter (typo
+     * ascent 0.969, descent 0.241, cap 0.7275) at 10px in the 20px
+     * line box, half-leading is (20 - 12.10)/2 = 3.95px and the
+     * baseline lands at 3.95 + 9.69 = 13.64px, so the cap band spans
+     * 6.36..13.64px - centered on 10.00px, exactly the box center. A
+     * translateY(1px) nudge was tried with the earlier Noto Sans
+     * bundle and read visibly LOW (Noto's 1.069 ascent had already
+     * pushed the baseline down); with Inter the metric math needs no
+     * correction. Bundled font = same metrics on every platform, so
+     * this holds everywhere. */
     line-height: 20px;
-}
-
-/* Optical centering: the attribution string is nearly all caps and
- * x-height glyphs, so the line box's reserved descent (~0.2em) is
- * empty ink and the text reads ~1px high however the box is centered.
- * Fixed downward nudge; transform so layout (chip height, wrapping,
- * the absolutely-positioned (i) button) is untouched. Font-metric
- * differences across platforms only move this by fractions of a px,
- * and with the bundled font they vanish entirely. */
-.maplibregl-ctrl-attrib-inner {
-    transform: translateY(1px);
 }
 
 /* Native MapLibre geolocate control is hidden - its function has
@@ -1877,16 +1882,17 @@ body::after {
  * .install-btn .install-btn-icon::after, where a text "+" had to be
  * replaced with SVG geometry for exactly that reason.
  *
- * Measured for the bundled UI font (Noto Sans typo metrics: ascent
- * 1.069, descent 0.293, cap 0.714) - the same file ships on every
- * platform, so unlike the earlier Arial-based derivation this one
- * holds everywhere. With line-height:1 the half-leading is
- * (1 - 1.362)/2 = -0.181em, so the baseline lands 0.888em below the
- * line-box top, putting a capital's visual center at 0.531em against
- * the box's 0.5em - i.e. capitals sit 0.031em LOW, which is 0.40 px
- * at 13 px and 0.34 px at 11 px. Sub-half-pixel; leave it. All glyphs
- * these markers render (P, TH, #, and numeric guidepost refs) are
- * cap-height, so none of them deviate from that.
+ * Measured for the bundled UI font (Inter typo metrics: ascent 0.969,
+ * descent 0.241, cap 0.7275) - the same file ships on every platform,
+ * so unlike the original Arial-based derivation this one holds
+ * everywhere. With line-height:1 the half-leading is
+ * (1 - 1.210)/2 = -0.105em, so the baseline lands 0.864em below the
+ * line-box top, putting a capital's visual center at 0.864 - 0.364 =
+ * 0.500em - i.e. dead on the box's 0.5em center (deviation under
+ * 0.001 px at any UI size; Inter's cap sits exactly half its
+ * ascent+descent). All glyphs these markers render (P, TH, #, and
+ * numeric guidepost refs) are cap-height, so none of them deviate
+ * from that.
  *
  * MapLibre rounds marker positions to whole pixels (Marker._update ->
  * _pos.round()), and --poi-marker-label-anchor-shift is a whole pixel
@@ -1994,8 +2000,8 @@ body::after {
 /* The "H" glyph inside the hex. Centered horizontally via text-anchor;
  * vertical centering is via the explicit y coordinate on the <text>
  * element (SVG dominant-baseline is unreliable across browsers).
- * font-family inherits so the H renders in the bundled UI font (Noto
- * Sans) like the rest of the chrome rather than dropping to SVG's
+ * font-family inherits so the H renders in the bundled UI font
+ * (Inter) like the rest of the chrome rather than dropping to SVG's
  * default sans-serif. */
 .hub-marker-letter {
     fill: var(--hub-text-color, #fff);
