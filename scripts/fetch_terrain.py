@@ -19,7 +19,6 @@ directly; the ``__main__`` CLI exists only for standalone debugging.
 import os
 import shutil
 import subprocess
-import sys
 
 import cli
 import console
@@ -43,11 +42,17 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     RGB tiles in Terrarium encoding, packaged as PMTiles. We just extract
     the bounding box we need.
     """
+    # Missing CLI is a soft failure, NOT sys.exit: terrain is non-fatal
+    # by design (build.py continues without hillshade), and an exit
+    # here killed the whole build — or re-raised SystemExit out of the
+    # parallel-fetch thread pool — when only the terrain layer was at
+    # stake. Returning False falls through to the SRTM path and then
+    # to fetch_terrain's could-not-generate warning.
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
-        console.step("ERROR: pmtiles CLI not found.")
-        console.step("Install: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
-        sys.exit(1)
+        console.error("pmtiles CLI not found — cannot extract terrain.")
+        console.info("Install: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest")
+        return False
 
     # Pad bbox for terrain (need surrounding context for hillshade edge tiles)
     pad = 0.05

@@ -88,11 +88,13 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
-        console.step("ERROR: pmtiles CLI not found.")
-        console.step(
+        # Basemap failure IS fatal (unlike terrain) — the map is
+        # unusable without it — so the sys.exit below is intentional.
+        console.error("pmtiles CLI not found — cannot extract basemap.")
+        console.info(
             "Install it with: go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest"
         )
-        console.step("Or download from: https://github.com/protomaps/go-pmtiles/releases")
+        console.info("Or download from: https://github.com/protomaps/go-pmtiles/releases")
         sys.exit(1)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
