@@ -1,0 +1,13 @@
+{
+  "name": "trailmaps-app-map-generator-dev",
+  "private": true,
+  "description": "Dev-only lint harness for the runtime templates. NOT needed to build maps - the generator is pure Python with no JS build step. See docs/building.md.",
+  "scripts": {
+    "lint": "eslint templates/app.js templates/sw.js"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "devDependencies": {
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
+  }
+}

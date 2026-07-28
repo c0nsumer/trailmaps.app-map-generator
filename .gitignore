@@ -6,6 +6,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+# Dev-only template lint harness (see eslint.config.mjs); never a
+# build dependency.
+node_modules/
 # Per-map configs are not tracked by the engine repo. Bring your own.
 # Only the reference templates and a worked example ship with the OSS.
 configs/*

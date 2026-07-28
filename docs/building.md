@@ -12,6 +12,7 @@ hosting the output, see [`deployment.md`](deployment.md).
 - [Build options](#build-options)
 - [Local preview](#local-preview)
 - [Convenience wrapper: build_and_deploy.sh](#convenience-wrapper-build_and_deploysh)
+  - [Template lint (contributors only)](#template-lint-contributors-only)
 - [Validate a config without building](#validate-a-config-without-building)
 - [Re-aligning a production config: clean_config.py](#re-aligning-a-production-config-clean_configpy)
 - [Data cache](#data-cache)
@@ -37,6 +38,10 @@ hosting the output, see [`deployment.md`](deployment.md).
     [potrace.sourceforge.net](http://potrace.sourceforge.net/#downloading)
   - If not installed, the build skips `safari-pinned-tab.svg` with a
     warning. Everything else works normally.
+- Optional, contributors only: Node.js for the template lint (see
+  [Template lint](#template-lint-contributors-only)). **Not needed to
+  build maps** — the `package.json` at the repo root is dev tooling,
+  not a build dependency; there is no JS build step.
 
 ## Building a map
 
@@ -300,6 +305,36 @@ python scripts/build.py configs/<slug>/<slug>.yaml --no-minify
 The original `app.js` / `style.css` sources under `templates/`
 are unminified in the repo, so most debug work is on those rather
 than on the build output anyway.
+
+### Template lint (contributors only)
+
+The runtime templates (`templates/app.js`, `templates/sw.js`) are
+plain JavaScript with no build step: nothing ever compiles them, so a
+reference to an identifier that doesn't exist (say, a refactor
+removed a helper another code path still calls) parses fine, ships
+silently, and throws at runtime — where one exception can take out
+the whole app boot. An ESLint pass with only the `no-undef` rule
+enabled catches that class of mistake statically.
+
+This is optional dev tooling for people editing the templates. It is
+**never required to build maps**, and the Python test suite passes
+without it.
+
+```bash
+# One-time setup (either package manager works)
+corepack pnpm install    # or: npm install
+
+# Run it
+corepack pnpm lint       # or: npm run lint
+```
+
+Once installed, it also runs automatically as part of
+`python -m pytest scripts/tests/` (via `test_eslint.py`); on machines
+without Node.js or without the install step, that test skips cleanly.
+The rule set is deliberately minimal — `no-undef` only, configured in
+`eslint.config.mjs` — so it never argues about style. `CONFIG` and
+`SW_CONFIG` are declared there as known globals because the build
+injects them into the templates at build time.
 
 ## Validate a config without building
 
