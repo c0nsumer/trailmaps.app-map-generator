@@ -15,8 +15,10 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from generate_icons import (  # noqa: E402
+    _composite_on_white,
     _detect_bleed_color,
     _rgba_to_hex,
+    generate_favicon_ico,
     generate_icons,
     generate_maskable_icon,
 )
@@ -119,6 +121,27 @@ def test_manifest_background_white_for_transparent_logo():
 def test_rgba_to_hex_drops_alpha():
     assert _rgba_to_hex(GREEN) == "#3a6b3e"
     assert _rgba_to_hex((255, 255, 255)) == "#ffffff"
+
+
+def test_favicon_ico_carries_all_three_frames():
+    # Pillow's ICO writer drops any requested size larger than the
+    # base image; with the 16x16 saved first, favicon.ico shipped as a
+    # single 16x16 frame. Pin the full 16/32/48 set.
+    with tempfile.TemporaryDirectory() as tmp:
+        generate_favicon_ico(_logo_on(WHITE), tmp)
+        ico = Image.open(os.path.join(tmp, "favicon.ico"))
+        assert ico.info["sizes"] == {(16, 16), (32, 32), (48, 48)}
+
+
+def test_trace_composite_turns_transparency_white():
+    # The safari-pinned-tab bitmap must composite onto white before
+    # convert("1"): bare convert("1") drops alpha, so a transparent
+    # background traced as a solid black rectangle.
+    transparent = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    bilevel = _composite_on_white(transparent).convert("1")
+    assert bilevel.getpixel((0, 0)) == 255  # white, not black
+    # Sanity check on the hazard this guards against:
+    assert transparent.convert("1").getpixel((0, 0)) == 0
 
 
 if __name__ == "__main__":

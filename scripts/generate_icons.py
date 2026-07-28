@@ -70,9 +70,10 @@ def _pad_to_square(img):
       result as if the curator had padded the source to white
       themselves.
     - favicon.ico: ICO format supports transparency natively.
-    - safari-pinned-tab.svg: convert to "1" (bilevel) treats
-      transparent and white the same way (both become white in
-      bitmap), so potrace traces just the logo silhouette.
+    - safari-pinned-tab.svg: the padded RGBA is composited onto white
+      before the bilevel convert (convert("1") drops alpha, which
+      would turn transparent padding black), so potrace traces just
+      the logo silhouette.
     """
     if img.width == img.height:
         return img
@@ -198,8 +199,11 @@ def generate_favicon_ico(source_img, output_dir):
         imgs.append(resized)
 
     ico_path = os.path.join(output_dir, "favicon.ico")
-    # Save the first image, append the rest
-    imgs[0].save(ico_path, format="ICO", sizes=sizes, append_images=imgs[1:])
+    # The LARGEST frame must be the base image: Pillow's ICO writer
+    # silently drops any requested size bigger than the base (with the
+    # 16x16 first, favicon.ico shipped as a single-frame 16x16), so
+    # save the 48x48 and append the smaller frames.
+    imgs[-1].save(ico_path, format="ICO", sizes=sizes, append_images=imgs[:-1])
 
 
 def generate_safari_pinned_tab(source_img, output_dir):
@@ -214,8 +218,14 @@ def generate_safari_pinned_tab(source_img, output_dir):
 
     svg_path = os.path.join(output_dir, "icons", "safari-pinned-tab.svg")
 
-    # Convert to high-contrast 1-bit image for tracing
-    trace_img = source_img.resize((256, 256), Image.LANCZOS).convert("1")
+    # Composite onto white BEFORE the bilevel convert: convert("1")
+    # drops alpha outright, so a transparent pixel (0,0,0,0) lands as
+    # BLACK, and potrace traced the entire transparent background
+    # (including _pad_to_square's padding) as a filled rectangle
+    # instead of the logo silhouette.
+    trace_img = _composite_on_white(
+        source_img.resize((256, 256), Image.LANCZOS)
+    ).convert("1")
 
     with tempfile.NamedTemporaryFile(suffix=".pbm", delete=False) as tmp:
         tmp_path = tmp.name
