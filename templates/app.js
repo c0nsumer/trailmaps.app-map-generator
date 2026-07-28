@@ -2512,6 +2512,96 @@ function consumeShareHash() {
     };
 }
 
+// ============================================================
+// Update-reload view continuity
+// ============================================================
+// An update reload (the silent swap at load, or the toast's Reload
+// button) replaces the page mid-session; without help the rider
+// snaps from wherever they were back to the default fit and loses
+// their highlight. reloadForUpdate() stashes the current view in
+// sessionStorage immediately before reloading, and the next load
+// consumes it exactly once as its initial view.
+//
+// sessionStorage, not localStorage: per-tab, survives exactly the
+// reload, evaporates with the tab; the same store the post-update
+// toast flag (SW_UPDATED_FLAG) uses. The stash is one-shot (deleted
+// on read whether used or not) and time-bounded (ignored when older
+// than RESUME_VIEW_MAX_AGE_MS, covering a stash whose reload never
+// happened, e.g. a tab killed mid-swap and restored hours later
+// with its sessionStorage intact). Only the camera + highlight need
+// stashing: toggles, season, and label state already persist in
+// slug-prefixed localStorage.
+const RESUME_VIEW_KEY = LS_PREFIX + "sw-resume-view";
+const RESUME_VIEW_MAX_AGE_MS = 2 * 60 * 1000;
+
+// Drop-in replacement for window.location.reload() on the update
+// paths. Best-effort: any failure (map not constructed yet, private
+// mode, storage quota) just reloads without continuity, which is
+// exactly the pre-feature behavior.
+function reloadForUpdate() {
+    try {
+        const c = map.getCenter();
+        const state = {
+            center: [c.lng, c.lat],
+            zoom: map.getZoom(),
+            highlight: null,
+            savedAt: Date.now(),
+        };
+        // Same serialization the Share button uses: route/trail
+        // highlights carry {kind, key}; a POI highlight (single,
+        // group, or category) carries the Finder ref, re-expanded
+        // against live data on the receiving side.
+        if (highlight && highlight.kind && highlight.key) {
+            state.highlight = { kind: highlight.kind, key: highlight.key };
+        } else if (_poiHighlightRef) {
+            state.highlight = { kind: "poi", key: _poiHighlightRef };
+        }
+        window.sessionStorage.setItem(RESUME_VIEW_KEY, JSON.stringify(state));
+    } catch (e) {
+        // Continuity is a nicety; the update is not. Reload anyway.
+    }
+    window.location.reload();
+}
+
+// Read AND delete the stash (one-shot regardless of whether the
+// caller ends up using it), returning the same {center, zoom,
+// highlight} shape consumeShareHash() produces, or null when the
+// stash is absent, stale, or malformed.
+function consumeResumeView() {
+    let raw = null;
+    try {
+        raw = window.sessionStorage.getItem(RESUME_VIEW_KEY);
+        if (raw !== null) window.sessionStorage.removeItem(RESUME_VIEW_KEY);
+    } catch (e) {
+        return null; // private mode / storage disabled
+    }
+    if (!raw) return null;
+    let s = null;
+    try {
+        s = JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
+    if (!s || typeof s !== "object") return null;
+    if (!Number.isFinite(s.savedAt)
+        || Date.now() - s.savedAt > RESUME_VIEW_MAX_AGE_MS) {
+        return null;
+    }
+    if (!Array.isArray(s.center) || s.center.length !== 2
+        || !s.center.every((n) => Number.isFinite(n))
+        || !Number.isFinite(s.zoom)) {
+        return null;
+    }
+    const h = s.highlight;
+    return {
+        center: s.center,
+        zoom: s.zoom,
+        highlight: (h && h.kind && h.key)
+            ? { kind: String(h.kind), key: String(h.key) }
+            : null,
+    };
+}
+
 // Fire-and-forget check that the basemap PMTiles server honors HTTP
 // Range requests. Logs a console.error on failure with enough detail
 // to diagnose the proxy configuration. See call site for rationale.
@@ -2632,8 +2722,18 @@ async function init() {
     // after trails load. The share hash is also stripped from the URL
     // here, it's a one-shot view restoration, not ambient state.
     const shareState = consumeShareHash();
-    if (shareState && shareState.highlight) {
-        _pendingShareHighlight = shareState.highlight;
+    // Update-reload continuity: a one-shot stash written by
+    // reloadForUpdate() just before an update reload. Consumed
+    // (deleted) unconditionally so it can never linger, but USED
+    // only when nothing more explicit owns the view: a share link
+    // beats it, and any surviving URL hash (MapLibre's own format on
+    // url_hash maps, which persists across the reload and restores
+    // the view by itself) means we must stand down.
+    const resumeView = consumeResumeView();
+    const viewState = shareState
+        || (window.location.hash ? null : resumeView);
+    if (viewState && viewState.highlight) {
+        _pendingShareHighlight = viewState.highlight;
     }
 
     // Create map
@@ -2646,12 +2746,12 @@ async function init() {
     // to match panBbox so real tiles fill the full pannable
     // envelope.
     //
-    // Share-link override: when a #share=zoom/lat/lon hash was
-    // consumed above, we use explicit center+zoom instead of bounds
-    // so the recipient lands on the exact view the sharer captured.
-    // maxBounds still applies; if the shared view is somehow
-    // outside panBbox (shouldn't happen on the same map version)
-    // MapLibre will clamp it to the wall.
+    // Share-link / update-resume override: when a #share= hash was
+    // consumed above (or an update reload stashed its view), we use
+    // explicit center+zoom instead of bounds so the rider lands on
+    // the exact prior view. maxBounds still applies; if that view is
+    // somehow outside panBbox (shouldn't happen on the same map
+    // version) MapLibre will clamp it to the wall.
     const mapOptions = {
         container: "map",
         style: style,
@@ -2688,9 +2788,9 @@ async function init() {
         // regardless of urlHash setting and then stripped.
         hash: CONFIG.urlHash,
     };
-    if (shareState) {
-        mapOptions.center = shareState.center;
-        mapOptions.zoom = shareState.zoom;
+    if (viewState) {
+        mapOptions.center = viewState.center;
+        mapOptions.zoom = viewState.zoom;
     } else {
         mapOptions.bounds = [
             [CONFIG.bbox[0], CONFIG.bbox[1]],
@@ -10135,7 +10235,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                         () => {
                             if (reloaded) return;
                             reloaded = true;
-                            window.location.reload();
+                            reloadForUpdate();
                         },
                         { once: true }
                     );
@@ -10146,7 +10246,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                         // between toast-show and click. Just reload,
                         // the page will pick up whatever SW is
                         // active.
-                        window.location.reload();
+                        reloadForUpdate();
                     }
                 },
             }],
@@ -10210,7 +10310,7 @@ if (CONFIG.pwa && "serviceWorker" in navigator) {
                         if (reloaded) return;
                         reloaded = true;
                         clearTimeout(fallback);
-                        window.location.reload();
+                        reloadForUpdate();
                     };
                     // Activation normally follows skipWaiting within
                     // milliseconds, but if controllerchange never
