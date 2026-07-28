@@ -678,6 +678,13 @@ const RATING_NAMES = ["Easiest", "Easy", "More Difficult",
     "Very Difficult", "Extremely Difficult", "Pro-Only"];
 const _popupIconCache = {};
 
+// The open trail popup, if any. Tracked so visibility changes (season
+// / emergency via applyVisibilityChange) can close it: its "Part of
+// Route(s)" list was built against the previous visibleRoutes set and
+// would go stale, and rebuilding needs the original tap context that's
+// gone by then. Closing is the honest move.
+let _trailPopup = null;
+
 function difficultyIconDataUrl(imba) {
     const n = parseInt(imba, 10);
     if (!(n >= 0 && n < IMBA_RATINGS.length)) return null;
@@ -5485,6 +5492,13 @@ function rebuildVisibleRoutesSet() {
 
 function applyVisibilityChange() {
     rebuildVisibleRoutesSet();
+    // An open trail popup lists route memberships computed against the
+    // OLD visibleRoutes set; close it rather than let it lie. (The tap
+    // context needed to rebuild it is long gone.)
+    if (_trailPopup) {
+        _trailPopup.remove();
+        _trailPopup = null;
+    }
     // The Finder's in-scope POI cache keys off visibleRoutes, drop it
     // before rebuildFinderList (below) repopulates against the new set.
     invalidateFinderPoiScope();
@@ -9689,7 +9703,8 @@ function setupInteractions() {
         // as a rendering bug.
         if (!html) return;
 
-        new maplibregl.Popup({
+        if (_trailPopup) _trailPopup.remove();
+        _trailPopup = new maplibregl.Popup({
             maxWidth: "220px",
             closeButton: false,
             focusAfterOpen: false,
