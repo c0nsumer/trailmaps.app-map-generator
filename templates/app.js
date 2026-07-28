@@ -3957,6 +3957,23 @@ function buildStyle() {
     const flavor = basemapFlavor();
     const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
 
+    return {
+        version: 8,
+        glyphs: `${base}fonts/{fontstack}/{range}.pbf`,
+        sprite: `${base}sprites/v4/${flavor}`,
+        sources: {
+            basemap: vectorBasemapSource(),
+        },
+        layers: basemapLayers,
+    };
+}
+
+// The Protomaps vector basemap source. Shared by initial style
+// construction (buildStyle) and the return-to-Default path in
+// rebuildBasemapLayers, which must REPLACE sources.basemap: after a
+// custom base layer was active, the current style's basemap source is
+// a raster tile source, and vector layers pointed at it error out.
+function vectorBasemapSource() {
     // Attribution: each source gets its own © assertion so it reads
     // unambiguously about who owns what. Terrain credit (Mapterhorn)
     // only appears when terrain is actually loaded, no point
@@ -3974,19 +3991,10 @@ function buildStyle() {
     if (CONFIG.showTerrain) {
         attrParts.push(`&copy; <a href="https://mapterhorn.com" ${ATTR_LINK_ATTRS}>Mapterhorn</a>`);
     }
-
     return {
-        version: 8,
-        glyphs: `${base}fonts/{fontstack}/{range}.pbf`,
-        sprite: `${base}sprites/v4/${flavor}`,
-        sources: {
-            basemap: {
-                type: "vector",
-                url: "pmtiles://basemap.pmtiles",
-                attribution: attrParts.join(" "),
-            },
-        },
-        layers: basemapLayers,
+        type: "vector",
+        url: "pmtiles://basemap.pmtiles",
+        attribution: attrParts.join(" "),
     };
 }
 
@@ -9860,8 +9868,20 @@ function rebuildBasemapLayers() {
         baseLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
         spritePath = `${base}sprites/v4/${flavor}`;
 
+        // Rebuild the basemap source too, mirroring the custom branch
+        // above. Carrying currentStyle.sources over unchanged worked
+        // for scheme toggles (vector -> vector) but broke the return
+        // from a custom base layer: the carried-over source was still
+        // the raster tile source, so every Protomaps vector layer
+        // errored on the type mismatch and the basemap went blank.
+        const newSources = { basemap: vectorBasemapSource() };
+        for (const [key, val] of Object.entries(currentStyle.sources)) {
+            if (key !== "basemap") newSources[key] = val;
+        }
+
         const newStyle = {
             ...currentStyle,
+            sources: newSources,
             sprite: spritePath,
             layers: [...baseLayers, ...overlayLayers],
         };
