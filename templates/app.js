@@ -11104,22 +11104,60 @@ let _displacedPersistentToast = null;
 // Tap-anywhere acknowledgment for TRANSIENT toasts: armed while one
 // is visible, any pointerdown dismisses it instead of leaving it to
 // narrate over the rider's next action for the rest of its 4 s.
-// Strictly an observer - never preventDefault/stopPropagation - so
-// the tap still does exactly what it was going to do (start a pan,
-// open a popup, hit the Locate FAB); capture phase so a handler that
-// stops propagation can't keep the toast alive. pointerdown rather
-// than click because a pan is a drag (no click event), and any
-// interaction start is acknowledgment enough. Persistent toasts are
-// exempt: they exist to hold an explicit choice (Reload / Later) and
-// keep their labeled dismiss paths. The button guard covers a
-// hypothetical transient-with-actions toast (pointer-active via
-// .map-toast-actionable): dismissing on pointerdown would hide the
-// button before its own click could land.
+// The pointerdown itself is never blocked, so a drag still starts a
+// pan and a tap on a real control (Locate FAB, off-screen indicator,
+// Routes panel) still acts - those targets are deliberate and
+// visible. But a tap on the MAP itself (canvas or a POI marker, both
+// live in MapLibre's canvas container) gets its follow-up click
+// swallowed: the rider aimed at "anywhere" to acknowledge the toast,
+// not at the trail under their finger, and without the swallow the
+// same tap also opened a trail/POI popup (field report). Capture
+// phase so a handler that stops propagation can't keep the toast
+// alive. pointerdown rather than click because a pan is a drag (no
+// click event), and any interaction start is acknowledgment enough.
+// Persistent toasts are exempt: they exist to hold an explicit
+// choice (Reload / Later) and keep their labeled dismiss paths. The
+// button guard covers a hypothetical transient-with-actions toast
+// (pointer-active via .map-toast-actionable): dismissing on
+// pointerdown would hide the button before its own click could land.
 let _toastTapArmed = false;
+
+// One-shot capture-phase click suppressor armed by _onToastOutsideTap
+// when the dismissing tap lands on the map. Same technique MapLibre
+// uses internally to keep a drag's mouseup from becoming a feature
+// click (DOM.suppressClick): eat the click before it reaches the
+// canvas container. Disarmed by the swallowed click itself, or by the
+// next pointerdown for gestures that never produce one (a touch pan),
+// so only the dismissing tap is eaten.
+let _disarmToastClickSwallow = null;
+
+function _swallowToastDismissClick() {
+    if (_disarmToastClickSwallow) _disarmToastClickSwallow();
+    const onClick = (ev) => {
+        disarm();
+        ev.preventDefault();
+        ev.stopPropagation();
+    };
+    const disarm = () => {
+        _disarmToastClickSwallow = null;
+        document.removeEventListener("click", onClick, true);
+        document.removeEventListener("pointerdown", disarm, true);
+    };
+    _disarmToastClickSwallow = disarm;
+    document.addEventListener("click", onClick, true);
+    // Registered while the dismissing pointerdown is mid-dispatch;
+    // the DOM snapshots each node's listener list before invoking it,
+    // so this fires first on the NEXT pointerdown, not this one.
+    document.addEventListener("pointerdown", disarm, true);
+}
 
 function _onToastOutsideTap(e) {
     const el = document.getElementById("map-toast");
     if (el && el.contains(e.target) && e.target.closest("button")) return;
+    if (e.target instanceof Element
+        && e.target.closest(".maplibregl-canvas-container")) {
+        _swallowToastDismissClick();
+    }
     dismissToast();
 }
 
