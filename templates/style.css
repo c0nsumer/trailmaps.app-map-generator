@@ -375,7 +375,22 @@ body {
      * the map's containing block excluded that region. The FAB stack
      * already uses `env(safe-area-inset-bottom)` to sit ABOVE the
      * gesture bar; fixed positioning lets the map fill behind it
-     * edge-to-edge, restoring the intended fullscreen look. */
+     * edge-to-edge, restoring the intended fullscreen look.
+     *
+     * KNOWN iOS 26.x QUIRK, NOT FIXABLE FROM THE WEB SIDE: installed
+     * home-screen apps show a home-indicator-sized bar across the
+     * bottom, painted with the document background (--page-bg: white
+     * in light, near-black in dark). Field-tested on iOS 26.6
+     * (2026-07-30): a gated workaround that measured the viewport
+     * deficit and stretched #map downward proved the content DOES
+     * render into that zone - the attribution ended up behind the
+     * bar - but iOS composites the bar OVER the page regardless, so
+     * the workaround only hid our own chrome and was dropped without
+     * ever landing. Do not re-attempt geometry fixes. Same regression
+     * family as WebKit bug 301108; the iOS 26.1 variant of this (a
+     * top bar) was equally unfixable from CSS/JS and Apple fixed it
+     * in 26.2. If the bottom bar disappears in a later iOS, no
+     * change is needed here - nothing in the app depends on it. */
     position: fixed;
     inset: 0;
     /* MapLibre owns all map gestures via its own touch handlers
