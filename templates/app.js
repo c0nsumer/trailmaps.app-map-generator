@@ -9396,9 +9396,13 @@ function routeStatsText(r) {
 // (b) a long-dash cycle ([4, 1]) scaled to map proportions is wider
 // than the whole swatch, also reading solid. So instead: dashes render
 // with butt caps (no extension) at the pattern's dash:gap duty ratio,
-// two cycles across the swatch, gap clamped to stay visible; dot
-// patterns render as round-capped pills. Any dashed/dotted route thus
-// visibly differs from a solid bar, which is the swatch's actual job.
+// gap clamped to stay visible; dot patterns render as round-capped
+// pills. Any dashed/dotted route thus visibly differs from a solid
+// bar, which is the swatch's actual job.
+//
+// The SVG shares the solid bar's exact 18×4 footprint and paints
+// flush to both edges, so list rows keep their labels left-justified
+// whether a route is dashed or not.
 function routeSwatchEl(r, className) {
     if (!isDashed(r)) {
         const swatch = document.createElement("span");
@@ -9409,7 +9413,7 @@ function routeSwatchEl(r, className) {
     }
 
     const NS = "http://www.w3.org/2000/svg";
-    const W = 18, H = 8, y = H / 2, sw = 4;
+    const W = 18, H = 4, y = H / 2, sw = 4;
     const svg = document.createElementNS(NS, "svg");
     svg.setAttribute("class", className + " is-dashed");
     svg.setAttribute("width", String(W));
@@ -9445,26 +9449,31 @@ function routeSwatchEl(r, className) {
         // zooms, so on the map the "dots" render as oblong pills most
         // of the time. Two round-capped pills match that reality,
         // perfect swatch dots over-promised (user report: swatch dots
-        // vs map blobs read as different styles). Geometry: 2px dash
-        // segments at path offsets 0-2 / 9-11 on a line from x=3.5 to
-        // x=14.5; round caps extend each end by sw/2=2px → pills
-        // spanning x 1.5-7.5 and 10.5-16.5, 3px clear between them.
-        svg.appendChild(line(r.color, "2 7", "round", 3.5, 14.5));
+        // vs map blobs read as different styles). Geometry: 3px dash
+        // segments at path offsets 0-3 / 11-14 on a line from x=2
+        // to x=16; round caps extend each end by sw/2=2px → pills
+        // spanning x 0-7 and 11-18, flush to both swatch edges
+        // with 4px clear between them.
+        svg.appendChild(line(r.color, "3 8", "round", 2, 16));
     } else {
         // Dash pattern. Duty ratio from the config (multi-segment
-        // patterns fold to their overall dash:gap ratio), two cycles
-        // across the swatch, butt caps so the gap is exactly what we
-        // set. Clamps keep both parts visible for extreme ratios
-        // ([4, 1] would otherwise leave a 1.8px gap).
+        // patterns fold to their overall dash:gap ratio), three dashes
+        // and two gaps sized to end flush at both edges (3d + 2g = W),
+        // butt caps so the gap is exactly what we set. The ideal cycle
+        // c = d + g then satisfies c = W / (2 + duty) with
+        // g = c * (1 - duty). Clamps keep both parts visible for
+        // extreme ratios ([4, 1] would otherwise leave a 1.3px gap,
+        // [1, 3] a 2px dash).
         let dashSum = 0, total = 0;
         for (let i = 0; i < pattern.length; i++) {
             total += pattern[i];
             if (i % 2 === 0) dashSum += pattern[i];
         }
-        const cycle = W / 2;
-        const gap = Math.min(cycle - 2,
-            Math.max(2.5, cycle * (1 - dashSum / total)));
-        svg.appendChild(line(r.color, `${cycle - gap} ${gap}`, "butt"));
+        const duty = dashSum / total;
+        const gap = Math.min((W - 6) / 2,
+            Math.max(2.5, (W / (2 + duty)) * (1 - duty)));
+        const dash = (W - 2 * gap) / 3;
+        svg.appendChild(line(r.color, `${dash} ${gap}`, "butt"));
     }
     return svg;
 }
