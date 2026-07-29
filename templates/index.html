@@ -68,6 +68,11 @@
          covers icon-less maps whose manifest link is stripped.
          Outside the icons block so that strip never removes it. -->
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- Standard spelling of the same flag. Chrome logs a deprecation
+         warning when only the apple- prefixed form is present; the
+         prefixed one must stay anyway for the iOS status-bar-style
+         behavior above. -->
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
     <!-- Color-scheme bootstrap: runs synchronously BEFORE any
