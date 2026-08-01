@@ -35,9 +35,9 @@ Oaks Map as of 2026-Jul-05*
     and stats. Tap a row to highlight that route, or use its Search row to find
     routes, trails, and POIs on the map.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
-- Trail markers, trailheads, parking, features, toilets, drinking water as
-  configurable POI layers; direction arrows on one-way ways; per-route dash
-  patterns; per-trail IMBA difficulty symbols.
+- Trail markers, trailheads, parking, features, toilets, drinking water, and
+  bicycle repair stations as configurable POI layers; direction arrows on
+  one-way ways; per-route dash patterns; per-trail IMBA difficulty symbols.
 - Compass heading indicator: on devices with a compass, the Locate dot grows
   a small cone showing which way the rider is facing. The app reads the device
   compass, falling back to the direction field each GPS fix already carries.
@@ -194,7 +194,7 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.seasonMode`: "summer" or "winter"
 - `mtb.emergencyOn`: boolean (Emergency overlay)
 - `mtb.poi.<kind>`: one boolean per POI category (parking, trailheads, hubs,
-  features, markers, toilets, drinking_water)
+  features, markers, toilets, drinking_water, bicycle_repair_stations)
 - `mtb.labels`: "routes", "trails", or "none"
 - `mtb.difficulty`: boolean (IMBA difficulty symbols)
 - `mtb.directionArrows`: boolean (direction arrows)

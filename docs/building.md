@@ -96,7 +96,7 @@ changed bbox re-extracts tiles.
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
 - `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
-  drinking water, attractions) from Overpass. YAML-only changes
+  drinking water, bicycle repair stations, attractions) from Overpass. YAML-only changes
   never need it: `parking:`, `trailheads:`, `event_mode.pois`,
   and the related color overrides flow through `fetch_pois.py` on
   every build automatically.
@@ -561,7 +561,7 @@ configs/
 scripts/            (abridged; supporting modules not listed)
   build.py            Build orchestrator
   fetch_trails.py     OSM trail data via Overpass API or local .osm file
-  fetch_pois.py       Trail markers (guideposts + emergency-access points, merged), features, toilets, drinking water
+  fetch_pois.py       Trail markers (guideposts + emergency-access points, merged), features, toilets, drinking water, bicycle repair stations
   osm_parser.py       Parser for local .osm XML files
   fetch_basemap.py    Protomaps basemap PMTiles extraction
   fetch_terrain.py    Mapterhorn terrain PMTiles extraction

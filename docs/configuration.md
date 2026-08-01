@@ -208,6 +208,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_hubs` | No | `true` | When false, trail-hub markers from the config are not rendered. The Hubs toggle auto-hides when the map defines no hubs. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
 | `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The Toilets toggle auto-hides when none were found. |
 | `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Drinking Water toggle auto-hides when none were found. |
+| `show_bicycle_repair_stations` | No | `true` | When false, skips the Overpass query for `amenity=bicycle_repair_station` nodes. The Bicycle Repair toggle auto-hides when none were found. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched and the hillshade layer is omitted. |
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
@@ -241,7 +242,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms. Omitted or an empty list: everything off; riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows`, use `"all"`, or list it in `forced_visible`. The build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
+| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms. Omitted or an empty list: everything off; riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows`, use `"all"`, or list it in `forced_visible`. The build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
 | `forced_visible` | No | `[]` | Layers rendered on regardless of `localStorage` or `default_visible`. Their toggle is hidden, so the rider cannot turn them off. Same forms and layer names as `default_visible`. Use for safety-critical layers (`direction_arrows` on flow trails) or any layer that must always show. Subordinate to the `show_*` gates: a layer suppressed by `show_X: false`, or with no data, has nothing to force on. |
 | `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. The rider opts into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`). |
@@ -1162,7 +1163,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 |---|---|
 | `mtb.seasonMode` | `"summer"` or `"winter"` |
 | `mtb.emergencyOn` | Boolean: Emergency overlay on or off |
-| `mtb.poi.<kind>` | Boolean per POI category (`parking`, `trailheads`, `hubs`, `features`, `markers`, `toilets`, `drinking_water`) |
+| `mtb.poi.<kind>` | Boolean per POI category (`parking`, `trailheads`, `hubs`, `features`, `markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`) |
 | `mtb.labels` | `"routes"`, `"trails"`, or `"none"` |
 | `mtb.difficulty` | Boolean: IMBA difficulty symbols on or off |
 | `mtb.directionArrows` | Boolean: direction arrows on or off |

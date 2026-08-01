@@ -206,6 +206,7 @@ corresponding `show_*` config gate is on.
 | [`tourism=attraction`](https://wiki.openstreetmap.org/wiki/Tag:tourism%3Dattraction) | features | Scenic viewpoints, named rocks, monuments, etc. Surfaced on tap with `name` + [`description`](https://wiki.openstreetmap.org/wiki/Key:description). |
 | [`amenity=toilets`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets) | toilets | Renders the toilet marker. `name`, [`access`](https://wiki.openstreetmap.org/wiki/Key:access), [`fee`](https://wiki.openstreetmap.org/wiki/Key:fee), and [`opening_hours`](https://wiki.openstreetmap.org/wiki/Key:opening_hours) show in the popup when present. |
 | [`amenity=drinking_water`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water) | drinking water | Renders the water marker. `name` and `seasonal` show in the popup when present. |
+| [`amenity=bicycle_repair_station`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_repair_station) | bicycle repair stations | Renders the repair-station marker (a tools glyph on a black chip). `name` shows in search when present. |
 
 Parking and trailheads aren't fetched from OSM by default. The framework
 expects them to be supplied per-map in the YAML (`trailheads:` / `parking:`

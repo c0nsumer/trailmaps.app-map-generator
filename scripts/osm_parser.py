@@ -209,7 +209,8 @@ def _way_centroid(way, nodes):
     """Centroid of a way as the arithmetic mean of its node coords.
 
     Used to give building-shaped POIs (closed ways tagged
-    amenity=toilets / drinking_water) a single point location for the
+    amenity=toilets / drinking_water / bicycle_repair_station) a
+    single point location for the
     map. Arithmetic mean is exact for axis-aligned rectangles and a
     reasonable approximation for any small near-convex polygon, which
     covers the typical "toilet building" case. Returns (lon, lat) or
@@ -230,8 +231,9 @@ def extract_guideposts(parsed, bbox):
     """Extract trail-relevant POI nodes within a bounding box.
 
     Despite the legacy name, this also yields tourism=attraction,
-    amenity=toilets, and amenity=drinking_water - both the node form
-    AND closed-way (building polygon) form for the two amenity tags,
+    amenity=toilets, amenity=drinking_water, and
+    amenity=bicycle_repair_station - both the node form AND
+    closed-way (building polygon) form for the amenity tags,
     matching the Overpass query in fetch_pois_from_osm(). Building
     polygons are reduced to a single (lon, lat) via _way_centroid()
     and emitted as ``type: way`` elements with a ``center`` field so
@@ -261,8 +263,9 @@ def extract_guideposts(parsed, bbox):
         is_feature = tags.get("tourism") == "attraction"
         is_toilet = tags.get("amenity") == "toilets"
         is_water = tags.get("amenity") == "drinking_water"
+        is_repair = tags.get("amenity") == "bicycle_repair_station"
 
-        if is_guidepost or is_emergency or is_feature or is_toilet or is_water:
+        if is_guidepost or is_emergency or is_feature or is_toilet or is_water or is_repair:
             elements.append(
                 {
                     "type": "node",
@@ -273,13 +276,14 @@ def extract_guideposts(parsed, bbox):
                 }
             )
 
-    # Building-polygon toilets / drinking water - common enough in OSM
-    # (mappers trace the building rather than placing a node) that
-    # ignoring them leaves obvious gaps. Centroid → point, bbox-filter
-    # on the centroid (matches Overpass's bbox-on-center semantics).
+    # Building-polygon amenities (toilets / drinking water / bicycle
+    # repair stations) - common enough in OSM (mappers trace the
+    # building rather than placing a node) that ignoring them leaves
+    # obvious gaps. Centroid → point, bbox-filter on the centroid
+    # (matches Overpass's bbox-on-center semantics).
     for way_id, way in ways.items():
         tags = way["tags"]
-        if not (tags.get("amenity") == "toilets" or tags.get("amenity") == "drinking_water"):
+        if tags.get("amenity") not in ("toilets", "drinking_water", "bicycle_repair_station"):
             continue
         c = _way_centroid(way, nodes)
         if c is None:

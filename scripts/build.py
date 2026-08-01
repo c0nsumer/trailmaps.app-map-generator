@@ -1375,7 +1375,8 @@ def main(argv=None):
     # accurate Welcome modal Search line (e.g. "Find ... places
     # (parking, toilets)" instead of always claiming every POI
     # type exists). Two sources: pois.geojson for OSM-fetched POIs
-    # (toilets, drinking water, trail markers, OSM-tagged features
+    # (toilets, drinking water, bicycle repair stations, trail
+    # markers, OSM-tagged features
     # and trailheads), AND the curator-supplied parking /
     # trailheads YAML lists which the runtime renders as separate
     # markers. Both are user-visible POIs from the rider's

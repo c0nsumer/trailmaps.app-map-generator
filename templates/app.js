@@ -359,7 +359,8 @@ function watchSystemColorScheme() {
 // mtb.poi.markers (merged guidepost + emergency trail-marker
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
-// mtb.routePanelExpanded, mtb.welcomed, mtb.fabsLabeled.
+// mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
+// mtb.welcomed, mtb.fabsLabeled.
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
 // emits CONFIG.defaultVisible as a list of layer names that should
@@ -841,6 +842,7 @@ const POI = Object.freeze({
     FEATURE:         "feature",
     TOILET:          "toilet",
     DRINKING_WATER:  "drinking_water",
+    BICYCLE_REPAIR_STATION: "bicycle_repair_station",
     EVENT:           "event",   // event_mode.pois, always rendered, no toggle
 });
 
@@ -2033,6 +2035,7 @@ let hubMarkers = [];
 let featureMarkers = [];
 let toiletMarkers = [];
 let drinkingWaterMarkers = [];
+let bicycleRepairStationMarkers = [];
 // event_mode.pois, always-on, no rider toggle. Held in its own
 // array so the proximity / toggle filter passes don't touch it.
 let eventPoiMarkers = [];
@@ -2052,6 +2055,7 @@ const POI_MARKER_ARRAYS = {
     feature:        featureMarkers,
     toilet:         toiletMarkers,
     drinking_water: drinkingWaterMarkers,
+    bicycle_repair_station: bicycleRepairStationMarkers,
     event:          eventPoiMarkers,
 };
 let userLocation = null; // [lng, lat] from geolocate control
@@ -3655,6 +3659,7 @@ function _welcomeSearchDescription() {
     if (counts.trail_marker)   poiNames.push("trail markers");
     if (counts.drinking_water) poiNames.push("water");
     if (counts.toilet)         poiNames.push("toilets");
+    if (counts.bicycle_repair_station) poiNames.push("bike repair");
 
     if (poiNames.length) {
         targets.push(`places (${poiNames.join(", ")})`);
@@ -3676,7 +3681,7 @@ function _searchTargets() {
     const counts = CONFIG.poiCounts || {};
     const hasPois = !!(counts.parking || counts.trailhead || counts.hub
                        || counts.feature || counts.drinking_water
-                       || counts.toilet);
+                       || counts.toilet || counts.bicycle_repair_station);
     if (hasPois) targets.push("places");
     return targets;
 }
@@ -4562,6 +4567,7 @@ function updateMarkerProximity() {
     filterMarkers(featureMarkers,        isOn("toggle-features"),        POI_PROXIMITY_METERS);
     filterMarkers(toiletMarkers,         isOn("toggle-toilets"),         POI_AMENITY_PROXIMITY_METERS);
     filterMarkers(drinkingWaterMarkers,  isOn("toggle-drinking-water"),  POI_AMENITY_PROXIMITY_METERS);
+    filterMarkers(bicycleRepairStationMarkers, isOn("toggle-bicycle-repair-stations"), POI_AMENITY_PROXIMITY_METERS);
 
     // Markers are obstacles for the decoration placer (gatherObstacles
     // walks every POI marker array). When any marker is added/removed
@@ -4573,7 +4579,8 @@ function updateMarkerProximity() {
     }
 
     // Re-evaluate the proximity-gated toggle rows (Markers, Features,
-    // Toilets, Drinking water). If the visible-routes set leaves zero
+    // Toilets, Drinking water, Bicycle repair). If the visible-routes
+    // set leaves zero
     // of a type within its proximity threshold of any trail, that
     // toggle is a dead control, hide its row. The row comes back the
     // moment a route change brings a near-trail member into scope.
@@ -4599,7 +4606,8 @@ function hasVisibleProximityPois(poiType, threshold) {
 }
 
 // Show/hide each proximity-gated POI toggle (Markers, Features,
-// Toilets, Drinking water) based on (a) its YAML show_* gate and
+// Toilets, Drinking water, Bicycle repair) based on (a) its YAML
+// show_* gate and
 // (b) whether the proximity filter would currently let any of that
 // type render at the per-type threshold. Called on initial POI load
 // and after every route-visibility change. The toggle row is
@@ -4624,6 +4632,7 @@ function updatePoiToggleVisibility() {
         ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS,         "features"],
         ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS, "toilets"],
         ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS, "drinking_water"],
+        ["toggle-bicycle-repair-stations", CONFIG.showBicycleRepairStations, POI.BICYCLE_REPAIR_STATION, POI_AMENITY_PROXIMITY_METERS, "bicycle_repair_stations"],
     ];
     for (const [id, gate, type, threshold, layerName] of flips) {
         const btn = document.getElementById(id);
@@ -6459,13 +6468,15 @@ function _isPoiCurrentlyVisible(p) {
 // search-scope check.
 const _PROXIMITY_TYPES = new Set([
     "trail_marker", "feature", "toilet", "drinking_water",
+    "bicycle_repair_station",
 ]);
 
 function _proximityThresholdForType(type) {
     if (type === "trail_marker" || type === "feature") {
         return POI_PROXIMITY_METERS;
     }
-    if (type === "toilet" || type === "drinking_water") {
+    if (type === "toilet" || type === "drinking_water"
+        || type === "bicycle_repair_station") {
         return POI_AMENITY_PROXIMITY_METERS;
     }
     return Infinity;
@@ -6512,6 +6523,7 @@ function _lsKeyForType(type) {
         case "hub":             return "mtb.poi.hubs";
         case "toilet":          return "mtb.poi.toilets";
         case "drinking_water":  return "mtb.poi.drinking_water";
+        case "bicycle_repair_station": return "mtb.poi.bicycle_repair_stations";
         case "trail_marker":    return "mtb.poi.markers";
         case "feature":         return "mtb.poi.features";
     }
@@ -6530,6 +6542,7 @@ function _defaultVisibleNameForType(type) {
         case "hub":             return "hubs";
         case "toilet":          return "toilets";
         case "drinking_water":  return "drinking_water";
+        case "bicycle_repair_station": return "bicycle_repair_stations";
         case "trail_marker":    return "trail_markers";
         case "feature":         return "features";
     }
@@ -7247,7 +7260,8 @@ function buildPoiIndex() {
         //   - parking / trailhead: name from config
         //   - feature: name from OSM (sometimes empty)
         //   - trail_marker: ref or name
-        //   - toilet / drinking_water: name from OSM (often empty)
+        //   - toilet / drinking_water / bicycle_repair_station:
+        //     name from OSM (often empty)
         // For empty names we synthesize something searchable. Track
         // whether the name was synthesized so groupPoisForFinder can
         // suppress the "unnamed cluster" row when a category-group
@@ -7292,6 +7306,7 @@ const POI_TYPE_FALLBACK_NAME = Object.freeze({
     "feature":        "Feature",
     "toilet":         "Toilets",
     "drinking_water": "Drinking Water",
+    "bicycle_repair_station": "Bicycle Repair",
     "event":          "Event Markers",
 });
 
@@ -7303,6 +7318,7 @@ const POI_TYPE_META_LABEL = Object.freeze({
     "feature":        "feature",
     "toilet":         "toilets",
     "drinking_water": "drinking water",
+    "bicycle_repair_station": "bicycle repair",
     "event":          "event marker",
 });
 
@@ -7336,6 +7352,7 @@ async function loadPOIs() {
         [POI.FEATURE]: 0,
         [POI.TOILET]: 0,
         [POI.DRINKING_WATER]: 0,
+        [POI.BICYCLE_REPAIR_STATION]: 0,
     };
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
@@ -7348,6 +7365,7 @@ async function loadPOIs() {
     const ftCount = poiCounts[POI.FEATURE];
     const wcCount = poiCounts[POI.TOILET];
     const dwCount = poiCounts[POI.DRINKING_WATER];
+    const brCount = poiCounts[POI.BICYCLE_REPAIR_STATION];
 
     // Read persisted toggle state. Per-layer default-on/off is
     // driven by the per-map default_visible YAML list (see
@@ -7360,6 +7378,8 @@ async function loadPOIs() {
     const ftDefault = LS.get("mtb.poi.features", isDefaultVisible("features"));
     const wcDefault = LS.get("mtb.poi.toilets", isDefaultVisible("toilets"));
     const dwDefault = LS.get("mtb.poi.drinking_water", isDefaultVisible("drinking_water"));
+    const brDefault = LS.get("mtb.poi.bicycle_repair_stations",
+        isDefaultVisible("bicycle_repair_stations"));
 
     // Hide a toggle row in the Options overlay when its layer has no
     // data, keeps the rider from seeing a dead control.
@@ -7394,11 +7414,12 @@ async function loadPOIs() {
         hideToggleRow("toggle-hubs");
     }
 
-    // Toilets + drinking water, proximity-gated like Features. Set
-    // aria-pressed from persisted state (used by updateMarkerProximity
-    // when it filters), but the toggle ROW visibility is decided by
-    // updatePoiToggleVisibility() on the first applyVisibilityChange()
-    // pass after init, based on whether anything is in proximity range
+    // Toilets + drinking water + bicycle repair stations, proximity-
+    // gated like Features. Set aria-pressed from persisted state
+    // (used by updateMarkerProximity when it filters), but the
+    // toggle ROW visibility is decided by updatePoiToggleVisibility()
+    // on the first applyVisibilityChange() pass after init, based on
+    // whether anything is in proximity range
     // (POI_AMENITY_PROXIMITY_METERS = 500 m, wider than features).
     if (CONFIG.showToilets && wcCount > 0) {
         addToiletMarkers(wcDefault);
@@ -7410,6 +7431,11 @@ async function loadPOIs() {
         const dwBtn = document.getElementById("toggle-drinking-water");
         if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
     }
+    if (CONFIG.showBicycleRepairStations && brCount > 0) {
+        addBicycleRepairStationMarkers(brDefault);
+        const brBtn = document.getElementById("toggle-bicycle-repair-stations");
+        if (brBtn) brBtn.setAttribute("aria-pressed", brDefault ? "true" : "false");
+    }
 
     // Event POIs (event_mode.pois), always rendered, no rider toggle,
     // no proximity gate. Race-day fixtures (start / finish, aid
@@ -7419,7 +7445,7 @@ async function loadPOIs() {
         addEventPoiMarkers(true);
     }
 
-    // Features + toilets + water are all gated by data-presence AND
+    // Features + toilets + water + bike repair are all gated by data-presence AND
     // proximity: a build can emit POIs that all sit beyond their
     // proximity threshold from the trail (Shelden's "Shelden Estate
     // Wall" / "Old Tennis Court" features are ~12 m and ~33 m off,
@@ -7665,6 +7691,24 @@ function addDrinkingWaterMarkers(addToMap) {
         },
         addToMap,
         targetArray: drinkingWaterMarkers,
+    });
+}
+
+// Bicycle-repair-station markers, OSM amenity=bicycle_repair_station.
+// Same proximity-filtered (500 m), no-popup pattern as toilets and
+// drinking water, the marker IS the signal ("there's a repair stand
+// here"). Tools glyph, black swatch.
+function addBicycleRepairStationMarkers(addToMap) {
+    createPoiMarkers({
+        poiType: POI.BICYCLE_REPAIR_STATION,
+        className: "poi-marker bicycle-repair-station-marker",
+        contentFn: (el) => {
+            // mdi:tools (Apache 2.0, Pictogrammers). SVG width/height
+            // from .poi-marker svg in CSS, see toilet note above.
+            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z"/></svg>';
+        },
+        addToMap,
+        targetArray: bicycleRepairStationMarkers,
     });
 }
 
@@ -8493,7 +8537,8 @@ function setupFloatingChrome() {
         // This MUST run before the hidden-row guard below. By the time
         // setupFloatingChrome() wires the toggles, loadPOIs() →
         // updatePoiToggleVisibility() has already hidden every forced
-        // proximity row, and toilets/drinking-water also start hidden
+        // proximity row, and toilets/drinking-water/bicycle-repair
+        // also start hidden
         // in the template, so the guard would otherwise short-circuit
         // the force-on and the layer would silently never render.
         // aria-pressed must be set first because the proximity-gated
@@ -8651,10 +8696,11 @@ function setupFloatingChrome() {
         _onPoiToggleChange("hub");
     }, "hubs");
 
-    // Toilets + drinking water, proximity-filtered (500 m threshold,
-    // see POI_AMENITY_PROXIMITY_METERS). Same on/off pattern as
-    // Markers and Features: when toggled on, defer to updateMarkerProximity
-    // which adds only the in-range markers; when off, sweep them all.
+    // Toilets + drinking water + bicycle repair stations, proximity-
+    // filtered (500 m threshold, see POI_AMENITY_PROXIMITY_METERS).
+    // Same on/off pattern as Markers and Features: when toggled on,
+    // defer to updateMarkerProximity which adds only the in-range
+    // markers; when off, sweep them all.
     wirePeekToggle("toggle-toilets", "mtb.poi.toilets",
             isDefaultVisible("toilets"), (on) => {
         if (on) {
@@ -8677,6 +8723,17 @@ function setupFloatingChrome() {
         }
         _onPoiToggleChange("drinking_water");
     }, "drinking_water");
+    wirePeekToggle("toggle-bicycle-repair-stations", "mtb.poi.bicycle_repair_stations",
+            isDefaultVisible("bicycle_repair_stations"), (on) => {
+        if (on) {
+            updateMarkerProximity();  // already invalidates cache
+        } else {
+            for (const m of bicycleRepairStationMarkers) m.remove();
+            invalidateObstaclesCache();
+            updateDecorationsSource();
+        }
+        _onPoiToggleChange("bicycle_repair_station");
+    }, "bicycle_repair_stations");
 
     // Difficulty, drives the decor-diamond layer. Uses the shared
     // wirePeekToggle so the visual + behavior matches the other
@@ -9647,6 +9704,11 @@ function poiSwatchContent(el, type) {
             el.classList.add("drinking-water-swatch");
             // mdi:water (Apache 2.0, Pictogrammers)
             el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            break;
+        case "bicycle_repair_station":
+            el.classList.add("bicycle-repair-station-swatch");
+            // mdi:tools (Apache 2.0, Pictogrammers)
+            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z"/></svg>';
             break;
         case "event":
             // Same flag glyph as the on-map event-POI marker, so the

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fetch points of interest from OpenStreetMap.
 
-Queries the Overpass API for five POI categories within the configured
+Queries the Overpass API for six POI categories within the configured
 bounding box (guideposts, emergency access points, attractions, toilets,
-drinking water - see fetch_pois_from_osm), merges in the config-specified
+drinking water, bicycle repair stations - see fetch_pois_from_osm),
+merges in the config-specified
 POIs (parking, trailheads, hubs, event-mode POIs), and outputs a GeoJSON
 file.
 
@@ -42,6 +43,7 @@ POI_SHOW_FLAGS = (
     "show_hubs",
     "show_toilets",
     "show_drinking_water",
+    "show_bicycle_repair_stations",
 )
 
 
@@ -54,12 +56,13 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
       - tourism attractions (tourism=attraction)
       - public toilets (amenity=toilets)
       - drinking water (amenity=drinking_water)
+      - bicycle repair stations (amenity=bicycle_repair_station)
 
     Each maps to a distinct ``poi_type`` in the output GeoJSON; runtime
     toggle visibility per category.
 
-    Toilets and drinking water are queried as both nodes AND ways -
-    OSM mappers commonly tag the toilet building polygon (a closed
+    The amenity categories are queried as both nodes AND ways - OSM
+    mappers commonly tag the amenity's building polygon (a closed
     way) rather than placing a node. ``out center;`` asks Overpass
     to compute the centroid of any non-node geometry so the rest of
     the pipeline can treat them as point POIs.
@@ -75,6 +78,8 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
   way["amenity"="toilets"]({south},{west},{north},{east});
   node["amenity"="drinking_water"]({south},{west},{north},{east});
   way["amenity"="drinking_water"]({south},{west},{north},{east});
+  node["amenity"="bicycle_repair_station"]({south},{west},{north},{east});
+  way["amenity"="bicycle_repair_station"]({south},{west},{north},{east});
 );
 out center;
 """
@@ -98,7 +103,8 @@ def _dedup_osm_pois(features):
 
     Two POIs are duplicates iff they share the same poi_type, the type
     is one where the double-tagging pattern actually occurs (toilets /
-    drinking_water - the building-footprint amenities), AND their
+    drinking_water / bicycle_repair_station - the building-footprint
+    amenities), AND their
     coordinates are within 10m haversine distance. Other types are
     never collapsed: distinct guideposts genuinely stand <10m apart at
     junction clusters, and merging them dropped their individual ref
@@ -121,7 +127,7 @@ def _dedup_osm_pois(features):
     # Only the building-footprint amenities exhibit the way+node
     # double-tagging pattern. Everything else (trail_marker, feature)
     # can legitimately have distinct instances <10m apart.
-    DEDUP_TYPES = {"toilet", "drinking_water"}
+    DEDUP_TYPES = {"toilet", "drinking_water", "bicycle_repair_station"}
     out = []
     collapsed = 0
     for f in features:
@@ -186,6 +192,7 @@ def build_pois_geojson(
     show_features = cfg.get("show_features", True)
     show_toilets = cfg.get("show_toilets", True)
     show_drinking_water = cfg.get("show_drinking_water", True)
+    show_bicycle_repair_stations = cfg.get("show_bicycle_repair_stations", True)
     show_parking = cfg.get("show_parking", True)
     show_trailheads = cfg.get("show_trailheads", True)
     show_hubs = cfg.get("show_hubs", True)
@@ -267,6 +274,19 @@ def build_pois_geojson(
                         # OSM `seasonal` tag (yes/no/summer/winter) tells
                         # riders whether the fountain is reliably running.
                         "seasonal": tags.get("seasonal", ""),
+                    },
+                }
+            )
+        elif tags.get("amenity") == "bicycle_repair_station":
+            if not show_bicycle_repair_stations:
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "poi_type": "bicycle_repair_station",
+                        "name": tags.get("name", ""),
                     },
                 }
             )
@@ -416,12 +436,20 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("amenity") == "drinking_water"
     )
+    repair_count = sum(
+        1
+        for e in osm_data.get("elements", [])
+        if e.get("tags", {}).get("amenity") == "bicycle_repair_station"
+    )
     console.info(
         f"Found {marker_count} trail markers (guideposts + emergency access points) in OSM"
     )
     console.info(f"Found {feature_count} features (tourism=attraction) in OSM")
     console.info(f"Found {toilet_count} toilets (amenity=toilets) in OSM")
     console.info(f"Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
+    console.info(
+        f"Found {repair_count} bicycle repair stations (amenity=bicycle_repair_station) in OSM"
+    )
     console.info(f"Config defines {len(config_parking)} parking areas")
     console.info(f"Config defines {len(config_trailheads)} trailheads")
     console.info(f"Config defines {len(config_hubs)} trail hubs")
@@ -440,6 +468,11 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     if config.get("show_drinking_water", True) and water_count == 0:
         console.note(
             "show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data"
+        )
+    if config.get("show_bicycle_repair_stations", True) and repair_count == 0:
+        console.note(
+            "show_bicycle_repair_stations is enabled but no amenity=bicycle_repair_station "
+            "nodes or ways found in data"
         )
     if config.get("show_parking", True) and len(config_parking) == 0:
         console.note("show_parking is enabled but no parking areas defined in config")

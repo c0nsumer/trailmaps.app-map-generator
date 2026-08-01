@@ -131,6 +131,9 @@ relations:
 # Fetch amenity=drinking_water nodes.
 # show_drinking_water: true
 
+# Fetch amenity=bicycle_repair_station nodes.
+# show_bicycle_repair_stations: true
+
 # Fetch terrain tiles and render the hillshade layer.
 # show_terrain: true
 

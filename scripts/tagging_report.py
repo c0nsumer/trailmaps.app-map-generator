@@ -48,7 +48,8 @@ _ORPHAN_POI_M = 250.0
 # POI types this checks. Guideposts and emergency-access points are
 # definitionally ON the trail. Everything else is either curator-placed
 # (parking / trailheads / hubs) or legitimately near a trailhead rather than a
-# trail (toilets / drinking water, which the runtime already scopes at 500 m).
+# trail (toilets / drinking water / bicycle repair stations, which the
+# runtime already scopes at 500 m).
 _ON_TRAIL_POI_TYPES = ("trail_marker",)
 
 _VALID_RATINGS = {"0", "1", "2", "3", "4", "5"}

@@ -37,6 +37,7 @@ relations:
 # show_hubs: true
 # show_toilets: true
 # show_drinking_water: true
+# show_bicycle_repair_stations: true
 # show_terrain: true
 # show_difficulty: true
 # show_trails: true

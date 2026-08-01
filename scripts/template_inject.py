@@ -154,6 +154,7 @@ CONFIG_SPEC = [
     ("show_hubs", "showHubs", True),
     ("show_toilets", "showToilets", True),
     ("show_drinking_water", "showDrinkingWater", True),
+    ("show_bicycle_repair_stations", "showBicycleRepairStations", True),
     ("show_terrain", "showTerrain", True),
     ("show_difficulty", "showDifficulty", True),
     # Distance (meters) from the nearest visible trail within which a

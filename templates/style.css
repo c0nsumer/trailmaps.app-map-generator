@@ -180,7 +180,7 @@
     --poi-marker-border: 2px;
     --poi-marker-font-text: 13px;          /* P (parking) */
     --poi-marker-font-text-tight: 11px;    /* TH, trail-marker refs */
-    --poi-marker-svg-size: 14px;           /* toilet, water glyphs */
+    --poi-marker-svg-size: 14px;           /* toilet, water, repair glyphs */
     /* Drop-shadow for on-map markers ONLY - gives them apparent
      * depth above the basemap. Options swatches use a different
      * shadow (a 1px dark outline for contrast against the sheet)
@@ -211,16 +211,19 @@
      * thing to disappear when the screen is washed out in sun. */
     --feature-label-color: #1e1e1e;
     --feature-label-halo: #ffffff;
-    /* Toilet / drinking-water marker colors - fixed values (unlike
-     * the CONFIG-driven POI colors, which app.js sets as :root vars
-     * at boot; these two categories have no per-map config knob).
-     * Shared by the Options swatches and the on-map markers. */
+    /* Toilet / drinking-water / bicycle-repair marker colors - fixed
+     * values (unlike the CONFIG-driven POI colors, which app.js sets
+     * as :root vars at boot; these categories have no per-map config
+     * knob). Shared by the Options swatches and the on-map markers. */
     --toilet-color: #6c5ce7;
     --toilet-text-color: #fff;
     --toilet-border-color: #fff;
     --drinking-water-color: #3498db;
     --drinking-water-text-color: #fff;
     --drinking-water-border-color: #fff;
+    --bicycle-repair-station-color: #000;
+    --bicycle-repair-station-text-color: #fff;
+    --bicycle-repair-station-border-color: #fff;
 }
 
 /* Dark-mode token overrides. Selector targets <html data-color-scheme="dark">,
@@ -1114,9 +1117,9 @@ body::after {
 }
 
 /* Override the inline SVG width/height attributes (which are baked
- * into index.html for the toilet, water, label, and season glyphs)
- * so the SVG size flows from the same token as everything else.
- * Means tweaking --poi-marker-svg-size updates all four glyphs
+ * into index.html for the toilet, water, repair, label, and season
+ * glyphs) so the SVG size flows from the same token as everything
+ * else. Means tweaking --poi-marker-svg-size updates every glyph
  * without touching HTML. */
 .layer-swatch svg {
     width: var(--poi-marker-svg-size);
@@ -1293,6 +1296,15 @@ body::after {
     background: var(--drinking-water-color);
     color: var(--drinking-water-text-color);
     border: var(--poi-marker-border) solid var(--drinking-water-border-color);
+}
+
+/* Bicycle repair stations - black chip with a white tools glyph.
+ * Black keeps it neutral-utilitarian and unmistakable next to the
+ * colored amenity swatches. */
+.bicycle-repair-station-swatch {
+    background: var(--bicycle-repair-station-color);
+    color: var(--bicycle-repair-station-text-color);
+    border: var(--poi-marker-border) solid var(--bicycle-repair-station-border-color);
 }
 
 /* Event-mode POI swatch - matches the on-map .event-poi-marker
@@ -1872,7 +1884,8 @@ body::after {
  * On-map POI markers - base + per-type modifiers
  *
  * The visual styling for parking, trailheads, toilets, drinking
- * water, and trail markers used to live as inline `markerStyle`
+ * water, bicycle repair stations, and trail markers used to live
+ * as inline `markerStyle`
  * template strings in app.js. They've been hoisted to CSS classes
  * so both Options swatches AND map markers reference the same
  * --poi-marker-* design tokens. Single source of truth - bumping
@@ -2037,7 +2050,8 @@ body::after {
 
 
 
-/* Toilets + drinking water - no popup wired (the marker IS the
+/* Toilets + drinking water + bicycle repair stations - no popup
+ * wired (the marker IS the
  * signal). Mirror .trail-marker's pointer-events: none + cursor:
  * default so the cursor doesn't lie about clickability and so taps
  * pass through to the trail underneath (where they DO open a
@@ -2053,6 +2067,13 @@ body::after {
 .drinking-water-marker {
     background: var(--drinking-water-color);
     border-color: var(--drinking-water-border-color);
+    pointer-events: none;
+    cursor: default;
+}
+
+.bicycle-repair-station-marker {
+    background: var(--bicycle-repair-station-color);
+    border-color: var(--bicycle-repair-station-border-color);
     pointer-events: none;
     cursor: default;
 }

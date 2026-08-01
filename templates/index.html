@@ -656,6 +656,24 @@
                         </div>
                     </div>
 
+                    <!-- Bicycle repair stations - OSM
+                         amenity=bicycle_repair_station. Hidden by
+                         default; app.js reveals only when
+                         pois.geojson contains at least one. -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-bicycle-repair-stations" data-poi="bicycle_repair_stations" aria-pressed="true">
+                        <span class="layer-swatch bicycle-repair-station-swatch" aria-hidden="true">
+                            <!-- mdi:tools (Apache 2.0, Pictogrammers) -->
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                <path d="M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z"/>
+                            </svg>
+                        </span>
+                        <span class="opt-toggle-row-label">Bicycle Repair</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Bicycle Repair">
+                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
+                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
+                        </div>
+                    </div>
+
                     <!-- Emergency Access - same toggle-row format as the
                          POI toggles. Uses aria-pressed; app.js wires
                          click handler that mirrors emergencyOn into
