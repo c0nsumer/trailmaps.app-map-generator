@@ -1,9 +1,9 @@
 # Event mode
 
-Event mode is a presentation mode that flips the map's information hierarchy:
-one or more "featured" routes display prominently in their declared colors, and
-every other trail on the map renders as muted background context (typically a
-gray dashed line). POIs (parking, trailheads, water, toilets, features, trail
+Event mode is a presentation mode that flips the map's information hierarchy.
+One or more "featured" routes display prominently in their declared colors.
+Every other trail on the map renders as muted background context, typically a
+gray dashed line. POIs (parking, trailheads, water, toilets, features, trail
 markers) all render normally so riders can still find facilities.
 
 Use event mode for:
@@ -14,10 +14,10 @@ Use event mode for:
   is the focus.
 
 Event mode is strictly visual. It doesn't change data
-fetching, POI rendering, search, or any other framework behavior. The featured
-route(s) and background style are translated into per-route style overrides at
-build time; the runtime sees a normal map where some routes happen to share the
-background treatment.
+fetching, POI rendering, search, or any other framework behavior. At build
+time, the featured route(s) and background style are translated into per-route
+style overrides. The runtime sees a normal map where some routes happen to
+share the background treatment.
 
 ## Contents
 
@@ -56,8 +56,8 @@ event_mode:
 
 Drop the GeoJSON file (typically a single `LineString` or `MultiLineString`
 `FeatureCollection`) next to the YAML, build, and deploy. The race course
-renders bright red; every OSM trail in relation 12345678 renders muted
-gray-dashed; POIs and the rest of the chrome behave normally.
+renders bright red. Every OSM trail in relation 12345678 renders muted
+gray-dashed. POIs and the rest of the chrome behave normally.
 
 ### Route-only event maps (no OSM relations)
 
@@ -82,7 +82,7 @@ With no `relations` there's no background network to mute, so only the course
 renders. The map view (center / zoom / bounds) is computed from the route
 geometry. Event mode's featuring transform still runs, but with nothing to push
 to the background it's effectively a no-op. For a single route alone,
-`custom_routes` on its own is equivalent; reach for `event_mode` when you also
+`custom_routes` on its own is equivalent. Reach for `event_mode` when you also
 want featured-only [direction arrows](#direction-arrows) or always-on
 [event POIs](#event-pois). To suppress the OSM POIs/amenities that would
 otherwise be fetched within the route's bounding box, set the relevant `show_*`
@@ -139,15 +139,15 @@ event_mode:
 **`routes`**: inline-defined featured routes. Each entry is the same shape as a
 top-level [`custom_routes`](configuration.md#custom-routes-full-guide) entry.
 Entries are featured by definition; their declared `color` is what displays on
-the map. The routes flow through the same `custom_routes` pipeline downstream,
-so they appear in the Search overlay's Routes section, can be highlighted via
+the map. The routes flow through the same `custom_routes` pipeline downstream.
+They appear in the Search overlay's Routes section, can be highlighted via
 tap, and respect the bucket model.
 
-**`featured`**: references to existing routes. Each entry resolves either by
-string ID (matching a top-level
-[`custom_routes`](configuration.md#custom-routes-full-guide) entry) or by
-integer OSM relation ID (matching an entry in `relations`, `clipped_relations`,
-`winter_relations`, `summer_relations`, or `emergency_access_relations`). Use
+**`featured`**: references to existing routes. Each entry resolves in one of
+two ways. A string ID matches a top-level
+[`custom_routes`](configuration.md#custom-routes-full-guide) entry. An
+integer OSM relation ID matches an entry in `relations`, `clipped_relations`,
+`winter_relations`, `summer_relations`, or `emergency_access_relations`. Use
 this when:
 
 - The route you want to feature already exists at top-level `custom_routes`.
@@ -170,11 +170,11 @@ Pattern values are in line-width multiples (same convention as
 `dashed_relations`). `[0, 2]` is dots; `[2, 2]` short dashes; `[4, 2]` long
 dashes. Cap controls dash end-shape.
 
-**Featured rendering**: featured routes render on top of background routes
-(their MapLibre layers are added last, after every background route's layer)
-and with a `1.5x` line-width multiplier vs. the standard trail line. The
-combined effect: the spotlighted route reads clearly as foreground, with
-background trails dotted softly beneath it.
+**Featured rendering**: featured routes render on top of background routes.
+Their MapLibre layers are added last, after every background route's layer.
+They also render with a `1.5x` line-width multiplier vs. the standard trail
+line. The combined effect: the spotlighted route reads clearly as foreground,
+with background trails dotted softly beneath it.
 
 **ID uniqueness**: an `event_mode.routes[].id` must be distinct from every
 top-level `custom_routes[].id` and every OSM relation ID anywhere in the
@@ -188,8 +188,8 @@ The framework computes a featured set at build time:
    definition).
 2. Every entry in `event_mode.featured` joins the set:
    - String references add their literal ID.
-   - Int references add the literal ID, or fan out to every child route ID if
-     the int is a super-relation in this map.
+   - Int references add the literal ID. If the int is a super-relation in this
+     map, they fan out to every child route ID instead.
 
 For each route that flows through the build:
 
@@ -201,8 +201,8 @@ For each route that flows through the build:
   the runtime renders it muted.
 
 A featured OSM super-relation expands to its children: each child gets its
-normal color. The parent itself is dropped (super-relations have no ways of
-their own; the children carry the visual).
+normal color. The parent itself is dropped. Super-relations have no ways of
+their own; the children carry the visual.
 
 ## Background style application
 
@@ -214,16 +214,16 @@ regardless of source:
 - Bucket-flagged routes (winter / summer / emergency).
 - Top-level `custom_routes` not listed in `event_mode.featured`.
 
-If a curator wants to keep one specific route visible at full prominence even
-though it's not the event route (e.g. an emergency-access loop kept distinct
-for safety marshals, or a demo loop next to the race course), they have two
-options:
+A curator may want to keep one specific route visible at full prominence even
+though it's not the event route. Examples: an emergency-access loop kept
+distinct for safety marshals, or a demo loop next to the race course. There
+are two options:
 
 - Add the route's ID to `event_mode.featured` (treat it as a second featured
   route, render in its own color).
 - Add an explicit `relation_colors` and `dashed_relations` entry for the route.
-  **Curator's explicit overrides win**: any route covered by the curator's
-  `relation_colors` or `dashed_relations` is left alone by event mode.
+  **Curator's explicit overrides win**: event mode leaves alone any route
+  covered by the curator's `relation_colors` or `dashed_relations`.
 
 ## Direction arrows
 
@@ -243,23 +243,23 @@ event_mode:
 Effect:
 
 - Every inline `event_mode.routes[i]` has its features stamped with
-  `oneway: "yes"` so the existing direction-arrow renderer draws arrows along
-  the route in its digitized direction.
-- `direction_arrows` is added to `forced_visible` on the runtime, which hides
-  the rider's arrow-toggle row and forces the arrow layer always-visible. Riders
-  can't disable event-route arrows.
+  `oneway: "yes"`. The existing direction-arrow renderer then draws arrows
+  along the route in its digitized direction.
+- `direction_arrows` is added to `forced_visible` on the runtime. This hides
+  the rider's arrow-toggle row and forces the arrow layer always-visible.
+  Riders can't disable event-route arrows.
 - **Arrows render only on the event route.** Any OSM-tagged oneway ways on the
-  underlying trail system have their `oneway` property stripped at build time so
-  the arrow renderer skips them. Without this, an event map sitting on top of a
-  trail system with OSM oneway flow trails would clutter with arrows on every
-  flow segment, drowning out the event-route arrows that actually matter. The
-  build log shows e.g.
+  underlying trail system have their `oneway` property stripped at build time.
+  The arrow renderer then skips them. Without this, an event map sitting on top
+  of a trail system with OSM oneway flow trails would clutter with arrows on
+  every flow segment. Those arrows would drown out the event-route arrows that
+  actually matter. The build log shows e.g.
   `Event mode: stripped oneway from 32 non-featured feature(s) ...` to make the
   behavior visible.
 
-The arrows follow the order of coordinates in your GeoJSON LineString. Reverse
-the coord array (or use a tool like geojson.io's "reverse direction" action) if
-the arrows point the wrong way.
+The arrows follow the order of coordinates in your GeoJSON LineString. If the
+arrows point the wrong way, reverse the coord array. A tool like geojson.io's
+"reverse direction" action works too.
 
 For per-route control (e.g. one inline route is one-way, another is two-way),
 set `oneway` directly on each route entry:
@@ -281,7 +281,7 @@ event_mode:
 ```
 
 Featured OSM relations (referenced via `event_mode.featured: [int]`) keep their
-normal OSM-tag-driven arrow behavior: arrows render on ways tagged `oneway=yes`
+normal OSM-tag-driven arrow behavior. Arrows render on ways tagged `oneway=yes`
 / `oneway=-1` / `oneway=reversible` per the standard rules. The
 `direction_arrows: true` flag affects the toggle-suppression but doesn't add
 arrows where the OSM tags don't already.
@@ -289,8 +289,9 @@ arrows where the OSM tags don't already.
 ## Event POIs
 
 Race-day fixtures: start / finish, aid stations, support areas, mechanical aid,
-registration, and similar. Defined inline in `event_mode.pois`, always visible
-(no rider toggle), with a distinctive saturated red chip and flag glyph.
+registration, and similar. Event POIs are defined inline in `event_mode.pois`.
+They are always visible (no rider toggle) and render with a distinctive
+saturated red chip and flag glyph.
 
 ```yaml
 event_mode:
@@ -326,7 +327,7 @@ Event POIs differ from regular POIs in four ways:
    Event POIs ignore that rule entirely; a finish-line bivouac 200m off-trail
    still renders.
 3. **Distinct color + glyph.** Saturated red chip (`event_mode.poi_color`,
-   default `#D32F2F`) with a white flag glyph (MDI `flag`), so a race fixture
+   default `#D32F2F`) with a white flag glyph (MDI `flag`). A race fixture
    is visually unmistakable among the regular OSM POIs.
 4. **Always-visible name label.** A small white pill below each chip shows the
    POI's `name`. Other POI categories rely on the tap-to-popup interaction; for
@@ -358,26 +359,26 @@ Each entry needs:
   it does not affect the downloaded file.
 - **`file`** (required): a curator-supplied `.gpx` file, relative to this YAML
   (same convention as `geometry:`). Copied into the build **verbatim, filename
-  preserved**, so a rider who downloads it from the map gets a file identical,
+  preserved**. A rider who downloads it from the map gets a file identical,
   name included, to one distributed by the event's official source. Entries
   must not share a filename (the validator rejects duplicates).
 
 What the rider sees: a download FAB (down-arrow glyph) in the top-right stack
 below Options, present only when `gpx:` is configured. Tapping it opens a
 compact bottom sheet with one row per entry; tapping a row downloads that
-file. The sheet always opens, even with a single file, so an exploratory
-tap shows a dismissible sheet naming the route rather than instantly dropping
+file. The sheet always opens, even with a single file. An exploratory tap
+shows a dismissible sheet naming the route rather than instantly dropping
 a file into the rider's Downloads. The sheet stays open across row taps, so
 grabbing several routes is just several taps. There is deliberately no
 "download all" bundle: bike computers import one course per file anyway.
 
-The files land in `build/<slug>/gpx/` and are picked up by the service-worker
-precache automatically, so they remain downloadable offline once the map has
-been visited.
+The files land in `build/<slug>/gpx/`. The service-worker precache picks them
+up automatically. Once the map has been visited, they remain downloadable
+offline.
 
-Prepare the files for head-unit compatibility before dropping them in (the
-framework does not transform them): GPX 1.1, one course per file, a single
-continuous track segment, points ordered in the direction of travel.
+Prepare the files for head-unit compatibility before dropping them in; the
+framework does not transform them. Use GPX 1.1, one course per file, a single
+continuous track segment, and points ordered in the direction of travel.
 Generating GPX files from the map's own route data (OSM relations / GeoJSON)
 is planned but not yet implemented; the validator reserves `relation:` and
 `route:` source keys for that.
@@ -511,16 +512,16 @@ icon: 2026-Race-Logo.png           # optional: same source for both
 accent_color: auto                 # derive UI accent from the logo
 ```
 
-The `icon:` key is also used as the logo source when `logo:` is omitted (so most
-event maps only need to set one of the two). See
+When `logo:` is omitted, the `icon:` key is also used as the logo source. Most
+event maps only need to set one of the two. See
 [Logo and icon assets](configuration.md#logo-and-icon-assets) in the
 configuration guide.
 
-The optional `accent_color: auto` runs a build-time Pillow analysis of the logo
-to derive the UI accent palette (a vivid light-mode shade plus a lightened
-dark-mode shade, each with its own text color) from the logo's dominant
-saturated color. This lets the whole UI feel branded for the event without
-manually picking a hex value.
+The optional `accent_color: auto` runs a build-time Pillow analysis of the
+logo. It derives the UI accent palette from the logo's dominant saturated
+color. The palette is a vivid light-mode shade plus a lightened dark-mode
+shade, each with its own text color. This lets the whole UI feel branded for
+the event without manually picking a hex value.
 
 Event maps often carry co-branding: the organizing club's mark plus the
 event's own logo, or a title sponsor. Use
@@ -559,36 +560,37 @@ welcome:
 ## Labels in event mode
 
 Event mode locks the Labels segmented control to the "routes" mode internally
-and hides the control from the Options overlay (the rider can't flip it). On top
-of that lock, only featured routes get a label layer at all, so the only on-map
-trail label that ever appears is the event route's name.
+and hides the control from the Options overlay. The rider can't flip it. On
+top of that lock, only featured routes get a label layer at all. The only
+on-map trail label that ever appears is the event route's name.
 
-Background routes get no labels. Trail-name labels (the "decor-trail-name"
-decoration layer that normally renders one label per named trail when labelMode
-is "trails") is also suppressed in event mode for the same reason: the event
-route is the focus rather than the underlying trail network.
+Background routes get no labels. Trail-name labels are also suppressed in
+event mode. That layer, the "decor-trail-name" decoration layer, normally
+renders one label per named trail when labelMode is "trails". The reason is
+the same: the event route is the focus rather than the underlying trail
+network.
 
-This pairs well with `default_labels: routes` in your YAML (which seeds the
-rider's first-visit experience), but event mode forces the runtime state
+This pairs well with `default_labels: routes` in your YAML, which seeds the
+rider's first-visit experience. Event mode forces the runtime state
 regardless of what's persisted in localStorage.
 
 ## Routes panel in event mode
 
-The routes panel (the bottom-right key card + Search entry; see
-[Routes panel](configuration.md#routes-panel) in the configuration guide) keys
-**featured routes only** on event maps: the muted background network isn't a
-course a rider chooses between, so it doesn't earn a key row. This mirrors
-the label restriction above: featured routes are the map's subject,
+The routes panel is the bottom-right key card + Search entry; see
+[Routes panel](configuration.md#routes-panel) in the configuration guide. On
+event maps it keys **featured routes only**: the muted background network
+isn't a course a rider chooses between, so it doesn't earn a key row. This
+mirrors the label restriction above: featured routes are the map's subject,
 everything else is context. The panel's Search row still opens the full
 finder, where featured and background routes both appear.
 
 For the common two-course event (a full and a short route), the key is the
-first-glance answer to "which color am I riding?": a map with a couple of
-featured routes boots with the card expanded (the panel starts expanded
-whenever the card fits comfortably in the viewport), showing each course's
-color, name, and (when
-[`show_route_distance`](configuration.md#build-time-data-gates) is on)
-distance. Tapping a row highlights that course and fits it in view.
+first-glance answer to "which color am I riding?". A map with a couple of
+featured routes boots with the card expanded; the panel starts expanded
+whenever the card fits comfortably in the viewport. The card shows each
+course's color and name. When
+[`show_route_distance`](configuration.md#build-time-data-gates) is on, it also
+shows distance. Tapping a row highlights that course and fits it in view.
 
 ## What event mode leaves unchanged
 
@@ -599,9 +601,9 @@ nothing else. Everything below behaves exactly as it does on a normal map:
   markers all render with their normal colors and toggles.
 - **Search / finder**: featured and background routes both appear in the Routes
   section. Tap either to highlight.
-- **Bucket toggles**: Season switching (Summer / Winter), the Emergency
-  overlay, the Difficulty toggle, and the rest all work normally if the curator
-  enables them.
+- **Bucket toggles**: if the curator enables them, Season switching
+  (Summer / Winter), the Emergency overlay, the Difficulty toggle, and the
+  rest all work normally.
 - **Basemap, terrain, fonts, and the rest of the framework.**
 
 If you want to suppress UI affordances that don't fit your event map (e.g. the

@@ -1,7 +1,7 @@
 # Mapping and tagging trails in OpenStreetMap
 
 This framework reads its trail data straight from
-[OpenStreetMap](https://www.openstreetmap.org/) via Overpass: the better the
+[OpenStreetMap](https://www.openstreetmap.org/) via Overpass. The better the
 OSM data is, the better the rendered map is. This document describes the tags
 this renderer reads and offers general advice on mapping trail systems well.
 
@@ -10,7 +10,7 @@ this renderer reads and offers general advice on mapping trail systems well.
 Everything below is "tag what the trail actually is, in standard OSM
 conventions, and a sensible renderer will surface it." Nothing here is specific
 to this map framework. Adding tags purely to manipulate how this (or any)
-renderer draws something is an anti-pattern that degrades the OSM dataset for
+renderer draws something is an anti-pattern. It degrades the OSM dataset for
 every other consumer:
 
 - [OSM Wiki: Tagging for the renderer](https://wiki.openstreetmap.org/wiki/Tagging_for_the_renderer)
@@ -33,7 +33,7 @@ Komoot, and every other OSM consumer.
 The framework expects each trail system (or each named route within a system) to
 be a **relation** of
 [`type=route`](https://wiki.openstreetmap.org/wiki/Relation:route). A
-super-relation grouping multiple route relations is also supported: the
+super-relation grouping multiple route relations is also supported. The
 renderer expands it one level deep at fetch time.
 
 ### Required on the relation
@@ -60,19 +60,19 @@ framework follows the standard OSM convention: member ways, in any order, with
 no role. The renderer reconstructs trail order via shared endpoints when it
 needs to (for label placement, IMBA-tier sequencing, etc.).
 
-If a single physical trail belongs to multiple routes (a connector segment
-shared between two loops, for example), tag it as a member of **every** route
-relation it belongs to. The renderer collapses duplicates by way ID and tracks
+A single physical trail can belong to multiple routes, for example a connector
+segment shared between two loops. Tag it as a member of **every** route
+relation it belongs to. The renderer collapses duplicates by way ID. It tracks
 the "shared routes" set on each geometry feature so taps surface the right
 thing.
 
 ### Super-relations (multi-loop trail systems)
 
-A trail system that's organized as several named loops or sub-routes under one
-umbrella is best mapped as a **super-relation**: a `type=route` relation whose
-members are the individual sub-route relations (each itself `type=route` with
-its own ways). This is standard OSM, the same convention used by long-distance
-hiking networks, regional bike networks, etc.
+A trail system organized as several named loops or sub-routes under one
+umbrella is best mapped as a **super-relation**. That is a `type=route`
+relation whose members are the individual sub-route relations. Each sub-route
+is itself `type=route` with its own ways. This is standard OSM, the same
+convention used by long-distance hiking networks, regional bike networks, etc.
 
 A super-relation lets the curator point this framework's `relations:` config key
 at a single ID and have every constituent loop come along automatically. When
@@ -84,8 +84,8 @@ the framework fetches a super-relation, it **expands one level deep**:
   toggle individually.
 - Tags on the super-relation (`name`, `colour`, etc.) are **not** inherited by
   children: each child needs its own tags. This is important: a child without a
-  `name` falls back to `Route <id>`, and a child without a `colour` falls back
-  to the per-map `default_trail_color`.
+  `name` falls back to `Route <id>`. A child without a `colour` falls back to
+  the per-map `default_trail_color`.
 
 Only one level of nesting is supported. A super-relation containing
 super-relations would need to be flattened in OSM (or every leaf listed
@@ -102,8 +102,8 @@ relations: [6364861]
 
 [Relation `6364861`](https://www.openstreetmap.org/relation/6364861) is the
 super-relation `DTE Energy Foundation Trail`. At fetch time it expands into
-seven child route relations, each with its own `name=`, `colour=`, member ways,
-and (where appropriate) IMBA / oneway tagging on those ways:
+seven child route relations. Each child has its own `name=`, `colour=`, member
+ways, and (where appropriate) IMBA / oneway tagging on those ways:
 
 | Child relation | Name |
 |---|---|
@@ -117,13 +117,13 @@ and (where appropriate) IMBA / oneway tagging on those ways:
 
 Each of those is a `type=route` relation in OSM, with the super-relation as its
 parent. Tagging-wise the super-relation carries the umbrella identity
-(`name=DTE Energy Foundation Trail`, plus the area's tagging), and the children
+(`name=DTE Energy Foundation Trail`, plus the area's tagging). The children
 carry the per-loop colors and names that the rider sees when they highlight a
 route in the finder.
 
 When you set up a new multi-loop trail system, follow the same shape: one
 super-relation per system, each loop as its own child relation with its own
-color and name, and ways tagged at the way level.
+color and name. Tag ways at the way level.
 
 ## Trail-segment (way) tags
 
@@ -134,7 +134,7 @@ than on the relation itself.
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, (under `color_by: trail`) the trail's line color, and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
+| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (under `color_by: trail`), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
 
 The IMBA-rating scale, condensed:
 
@@ -153,7 +153,7 @@ visible, just unflagged).
 
 The rider-facing **Difficulty** toggle in Options surfaces automatically
 whenever at least one way in the map carries an `mtb:scale:imba` value. Maps
-with no IMBA tagging anywhere don't show the toggle at all: the build pipeline
+with no IMBA tagging anywhere don't show the toggle at all. The build pipeline
 scans `trails.geojson` and skips the control when there's nothing to display.
 
 ### Direction (one-way trails)
@@ -161,7 +161,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 | Tag | Value | What this renderer does with it |
 |---|---|---|
 | [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup, and drives the share/finder direction-aware behavior. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
-| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa), the same standard OSM convention used everywhere. |
+| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa). This is the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
 
@@ -170,13 +170,13 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 | [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | string | Way-level trail name ("Pipe Dreams," "Old Camp Ridge"). Surfaced in the search/finder under "Trails" and in tap popups. When a trail name is the same as the parent route's name, the renderer dedupes; when they differ, both are shown. |
 
 A trail system where each named singletrack is a separate way (or set of
-contiguous ways) with a `name=` tag gives the richest experience: riders can
+contiguous ways) with a `name=` tag gives the richest experience. Riders can
 search for individual trails by name. If only the parent route has a name and
 the member ways are unnamed, the search still works at route granularity.
 
 ### Highway type, surface, and access
 
-The renderer doesn't gate on these but they're standard OSM tags worth setting
+The renderer doesn't gate on these. They're standard OSM tags worth setting
 correctly so the data is useful elsewhere:
 
 - [`highway=path`](https://wiki.openstreetmap.org/wiki/Tag:highway%3Dpath)
@@ -195,9 +195,9 @@ correctly so the data is useful elsewhere:
 ## POIs (points of interest)
 
 The framework fetches a small set of POI categories via an Overpass query over
-the **bounding box of the route relations**, independent of the relations'
-member lists. They render as markers on the map when the corresponding `show_*`
-config gate is on.
+the **bounding box of the route relations**. The query is independent of the
+relations' member lists. They render as markers on the map when the
+corresponding `show_*` config gate is on.
 
 | OSM tagging | Category | What this renderer does with it |
 |---|---|---|
@@ -207,9 +207,9 @@ config gate is on.
 | [`amenity=toilets`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets) | toilets | Renders the toilet marker. `name`, [`access`](https://wiki.openstreetmap.org/wiki/Key:access), [`fee`](https://wiki.openstreetmap.org/wiki/Key:fee), and [`opening_hours`](https://wiki.openstreetmap.org/wiki/Key:opening_hours) show in the popup when present. |
 | [`amenity=drinking_water`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water) | drinking water | Renders the water marker. `name` and `seasonal` show in the popup when present. |
 
-Parking and trailheads aren't fetched from OSM by default: the framework
+Parking and trailheads aren't fetched from OSM by default. The framework
 expects them to be supplied per-map in the YAML (`trailheads:` / `parking:`
-blocks) because curators usually have specific points they want to surface. If
+blocks). Curators usually have specific points they want to surface. If
 they exist as
 [`amenity=parking`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dparking)
 in OSM, you can still reference them by their lat/lon in the YAML.

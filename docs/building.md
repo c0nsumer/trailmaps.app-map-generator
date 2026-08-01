@@ -2,7 +2,7 @@
 
 How the build pipeline works, the CLI flags it accepts, the caching
 behavior you can rely on, and the tools that wrap it for everyday
-use. Everything in this document runs on your local machine; for
+use. Everything in this document runs on your local machine. For
 hosting the output, see [`deployment.md`](deployment.md).
 
 ## Contents
@@ -40,8 +40,8 @@ hosting the output, see [`deployment.md`](deployment.md).
     warning. Everything else works normally.
 - Optional, contributors only: Node.js for the template lint (see
   [Template lint](#template-lint-contributors-only)). **Not needed to
-  build maps** - the `package.json` at the repo root is dev tooling,
-  not a build dependency; there is no JS build step.
+  build maps.** The `package.json` at the repo root is dev tooling,
+  not a build dependency. There is no JS build step.
 
 ## Building a map
 
@@ -77,31 +77,31 @@ python scripts/build.py configs/example/example.yaml --no-basemap     # Skip bas
 python scripts/build.py configs/example/example.yaml --dry-run        # Validate + print the plan, write nothing
 ```
 
-Remote data never updates on its own: cached responses are used
-regardless of age, so an unflagged rebuild is fully offline and
-reproducible. Picking up OSM edits is always an explicit act via the
-`--refresh` flags. (Config edits still trigger the relevant re-fetch
-automatically: changed relation IDs re-fetch trails, a changed bbox
-re-extracts tiles.)
+Remote data never updates on its own. The build uses cached
+responses regardless of age, so an unflagged rebuild is fully
+offline and reproducible. Picking up OSM edits always takes an
+explicit `--refresh` flag. Config edits still trigger the relevant
+re-fetch automatically: changed relation IDs re-fetch trails, a
+changed bbox re-extracts tiles.
 
 - `--refresh` re-fetches all of this map's remote data: trails and
-  POIs from Overpass (bypassing its cached responses; other maps'
-  shared-cache entries are untouched), plus basemap and terrain
-  tiles.
+  POIs from Overpass, plus basemap and terrain tiles. It bypasses
+  the cached Overpass responses. Other maps' shared-cache entries
+  are untouched.
 - `--refresh-trails` re-fetches trail data from Overpass. Useful when
-  you want to refresh trail geometry or pick up an OSM edit. Not
-  required for YAML-only changes: per-route style overrides
+  you want to refresh trail geometry or pick up an OSM edit.
+  YAML-only changes never need it: per-route style overrides
   (`dashed_relations`, `relation_colors`, `winter_relations`,
   `summer_relations`, `custom_routes`, `event_mode.routes`,
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
 - `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
-  drinking water, attractions) from Overpass. Not required for
-  YAML-only changes: `parking:`, `trailheads:`, `event_mode.pois`,
+  drinking water, attractions) from Overpass. YAML-only changes
+  never need it: `parking:`, `trailheads:`, `event_mode.pois`,
   and the related color overrides flow through `fetch_pois.py` on
   every build automatically.
 - `--force` and `--trails` are deprecated spellings of `--refresh`
-  and `--refresh-trails`; they still work but print a note.
+  and `--refresh-trails`. They still work but print a note.
 - `--no-terrain` and `--no-basemap` skip the corresponding tile
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.
@@ -113,22 +113,22 @@ re-extracts tiles.)
   defaults. The package form (`python -m map_generator build …`) forwards
   both unchanged.
 - `--no-minify` and `--no-precompress` opt out of the default-on
-  minification and `.gz`/`.zst` precompression for fast local iteration;
-  leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
+  minification and `.gz`/`.zst` precompression for fast local iteration.
+  Leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
 - `--quiet` suppresses step and progress output, leaving only notes,
   warnings, and errors.
 
 The basemap extraction automatically detects the latest available
 [Protomaps planet build](https://maps.protomaps.com/builds/), so
-there's no URL to update by hand. You can override this by setting
-the `PROTOMAPS_PLANET_URL` environment variable.
+there's no URL to update by hand. To override this, set the
+`PROTOMAPS_PLANET_URL` environment variable.
 
 ### Reviewing what an OSM refresh changed
 
-Any build that re-fetches trail data (an explicit `--refresh` /
-`--refresh-trails`, or an automatic re-fetch because the config's relation
-IDs or bbox changed) compares the new data against the previous snapshot and
-prints a summary:
+A build re-fetches trail data on an explicit `--refresh` /
+`--refresh-trails`, or automatically when the config's relation IDs or
+bbox changed. Any such build compares the new data against the previous
+snapshot and prints a summary:
 
 ```
 OSM data diff vs previous snapshot
@@ -139,12 +139,13 @@ OSM data diff vs previous snapshot
       ~ trail Easy Option (old name) → Easier Option (3 ways)
 ```
 
-The full report is written to
-`cache/osm_diff/<slug>/last-refresh.md` (overwritten each refresh), listing
-routes added, removed, renamed, recolored, or reseasoned; trails added,
-removed, or renamed; per-way `mtb:scale:imba` and `oneway` changes with
-`openstreetmap.org/way/<id>` links; and per-trail length changes. The
-previous snapshot itself is kept beside it as `trails.prev.geojson`.
+The build writes the full report to
+`cache/osm_diff/<slug>/last-refresh.md`, overwriting it each refresh.
+The report lists routes added, removed, renamed, recolored, or
+reseasoned; trails added, removed, or renamed; per-way `mtb:scale:imba`
+and `oneway` changes with `openstreetmap.org/way/<id>` links; and
+per-trail length changes. The previous snapshot itself is kept beside
+it as `trails.prev.geojson`.
 
 Both live under the cache directory, never under `build/<slug>/`, so there is
 no chance of an internal file reaching a deploy.
@@ -154,10 +155,11 @@ Two things the diff deliberately does not do:
 - **It never diffs merged features.** `merge_consecutive_ways` fuses
   consecutive ways sharing a `(relation membership, name, mtb:scale:imba,
   resolved oneway)` signature, so a way that merely gains a rating moves
-  between features. The diff keys on OSM way IDs, which survive the merge, so
-  a one-tag edit reports as one tag change rather than wholesale churn.
+  between features. The diff keys on OSM way IDs, which survive the
+  merge. A one-tag edit therefore reports as one tag change rather than
+  wholesale churn.
 - **It never compares vertices.** Contributors nudge geometry constantly.
-  Length is the only geometry signal, and per-trail changes under 20 m are
+  Length is the only geometry signal. Per-trail changes under 20 m are
   treated as noise, so real extensions and truncations aren't buried.
 
 Nothing here needs a flag, and nothing changes when no re-fetch happens.
@@ -165,8 +167,8 @@ A first build has no previous snapshot and reports nothing.
 
 ### OSM data notes
 
-Every build also audits the OSM data for genuine gaps, writing
-`cache/osm_diff/<slug>/data-notes.md` and printing only when it finds
+Every build also audits the OSM data for genuine gaps and writes
+`cache/osm_diff/<slug>/data-notes.md`. It prints only when it finds
 something, so an unremarkable build stays quiet:
 
 ```
@@ -178,14 +180,15 @@ OSM data notes
 
 This is **not** a "make the render look better" checklist.
 [Mapping for this framework](osm-mapping.md) is explicit that adding tags to
-manipulate a renderer degrades the dataset for every other consumer, so every
-check has to stand on its own as a data problem. What that rules out:
+manipulate a renderer degrades the dataset for every other consumer.
+Every check therefore has to stand on its own as a data problem. What
+that rules out:
 
 - **Unnamed ways are never flagged.** Connectors and spurs are legitimately
   nameless, and "name it so a label appears" is the anti-pattern itself.
 - **Missing difficulty ratings are only reported on maps with *partial*
   coverage.** If nothing on the map is rated, nobody has tagged difficulty
-  there and listing every named trail would be asking for tags purely so this
+  there. Listing every named trail would be asking for tags purely so this
   renderer has something to draw. (The Difficulty control auto-hides on such
   maps anyway.) An out-of-range value like `mtb:scale:imba=7` is always
   reported, because that's wrong on its own terms.
@@ -200,9 +203,9 @@ check has to stand on its own as a data problem. What that rules out:
 
 The most valuable check is **possible unconnected ways**: two of a route's ways
 ending within 10 m of each other without sharing a node, so they look joined
-but aren't. That's what makes a loop fail to close for elevation, and what
-breaks routing for every other consumer of the data. Each finding links to the
-spot on openstreetmap.org. Ordinary branch junctions share a node exactly and
+but aren't. That's what makes a loop fail to close for elevation. It also
+breaks routing for every other consumer of the data. Each finding links to
+the spot on openstreetmap.org. Ordinary branch junctions share a node exactly and
 are excluded, so the check stays quiet on healthy data.
 
 The audit reads the pre-enrichment snapshot, so custom routes (not OSM's to
@@ -242,14 +245,14 @@ The server honors Range requests properly so PMTiles work end-to-end.
 ## Convenience wrapper: build_and_deploy.sh
 
 `tools/build_and_deploy.sh` is a convenience wrapper for the common
-SSH/rsync deploy workflow: it validates every config first, then
-builds via `scripts/build.py`, then `rsync`s each map to a remote
+SSH/rsync deploy workflow. It validates every config first. It then
+builds via `scripts/build.py` and `rsync`s each map to a remote
 host. It is one of several ways to deploy. If you deploy via
 a different mechanism (S3, Netlify, GitHub Pages, manual upload),
 run `python scripts/build.py <config>` directly and ship the
 resulting `build/<slug>/` tree. The output is production-quality by
-default (minified `app.js` / `style.css`, content-hashed service
-worker, trimmed font set), with no flag needed. See
+default, with no flag needed: minified `app.js` / `style.css`, a
+content-hashed service worker, and a trimmed font set. See
 [`deployment.md`](deployment.md) for recipes targeting other
 static hosts.
 
@@ -273,8 +276,9 @@ patterns:
 ./tools/build_and_deploy.sh example -- --no-basemap --no-terrain
 ```
 
-The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
-environment variable. Set it in your shell rc once:
+The script reads the deploy destination from the
+`TRAILMAPS_DEPLOY_DEST` environment variable. Set it in your shell rc
+once:
 
 ```bash
 # in ~/.zshrc or ~/.bashrc
@@ -309,10 +313,10 @@ than on the build output anyway.
 ### Template lint (contributors only)
 
 The runtime templates (`templates/app.js`, `templates/sw.js`) are
-plain JavaScript with no build step: nothing ever compiles them, so a
-reference to an identifier that doesn't exist (say, a refactor
-removed a helper another code path still calls) parses fine, ships
-silently, and throws at runtime - where one exception can take out
+plain JavaScript with no build step, so nothing ever compiles them.
+A reference to an identifier that doesn't exist parses fine, ships
+silently, and throws at runtime. (Say, a refactor removed a helper
+another code path still calls.) One runtime exception can take out
 the whole app boot. An ESLint pass with only the `no-undef` rule
 enabled catches that class of mistake statically.
 
@@ -329,10 +333,10 @@ corepack pnpm lint       # or: npm run lint
 ```
 
 Once installed, it also runs automatically as part of
-`python -m pytest scripts/tests/` (via `test_eslint.py`); on machines
+`python -m pytest scripts/tests/` (via `test_eslint.py`). On machines
 without Node.js or without the install step, that test skips cleanly.
-The rule set is deliberately minimal - `no-undef` only, configured in
-`eslint.config.mjs` - so it never argues about style. `CONFIG` and
+The rule set is deliberately minimal (`no-undef` only, configured in
+`eslint.config.mjs`), so it never argues about style. `CONFIG` and
 `SW_CONFIG` are declared there as known globals because the build
 injects them into the templates at build time.
 
@@ -373,7 +377,7 @@ by hand: keys reordered, comments edited, sections renamed, drift
 from the template's structure. `tools/clean_config.py` produces a
 sibling `<input>-cleaned.yaml` that adopts the canonical template's
 structure (section dividers, key ordering, default-value
-documentation comments) while preserving every value the production
+documentation comments). It preserves every value the production
 file explicitly set.
 
 ```bash
@@ -417,10 +421,10 @@ ls -la cache/
 To update the cached OSM data (e.g. after trail edits in
 OpenStreetMap):
 
-- **`--refresh`** re-fetches all of this map's remote data: trail
-  and POI queries bypass their cached Overpass responses (other
-  maps' shared-cache entries are untouched), and basemap and
-  terrain tiles are re-extracted.
+- **`--refresh`** re-fetches all of this map's remote data. Trail
+  and POI queries bypass their cached Overpass responses. Other
+  maps' shared-cache entries are untouched. The build also
+  re-extracts basemap and terrain tiles.
 - **`--refresh-trails`** re-fetches just the trail data from
   Overpass.
 - **`--refresh-pois`** re-fetches just the OSM POI data from
@@ -447,8 +451,8 @@ from a local `.osm` XML file. This is useful for:
 - Offline map generation without internet access.
 - Testing edits before uploading to OpenStreetMap.
 
-Add `osm_file` to your config. The path is resolved relative to the
-config's directory, so a bare filename like `osm.osm` picks up the
+Add `osm_file` to your config. The path resolves relative to the
+config's directory. A bare filename like `osm.osm` picks up the
 file sitting next to the YAML:
 
 ```yaml
@@ -459,8 +463,8 @@ relations: [12345678]          # still required
 
 The `.osm` file must contain every entry in `relations`, all of their
 child relations (when any entry is a super-relation), every member
-way, and all referenced nodes with coordinates (this is the default
-when saving from JOSM).
+way, and all referenced nodes with coordinates. This is the default
+when saving from JOSM.
 
 All other config options (`clipped_relations`, `winter_relations`,
 `summer_relations`, `emergency_access_relations`, `dashed_relations`,
@@ -493,7 +497,7 @@ follows:
    coordinates.
 5. `out meta`: outputs full XML with coordinates and metadata.
 
-The resulting file can be opened and edited in JOSM, then used
+You can open and edit the resulting file in JOSM, then use it
 directly with the build pipeline.
 
 You can preview what the parser finds without building:
@@ -504,10 +508,10 @@ python scripts/osm_parser.py configs/mytrails/osm.osm 12345678
 
 ## Vendor bundling
 
-All JavaScript and CSS dependencies (MapLibre GL JS, PMTiles,
-Protomaps basemaps) are downloaded from their CDNs at build time and
-bundled into `vendor/` in the output directory. The generated map has
-**no runtime CDN dependency**; everything is served from your own
+The build downloads all JavaScript and CSS dependencies (MapLibre GL
+JS, PMTiles, Protomaps basemaps) from their CDNs and bundles them
+into `vendor/` in the output directory. The generated map has
+**no runtime CDN dependency**. Everything is served from your own
 server. This ensures the map continues to work even if upstream CDNs
 go offline or change.
 
@@ -517,14 +521,14 @@ Vendor libraries are bundled regardless of the `pwa` setting.
 
 The Protomaps basemap assets include fonts covering every world
 script (Latin, CJK, Devanagari, etc.) across 256 Unicode range files
-per font face: roughly 20 MB total. Most maps only need a small
-subset of these.
+per font face. That is roughly 20 MB total. Most maps only need a
+small subset of these.
 
-The build pipeline automatically trims fonts by scanning the basemap
+The build pipeline trims fonts automatically. It scans the basemap
 tiles, trail data, and POI data for every text character that
-actually appears, then copying only the PBF glyph ranges containing
+actually appears. It then copies only the PBF glyph ranges containing
 those characters. Script-specific font faces (e.g. Devanagari) are
-only included when the map data contains characters from that
+included only when the map data contains characters from that
 script.
 
 This is fully data-driven: a US trail map gets only Latin ranges,

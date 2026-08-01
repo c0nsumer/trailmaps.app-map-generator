@@ -17,13 +17,13 @@ worker over the long term.
 ## Quick deploy: any static file server
 
 Copy the `build/<slug>/` directory to any static file server. The server must
-support HTTP Range requests for PMTiles (Caddy, nginx, Apache all do). No
+support HTTP Range requests for PMTiles. Caddy, nginx, and Apache all do. No
 special CORS or rewrite rules are needed; a standard `file_server` config is
 sufficient.
 
-`scripts/build.py` produces production-quality output by default
-(minified `app.js` / `style.css`, content-hashed service worker,
-trimmed font set), with no flag needed:
+`scripts/build.py` produces production-quality output by default; no flag is
+needed. The output includes minified `app.js` / `style.css`, a content-hashed
+service worker, and a trimmed font set:
 
 ```bash
 python scripts/build.py configs/<slug>/<slug>.yaml
@@ -37,7 +37,7 @@ validate-build-rsync in one shot for the **SSH/rsync** case:
 ./tools/build_and_deploy.sh <slug>
 ```
 
-The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
+The wrapper reads the deploy destination from the `TRAILMAPS_DEPLOY_DEST`
 environment variable. Set it in your shell rc:
 
 ```bash
@@ -51,10 +51,10 @@ rather than silently shipping to a wrong (or empty) target.
 
 ## Deploying by other means
 
-The wrapper above assumes SSH/rsync. For any other static-host
-deploy mechanism, run `python scripts/build.py <config>` and ship
-the resulting `build/<slug>/` tree with whichever tool fits your
-host. The output is the same regardless of how you transport it.
+The wrapper above assumes SSH/rsync. For any other static-host deploy
+mechanism, run `python scripts/build.py <config>`. Then ship the resulting
+`build/<slug>/` tree with whichever tool fits your host. The output is the
+same regardless of how you transport it.
 
 ```bash
 # Build once (production-quality by default, no flag needed)
@@ -78,12 +78,11 @@ wrangler pages deploy build/<slug>
 # point your tool at build/<slug>/ as the source directory
 ```
 
-Every static host that serves HTTP Range requests properly will
-work (S3, Netlify, Cloudflare Pages, GitHub Pages, nginx, Apache,
-Caddy). The Caddy-specific config below is one example of headers
-you may want to set on whichever host you use; the same intent
-(cache JS/CSS forever, revalidate HTML, allow Range on PMTiles)
-translates to most server configs.
+Every static host that serves HTTP Range requests properly will work. That
+includes S3, Netlify, Cloudflare Pages, GitHub Pages, nginx, Apache, and
+Caddy. The Caddy-specific config below is one example of headers you may want
+to set on whichever host you use. The same intent translates to most server
+configs: cache JS/CSS forever, revalidate HTML, allow Range on PMTiles.
 
 ## Caddy configuration
 
@@ -130,22 +129,22 @@ mytrailmaps.com {
 }
 ```
 
-The same logical setup translates directly to nginx or Apache: the required
+The same logical setup translates directly to nginx or Apache. The required
 pieces are HTTPS, Range request support on `.pmtiles`, `Cache-Control: no-cache`
 on `index.html` and `sw.js`, and a sane TTL on everything else.
 
 ## Service worker update cadence
 
-Deploying a new build changes `CACHE_VERSION` (a hash of every output file), so
-any code, data, or asset change produces a new service worker. Riders pick it up
-two ways:
+Deploying a new build changes `CACHE_VERSION`, a hash of every output file. Any
+code, data, or asset change therefore produces a new service worker. Riders
+pick it up two ways:
 
-- **On a page load or refresh**, the browser re-fetches `sw.js`, and if it
-  differs, installs the new worker and shows an "Updated map available" toast
-  with a Reload button.
+- **On a page load or refresh**, the browser re-fetches `sw.js`. If it differs,
+  the browser installs the new worker and shows an "Updated map available"
+  toast with a Reload button.
 - **Without a refresh**, the browser runs its own update check about every 24
-  hours (standard service-worker behavior, outside the framework's control),
-  so a left-open tab generally sees the toast within a day of a deploy.
+  hours. That is standard service-worker behavior, outside the framework's
+  control. A left-open tab generally sees the toast within a day of a deploy.
 
 A rider who closes and re-opens the map gets the new build on the next launch.
 
@@ -158,10 +157,10 @@ vendor libraries.
 
 **How it works:**
 
-1. **Service worker.** A service worker (`sw.js`) is generated at the end of
-   each build with a precache list of every file in the output. On first visit,
-   all assets are cached. Subsequent visits and offline use are served entirely
-   from the cache.
+1. **Service worker.** Each build ends by generating a service worker (`sw.js`)
+   with a precache list of every file in the output. On first visit, all assets
+   are cached. Subsequent visits and offline use are served entirely from the
+   cache.
 
 2. **PMTiles offline.** The service worker handles HTTP Range requests for
    `.pmtiles` files by slicing from the cached full file. Map tiles work fully
@@ -191,9 +190,9 @@ The `pwa_install_prompt` config key controls install promotion:
 ## PMTiles and HTTP Range requests
 
 PMTiles relies on HTTP Range requests to read tile chunks instead of downloading
-the entire archive. This is critical for fast first-load performance: a typical
-trail map's basemap PMTiles is 10 to 30 MB, but only a few hundred KB of tile
-chunks are needed to render any given view.
+the entire archive. This is critical for fast first-load performance. A typical
+trail map's basemap PMTiles is 10 to 30 MB, but rendering any given view needs
+only a few hundred KB of tile chunks.
 
 Verify Range support manually before deploying a new server config:
 
@@ -202,14 +201,14 @@ curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles
 ```
 
 The response should include `206 Partial Content` and `Content-Range: bytes
-0-1000/<total>`. If you see `200 OK` with the full body, Range requests are not
-honored and every tile read will re-fetch the whole archive.
+0-1000/<total>`. If you see `200 OK` with the full body, the server does not
+honor Range requests. Every tile read will then re-fetch the whole archive.
 
-The runtime detects this on first cold load and prints
+The runtime detects this on first cold load. It prints
 `[mtb-map] HTTP Range requests not honored...` to the browser console (DevTools
 to Console) with diagnostic detail. After the service worker caches the full
-file, the warning stops firing (that's correct behavior, but every new visitor
-still pays the slow first-load cost).
+file, the warning stops firing. That is correct behavior, but every new visitor
+still pays the slow first-load cost.
 
 ## Open Graph and share previews
 

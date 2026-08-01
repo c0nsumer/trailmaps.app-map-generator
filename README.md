@@ -1,13 +1,13 @@
 # trailmaps.app Map Generator
 
 This framework generates static mountain bike trail maps from OpenStreetMap data
-and other open data sets. Each map is plain HTML, CSS, and JavaScript that can
+and other open data sets. Each map is plain HTML, CSS, and JavaScript. It can
 be self-hosted without a database, works offline, and can be installed as a PWA.
 
-Each map is described by a single YAML file, then the build pipeline fetches
+A single YAML file describes each map. From it, the build pipeline fetches
 trail data from OSM, extracts regional basemap and terrain tiles, bundles every
-dependency locally, and emits a complete static site you can deploy anywhere. No
-external tile services or API keys are needed at runtime.
+dependency locally, and emits a complete static site you can deploy anywhere.
+The map needs no external tile services or API keys at runtime.
 
 This is the framework that generates most of the maps at
 [trailmaps.app](https://trailmaps.app).
@@ -21,8 +21,8 @@ Oaks Map as of 2026-Jul-05*
 
 - Builds standalone static site under `build/<slug>/`, deployable to any HTTP
   server that supports Range requests (Caddy, nginx, Apache).
-- Optional: A fully installable Progressive Web App: the map is usable offline
-  after the first visit, including PMTiles range requests served from cache.
+- Optional: A fully installable Progressive Web App. After the first visit, the
+  map is usable offline, including PMTiles range requests served from cache.
 - Self-hosted basemap tiles (Protomaps), optional terrain hillshade
   (Mapterhorn), and optional custom raster basemaps.
 - On-map controls: Locate, Reset View, and Options buttons (top-right), plus
@@ -39,10 +39,11 @@ Oaks Map as of 2026-Jul-05*
   configurable POI layers; direction arrows on one-way ways; per-route dash
   patterns; per-trail IMBA difficulty symbols.
 - Compass heading indicator: on devices with a compass, the Locate dot grows
-  a small cone showing which way the rider is facing. Reads the device compass
-  (falling back to the direction field each GPS fix already carries), behind
-  its own iOS permission prompt (asked once, during the Locate tap); all
-  readings stay on the device and the app keeps no location history.
+  a small cone showing which way the rider is facing. The app reads the device
+  compass, falling back to the direction field each GPS fix already carries.
+  On iOS this sits behind its own permission prompt, asked once during the
+  Locate tap. All readings stay on the device and the app keeps no location
+  history.
 - Light and dark color schemes; per-map accent color (manual or auto-derived
   from the logo); per-map branding via a logo and icon, plus optional secondary
   event / sponsor logos stacked under the primary.
@@ -84,7 +85,7 @@ terrain, sprites). Subsequent rebuilds with cached data finish in under 30
 seconds. See [`docs/building.md`](docs/building.md) for the full pipeline, CLI
 flags, and caching behavior.
 
-The build can also be invoked as a package, which lets the caller redirect
+The build can also be invoked as a package. This lets the caller redirect
 output and cache to arbitrary paths without touching the config file:
 
 ```bash
@@ -94,17 +95,17 @@ python -m map_generator build configs/example/example.yaml \
 ```
 
 Both entry points are interchangeable; the package form just forwards flags
-to `scripts/build.py`. Omit `--output-dir` / `--cache-dir` and the legacy
-`build/<slug>/` and `cache/` layout under the repo root is used.
+to `scripts/build.py`. If you omit `--output-dir` / `--cache-dir`, the build
+uses the legacy `build/<slug>/` and `cache/` layout under the repo root.
 
 ## Repository layout
 
 The project runs from a checkout as above; it is not meant to be installed
-with `pip install .` (the `pyproject.toml` exists to declare the Python floor,
-not to package a distribution). Likewise, the `package.json` is optional dev
-tooling - an ESLint check for contributors editing the runtime templates -
-not a build dependency; you do not need Node.js or `npm install` to build
-maps (see [Template lint](docs/building.md#template-lint-contributors-only)).
+with `pip install .`. The `pyproject.toml` exists to declare the Python floor,
+not to package a distribution. Likewise, the `package.json` is optional dev
+tooling, not a build dependency: an ESLint check for contributors editing the
+runtime templates. You do not need Node.js or `npm install` to build maps
+(see [Template lint](docs/building.md#template-lint-contributors-only)).
 
 | Directory | What it is |
 |---|---|
@@ -130,9 +131,9 @@ tracked in this repo are:
 
 The `configs/*` glob is gitignored, with explicit exceptions only for
 those two folders. Any `configs/<slug>/` you create stays private to your
-checkout. Point the engine at a config anywhere on disk via the positional
-`config` argument plus `--output-dir` / `--cache-dir` to keep your data
-fully outside this repo.
+checkout. To keep your data fully outside this repo, point the engine at a
+config anywhere on disk via the positional `config` argument plus
+`--output-dir` / `--cache-dir`.
 
 The trailmaps.app maps that originally lived in this repo now live in a
 separate private orchestrator that drives this engine as a CLI tool.
@@ -141,20 +142,21 @@ separate private orchestrator that drives this engine as a CLI tool.
 
 1. Map your trails in OpenStreetMap as route relations under a relation or
    super-relation (or pick an existing one).
-2. Create `configs/<slug>/` (matching folder and slug is the convention the
+2. Create `configs/<slug>/`. A matching folder and slug is the convention the
    `build_and_deploy.sh` wrapper expects; the engine itself only requires the
-   slug to be `[a-z0-9_-]+`). Copy
+   slug to be `[a-z0-9_-]+`. Copy
    [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
    into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and a
-   geometry source. This is usually `relations:` (a non-empty list of OSM
-   relation IDs; each entry may be a leaf route relation or a super-relation);
-   a route-only or event map can use `custom_routes` / `event_mode.routes`
-   instead. Uncomment and adjust any other keys you want to customize.
+   geometry source. The geometry source is usually `relations:`, a non-empty
+   list of OSM relation IDs. Each entry may be a leaf route relation or a
+   super-relation. A route-only or event map can use `custom_routes` /
+   `event_mode.routes` instead. Uncomment and adjust any other keys you want
+   to customize.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the same
    `configs/<slug>/` folder and reference them by bare filename (e.g.
    `logo: logo.webp`, `icon: icon.png`). Either key alone is fine; the framework
-   uses one as a fallback for the other. The exception is SVG logos, which
-   can't be rasterized into icons, so set `icon:` to a PNG/WebP in that case.
+   uses one as a fallback for the other. The exception is SVG logos: they
+   can't be rasterized into icons, so in that case set `icon:` to a PNG/WebP.
 4. Run `python scripts/build.py configs/<slug>/<slug>.yaml` to generate the
    output.
 5. Deploy `build/<slug>/` to your server. See
@@ -163,7 +165,7 @@ separate private orchestrator that drives this engine as a CLI tool.
 
 The annotated reference at
 [`configs/reference/reference.yaml`](configs/reference/reference.yaml) explains
-every supported key in detail; the terse skeleton at
+every supported key in detail. The terse skeleton at
 [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
 is useful to copy to start a new map.
 
@@ -185,9 +187,9 @@ This framework is entirely client-side: there are no cookies, no analytics, no
 server-side tracking, and no third-party scripts. The map renders from your own
 static server, and all visitor interactions stay in the browser.
 
-The app uses `localStorage` to persist a small set of functional UI preferences across
-visits, each key prefixed with the map's slug (for example,
-`<slug>.mtb.colorScheme`):
+The app uses `localStorage` to persist a small set of functional UI
+preferences across visits. Each key is prefixed with the map's slug (for
+example, `<slug>.mtb.colorScheme`):
 
 - `mtb.seasonMode`: "summer" or "winter"
 - `mtb.emergencyOn`: boolean (Emergency overlay)
@@ -245,5 +247,5 @@ thoughtful open-source work (everyone else).
 
 This project is licensed under the [MIT License](LICENSE). The table above
 describes the licenses of its dependencies and data sources, not of this
-project itself; the only GPL item (potrace) is an optional external tool
-invoked at build time, never linked or redistributed.
+project itself. The only GPL item (potrace) is an optional external tool
+invoked at build time. It is never linked or redistributed.

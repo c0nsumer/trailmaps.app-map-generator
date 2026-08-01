@@ -5,9 +5,9 @@ Helper scripts for building and deploying trail maps.
 ## build_and_deploy.sh
 
 A convenience wrapper for the **SSH/rsync** deploy workflow.
-Builds and/or rsyncs one or more trail map configs. By default,
-processes all YAML configs in `configs/` (excluding the
-`configs/reference/` folder of templates).
+Builds and/or rsyncs one or more trail map configs. By default, it
+processes all YAML configs in `configs/`, skipping the
+`configs/reference/` folder of templates.
 
 This is *one* way to deploy, not the only one. The build pipeline
 itself (`scripts/build.py`) produces production-quality output by
@@ -17,16 +17,16 @@ directly and ship the resulting `build/<slug>/` tree with whichever
 tool fits your host. See [`docs/deployment.md#deploying-by-other-means`](../docs/deployment.md#deploying-by-other-means)
 for recipes.
 
-The deploy destination is read from the `TRAILMAPS_DEPLOY_DEST`
-environment variable. Set it in your shell rc (`~/.zshrc` /
-`~/.bashrc`):
+The script reads the deploy destination from the
+`TRAILMAPS_DEPLOY_DEST` environment variable. Set it in your shell
+rc (`~/.zshrc` / `~/.bashrc`):
 
 ```bash
 export TRAILMAPS_DEPLOY_DEST=user@host:/var/www/your-maps
 ```
 
-Override per-run with `--dest <ssh-path>`. The script errors out
-with a clear hint if neither is set.
+Override per-run with `--dest <ssh-path>`. If neither is set, the
+script exits with an error and a clear hint.
 
 ### Usage
 
@@ -67,9 +67,9 @@ with a clear hint if neither is set.
 
 ### Notes
 
-- The YAML filename is used to locate the config, but the `slug` field inside the config determines the build output directory and deploy path. These do not need to match.
-- When no configs are specified, every per-map config under `configs/<slug>/<slug>.yaml` is processed; the `configs/reference/` template folder is skipped.
-- A summary is printed at the end showing which maps succeeded and which failed.
+- The YAML filename locates the config, but the `slug` field inside it determines the build output directory and deploy path. These do not need to match.
+- When no configs are specified, the script processes every per-map config under `configs/<slug>/<slug>.yaml` and skips the `configs/reference/` template folder.
+- At the end, the script prints a summary showing which maps succeeded and which failed.
 
 ## clean_config.py
 
@@ -79,15 +79,15 @@ accumulate cruft over time as they're hand-maintained: keys reordered,
 comments edited, sections renamed, drift from the template's structure.
 This tool produces a sibling `<input>-cleaned.yaml` that adopts the
 template's structure (section dividers, key ordering, default-value
-documentation comments) while preserving every value the production
-file explicitly set - and every curator comment along with it.
+documentation comments). It preserves every value the production
+file explicitly set, and every curator comment along with it.
 
-The original file is never modified. Review the cleaned output and
-swap it in manually when satisfied. One behavior worth knowing
-before swapping: live template keys the production file doesn't set
-are commented out in the output rather than inherited (so a
-custom-route-only map that omits `relations:` never picks up the
-template's placeholder ID).
+The tool never modifies the original file. Review the cleaned output
+and swap it in manually when satisfied. One behavior worth knowing
+before swapping: if the production file doesn't set a live template
+key, the output comments that key out rather than inheriting it. A
+custom-route-only map that omits `relations:` therefore never picks
+up the template's placeholder ID.
 
 ### Usage
 
@@ -105,54 +105,54 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
 
 ### Behavior
 
-- Set keys are spliced, not re-serialized: the production file's own
-  lines for each key it sets are copied verbatim into the template's
-  position for that key (key lines matched against
-  `validate_config.KNOWN_KEYS`). Inline comments (`- 20502171 #
-  Addison Connector`), comment lines inside a block, and the
-  curator's own formatting all survive by construction.
+- Set keys are spliced, not re-serialized: for each key the
+  production file sets, the tool copies that file's own lines
+  verbatim into the template's position for that key. Key lines are
+  matched against `validate_config.KNOWN_KEYS`. Inline comments
+  (`- 20502171 # Addison Connector`), comment lines inside a block,
+  and the curator's own formatting all survive by construction.
 - Full-line comments sitting directly above a set key travel with it.
 - A commented-out known-key block (a stashed alternative like
   `# forced_labels: routes` or a whole `#trailheads:` block) replaces
-  the template's generic `# key: default` line for that key, so saved
-  alternatives keep their place instead of being flattened back to
-  the default.
+  the template's generic `# key: default` line for that key. This
+  way, saved alternatives keep their place instead of being flattened
+  back to the default.
 - Other template lines (section dividers, prose comments, commented
   defaults for unset keys, blank lines) pass through verbatim, so
   every supported option stays visible at its default.
 - Production keys with no corresponding template line are appended at
-  the end under a `# --- Keys not in template ---` header. Catches drift
-  in either direction (key the template forgot, or key the curator
-  added that the template doesn't model, usually a sign the
-  template needs updating too).
+  the end under a `# --- Keys not in template ---` header. This
+  catches drift in either direction: a key the template forgot, or a
+  key the curator added that the template doesn't model, usually a
+  sign the template needs updating too.
 - Comments the placement heuristics can't attach anywhere (e.g. a
   commented-out chunk trailing below a set block) are appended under a
   `# --- Unplaced comments carried from the previous file
-  (review/relocate) ---` header - misplaced but kept, never lost.
+  (review/relocate) ---` header: misplaced but kept, never lost.
   Relocate them by hand while reviewing the output.
 
 ### Verification
 
 After writing, the tool re-parses both files and compares: if the
 cleaned output would parse to different data than the original, it
-deletes the output and exits non-zero. The gate is always on - the
+deletes the output and exits non-zero. The gate is always on: the
 tool cannot hand back a config that behaves differently. The output
-should also pass `validate_config.py` and build via `build.py`; any
-gate failure means the cleaner mishandled something, file an issue.
+should also pass `validate_config.py` and build via `build.py`. Any
+gate failure means the cleaner mishandled something; file an issue.
 
 ## list_relations.py
 
 Diagnostic that lists every OpenStreetMap relation (route) a map is
 built from, one per line as `<id>\t<name>`. Super-relations are
-expanded to their child routes - the leaves that actually produce
-geometry - exactly as the build does, and clipped relations are marked
+expanded to their child routes (the leaves that actually produce
+geometry), exactly as the build does. Clipped relations are marked
 `[clipped]`.
 
 Operates purely from the local cache by default: it reconstructs the
 same Overpass query `fetch_trails` runs and reads the matching
-`cache/overpass_<hash>.json`. It never touches the network unless
-`--fetch` is given. Maps that read a local `osm_file:` are handled by
-parsing that file, no cache needed.
+`cache/overpass_<hash>.json`. Unless `--fetch` is given, it never
+touches the network. For maps that read a local `osm_file:`, the tool
+parses that file directly; no cache is needed.
 
 ### Usage
 

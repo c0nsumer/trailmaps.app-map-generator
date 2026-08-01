@@ -5,10 +5,10 @@ Contributions are welcome with that context in mind:
 
 - **Issues** are the best way to help. Bug reports with a config that
   reproduces the problem, or pointers to incorrect docs, are genuinely useful.
-- **Pull requests** may sit for a while, and may be declined if they don't fit
-  the project's direction (small, self-hosted, no runtime dependencies, no
-  tracking). Opening an issue to discuss first is a good idea for anything
-  bigger than a typo fix.
+- **Pull requests** may sit for a while. If a change doesn't fit the project's
+  direction (small, self-hosted, no runtime dependencies, no tracking), it may
+  be declined. For anything bigger than a typo fix, opening an issue to
+  discuss first is a good idea.
 
 ## Before submitting a change
 
@@ -26,7 +26,7 @@ Both must pass. The test suite runs entirely offline against the bundled
 
 - American English in docs, comments, and UI text. Literal OSM tags keep their
   British spelling (`colour=` stays `colour=`).
-- The orchestrator CLI contract must not break: `scripts/build.py <config>
-  --dry-run --output-dir [--refresh]` is driven by external tooling.
+- The orchestrator CLI contract must not break: external tooling drives
+  `scripts/build.py <config> --dry-run --output-dir [--refresh]`.
 - Comments in this codebase carry design rationale, not narration. Keep that
   standard: explain why, not what.

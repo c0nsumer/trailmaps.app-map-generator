@@ -15,37 +15,38 @@ they may not match what your GPS or another app says.
 
 ## Source: USGS 3DEP
 
-Elevation samples are fetched at build time from the **U.S. Geological Survey 3D
-Elevation Program (3DEP)**, specifically the public
+The build fetches elevation samples from the **U.S. Geological Survey 3D
+Elevation Program (3DEP)**. Specifically, it queries the public
 `3DEPElevation/ImageServer/getSamples` ArcGIS endpoint at
 `elevation.nationalmap.gov`. 3DEP is a multi-resolution DEM mosaic that serves
 whichever underlying raster is highest-resolution at each query point:
 
 - **1m lidar-derived bare-earth**: covers most of the US. Bare-earth means
-  vegetation has been removed by lidar processing, so the elevations reflect
-  the ground rather than the canopy.
+  lidar processing has removed vegetation, so the elevations reflect the
+  ground rather than the canopy.
 - **10m (1/3 arc-second)**: fallback in areas without lidar.
 - **30m (1 arc-second)**: final fallback. Rare in the contiguous US.
 
-The endpoint is free, requires no API key, has no documented daily quota, and
-supports up to 2000 sample points per request. The only practical failure mode
-is occasional HTTP 502 under service load, handled by automatic retry.
+The endpoint is free and requires no API key. It has no documented daily
+quota. It supports up to 2000 sample points per request. The only practical
+failure mode is occasional HTTP 502 under service load. Automatic retry
+handles it.
 
 **The framework is US-only for elevation.** A point outside US 3DEP coverage
-returns `NoData`, and that route's `elevation_*_m` fields are omitted from
-`trails.geojson`. The runtime renders such routes without elevation stats.
+returns `NoData`. In that case the route's `elevation_*_m` fields are omitted
+from `trails.geojson`. The runtime renders such routes without elevation stats.
 
 ## How it's computed
 
-For each route, the framework samples 3DEP elevation about every 25 m along the
-route, smooths the profile to remove lidar noise, discards sub-meter changes as
-noise, then sums the rises as `gain` and the drops as `loss` (rounded to whole
-meters). The sampling spacing and the noise threshold are tuned together so that
-anything a rider would call "climbing" is counted while sensor noise and
-rolling-terrain jitter are not.
+For each route, the framework samples 3DEP elevation about every 25 m along
+the route. It smooths the profile to remove lidar noise and discards sub-meter
+changes as noise. It then sums the rises as `gain` and the drops as `loss`.
+Both totals are rounded to whole meters. The sampling spacing and the noise
+threshold are tuned together. Anything a rider would call "climbing" is
+counted; sensor noise and rolling-terrain jitter are not.
 
-The result is stored per route and shown in the rider's chosen units (feet for
-`distance_units: mi`, meters for `distance_units: km`).
+The result is stored per route and shown in the rider's chosen units. Riders
+see feet for `distance_units: mi` and meters for `distance_units: km`.
 
 ## Why both gain and loss
 
@@ -71,10 +72,11 @@ the values may not match what you'd get from a phone or GPS device:
    USGS 3DEP lidar in Michigan was acquired 2015 to 2020 (the MiSAIL statewide
    acquisition). Berms, rollers, tabletops, jump piles, and similar earth-moving
    that existed at acquisition time are typically retained in the bare-earth
-   DEM: the classification algorithm treats compacted-dirt features as "ground"
-   and only filters above-ground returns (trees, buildings, vehicles). So Roller
-   Coaster style trails really do read with extra vertical from their rollers,
-   and the difference vs. the natural-terrain-only number can be substantial.
+   DEM. The classification algorithm treats compacted-dirt features as "ground".
+   It only filters above-ground returns such as trees, buildings, and vehicles.
+   So Roller Coaster style trails really do read with extra vertical from their
+   rollers. The difference vs. the natural-terrain-only number can be
+   substantial.
 
 2. **Trail features built after the lidar acquisition are missing.** A
    new flow trail cut into the woods in 2024 won't show in 2017 lidar; the DEM
@@ -88,16 +90,17 @@ the values may not match what you'd get from a phone or GPS device:
    surface at finger and tire scale.
 
 4. **Aliasing on dense small features.** Glacial Hills' kettle moraines are
-   mostly 5 to 15m features. At 25m sampling we capture them well on average,
-   but in heavily-corrugated terrain, small differences in where samples land
-   can produce visible gain / loss asymmetry on routes that are actually loops.
+   mostly 5 to 15m features. At 25m sampling we capture them well on average.
+   In heavily-corrugated terrain, though, small differences in where samples
+   land can produce visible gain / loss asymmetry on routes that are actually
+   loops.
    This isn't a bug; it's an unavoidable consequence of any finite-rate sampling
    on small features. Loop-asymmetry alone isn't a reliable signal of
    one-way-vs-loop nature.
 
-5. **OSM way geometry.** The DEM gets sampled at the OSM way's centerline. If
-   the way is digitized loosely (typical: 5 to 15m horizontal accuracy for OSM
-   trail mapping), the sampled elevations are slightly off-trail. On steep
+5. **OSM way geometry.** The DEM gets sampled at the OSM way's centerline.
+   OSM trail mapping typically has 5 to 15m horizontal accuracy. If the way is
+   digitized loosely, the sampled elevations are slightly off-trail. On steep
    cross-slope sections this can introduce errors of several meters per sample.
    Better OSM geometry produces more accurate elevation.
 
@@ -118,12 +121,12 @@ the values may not match what you'd get from a phone or GPS device:
 ## Historical note: the source-comparison tool
 
 The elevation source was chosen with a since-removed diagnostic,
-`scripts/compare_elevation_sources.py`, which fetched the same routes from
+`scripts/compare_elevation_sources.py`. It fetched the same routes from
 multiple sources and printed a side-by-side comparison. It was deleted in
 July 2026 after drifting out of sync with the production pipeline in ways
-that would have skewed any rerun (it read post-subway-expansion geometry
+that would have skewed any rerun. It read post-subway-expansion geometry
 without filtering stub features, never chained segments, and used the
-pre-hysteresis gain/loss algorithm). If a future alternative source becomes
+pre-hysteresis gain/loss algorithm. If a future alternative source becomes
 interesting, resurrect it from git history and re-align it with
-`compute_route_stats.py` first - or better, prototype the comparison against
+`compute_route_stats.py` first. Better: prototype the comparison against
 `compute_route_stats`' own helpers so the numbers are the shipped numbers.

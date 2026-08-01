@@ -21,8 +21,9 @@ issues](#known-issues).
 
 One of the relation IDs in `relations`, `clipped_relations`,
 `winter_relations`, `summer_relations`, or
-`emergency_access_relations` refers to an OSM relation that no longer
-exists, has been redacted, or is currently unreachable from Overpass.
+`emergency_access_relations` refers to a problem OSM relation. The
+relation no longer exists, has been redacted, or is currently
+unreachable from Overpass.
 
 - **Verify the relation still exists**: open
   `https://www.openstreetmap.org/relation/<id>` in a browser. If you
@@ -50,12 +51,13 @@ non-exclusive Summer / Winter / Emergency buckets (see
   `emergency_access_relations` in your YAML. A route in the wrong
   list won't render under the season the rider expects.
 - For routes you want visible in both seasons, list them in
-  `summer_relations` and tag them as `seasonal=winter` in OSM (or
-  just put them in `summer_relations` to make them year-round).
+  `summer_relations` and tag them as `seasonal=winter` in OSM.
+  Alternatively, just put them in `summer_relations` to make them
+  year-round.
 
 ## Bbox or pan_padding changes don't update the basemap
 
-The basemap and terrain PMTiles are cached by output path, and bbox
+The basemap and terrain PMTiles are cached by output path. Bbox
 changes normally invalidate them automatically. If a stale tile set
 persists:
 
@@ -78,15 +80,15 @@ service worker isn't catching it. Two likely causes:
   detects this on first cold load and prints
   `[mtb-map] HTTP Range requests not honored...` to the browser
   console (DevTools > Console) with diagnostic detail. After the
-  service worker caches the full file, the warning stops firing
-  (that's correct behavior, but every new visitor still pays the
-  slow first-load cost). Verify manually with:
+  service worker caches the full file, the warning stops firing.
+  That's correct behavior, but every new visitor still pays the
+  slow first-load cost. Verify manually with:
   `curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles`.
   Should return `206 Partial Content` and `Content-Range`.
 - **Service worker not caching `.pmtiles`**: open
   DevTools > Application > Cache Storage > `trail-map-<version>` and confirm
   `basemap.pmtiles` and `terrain.pmtiles` are listed. If not, the
-  precache list missed them: rebuild and verify the build log
+  precache list missed them. Rebuild and verify the build log
   mentions both files.
 
 ## Overpass keeps timing out
@@ -108,7 +110,7 @@ hours.
 The default `pwa_install_prompt: true` registers a
 `beforeinstallprompt` handler so we can show our own Install row in
 the Options overlay. We deliberately do not call `preventDefault()`,
-which lets Chrome's native mini-infobar appear, but Chrome logs this
+which lets Chrome's native mini-infobar appear. Chrome logs this
 warning anyway because it expects either `preventDefault()` or an
 immediate `prompt()` call. The warning is benign and can be ignored.
 Set `pwa_install_prompt: false` to opt out of install promotion
@@ -140,7 +142,7 @@ just deployed and refreshed but no toast appears:
   reload" to force a refetch on every page load. Useful while
   iterating; turn it off in normal browsing.
 - The toast detection only fires when a *prior* service worker
-  exists, meaning the deploy is an update rather than a first
+  exists. That means the deploy is an update rather than a first
   install. A fresh browser profile or cleared site data won't
   trigger it.
 
