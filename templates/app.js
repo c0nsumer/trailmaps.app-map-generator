@@ -9451,7 +9451,7 @@ function routeStatsText(r) {
 // (map click handler), so no surface can disagree about how a
 // route's line is drawn. Plain routes get the flat color bar; dashed
 // routes get a mini inline SVG ribbon, a two-color underlay beneath
-// a dashed top line, round pills for a [0, N] pattern. `className`
+// a dashed top line, round pills for round-capped patterns. `className`
 // is the caller's own swatch class (.route-panel-swatch,
 // .finder-row-swatch, .highlight-chip-swatch is-line, or
 // .popup-route-swatch), which the .is-dashed CSS variant widens for
@@ -9463,11 +9463,13 @@ function routeStatsText(r) {
 // stroke width (2px here) at EACH end, so any scaled gap ≤ 4px is
 // swallowed and the ribbon reads solid, that's [1, 1] as a solid bar;
 // (b) a long-dash cycle ([4, 1]) scaled to map proportions is wider
-// than the whole swatch, also reading solid. So instead: dashes render
-// with butt caps (no extension) at the pattern's dash:gap duty ratio,
-// gap clamped to stay visible; dot patterns render as round-capped
-// pills. Any dashed/dotted route thus visibly differs from a solid
-// bar, which is the swatch's actual job.
+// than the whole swatch, also reading solid. So instead: square-cap
+// dashes render with butt caps (no extension) at the pattern's
+// dash:gap duty ratio, gap clamped to stay visible; round-capped
+// patterns (dots and round-cap dashes alike) render as round pills
+// with the cap extension folded into the geometry. Any dashed/dotted
+// route thus visibly differs from a solid bar, which is the swatch's
+// actual job.
 //
 // The SVG shares the solid bar's exact 18×4 footprint and paints
 // flush to both edges, so list rows keep their labels left-justified
@@ -9511,21 +9513,25 @@ function routeSwatchEl(r, className) {
     }
 
     const pattern = getDashPattern(r);
-    if (pattern[0] === 0) {
-        // Dot pattern ([0, N] + round cap on the map). NOT drawn as
-        // perfect dots: MapLibre bakes dasharrays into a per-tile-zoom
-        // SDF strip and stretches it along the line at fractional
-        // zooms, so on the map the "dots" render as oblong pills most
-        // of the time. Two round-capped pills match that reality,
-        // perfect swatch dots over-promised (user report: swatch dots
-        // vs map blobs read as different styles). Geometry: 3px dash
+    if (pattern[0] === 0 || getDashCap(r) === "round") {
+        // Round-capped patterns: dots ([0, N]) and round-cap dashes
+        // (e.g. [2, 2] + cap: round) share one rendering, two round
+        // pills. NOT drawn as perfect dots or to-scale dashes:
+        // MapLibre bakes dasharrays into a per-tile-zoom SDF strip
+        // and stretches it along the line at fractional zooms, so on
+        // the map both render as oblong pills most of the time. Two
+        // round-capped pills match that reality; perfect swatch dots
+        // over-promised, and the butt-cap ribbon misrepresented
+        // round-cap dashes as square (user reports: swatch dots vs
+        // map blobs read as different styles; a [2, 2] round route's
+        // key swatch read as square dashes). Geometry: 3px dash
         // segments at path offsets 0-3 / 11-14 on a line from x=2
         // to x=16; round caps extend each end by sw/2=2px → pills
         // spanning x 0-7 and 11-18, flush to both swatch edges
         // with 4px clear between them.
         svg.appendChild(line(r.color, "3 8", "round", 2, 16));
     } else {
-        // Dash pattern. Duty ratio from the config (multi-segment
+        // Square-cap dash pattern. Duty ratio from the config (multi-segment
         // patterns fold to their overall dash:gap ratio), three dashes
         // and two gaps sized to end flush at both edges (3d + 2g = W),
         // butt caps so the gap is exactly what we set. The ideal cycle
