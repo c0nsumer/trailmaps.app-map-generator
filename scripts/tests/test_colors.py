@@ -12,6 +12,8 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import cache_manifest  # noqa: E402
+import pytest  # noqa: E402
 from colors import (  # noqa: E402
     _LIGHT_TARGET_CONTRAST,
     _best_text_color,
@@ -171,6 +173,27 @@ def test_resolve_palette_auto_without_raster_falls_back():
     # "auto" with no raster source → framework-default palette, not None.
     p = resolve_accent_palette({"accent_color": "auto"}, "/tmp", "/tmp")
     assert p["light"] == "#1D6FA5"
+
+
+def test_derive_accent_records_cache_path_and_explicit_hex_records_nothing(tmp_path):
+    # The per-map cache prune (cache_manifest) needs the accent cache
+    # entry claimed on every "auto" build, hit or miss; and explicit-hex
+    # configs must claim nothing so a stale entry becomes prunable.
+    Image = pytest.importorskip("PIL.Image")
+    cache_manifest.drain()
+    logo = tmp_path / "logo.png"
+    Image.new("RGBA", (4, 4), (200, 30, 30, 255)).save(logo)
+    cache_dir = str(tmp_path / "cache")
+
+    resolve_accent_palette(
+        {"accent_color": "auto", "logo": "logo.png"}, str(tmp_path), cache_dir
+    )
+    recorded = cache_manifest.drain()
+    assert len(recorded) == 1
+    assert os.path.dirname(recorded[0]) == os.path.join(cache_dir, "derive_accent")
+
+    resolve_accent_palette({"accent_color": "#005088"}, str(tmp_path), cache_dir)
+    assert cache_manifest.drain() == []
 
 
 if __name__ == "__main__":

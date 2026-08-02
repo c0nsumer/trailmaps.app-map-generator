@@ -401,6 +401,12 @@ directory to avoid redundant network requests. **Cached data is never
 automatically updated.** Subsequent builds reuse existing cache files
 indefinitely until you explicitly clear them.
 
+Each successful build records the cache entries it used in
+`cache/manifests/<slug>.json`. When a config change makes one of a
+map's own entries obsolete (for example, an edited relation list
+produces a new Overpass query), the next build deletes the stale
+entry and logs it. Entries used by other maps are never touched.
+
 ### Checking cache age
 
 When the build runs, it logs the date and age of each cached
@@ -585,6 +591,7 @@ assets/
 
 build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
+  manifests/<slug>.json  Cache entries the map's last build used (drives stale-entry pruning)
   osm_diff/<slug>/    Previous trail snapshot, refresh diff, OSM data notes
 
 tools/

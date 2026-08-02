@@ -33,6 +33,7 @@ import yaml
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS_DIR)
 
+import cache_manifest
 import console
 from cache_signatures import (
     _bbox_signature,
@@ -1055,6 +1056,12 @@ def main(argv=None):
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Discard collector state a prior in-process main() call may have
+    # left behind (tests invoke main() repeatedly); the stage drains
+    # below must only ever see this build's recordings. After the
+    # --dry-run return so dry-run keeps its zero-footprint guarantee.
+    cache_manifest.drain()
+
     # --refresh re-fetches this map's data by bypassing cached Overpass
     # responses (refresh flag on the fetch calls below). The cache
     # directory itself is left alone: it's SHARED across every map
@@ -1106,7 +1113,15 @@ def main(argv=None):
         needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
+    # Whether fetch_trails actually ran this build. Needed by the
+    # manifest step at the end of main(): a reuse build records no
+    # Overpass trail paths, but neither does an osm_file map whose
+    # fetch DID run, so drained-path counts can't tell them apart.
+    trails_fetch_ran = False
+
     def _fetch_and_snapshot():
+        nonlocal trails_fetch_ran
+        trails_fetch_ran = True
         # Snapshot the canonical base BEFORE enrichment expands it in place,
         # so the next build re-expands from clean geometry instead of
         # re-enriching (and destroying) the expanded output. Copied after
@@ -1158,6 +1173,8 @@ def main(argv=None):
                     + "\ntrails-content="
                     + (_trails_content_hash(trails_src_path) or ""),
                 )
+
+    overpass_trails_paths = cache_manifest.drain()
 
     # Seed enrichment's route-order / corridor-baseline optimizers with
     # the previous build's results (read above, before any refetch).
@@ -1213,6 +1230,7 @@ def main(argv=None):
     # and the unset framework default uniformly, and emits per-shade
     # WCAG contrast warnings. Always returns a palette (never None).
     config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
+    derive_accent_paths = cache_manifest.drain()
 
     # Event-mode pre-pass (no-op when event_mode is absent). Folds
     # event_mode.routes into config["custom_routes"] so they
@@ -1277,6 +1295,7 @@ def main(argv=None):
     # safe to re-run against a cached trails.geojson that's already
     # been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir)
+    route_stats_paths = cache_manifest.drain()
 
     # Event-mode arrow restriction: when event_mode.direction_arrows is
     # true, the runtime would render arrows on every OSM-tagged oneway
@@ -1369,6 +1388,7 @@ def main(argv=None):
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
         fetch_pois(config, pois_path, cache_dir, refresh=args.refresh or args.refresh_pois)
+    overpass_pois_paths = cache_manifest.drain()
     console.blank()
 
     # Count POI features by type so the runtime can render an
@@ -1617,6 +1637,33 @@ def main(argv=None):
         console.step("Precompressing static assets...")
         precompress_assets(output_dir)
         console.blank()
+
+    # Step 9: Cache manifest + prune. Last step of a successful build:
+    # every earlier failure raises or exits before this, so an aborted
+    # build never prunes. Write the new manifest FIRST, then delete -
+    # the on-disk manifest always understates what is deletable, so no
+    # crash window between the two can widen a later prune.
+    old_cats = cache_manifest.load(cache_dir, config["slug"])
+    cats = {
+        "overpass_trails": overpass_trails_paths,
+        "overpass_pois": overpass_pois_paths,
+        "route_stats": route_stats_paths,
+        "derive_accent": derive_accent_paths,
+    }
+    if not trails_fetch_ran and old_cats:
+        # Reuse build: fetch_trails never ran, so nothing was recorded
+        # for trails, but those cached responses are what makes an
+        # offline rebuild-from-scratch possible if build/<slug>/ is
+        # deleted. Carry the previous claims forward verbatim.
+        cats["overpass_trails"] = [
+            os.path.join(cache_dir, p) for p in old_cats.get("overpass_trails", [])
+        ]
+    new_cats = cache_manifest.save(cache_dir, config["slug"], cats)
+    if old_cats is not None and new_cats is not None:
+        removed, freed = cache_manifest.prune(cache_dir, config["slug"], old_cats, new_cats)
+        if removed:
+            noun = "entry" if removed == 1 else "entries"
+            console.info(f"Cache: pruned {removed} stale {noun} ({freed / 1024:.0f} KB)")
 
     print_summary(output_dir)
     console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")

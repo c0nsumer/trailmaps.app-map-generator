@@ -18,6 +18,7 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import cache_manifest  # noqa: E402
 import pytest  # noqa: E402
 from compute_route_stats import compute_and_attach, compute_distances  # noqa: E402
 from geodesy import haversine_m  # noqa: E402
@@ -223,6 +224,26 @@ def test_no_data_cache_marker_skips_api(tmp_path, monkeypatch):
 
     monkeypatch.setattr(crs.requests, "post", _boom)
     assert compute_elevations(g, str(tmp_path)) == {}
+
+
+def test_compute_elevations_records_cache_paths(tmp_path, monkeypatch):
+    # The per-map cache prune (cache_manifest) needs every elevation
+    # cache path claimed even on a pure cache-hit build; an unclaimed
+    # path would be pruned as stale by the next build.
+    cache_manifest.drain()
+    g, coord_lines = _elev_fc()
+    sampled = crs._subsample_route(coord_lines, crs.SAMPLE_INTERVAL_M, crs.MAX_SAMPLES_PER_ROUTE)
+    cache_path = crs._elev_cache_path(str(tmp_path), "100", crs._hash_coords(sampled))
+    os.makedirs(os.path.dirname(cache_path))
+    with open(cache_path, "w", encoding="utf-8") as f:
+        f.write('{"elevation_gain_m": 10, "elevation_loss_m": 5, "samples": 5}')
+
+    def _boom(*a, **k):
+        raise AssertionError("API must not be called on a cache hit")
+
+    monkeypatch.setattr(crs.requests, "post", _boom)
+    assert compute_elevations(g, str(tmp_path)) == {"100": (10, 5)}
+    assert cache_manifest.drain() == [cache_path]
 
 
 @pytest.mark.parametrize("marker", ["isStub", "_subwayHostVariant"])

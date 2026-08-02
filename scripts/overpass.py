@@ -7,6 +7,7 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 
+import cache_manifest
 import console
 import requests
 
@@ -174,6 +175,9 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
         os.makedirs(cache_dir, exist_ok=True)
         h = hashlib.md5(query_str.encode()).hexdigest()[:12]
         cp = os.path.join(cache_dir, f"overpass_{h}.json")
+        # Before the hit/miss/refresh branches, so every outcome records
+        # this build's claim on the entry (see cache_manifest docstring).
+        cache_manifest.record(cp)
         if refresh:
             if os.path.exists(cp):
                 console.info(f"Bypassing cached response (refresh requested): {cp}")

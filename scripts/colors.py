@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 
+import cache_manifest
 import console
 
 
@@ -322,6 +323,9 @@ def _derive_accent_cached(config, project_root, cache_dir):
     with open(source, "rb") as f:
         src_hash = hashlib.sha256(f.read()).hexdigest()[:16]
     cache_path = os.path.join(accent_cache_dir, f"{src_hash}.json")
+    # Claimed on hit and miss alike; explicit-hex accents never reach
+    # this function, so their stale entries become prune candidates.
+    cache_manifest.record(cache_path)
     if os.path.exists(cache_path):
         try:
             with open(cache_path, encoding="utf-8") as f:

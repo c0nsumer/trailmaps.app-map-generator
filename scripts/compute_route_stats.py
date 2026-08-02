@@ -86,6 +86,7 @@ import json
 import os
 import time
 
+import cache_manifest
 import console
 import requests
 from geodesy import haversine_m as _haversine_m
@@ -732,6 +733,10 @@ def compute_elevations(trails_geojson, cache_dir):
 
         coord_hash = _hash_coords(sampled)
         cache_path = _elev_cache_path(cache_dir, rid_str, coord_hash)
+        # Claim the path whether this turns out to be a hit, a fresh
+        # write, or a failed fetch: it is this build's key either way,
+        # and pruning tolerates claims for files that don't exist.
+        cache_manifest.record(cache_path)
         if os.path.isfile(cache_path):
             try:
                 with open(cache_path, encoding="utf-8") as fh:
