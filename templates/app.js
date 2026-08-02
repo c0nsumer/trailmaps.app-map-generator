@@ -3653,7 +3653,7 @@ function _welcomeSearchDescription() {
     if (counts.trailhead)      poiNames.push("trailheads");
     if (counts.hub)            poiNames.push("hubs");
     if (counts.feature)        poiNames.push("features");
-    // Markers are searchable by their ref ("Marker 12") and looking
+    // Markers are searchable by their ref ("12") and looking
     // one up is a real rider task (meeting point, emergency
     // reference), so they earn a mention like the amenities do.
     if (counts.trail_marker)   poiNames.push("trail markers");
@@ -7244,8 +7244,8 @@ function buildTrailIndex() {
 // boot). One entry per POI feature; each entry carries the
 // information the search overlay needs to render a row + the
 // coordinates needed by highlightPoi(). Unnamed POIs get a
-// synthesized fallback name (e.g. "Marker EPIC-3") so they're still
-// findable.
+// fallback name (bare ref for trail markers, else the type label)
+// so they're still findable.
 function buildPoiIndex() {
     poiIndex = [];
     if (!poisData || !poisData.features) return;
@@ -7269,8 +7269,10 @@ function buildPoiIndex() {
         // "Toilets (× N)" rows with no way to tell them apart).
         let name = props.name || "";
         let synthesized = false;
+        // Bare ref, no "Marker" prefix: the row's meta label already
+        // says "trail marker", and this matches the on-map bubble.
         if (!name && type === "trail_marker") {
-            name = props.ref ? `Marker ${props.ref}` : "Trail Marker";
+            name = props.ref ? String(props.ref) : "Trail Marker";
             if (!props.ref) synthesized = true;
         }
         if (!name) {
@@ -9204,7 +9206,15 @@ function rebuildFinderList() {
         : (query ? inScopePois.filter((p) => {
             const name = p.name.toLowerCase();
             const typeLabel = (POI_TYPE_META_LABEL[p.type] || "").toLowerCase();
-            return name.includes(query) || typeLabel.includes(query);
+            // ref matches too: a named guidepost keeps its ref as the
+            // on-map bubble label, so riders search by either. Known
+            // cosmetic gap: a ref-matched row still displays only the
+            // name, so the match reason is invisible until selection
+            // highlights the bubble. If that confuses riders, render
+            // named markers as `name (ref)` in the result row.
+            const ref = p.ref.toLowerCase();
+            return name.includes(query) || typeLabel.includes(query)
+                || (ref !== "" && ref.includes(query));
         })
                  : inScopePois);
 
