@@ -7288,7 +7288,9 @@ function buildPoiIndex() {
             ref: props.ref || "",
         });
     }
-    poiIndex.sort((a, b) => a.name.localeCompare(b.name));
+    // {numeric:true} so synthesized names like "Marker 2" sort before
+    // "Marker 10" instead of digit-by-digit as text.
+    poiIndex.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     // poiIndex was rebuilt from scratch, the Finder's cached in-scope
     // subset points at the old entries.
     invalidateFinderPoiScope();
@@ -9288,8 +9290,8 @@ function groupPoisByName(pois) {
             });
         }
     }
-    // Preserve original alphabetical order
-    out.sort((a, b) => a.name.localeCompare(b.name));
+    // Re-sort after grouping, numeric-aware to match poiIndex order.
+    out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     return out;
 }
 
