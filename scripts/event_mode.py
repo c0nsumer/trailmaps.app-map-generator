@@ -237,7 +237,7 @@ def _apply_event_mode_to_relations(config, trails_geojson):
     for rid_str, info in routes.items():
         if rid_str in featured:
             # Mark featured so the runtime can sort it on top of
-            # background routes and render it slightly wider. The
+            # background routes and restrict labels to it. The
             # flag flows through to CONFIG.routes via the metadata
             # passthrough in inject_config_into_template.
             info["featured"] = True

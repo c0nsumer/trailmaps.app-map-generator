@@ -157,22 +157,6 @@ function basemapFlavor(scheme) {
     return s === "dark" ? "dark" : "light";
 }
 
-// Featured routes (event mode) render at 1.5x the standard line width,
-// which makes the spotlighted route(s) read as foreground against the
-// muted background trails. Applies to casing, fill, and the two-color
-// underlay layer.
-const FEATURED_WIDTH_MULTIPLIER = 1.5;
-
-// Event maps must widen the subway lane pitch in lockstep with the
-// featured fill width, or adjacent lanes in a shared corridor overlap
-// instead of separating (see the TRAIL_WIDTH_STOPS note below). The
-// scale applies uniformly to every route, featured or muted: lane
-// offsets are fractional multiples of one shared pitch (including the
-// pre-baked transition-stub offsets), so a per-route pitch would break
-// corridor geometry. Muted background routes just get slightly roomier
-// spacing, which reads fine since featured routes set corridor width.
-const LANE_PITCH_MULTIPLIER = CONFIG.eventModeActive ? FEATURED_WIDTH_MULTIPLIER : 1;
-
 // Zoom stops for trail line widths, by layer role. Centralized so the
 // casing/fill pair can't drift out of proportion (the casing's whole job is
 // to extend ~1-1.5 px past the fill).
@@ -182,7 +166,10 @@ const LANE_PITCH_MULTIPLIER = CONFIG.eventModeActive ? FEATURED_WIDTH_MULTIPLIER
 // (2/4/7) by ~1 px so adjacent routes in a shared corridor keep a visible
 // gap. Anything that scales these widths MUST scale that offset in lockstep,
 // or lanes overlap instead of separating - a 1.3x multiplier here did exactly
-// that at z14+ before it was removed.
+// that at z14+ before it was removed, and event mode's featured 1.5x
+// multiplier repeated it (2026-08). Both are gone; event and regular maps
+// now share identical line geometry, and featured routes read as foreground
+// via muted backgrounds, draw order, and labels instead of width.
 const TRAIL_WIDTH_STOPS = {
     // Visible casing uses the wider "solid-route" stops so it extends
     // past the fill. Hidden casing keeps the narrower stops since it
@@ -192,11 +179,10 @@ const TRAIL_WIDTH_STOPS = {
     fill: [2, 4, 7],
 };
 
-function trailWidthExpr(kind, wmul) {
+function trailWidthExpr(kind) {
     const stops = TRAIL_WIDTH_STOPS[kind] || TRAIL_WIDTH_STOPS.fill;
-    const m = wmul || 1;
     return ["interpolate", ["linear"], ["zoom"],
-        10, stops[0] * m, 14, stops[1] * m, 18, stops[2] * m];
+        10, stops[0], 14, stops[1], 18, stops[2]];
 }
 
 function applyMapPaintForScheme(scheme) {
@@ -428,14 +414,11 @@ function makeOffsetExpr() {
     // fills have a ~1px gap. Semi-transparent casings overlap between
     // adjacent trails, forming a clean dark border.
     // Fill widths: z10=2, z14=4, z18=7  →  steps: 3, 5, 8
-    // LANE_PITCH_MULTIPLIER keeps that gap on event maps, where
-    // featured fills render 1.5x wide and would otherwise exceed the
-    // base steps (lanes overlapped on every bdb shared corridor).
     return [
         "interpolate", ["linear"], ["zoom"],
-        10, ["*", ["get", "offset_index"], 3 * LANE_PITCH_MULTIPLIER],
-        14, ["*", ["get", "offset_index"], 5 * LANE_PITCH_MULTIPLIER],
-        18, ["*", ["get", "offset_index"], 8 * LANE_PITCH_MULTIPLIER],
+        10, ["*", ["get", "offset_index"], 3],
+        14, ["*", ["get", "offset_index"], 5],
+        18, ["*", ["get", "offset_index"], 8],
     ];
 }
 
@@ -4851,8 +4834,7 @@ async function loadTrails() {
     // Sort: featured routes (event_mode) last so their layers add on
     // top of background routes; within each group, alphabetical by
     // name. MapLibre draws layers in addition order, so "added later"
-    // means "drawn on top." Featured routes also get a wider line via
-    // FEATURED_WIDTH_MULTIPLIER below.
+    // means "drawn on top."
     const sortedRoutes = Object.entries(routes)
         .sort(([, a], [, b]) => {
             const aFeat = a.featured ? 1 : 0;
@@ -4887,7 +4869,6 @@ async function loadTrails() {
         const dashed = isDashed(routeInfo);
         const dashColors = getDashColors(routeInfo);
         const cap = getDashCap(routeInfo);
-        const wmul = routeInfo.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
 
         const hasUnderlay = !!(dashColors && dashColors.length >= 2);
         const casingVisible = !dashed || hasUnderlay;
@@ -4904,7 +4885,7 @@ async function loadTrails() {
                 // Stops live in TRAIL_WIDTH_STOPS; see the note there on
                 // why the visible/hidden casing variants differ.
                 "line-width": trailWidthExpr(
-                    casingVisible ? "casingVisible" : "casingHidden", wmul),
+                    casingVisible ? "casingVisible" : "casingHidden"),
                 "line-offset": makeOffsetExpr(),
                 "line-opacity": casingVisible ? 0.5 : 0,
                 // No line-dasharray on the casing, it's always a
@@ -4924,7 +4905,6 @@ async function loadTrails() {
         const dashed = isDashed(routeInfo);
         const cap = getDashCap(routeInfo);
         const dashColors = getDashColors(routeInfo);
-        const wmul = routeInfo.featured ? FEATURED_WIDTH_MULTIPLIER : 1;
 
         const fillColor = byDifficulty
             ? difficultyColorExpr()
@@ -4947,7 +4927,7 @@ async function loadTrails() {
                 filter: ["==", ["get", "route_id"], routeId],
                 paint: {
                     "line-color": dashColors[1],
-                    "line-width": trailWidthExpr("fill", wmul),
+                    "line-width": trailWidthExpr("fill"),
                     "line-offset": makeOffsetExpr(),
                 },
                 layout: {
@@ -4964,7 +4944,7 @@ async function loadTrails() {
             filter: ratedFilter,
             paint: {
                 "line-color": fillColor,
-                "line-width": trailWidthExpr("fill", wmul),
+                "line-width": trailWidthExpr("fill"),
                 "line-offset": makeOffsetExpr(),
                 "line-dasharray": getDashPattern(routeInfo),
             },
@@ -4985,7 +4965,7 @@ async function loadTrails() {
                                        ["literal", ["0","1","2","3","4","5"]]]]],
                 paint: {
                     "line-color": CONFIG.defaultTrailColor,
-                    "line-width": trailWidthExpr("fill", 1),
+                    "line-width": trailWidthExpr("fill"),
                     "line-offset": makeOffsetExpr(),
                     "line-dasharray": CONFIG.defaultTrailDash,
                 },
@@ -5754,9 +5734,9 @@ function computeLabelData() {
 
             let geometry = f.geometry;
             if (geometry.type === "LineString" && offsetIndex !== 0) {
-                // Mirrors makeOffsetExpr()'s z14 step, including the
-                // event-map pitch scale, so labels track their lanes.
-                const offsetPx = offsetIndex * 5 * LANE_PITCH_MULTIPLIER;
+                // Mirrors makeOffsetExpr()'s z14 step so labels track
+                // their lanes.
+                const offsetPx = offsetIndex * 5;
                 geometry = {
                     ...geometry,
                     coordinates: offsetLineGeometry(geometry.coordinates, offsetPx),

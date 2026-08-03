@@ -172,9 +172,9 @@ dashes. Cap controls dash end-shape.
 
 **Featured rendering**: featured routes render on top of background routes.
 Their MapLibre layers are added last, after every background route's layer.
-They also render with a `1.5x` line-width multiplier vs. the standard trail
-line. The combined effect: the spotlighted route reads clearly as foreground,
-with background trails dotted softly beneath it.
+Line widths and parallel-lane spacing are identical to a regular map. The
+spotlighted route reads as foreground through its solid color, its draw
+order, and its labels, with background trails dotted softly beneath it.
 
 **ID uniqueness**: an `event_mode.routes[].id` must be distinct from every
 top-level `custom_routes[].id` and every OSM relation ID anywhere in the
