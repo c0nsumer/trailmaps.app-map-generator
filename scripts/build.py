@@ -291,6 +291,14 @@ def generate_service_worker(config, output_dir):
     for rel_url in all_files:
         if not _is_precachable_glyph(rel_url):
             continue
+        # og-image.png is the social-preview card, injected next to
+        # index.html by the trailmaps.app orchestrator. Only link
+        # scrapers fetch it; the app never renders it, so precaching
+        # pushed a ~580 KB download to every fresh install and cache
+        # bump. It stays in all_files, so the deploy set and the cache
+        # hash are unchanged.
+        if rel_url == "og-image.png":
+            continue
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)
         else:

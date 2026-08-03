@@ -32,6 +32,7 @@ TREE = {
     "fonts/Noto Sans Regular/0-255.pbf": b"glyphs-basic",
     "fonts/Noto Sans Regular/256-511.pbf": b"glyphs-extended",
     "basemap.pmtiles": b"tile-archive-bytes",
+    "og-image.png": b"scraper-only social card",
     "trails.src.geojson": b"build-only base",
     "basemap.pmtiles.sig": b"signature sidecar",
     "extract.tmp": b"interrupted atomic write",
@@ -88,6 +89,19 @@ def test_precache_bytes_keyed_by_url(tmp_path):
     # "./" is the page itself, weighted by index.html's size.
     assert cfg["PRECACHE_BYTES"]["./"] == len(TREE["index.html"])
     assert cfg["PRECACHE_BYTES"]["app.js"] == len(TREE["app.js"])
+
+
+def test_og_image_excluded_from_precache_but_hashed(tmp_path):
+    # The orchestrator-injected social card is scraper-only: the app
+    # never renders it, so it must not cost every fresh install ~580 KB.
+    # It still deploys, so a regenerated card must bust the cache.
+    root = str(tmp_path)
+    v1, _ = _generate(root)
+    assert "og-image.png" not in v1["PRECACHE_URLS"]
+    with open(os.path.join(root, "og-image.png"), "wb") as f:
+        f.write(b"regenerated card")
+    v2, _ = _generate(root)
+    assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
 
 
 def test_cache_version_covers_non_precached_files(tmp_path):
