@@ -112,6 +112,85 @@ def _shared_set_signature(shared_routes):
     return tuple(sorted(str(x) for x in shared_routes))
 
 
+def canonicalize_shared_corridors(features):
+    """Give every route's copy of a shared corridor identical vertex order.
+
+    MapLibre's ``line-offset`` is signed by feature vertex order, so
+    two routes sharing a corridor but stitched in opposite traversal
+    directions render their lanes MIRRORED - two routes can land on
+    the same visual lane and the later-drawn layer hides the other
+    (bdb: the 2-Mile's copy of a loop ran opposite the 5-Mile/11-Mile
+    copies, hiding the 2-Mile under the 5-Mile). The runtime's
+    computeOffsetsAndFilter already assumes "shared ways appear once
+    per route with identical geometry"; this pass enforces that
+    assumption at build time.
+
+    Copies of one corridor are grouped by (shared-set signature,
+    vertex-coordinate SET): same routes, same trail points. Vertex
+    ORDER is exactly what may differ between copies, so the unordered
+    set is the invariant that identifies them. Within a group the
+    natural-key-lowest route's copy is canonical and every other
+    copy's coordinates are replaced with it.
+
+    Two groups are left untouched:
+      - A route contributing more than one feature to the group
+        (out-and-back over the same corridor): its two copies are
+        inherently anti-parallel, so there is no single canonical
+        direction for it.
+      - Any member carrying a truthy ``oneway``: the rendered arrow
+        direction derives from vertex order, so rewriting would flip
+        arrows. In practice every route rides a one-way trail in the
+        same direction and those copies already agree.
+
+    Idempotent (aligned copies rewrite to themselves as no-ops).
+    Returns ``(rewritten, skipped_oneway_groups)``.
+    """
+    groups = {}
+    for feat in features:
+        geom = feat.get("geometry") or {}
+        if geom.get("type") != "LineString":
+            continue
+        props = feat.get("properties") or {}
+        if props.get("isStub") or props.get("_subwayHostVariant"):
+            continue
+        shared = props.get("shared_routes") or []
+        if len(shared) < 2:
+            continue
+        coords = geom.get("coordinates") or []
+        if len(coords) < 2:
+            continue
+        sig = _shared_set_signature(shared)
+        vset = frozenset(_coord_key(c) for c in coords)
+        groups.setdefault((sig, vset), []).append(feat)
+
+    rewritten = 0
+    skipped_oneway = 0
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        rids = [str((m.get("properties") or {}).get("route_id", "")) for m in members]
+        if len(set(rids)) != len(rids):
+            continue
+        canon = min(
+            members,
+            key=lambda m: _natural_key((m.get("properties") or {}).get("route_id", "")),
+        )
+        canon_coords = canon["geometry"]["coordinates"]
+        divergent = [
+            m for m in members
+            if m is not canon and m["geometry"]["coordinates"] != canon_coords
+        ]
+        if not divergent:
+            continue
+        if any((m.get("properties") or {}).get("oneway") for m in members):
+            skipped_oneway += 1
+            continue
+        for m in divergent:
+            m["geometry"]["coordinates"] = [list(c) for c in canon_coords]
+            rewritten += 1
+    return rewritten, skipped_oneway
+
+
 def _offset_index_for_route(route_id, shared_routes, route_order=None, baselines=None):
     """Mirror app.js's `computeOffsetsAndFilter()` math at build time.
 

@@ -349,6 +349,29 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         if props.pop("_subwayHasVariants", None) is not None:
             changed = True
 
+    # ----- Align shared-corridor copies -----
+    # Each route's stitched chain traverses shared trail in its own
+    # direction, but MapLibre's line-offset is signed by vertex order,
+    # so opposite-direction copies render mirrored lanes and two routes
+    # can collapse onto one visual lane. Rewrite every copy of a shared
+    # corridor to one canonical vertex order here, right after the
+    # truncation restore (copies must be back to full geometry to
+    # match) and before anything downstream consumes the geometry.
+    from parallel_routes import canonicalize_shared_corridors
+
+    aligned, skipped_oneway = canonicalize_shared_corridors(trails_geojson["features"])
+    if aligned:
+        console.info(
+            f"Corridor alignment: rewrote {aligned} shared-corridor "
+            f"feature(s) to the canonical direction"
+        )
+        changed = True
+    if skipped_oneway:
+        console.info(
+            f"Corridor alignment: left {skipped_oneway} oneway corridor "
+            f"group(s) unaligned to preserve arrow direction"
+        )
+
     # ----- Per-route distance / elevation stats -----
     # Computed HERE - after custom routes are appended and any prior
     # expansion has been stripped/restored above, but BEFORE the subway
