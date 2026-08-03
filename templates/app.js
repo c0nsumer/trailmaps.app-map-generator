@@ -163,6 +163,16 @@ function basemapFlavor(scheme) {
 // underlay layer.
 const FEATURED_WIDTH_MULTIPLIER = 1.5;
 
+// Event maps must widen the subway lane pitch in lockstep with the
+// featured fill width, or adjacent lanes in a shared corridor overlap
+// instead of separating (see the TRAIL_WIDTH_STOPS note below). The
+// scale applies uniformly to every route, featured or muted: lane
+// offsets are fractional multiples of one shared pitch (including the
+// pre-baked transition-stub offsets), so a per-route pitch would break
+// corridor geometry. Muted background routes just get slightly roomier
+// spacing, which reads fine since featured routes set corridor width.
+const LANE_PITCH_MULTIPLIER = CONFIG.eventModeActive ? FEATURED_WIDTH_MULTIPLIER : 1;
+
 // Zoom stops for trail line widths, by layer role. Centralized so the
 // casing/fill pair can't drift out of proportion (the casing's whole job is
 // to extend ~1-1.5 px past the fill).
@@ -418,11 +428,14 @@ function makeOffsetExpr() {
     // fills have a ~1px gap. Semi-transparent casings overlap between
     // adjacent trails, forming a clean dark border.
     // Fill widths: z10=2, z14=4, z18=7  →  steps: 3, 5, 8
+    // LANE_PITCH_MULTIPLIER keeps that gap on event maps, where
+    // featured fills render 1.5x wide and would otherwise exceed the
+    // base steps (lanes overlapped on every bdb shared corridor).
     return [
         "interpolate", ["linear"], ["zoom"],
-        10, ["*", ["get", "offset_index"], 3],
-        14, ["*", ["get", "offset_index"], 5],
-        18, ["*", ["get", "offset_index"], 8],
+        10, ["*", ["get", "offset_index"], 3 * LANE_PITCH_MULTIPLIER],
+        14, ["*", ["get", "offset_index"], 5 * LANE_PITCH_MULTIPLIER],
+        18, ["*", ["get", "offset_index"], 8 * LANE_PITCH_MULTIPLIER],
     ];
 }
 
@@ -5741,7 +5754,9 @@ function computeLabelData() {
 
             let geometry = f.geometry;
             if (geometry.type === "LineString" && offsetIndex !== 0) {
-                const offsetPx = offsetIndex * 5;
+                // Mirrors makeOffsetExpr()'s z14 step, including the
+                // event-map pitch scale, so labels track their lanes.
+                const offsetPx = offsetIndex * 5 * LANE_PITCH_MULTIPLIER;
                 geometry = {
                     ...geometry,
                     coordinates: offsetLineGeometry(geometry.coordinates, offsetPx),
