@@ -5491,6 +5491,24 @@ function smoothLine(coords, iterations = 2) {
     return pts;
 }
 
+// Memoized smoothing. smoothLine is a pure function of static geometry,
+// but computeOffsetsAndFilter runs it over every LineString on every
+// visibility toggle (and twice at boot), allocating ~4x the raw
+// coordinate count each time for identical output. That allocation
+// burst was the largest GC source in phone toggle traces. Keyed by the
+// source geometry object: routesData is never mutated, so entries stay
+// valid for the page's lifetime, and a trails reload just lets the old
+// entries collect with the old features.
+const smoothedCoordsCache = new WeakMap();
+function smoothLineCached(geometry) {
+    let coords = smoothedCoordsCache.get(geometry);
+    if (!coords) {
+        coords = smoothLine(geometry.coordinates);
+        smoothedCoordsCache.set(geometry, coords);
+    }
+    return coords;
+}
+
 // ============================================================
 // Geometric offset for label placement
 // ============================================================
@@ -5648,7 +5666,7 @@ function computeOffsetsAndFilter() {
         if (geometry.type === "LineString" && geometry.coordinates.length >= 3) {
             geometry = {
                 ...geometry,
-                coordinates: smoothLine(geometry.coordinates),
+                coordinates: smoothLineCached(geometry),
             };
         }
 
