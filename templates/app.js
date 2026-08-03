@@ -4541,7 +4541,35 @@ function updateMarkerDimState() {
     }
 }
 
+// Deferred, coalescing wrapper for updateMarkerProximity(), the POI
+// analog of applyVisibilityChange's deferred half: a proximity-gated
+// POI toggle paid 115-151 ms of scanning inside its click handler
+// (distanceToVisibleTrails is O(markers x trail segments)), the worst
+// remaining interaction class once season toggles were deferred. The
+// aria-pressed flip has already happened by the time a toggle handler
+// calls this, so the control responds in the tap's own frame and the
+// scan lands in a task right after that frame paints (rAF alone runs
+// before the frame presents; see applyVisibilityChange). The scan
+// reads toggle state (aria-pressed) and visibleRoutes at run time, so
+// back-to-back toggles coalesce into one pass over the final state.
+let _markerProximityPending = false;
+
+function scheduleMarkerProximityUpdate() {
+    if (_markerProximityPending) return;
+    _markerProximityPending = true;
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            if (!_markerProximityPending) return;
+            _markerProximityPending = false;
+            updateMarkerProximity();
+        }, 0);
+    });
+}
+
 function updateMarkerProximity() {
+    // A synchronous run (boot, visibility refresh) makes any queued
+    // deferred pass redundant; absorb it.
+    _markerProximityPending = false;
     // Toggle rows use aria-pressed semantics (not checkbox .checked).
     // Trail markers (guideposts + emergency access points) share the
     // single "Markers" toggle.
@@ -8703,14 +8731,16 @@ function setupFloatingChrome() {
     // POI toggle handlers, each mutates marker visibility and then
     // rebuilds the finder so the search list stays in sync (WYSIWYG:
     // toggling a type off removes its rows from search, on adds them
-    // back). updateMarkerProximity() already triggers a decoration
-    // recompute (markers are obstacles for arrow/diamond placement);
-    // the off-branches do the same explicitly because they bypass
-    // proximity entirely.
+    // back). On-branches defer the proximity scan past the tap's
+    // paint (scheduleMarkerProximityUpdate); the scan triggers the
+    // decoration recompute itself (markers are obstacles for
+    // arrow/diamond placement). Off-branches sweep synchronously
+    // (cheap marker removals) and recompute decorations explicitly
+    // because they bypass proximity entirely.
     wirePeekToggle("toggle-markers", "mtb.poi.markers",
             isDefaultVisible("trail_markers"), (on) => {
         if (on) {
-            updateMarkerProximity();  // already invalidates cache
+            scheduleMarkerProximityUpdate();  // scan invalidates the cache itself
         } else {
             for (const m of trailMarkerMarkers) m.remove();
             invalidateObstaclesCache();
@@ -8723,7 +8753,7 @@ function setupFloatingChrome() {
     wirePeekToggle("toggle-features", "mtb.poi.features",
             isDefaultVisible("features"), (on) => {
         if (on) {
-            updateMarkerProximity();  // already invalidates cache
+            scheduleMarkerProximityUpdate();  // scan invalidates the cache itself
         } else {
             for (const m of featureMarkers) m.remove();
             invalidateObstaclesCache();
@@ -8777,7 +8807,7 @@ function setupFloatingChrome() {
     wirePeekToggle("toggle-toilets", "mtb.poi.toilets",
             isDefaultVisible("toilets"), (on) => {
         if (on) {
-            updateMarkerProximity();  // already invalidates cache
+            scheduleMarkerProximityUpdate();  // scan invalidates the cache itself
         } else {
             for (const m of toiletMarkers) m.remove();
             invalidateObstaclesCache();
@@ -8788,7 +8818,7 @@ function setupFloatingChrome() {
     wirePeekToggle("toggle-drinking-water", "mtb.poi.drinking_water",
             isDefaultVisible("drinking_water"), (on) => {
         if (on) {
-            updateMarkerProximity();  // already invalidates cache
+            scheduleMarkerProximityUpdate();  // scan invalidates the cache itself
         } else {
             for (const m of drinkingWaterMarkers) m.remove();
             invalidateObstaclesCache();
@@ -8799,7 +8829,7 @@ function setupFloatingChrome() {
     wirePeekToggle("toggle-bicycle-repair-stations", "mtb.poi.bicycle_repair_stations",
             isDefaultVisible("bicycle_repair_stations"), (on) => {
         if (on) {
-            updateMarkerProximity();  // already invalidates cache
+            scheduleMarkerProximityUpdate();  // scan invalidates the cache itself
         } else {
             for (const m of bicycleRepairStationMarkers) m.remove();
             invalidateObstaclesCache();
