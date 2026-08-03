@@ -5775,7 +5775,12 @@ function rebuildVisibleRoutesSet() {
     }
 }
 
-function applyVisibilityChange() {
+// Coalescing flag for the deferred half of applyVisibilityChange.
+// True while a refresh is queued; an immediate pass clears it to
+// absorb the queued one (the timeout callback re-checks and bails).
+let _visibilityRefreshPending = false;
+
+function applyVisibilityChange(immediate = false) {
     rebuildVisibleRoutesSet();
     // An open trail popup lists route memberships computed against the
     // OLD visibleRoutes set; close it rather than let it lie. (The tap
@@ -5784,9 +5789,55 @@ function applyVisibilityChange() {
         _trailPopup.remove();
         _trailPopup = null;
     }
-    // The Finder's in-scope POI cache keys off visibleRoutes, drop it
-    // before rebuildFinderList (below) repopulates against the new set.
+    // The Finder's in-scope POI cache keys off visibleRoutes. Drop it
+    // synchronously (not in the deferred pass) so a finder keystroke
+    // landing between the tap and the refresh recomputes against the
+    // new set instead of serving the stale cache.
     invalidateFinderPoiScope();
+    // Per-route visibility flips are worker-free layout changes:
+    // toggled-off routes vanish (and newly eligible ones appear) in
+    // the tap's own frame. A newly shown route paints with the prior
+    // mode's lane offsets until the deferred setData re-tiles, but
+    // that transient window always existed (the worker re-tile takes
+    // 0.3-1 s); the deferral only moves one frame of it to the front.
+    _applyPerRouteLayerVisibility();
+
+    // Everything below is the expensive half of a bucket toggle
+    // (trails/labels setData recompute, marker proximity, finder +
+    // route-panel DOM rebuilds): ~200-500 ms on a phone, which blocked
+    // the tap's presentation past the 200 ms INP threshold when it ran
+    // here synchronously. It runs after the flip frame paints instead.
+    // Every deferred reader consumes visibleRoutes, updated
+    // synchronously above, so the pass always sees the final state of
+    // a toggle burst; rapid toggles coalesce into one refresh.
+    if (immediate) {
+        _visibilityRefreshPending = false;   // absorb any queued pass
+        _refreshVisibilityDependents();
+        return;
+    }
+    if (_visibilityRefreshPending) return;
+    _visibilityRefreshPending = true;
+    // rAF alone is NOT "after paint": rAF callbacks run just before
+    // the frame presents, so heavy work there would still hold up the
+    // tap's paint (and its INP). The rAF pins the upcoming frame; the
+    // setTimeout(0) inside it then lands the work in a task right
+    // after that frame paints.
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            if (!_visibilityRefreshPending) return;
+            _visibilityRefreshPending = false;
+            _refreshVisibilityDependents();
+        }, 0);
+    });
+}
+
+// The deferred half of applyVisibilityChange(); see the scheduling
+// comments there. Boot calls it synchronously via
+// applyVisibilityChange(true): init() continues straight into
+// initRoutePanel(), which measures the route-panel rows this pass
+// builds (routePanelDefaultCollapsed), so the rows must exist before
+// applyVisibilityChange returns, not a frame later.
+function _refreshVisibilityDependents() {
     updateTrailDisplay();
     updateMarkerProximity();
     rebuildFinderList();
@@ -5809,8 +5860,10 @@ function applyVisibilityChange() {
 }
 
 // Sync every per-route layer's MapLibre visibility with the current
-// visibleRoutes set. Called from updateTrailDisplay() on every
-// bucket-model change AND from loadTrails() right after the layers
+// visibleRoutes set. Called from applyVisibilityChange()'s synchronous
+// part on every bucket-model change (the flips are worker-free, so
+// they paint in the tap's own frame while the setData recompute is
+// deferred) AND from loadTrails() right after the layers
 // are added, without that initial sync, MapLibre's default
 // visibility ("visible") would let bucket-hidden routes (e.g., an
 // emergency-access route while emergencyOn is false) paint briefly
@@ -5845,8 +5898,6 @@ function updateTrailDisplay() {
     // out, and so the obstacle / way-length set the placer sees
     // matches the new state.
     updateDecorationsSource();
-
-    _applyPerRouteLayerVisibility();
 
     recomputeClipEndpointVisibility();
 
@@ -9010,7 +9061,11 @@ function setupFloatingChrome() {
     }
 
     // ----- Initial render -----
-    applyVisibilityChange();
+    // Immediate (synchronous) pass: init() continues straight into
+    // initRoutePanel(), which measures the route-panel rows this call
+    // builds to pick the boot docked state. The deferred path is for
+    // rider-driven toggles only.
+    applyVisibilityChange(true);
 
     // ----- Day-of-week recheck for direction schedules -----
     // The chevron layers encode reversal via their filters, so a
