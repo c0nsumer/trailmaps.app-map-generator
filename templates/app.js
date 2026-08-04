@@ -3167,6 +3167,20 @@ async function init() {
                 // no-ops everywhere it can't or shouldn't ask).
                 requestCompassOnGesture();
             } else if (!inTrackingState) {
+                // MapLibre treats PERMISSION_DENIED as terminal: its
+                // error handler sets the native button's disabled
+                // attribute and nothing ever clears it, not even a
+                // later successful grant (Android lets users dismiss
+                // the prompt, which reports code 1 while permission
+                // stays "prompt", so retries can succeed). trigger()
+                // ignores the attribute, so tracking would work but
+                // mirrorLocateState would keep showing the slash.
+                // Clear it here so this retry's real outcome drives
+                // the visuals; a genuine denial re-disables it
+                // immediately via the error handler.
+                if (nativeLocateBtn && nativeLocateBtn.disabled) {
+                    nativeLocateBtn.disabled = false;
+                }
                 // IDLE / DISABLED → ACTIVE (initial enable). Original
                 // framework intent: don't yank the camera with the
                 // fitBounds-zoom; arm the hint toast so the user
