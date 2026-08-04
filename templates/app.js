@@ -2826,6 +2826,41 @@ async function init() {
     map.setBearing(0);
     map.setPitch(0);
 
+    // Stale-canvas-size watchdog. MapLibre's ResizeObserver handler
+    // discards its first delivery (the mandatory "initial" notification
+    // observe() produces), assuming it matches the size already
+    // measured in the Map constructor. On an Android PWA cold launch
+    // that assumption can fail: ResizeObserver only delivers during
+    // rendering steps, which don't run while the page is hidden behind
+    // the splash / app switcher, so when the window snaps from a
+    // transient launch size to its real size before first paint, the
+    // one callback carrying the correct size IS the discarded initial
+    // one. The canvas then stays stuck at the transient size (map
+    // squished into part of the screen, container and DOM controls
+    // fine) with no recovery path, because no further size change means
+    // no further callback. Repair: compare the canvas's CSS size to the
+    // container on the first rendered frame (before tiles load, so the
+    // squished state barely flashes) and whenever the app returns to
+    // the foreground (catches future variants where the viewport
+    // changes while rendering is suspended). resize() only on mismatch:
+    // it fires synthetic movestart/moveend, which would drop geolocate
+    // ACTIVE_LOCK and clear follow-me if run unconditionally on every
+    // app switch. Healthy case never false-positives, MapLibre sets the
+    // canvas CSS size to exactly the container's integer client
+    // dimensions.
+    function fixStaleCanvasSize() {
+        const canvas = map.getCanvas();
+        const container = map.getContainer();
+        if (canvas.clientWidth !== container.clientWidth ||
+            canvas.clientHeight !== container.clientHeight) {
+            map.resize();
+        }
+    }
+    map.once("render", fixStaleCanvasSize);
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) fixStaleCanvasSize();
+    });
+
     // Controls
     //
     // NavigationControl (zoom +/-) is intentionally not added, pinch,
