@@ -122,6 +122,26 @@
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.3);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.22);
+    /* Soft halo just outside the FAB border (Google Maps Android
+     * style: a sharp line at the button edge, then a slight
+     * translucent ring around it). The opaque --sheet-border is tuned
+     * against the sheet surface, so over basemap tiles near the
+     * sheet's luminance the FAB edge goes soft and the button relies
+     * on its shadow alone; the halo keeps the edge reading crisp on
+     * any tile tone. Centered (no offset) so the ring is even all the
+     * way around, unlike the directional drop shadows it composites
+     * with at the call sites (.fab, .route-panel-card). The color
+     * lives in its own token because .fab-label needs it in a
+     * drop-shadow() filter: its clip-path tail has no rect for a
+     * box-shadow to trace. */
+    --fab-halo-color: rgba(0, 0, 0, 0.18);
+    --fab-halo: 0 0 4px 1px var(--fab-halo-color);
+    /* The sharp line at the FAB edge. A true 1px hairline, a step
+     * darker than --sheet-border: the previous 1.5px --sheet-border
+     * antialiased into a soft fat line, which read blurry next to
+     * Google Maps' crisp edge. Flips to a lightening line in the dark
+     * scheme (see the [data-color-scheme] override). */
+    --fab-edge: rgba(0, 0, 0, 0.25);
     /* Hairline around color-bar / dot swatches so a light trail color
      * stays visible against a light row. Single value, no dark override:
      * in dark mode a pale swatch already separates from the sheet on its
@@ -269,6 +289,11 @@
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.55);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.65);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.6);
+    /* Light halo and edge for dark mode: the light scheme's darkening
+     * versions vanish against dark basemap tiles and the dark FAB.
+     * --fab-halo re-resolves from the color, no override needed. */
+    --fab-halo-color: rgba(255, 255, 255, 0.2);
+    --fab-edge: rgba(255, 255, 255, 0.3);
     --swatch-outline: rgba(255, 255, 255, 0.18);
     /* Accent: swap to the lightened dark-mode shade + its on-accent
      * text, and flip --accent-strong to brighten (toward white) since
@@ -2939,8 +2964,11 @@ body:has(.gpx-overlay.is-open) .route-panel {
      * dark FAB with a light icon reads as part of the dark UI
      * rather than a bright white spot. */
     background: var(--sheet-bg);
-    border: 1.5px solid var(--sheet-border);
-    box-shadow: var(--elev-raised);
+    border: 1px solid var(--fab-edge);
+    /* Halo first so it paints over the drop shadow. State variants
+     * (pressed accent fill, locate states) only restyle background /
+     * border-color / color, so the halo survives every state. */
+    box-shadow: var(--fab-halo), var(--elev-raised);
     color: var(--sheet-text);
     display: inline-flex;
     align-items: center;
@@ -3007,8 +3035,17 @@ body:has(.gpx-overlay.is-open) .route-panel {
     transform: translateY(-50%) translateX(8px);
     background: var(--sheet-bg);
     color: var(--sheet-text);
-    border: 1.5px solid var(--sheet-border);
-    box-shadow: var(--elev-raised);
+    /* Same sharp-edge + soft-halo chrome as the .fab it labels, so
+     * chip and button read as one attached control. The FABs build
+     * the halo + lift from box-shadow, but a box-shadow here would
+     * trace the chip's rect and skip the clip-path tail (::before /
+     * ::after below). drop-shadow() filters follow the painted
+     * silhouette, chip and tail together, so the whole speech bubble
+     * gets one continuous halo and shadow. Relies on --elev-raised
+     * staying spread-free: drop-shadow() has no spread radius and a
+     * spread in the substituted value would invalidate the filter. */
+    border: 1px solid var(--fab-edge);
+    filter: drop-shadow(0 0 4px var(--fab-halo-color)) drop-shadow(var(--elev-raised));
     /* Asymmetric: rounded on the left (the "head" of the chip) and
      * squared on the right so the wedge can attach to a flat edge.
      * A fully rounded pill produced an unavoidable geometric mismatch
@@ -3038,7 +3075,7 @@ body:has(.gpx-overlay.is-open) .route-panel {
  * so the tail's outline visually continues from the chip's border:
  *   ::before is the larger triangle in the border color
  *   ::after is the slightly smaller triangle in the fill color,
- *   offset back toward the chip by 1.5 px (the chip's border-width)
+ *   offset back toward the chip by 1 px (the chip's border-width)
  *   so the rim of border color shows on the tail's diagonals.
  * The result reads as "chip with a pointed end" rather than "chip
  * plus floating triangle." */
@@ -3050,34 +3087,38 @@ body:has(.gpx-overlay.is-open) .route-panel {
 .fab-label::before {
     /* Outer triangle in the border color. Anchored to the chip's
      * OUTER top-right and bottom-right corners - `left: calc(100% +
-     * 1.5px)` lands at the chip's outer right edge (since the
+     * 1px)` lands at the chip's outer right edge (since the
      * containing block for absolute children is the padding box,
-     * `left: 100%` is at the inner border, and we add the 1.5 px
-     * border width to reach the outer edge). `top: -1.5px` and
-     * `bottom: -1.5px` similarly span across the top + bottom
+     * `left: 100%` is at the inner border, and we add the 1 px
+     * border width to reach the outer edge). `top: -1px` and
+     * `bottom: -1px` similarly span across the top + bottom
      * borders. clip-path draws the triangle (border-trick widths
      * can't reference dynamic chip height). Width 9 px = visible
      * protrusion past the chip. */
-    left: calc(100% + 1.5px);
-    top: -1.5px;
-    bottom: -1.5px;
+    left: calc(100% + 1px);
+    top: -1px;
+    bottom: -1px;
     width: 9px;
-    background: var(--sheet-border);
+    /* Constant-color gradient layered over the fill color: the rim
+     * must match the chip's border, which is translucent --fab-edge
+     * composited over the chip's own bg, not over whatever map tiles
+     * happen to sit under this triangle. */
+    background: linear-gradient(var(--fab-edge), var(--fab-edge)) var(--sheet-bg);
     clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 .fab-label::after {
     /* Inner triangle in the fill color. Spans the chip's INNER top
      * and bottom edges (top: 0, bottom: 0 = inside the chip's
      * border) and starts at the chip's inner right edge (left: 100%
-     * which is at the padding right). Sits 1.5 px LEFT of the outer
+     * which is at the padding right). Sits 1 px LEFT of the outer
      * so the chip's fill flows seamlessly into the wedge's fill
-     * while a 1.5 px rim of border color stays visible along the
-     * wedge's diagonals. Width 7.5 = ::before width minus the 1.5
-     * px the inner is offset by. */
+     * while a 1 px rim of border color stays visible along the
+     * wedge's diagonals. Width 8 = ::before width minus the 1 px
+     * the inner is offset by. */
     left: 100%;
     top: 0;
     bottom: 0;
-    width: 7.5px;
+    width: 8px;
     background: var(--sheet-bg);
     clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
@@ -3717,9 +3758,12 @@ body.modal-open .gpx-overlay.is-open {
     display: flex;
     flex-direction: column;
     background: var(--sheet-bg);
-    border: 1px solid var(--sheet-border);
+    /* Same sharp-edge + soft-halo chrome as the FABs (this card and
+     * its collapsed chip swap in place, so their edges should read as
+     * the same control). Keeps its own drop-shadow geometry. */
+    border: 1px solid var(--fab-edge);
     border-radius: 12px;
-    box-shadow: 0 3px 10px var(--sheet-shadow);
+    box-shadow: var(--fab-halo), 0 3px 10px var(--sheet-shadow);
     padding: 6px 8px 8px;
     /* Narrow enough to never dominate a phone screen; long route
      * names ellipsize inside rows instead of widening the card. */
