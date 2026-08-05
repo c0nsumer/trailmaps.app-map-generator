@@ -1847,6 +1847,13 @@ body::after {
 .maplibregl-ctrl-attrib {
     background: var(--sheet-bg) !important;
     color: var(--sheet-text) !important;
+    /* Same edge language as the FABs and routes card: sharp 1px line
+     * plus soft halo, then the standard raised shadow. The vendor
+     * chip ships with no border or shadow, so without this it was
+     * the one floating control still reading flat against the tiles.
+     * Tokens flip for dark mode with everything else. */
+    border: 1px solid var(--fab-edge);
+    box-shadow: var(--fab-halo), var(--elev-raised);
     font-size: 10px !important;
     /* Pin the line box to the chip's 20px content box (vendor:
      * min-height 20px content-box + 2px vertical padding = 24px chip).
