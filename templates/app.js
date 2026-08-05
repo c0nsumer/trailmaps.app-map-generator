@@ -2072,23 +2072,27 @@ let _followUserOnGeolocate = false;
 // ============================================================
 // Compass heading wedge (.claude/plans/compass-heading-wedge.md)
 // ============================================================
-// A translucent cone on the user-location dot showing which way the
-// rider is FACING (device compass), so a rider stopped at a junction
-// can pick the right fork without riding until the dot moves.
+// A translucent cone on the user-location dot. While riding it shows
+// the GPS direction of travel; when stopped it falls back to the
+// device compass (facing), so a rider stopped at a junction can
+// still pick the right fork without riding until the dot moves.
 // Custom-built: MapLibre 5.24 has no showUserHeading. Contract:
 //   - The sensor stream runs only while the Locate control is
 //     actively tracking (started from the Locate tap, stopped by
 //     mirrorLocateState's idle/disabled transitions).
 //   - The wedge HIDES on stale readings (3 s) or bad magnetometer
 //     accuracy rather than freeze pointing the wrong way.
-//   - Fallback when no compass is available: the direction-of-travel
-//     fields (coords.heading / coords.speed) that EVERY geolocation
-//     fix already carries, computed by the device's OS before the
-//     fix reaches the browser. The app does no movement inference of
-//     its own and keeps no position history - each fix is read and
+//   - Source priority: the direction-of-travel fields
+//     (coords.heading / coords.speed) that EVERY geolocation fix
+//     already carries, computed by the device's OS before the fix
+//     reaches the browser, win while fresh. Magnetometers get thrown
+//     off near iron-rich ground; the GPS course does not. The device
+//     compass covers the stationary case (course needs motion, see
+//     the speed gate at the geolocate handler) and devices with no
+//     course at all. The app does no movement inference of its own
+//     and keeps no position history - each fix is read and
 //     discarded, and the only retained location state remains the
 //     single latest `userLocation`, exactly as before this feature.
-//     A live compass reading always wins over the per-fix course.
 //   - The map itself never rotates. Bearing is locked at 0 app-wide,
 //     so wedge rotation = heading directly; if rotation ever
 //     unlocks, subtract map.getBearing() in applyWedgeHeading.
@@ -2101,6 +2105,7 @@ let _wedgeEl = null;         // marker root; --wedge-heading lives here
 let _wedgeAngleCss = 0;      // unwrapped accumulated angle for CSS
 let _wedgeHeading = null;    // smoothed heading [0,360) or null
 let _wedgeLastApply = 0;
+let _wedgeLastCourse = -Infinity;  // performance.now() of last course apply
 let _wedgeStaleTimer = null;
 let _orientationListening = false;
 
@@ -2172,22 +2177,32 @@ function onDeviceOrientation(e) {
 }
 
 // `fromCourse` marks a reading taken from a single GPS fix's own
-// OS-computed heading field (compass fallback); it never overrides
-// a live compass.
+// OS-computed heading field. Fresh course readings suppress the
+// compass (source-priority bullet in the docblock above); the
+// freshness window sits just under the 3 s stale-hide so a stopped
+// rider's compass takes over before the wedge hides, instead of a
+// hide/re-show blink.
+const WEDGE_COURSE_FRESH_MS = 2500;
 function applyWedgeHeading(heading, fromCourse) {
-    if (fromCourse && _orientationListening && _wedgeHeading !== null) {
+    const now = performance.now();
+    if (fromCourse) {
+        _wedgeLastCourse = now;
+    } else if (now - _wedgeLastCourse < WEDGE_COURSE_FRESH_MS) {
         return;
     }
-    const now = performance.now();
     if (now - _wedgeLastApply < 80) return;   // ~12 Hz is plenty
     _wedgeLastApply = now;
     if (_wedgeHeading === null) {
         _wedgeHeading = heading;
     } else {
-        // Shortest-arc exponential smoothing: raw magnetometer
-        // readings jitter several degrees event to event.
+        // Shortest-arc exponential smoothing. The compass jitters
+        // several degrees event to event at ~10-60 Hz, so it gets a
+        // light weight; the course arrives at ~1 Hz already
+        // OS-filtered, so it gets a heavy weight to keep the cone
+        // from lagging whole seconds behind a turn.
+        const k = fromCourse ? 0.65 : 0.3;
         const d = ((heading - _wedgeHeading + 540) % 360) - 180;
-        _wedgeHeading = (_wedgeHeading + d * 0.3 + 360) % 360;
+        _wedgeHeading = (_wedgeHeading + d * k + 360) % 360;
     }
     // The CSS angle accumulates without wrapping so the rotate()
     // transition never takes the 350° long way around at the
@@ -3039,10 +3054,10 @@ async function init() {
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
         maybeShowOffScreenToast();
-        // Keep the compass wedge glued to the dot. The compass
-        // fallback below reads two fields THIS fix already carries
-        // (the OS computes heading/speed per fix; no history is kept
-        // or compared here): heading is only meaningful when the
+        // Keep the compass wedge glued to the dot. The course read
+        // below uses two fields THIS fix already carries (the OS
+        // computes heading/speed per fix; no history is kept or
+        // compared here): heading is only meaningful when the
         // device is actually moving (NaN/garbage when stationary;
         // ~1 m/s ≈ slow walk), hence the speed gate.
         if (_wedgeMarker && _wedgeMarker._map) {
