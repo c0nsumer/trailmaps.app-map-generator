@@ -150,6 +150,13 @@ _INLINE_BLOCK_RE = re.compile(
 # is one predicate.
 _CONDITIONAL_COMMENT_RE = re.compile(r"^<!--\s*\[if\b", re.I)
 
+# The `<!-- BEGIN OG -->` / `<!-- END OG -->` pair in templates/index.html
+# is a replacement contract, not commentary: the trailmaps.app orchestrator's
+# inject-og-meta.py locates the OG image block by these exact markers in the
+# BUILT page and swaps it for per-map summary_large_image tags. Stripping
+# them breaks that downstream step, so they survive minification.
+_OG_MARKER_COMMENT_RE = re.compile(r"^<!--\s*(?:BEGIN|END) OG\s*-->")
+
 
 def _minify_html(src):
     """Strip comments from an HTML document without touching its markup.
@@ -188,10 +195,13 @@ def _minify_html(src):
 
 
 def _strip_html_comments(chunk):
-    """Remove HTML comments from a run of markup, keeping conditionals."""
+    """Remove HTML comments, keeping conditionals and the OG markers."""
     return re.sub(
         r"<!--.*?-->[ \t]*\n?",
-        lambda m: m.group(0) if _CONDITIONAL_COMMENT_RE.match(m.group(0)) else "",
+        lambda m: m.group(0)
+        if _CONDITIONAL_COMMENT_RE.match(m.group(0))
+        or _OG_MARKER_COMMENT_RE.match(m.group(0))
+        else "",
         chunk,
         flags=re.S,
     )
