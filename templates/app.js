@@ -3899,8 +3899,14 @@ function buildWelcomeControlsHint() {
     // unconditional. Search keeps its own row for the verb a
     // first-visit rider needs taught.
     const rows = [
+        // The wake-lock sentence only shows where the API exists:
+        // updateWakeLock silently no-ops without it (old iOS), and the
+        // welcome copy must not promise what that device won't do.
         { icon: _WELCOME_ICON_LOCATE,     name: "Locate",
-            desc: "Track your position on the map." },
+            desc: "Track your position on the map."
+                + ("wakeLock" in navigator
+                    ? " Keeps the screen awake while tracking."
+                    : "") },
         { icon: _WELCOME_ICON_RESET_VIEW, name: "Reset view",
             desc: "Reset the map to its starting view." },
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
