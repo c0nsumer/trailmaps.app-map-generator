@@ -84,6 +84,13 @@ Caddy. The Caddy-specific config below is one example of headers you may want
 to set on whichever host you use. The same intent translates to most server
 configs: cache JS/CSS forever, revalidate HTML, allow Range on PMTiles.
 
+The build also writes precompressed `.gz` and `.zst` sidecars next to each
+text asset. Caddy, nginx, and Apache can serve these directly (see the
+`precompressed` block below). Managed hosts like S3, Netlify, Cloudflare
+Pages, and GitHub Pages cannot; they compress on their own terms and ignore
+sidecar files. If you deploy to one of those, build with `--no-precompress`
+so the sidecars are not generated and uploaded for nothing.
+
 ## Caddy configuration
 
 Recommended Caddy config serving maps at `mytrailmaps.com`:
@@ -92,7 +99,16 @@ Recommended Caddy config serving maps at `mytrailmaps.com`:
 mytrailmaps.com {
     root * /var/www/mytrailmaps.com
     encode zstd gzip
-    file_server
+
+    # Serve the build's precompressed .zst/.gz sidecars when the client
+    # accepts them. Without `precompressed`, Caddy ignores the sidecars
+    # and re-compresses on the fly at a lower level - and `encode` skips
+    # types outside its default allowlist entirely, which includes
+    # .geojson and the font .pbf glyphs. Sidecars are never generated
+    # for .pmtiles, so HTTP Range slicing is unaffected.
+    file_server {
+        precompressed zstd gzip
+    }
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -109,7 +125,10 @@ mytrailmaps.com {
     # rebuilds propagate. app.js and style.css keep stable filenames, so a
     # stale cache clears when the entry expires or the service worker swaps it.
 
-    @immutable path *.pmtiles *.pbf *.js *.css *.png *.webp *.ico *.svg *.json
+    # The explicit *.geojson / *.webmanifest / *.gpx globs matter: those
+    # extensions do not end in .json, so without them the trail data and
+    # manifest would ship with no Cache-Control header at all.
+    @immutable path *.pmtiles *.pbf *.js *.css *.png *.webp *.ico *.svg *.json *.geojson *.webmanifest *.gpx
 
     # Pick one of these two:
 
