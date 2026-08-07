@@ -2147,10 +2147,18 @@ let geolocateControl = null;
 // state-machine docblock above the GeolocateControl creation in
 // init() for the full story (state diagram, transition table, what
 // each flag is for, and where each gets set vs consumed).
-let _showToastOnNextFix = false;
-let _suppressOffScreenToast = false;
-let _firstGeolocateMoveAfterTrigger = false;
 let _followUserOnGeolocate = false;
+// One-shot: the next locate camera move is the ACTIVATION move
+// (tracking just turned on), so lift a distant overview to
+// LOCATE_ACTIVATION_ZOOM. Every other locate move keeps the rider's
+// current zoom exactly (2026-08-07; matches Google/Apple Maps and
+// ride-recording apps: re-centering never changes zoom).
+let _locateActivationZoomPending = false;
+// Floor, not target: activation zooms IN to this from an overview
+// but never zooms OUT someone already closer. 15 shows the rider's
+// immediate trail context (the fill/casing widths are tuned around
+// z14-16 riding zooms) without cutting off the surrounding network.
+const LOCATE_ACTIVATION_ZOOM = 15;
 
 // ============================================================
 // Compass heading wedge (.claude/plans/compass-heading-wedge.md)
@@ -3057,26 +3065,41 @@ async function init() {
     //          └──────────┘
     //
     // Stock MapLibre camera behavior at each transition:
-    //   IDLE → ACTIVE         easeTo(user, fitBoundsOptions), pan + zoom
-    //   ACTIVE per-fix        easeTo(user), just pan
+    //   IDLE → ACTIVE         fitBounds(accuracy circle, maxZoom 15)
+    //   ACTIVE per-fix        fitBounds(accuracy circle, maxZoom 15)
     //   ACTIVE → BACKGROUND   no camera move (user is in control)
     //   BACKGROUND fix update no camera move (dot moves, not the map)
-    //   BACKGROUND → ACTIVE   easeTo(user), re-center, no zoom
+    //   BACKGROUND → ACTIVE   fitBounds(accuracy circle, maxZoom 15)
+    //
+    // Stock fits the ACCURACY CIRCLE, so every one of those moves can
+    // change zoom: capped at 15 (yanks a z16-17 rider out) and
+    // unbounded downward when a poor fix inflates the circle. That is
+    // nonstandard; Google/Apple Maps and ride recorders never change
+    // zoom on a re-center. Replaced 2026-08-07 (Session D follow-on)
+    // by overriding the control's _updateCamera (an instance-assigned
+    // arrow function in MapLibre 5.24; re-verify on vendor upgrades)
+    // with center-only moves:
+    //   - Every locate move eases to the fix AT THE CURRENT ZOOM.
+    //   - The single exception: the activation move (tracking just
+    //     turned on) raises an overview to LOCATE_ACTIVATION_ZOOM,
+    //     floor semantics, never zooms out (_locateActivationZoomPending).
     //
     // Our modifications (vs stock):
-    //   - Suppress the IDLE → ACTIVE auto-zoom (preserve user's view)
-    //   - Suppress per-fix easeTo by default; allow only when
-    //     follow-me opt-in is on
-    //   - Allow the BACKGROUND → ACTIVE re-engagement easeTo
+    //   - All locate camera moves keep the rider's zoom (above)
+    //   - Activation centers on the rider with the floor zoom and
+    //     starts follow-me (industry behavior; until 2026-08-07 the
+    //     activation move was suppressed entirely in favor of an
+    //     off-screen hint toast, retired with this change)
     //   - Manual pan exits follow-me (active → background-effective)
     //
     // Where each modification lives:
+    //   - _updateCamera override: right after control creation
     //   - Locate-button click handler: reads pre-click state, sets
     //     flags BEFORE calling trigger(), single decision point
     //   - Off-screen indicator click handler: own flyTo path; sets
     //     flags before triggering re-engage
-    //   - `movestart` filter: consumes flags to allow / cancel the
-    //     geolocate-source camera moves
+    //   - `movestart` filter: exits follow on user-initiated moves,
+    //     cancels geolocate-source moves when follow is off
     //   - mirrorLocateState: clears userLocation when state goes
     //     idle / disabled (handles the "tracking actually ended"
     //     transition without depending on which event fires)
@@ -3091,30 +3114,16 @@ async function init() {
     //
     // Flags driving the modifications:
     //
-    //   _firstGeolocateMoveAfterTrigger
-    //     Cancel the next geolocate-source movestart (the IDLE →
-    //     ACTIVE fitBounds-zoom). Set true on idle→active click,
-    //     false on background→active click. Consumed once.
-    //
     //   _followUserOnGeolocate
-    //     Allow per-fix easeTo updates through the movestart filter
+    //     Allow per-fix ease updates through the movestart filter
     //     so the map auto-follows the user. Set true on any →
     //     active click. Cleared by user manual pan.
     //
-    //   _showToastOnNextFix
-    //     "On the next geolocate / userlocationfocus event, if the
-    //     user is off-screen, show a hint toast suggesting they tap
-    //     the blue ▲ indicator." Set true on idle→active (user
-    //     just enabled tracking; might not realize their position
-    //     is off the trail bbox). Set false on background→active
-    //     (user knows what they want, to be re-centered).
-    //     Consumed once.
-    //
-    //   _suppressOffScreenToast
-    //     Hard-suppress the off-screen toast for the indicator
-    //     click path; that path triggers events that would
-    //     otherwise fire the toast circularly. Set in indicator
-    //     click; cleared in moveend (or 2 s safety timeout).
+    //   _locateActivationZoomPending
+    //     One-shot floor-zoom marker for the activation move. Set
+    //     on idle→active click; consumed by the _updateCamera
+    //     override; cleared on any tracking-end so a stale flag
+    //     can't floor a later re-engage.
     //
     //   userLocation
     //     Cached [lng, lat] from the latest geolocate event.
@@ -3142,48 +3151,43 @@ async function init() {
     geolocateControl = geolocate;  // expose to updateLocationIndicator
     attachOffScreenIndicatorHandler();
 
-    const maybeShowOffScreenToast = () => {
-        // Suppress entirely when the user's recent action was clicking
-        // the indicator itself, the toast would be circular advice.
-        // Also consume the flag so a LATER geolocate event (after
-        // moveend has cleared the suppress flag) doesn't belatedly
-        // fire the toast: the indicator click triggered a GPS fix, the
-        // fix arrives after moveend, suppress is now false, flag is
-        // still true → toast. Consuming here closes that race.
-        if (_suppressOffScreenToast) {
-            _showToastOnNextFix = false;
-            return;
+    // Camera-writer override: every locate move keeps the rider's
+    // zoom (see the state-machine docblock above for the full
+    // rationale and the stock behavior this replaces). _updateCamera
+    // is an instance-assigned arrow function in MapLibre 5.24, so
+    // plain assignment replaces it; re-verify that shape on vendor
+    // upgrades (unlike the getter-only basemaps exports, this one
+    // takes the assignment silently EITHER way, so a breaking vendor
+    // change would show up as the stock zoom-yank returning, covered
+    // by the locate probe's zoom asserts).
+    //
+    // The eventData ({geolocateSource: true}) must ride along
+    // exactly like stock: the movestart filter below distinguishes
+    // locate moves from user moves by it.
+    geolocate._updateCamera = (position) => {
+        const center = [position.coords.longitude, position.coords.latitude];
+        let zoom = map.getZoom();
+        if (_locateActivationZoomPending) {
+            _locateActivationZoomPending = false;
+            zoom = Math.max(zoom, LOCATE_ACTIVATION_ZOOM);
         }
-        if (!_showToastOnNextFix || !userLocation) return;
-        _showToastOnNextFix = false;
-        const pt = map.project(userLocation);
-        const cv = map.getCanvas();
-        if (pt.x < 0 || pt.x > cv.clientWidth || pt.y < 0 || pt.y > cv.clientHeight) {
-            showToast("Your location is off-screen. Tap the blue ▲ at the map edge to center on it.");
-        }
+        map.easeTo({ center, zoom }, { geolocateSource: true });
     };
 
-    // movestart filter for geolocate-sourced camera moves. Three branches:
+    // movestart filter for geolocate-sourced camera moves. Two branches:
     //
     //  1. Move is user-initiated (no geolocateSource): they want to look
     //     around, exit follow-me mode. Don't cancel, the user IS the
     //     camera now.
-    //  2. Move is the FIRST geolocate-source move after entering active
-    //     tracking (the fitBounds-zoom yank): always cancel. Defer to a
-    //     microtask, which drains after easeTo finishes setup but before
-    //     any rAF fires, canceling the animation before a frame draws.
-    //  3. Move is a SUBSEQUENT geolocate-source ease (per-fix follow-me
-    //     update): allow if the user has opted into follow mode (set
-    //     true in the Locate-button click handler, cleared by branch 1).
-    //     Otherwise cancel as before.
+    //  2. Move is a geolocate-source ease (per-fix follow-me update):
+    //     allow if the user is in follow mode (set in the
+    //     Locate-button click handler, cleared by branch 1);
+    //     otherwise cancel. Defer the cancel to a microtask, which
+    //     drains after easeTo finishes setup but before any rAF
+    //     fires, so the animation dies before a frame draws.
     map.on("movestart", (e) => {
         if (!e.geolocateSource) {
             _followUserOnGeolocate = false;
-            return;
-        }
-        if (_firstGeolocateMoveAfterTrigger) {
-            _firstGeolocateMoveAfterTrigger = false;
-            queueMicrotask(() => map.stop());
             return;
         }
         if (_followUserOnGeolocate) {
@@ -3195,7 +3199,6 @@ async function init() {
     geolocate.on("geolocate", (e) => {
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
-        maybeShowOffScreenToast();
         // Keep the compass wedge glued to the dot. The course read
         // below uses two fields THIS fix already carries (the OS
         // computes heading/speed per fix; no history is kept or
@@ -3220,7 +3223,7 @@ async function init() {
     // (see the state-machine docblock above the GeolocateControl).
 
     geolocate.on("trackuserlocationend", () => {
-        _firstGeolocateMoveAfterTrigger = false;
+        _locateActivationZoomPending = false;
         _followUserOnGeolocate = false;
         // NOTE: don't clear userLocation here. Despite the event name
         // sounding terminal, MapLibre 5.x fires trackuserlocationend
@@ -3231,10 +3234,6 @@ async function init() {
         // userLocation is cleared in mirrorLocateState() instead,
         // which reads the actual button state class and only acts on
         // the true off / disabled transitions.
-    });
-
-    geolocate.on("userlocationfocus", () => {
-        maybeShowOffScreenToast();
     });
 
     geolocate.on("outofmaxbounds", () => {
@@ -3330,6 +3329,7 @@ async function init() {
         // panned but is still being tracked".
         if (state === "idle" || state === "disabled") {
             userLocation = null;
+            _locateActivationZoomPending = false;
             updateLocationIndicator();
             // Tracking is off: retire the compass wedge and stop the
             // sensor stream (battery; also prevents a ghost wedge if
@@ -3355,11 +3355,11 @@ async function init() {
                 cls.contains("maplibregl-ctrl-geolocate-active-error") ||
                 cls.contains("maplibregl-ctrl-geolocate-background-error"));
             if (inBackground) {
-                // BACKGROUND → ACTIVE re-engagement. Stock-like
-                // re-centering: allow MapLibre's easeTo through, no
-                // hint toast (the user is being centered right now).
-                _firstGeolocateMoveAfterTrigger = false;
-                _showToastOnNextFix = false;
+                // BACKGROUND → ACTIVE re-engagement: ease back to the
+                // rider AT THEIR CURRENT ZOOM (the _updateCamera
+                // override keeps zoom; no floor here, they chose this
+                // zoom while panning around) and resume follow-me.
+                _locateActivationZoomPending = false;
                 _followUserOnGeolocate = true;
                 // Tracking-on tap = the user gesture iOS requires for
                 // the compass permission (see requestCompassOnGesture;
@@ -3380,24 +3380,16 @@ async function init() {
                 if (nativeLocateBtn && nativeLocateBtn.disabled) {
                     nativeLocateBtn.disabled = false;
                 }
-                // IDLE / DISABLED → ACTIVE (initial enable). Original
-                // framework intent: don't yank the camera with the
-                // fitBounds-zoom; arm the hint toast so the user
-                // knows to tap the indicator if their dot is off-
-                // screen.
-                //
-                // Keep follow-me OFF here so NO geolocate-source ease
-                // moves the camera on initial enable, not the first
-                // fitBounds-zoom (canceled below) and not the next
-                // per-fix easeTo either. Otherwise the second GPS fix
-                // would auto-center a few seconds after the indicator
-                // + toast appeared, contradicting the "we're not
-                // moving you, tap the ▲ to center" promise. Follow-me
-                // is opted into explicitly via the indicator-click and
-                // BACKGROUND → ACTIVE re-engage paths.
-                _firstGeolocateMoveAfterTrigger = true;
-                _showToastOnNextFix = true;
-                _followUserOnGeolocate = false;
+                // IDLE / DISABLED → ACTIVE (initial enable): center
+                // on the rider, lift an overview to the activation
+                // floor zoom, and start follow-me. (Until 2026-08-07
+                // this branch suppressed the camera move entirely and
+                // showed a "tap the blue ▲" hint toast instead; the
+                // toast machinery retired with it. Fixes outside
+                // maxBounds never reach the camera path, MapLibre
+                // fires outofmaxbounds instead, handled above.)
+                _locateActivationZoomPending = true;
+                _followUserOnGeolocate = true;
                 // See the matching call in the BACKGROUND branch.
                 requestCompassOnGesture();
             }
@@ -11433,23 +11425,11 @@ function attachOffScreenIndicatorHandler() {
     el.addEventListener("click", () => {
         if (!userLocation) return;
 
-        // Dismiss any toast currently visible. Most likely it's the
-        // "tap the blue ▲" hint from the prior Locate-button tap;
-        // leaving it up while the user actually performs the action
-        // reads as "still buggy". The 4-s auto-fade would otherwise
-        // outlive the click that addressed it.
+        // Dismiss any toast currently visible (e.g. the beyond-edge
+        // explainer from a previous tap). Leaving it up while the
+        // user acts reads as "still buggy"; the 4-s auto-fade would
+        // otherwise outlive the click that addressed it.
         dismissToast();
-
-        // Suppress the "your location is off-screen" toast for any
-        // geolocate / userlocationfocus events that fire while we're
-        // panning. The flag is checked first in maybeShowOffScreenToast
-        // and also consumes _showToastOnNextFix there to close the
-        // race where a fresh GPS fix arrives after moveend clears
-        // suppress. Cleared on moveend (and by a safety timeout).
-        _suppressOffScreenToast = true;
-        const safetyTimer = setTimeout(() => {
-            _suppressOffScreenToast = false;
-        }, 2000);
 
         // Pan to the cached fix. If userLocation sits at or beyond the
         // edge of panBbox, MapLibre clamps the map center to keep the
@@ -11467,8 +11447,6 @@ function attachOffScreenIndicatorHandler() {
         // already at the user) and the cancel handler harmlessly
         // suppresses it.
         map.once("moveend", () => {
-            clearTimeout(safetyTimer);
-            _suppressOffScreenToast = false;
             const pt = map.project(userLocation);
             const cv = map.getCanvas();
             const offScreenAfterPan =
@@ -11481,28 +11459,20 @@ function attachOffScreenIndicatorHandler() {
             }
 
             // Resume follow-me tracking. We're already at the user's
-            // position (the flyTo above just got us there), so any
-            // auto-pan MapLibre wants to do is a no-op, but we do
-            // want subsequent per-fix easeTo updates to keep us
-            // tracking. Set the same flags the Locate-button click
-            // handler sets for a re-engagement, then trigger() if
-            // we're not already active. (No trackuserlocationstart
-            // handler arms these any more; the click handler is the
-            // single source of truth, see the state-machine
-            // docblock at the GeolocateControl creation.)
+            // position (the flyTo above just got us there) at the
+            // zoom they were browsing at, and the _updateCamera
+            // override keeps that zoom for the re-engage ease and
+            // every per-fix ease after it. Set the same flags the
+            // Locate-button click handler sets for a re-engagement,
+            // then trigger() if we're not already active.
             if (geolocateControl) {
                 const native = document.querySelector(".maplibregl-ctrl-geolocate");
                 const isActive = native && native.classList
                     .contains("maplibregl-ctrl-geolocate-active");
+                _locateActivationZoomPending = false;
+                _followUserOnGeolocate = true;
                 if (!isActive) {
-                    _firstGeolocateMoveAfterTrigger = false;
-                    _showToastOnNextFix = false;
-                    _followUserOnGeolocate = true;
                     geolocateControl.trigger();
-                } else {
-                    // Already active. Re-arm follow in case a manual
-                    // pan earlier in this session cleared the flag.
-                    _followUserOnGeolocate = true;
                 }
             }
         });
@@ -11554,8 +11524,8 @@ function updateLocationIndicator() {
     // inset rectangle the clamp uses below: a dot sitting inside the
     // edge margin or under the top FAB reserve is still visible to the
     // rider, so drawing a pointer on top of it is wrong. Matches the
-    // off-screen definition already used by maybeShowOffScreenToast and
-    // the post-pan check in attachOffScreenIndicatorHandler. Checked
+    // off-screen definition used by the post-pan check in
+    // attachOffScreenIndicatorHandler. Checked
     // FIRST: it's the overwhelmingly common outcome while riding (dot
     // on screen, nothing to draw), and everything below it costs real
     // work per frame.
