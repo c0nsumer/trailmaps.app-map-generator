@@ -2253,6 +2253,65 @@ function hideCompassWedge() {
 }
 
 // ============================================================
+// Screen wake lock (held while Locate is tracking)
+// ============================================================
+// Coupled to Locate rather than exposed as a settings toggle: a rider
+// with the map out and tracking on is exactly who the OS screen
+// timeout keeps interrupting, and the coupling needs no new UI.
+// Battery exposure stays bounded because the browser force-releases
+// the lock whenever the page is hidden (pocketed phone, screen locked
+// manually, app switch), so it only ever burns battery while the map
+// is actually on screen; turning Locate off ends it.
+//
+// Failure posture: a refused request (Low Power Mode, battery saver,
+// iOS home-screen PWAs before iOS 18.4) silently degrades to the
+// normal screen timeout. Nothing is surfaced to the rider: there is
+// no action they could take from a toast, and it would imply a
+// control that doesn't exist.
+let _wakeLock = null;          // active sentinel, null when not held
+let _wakeLockWanted = false;   // Locate is on; re-acquire on return to visible
+let _wakeLockPending = false;  // request() in flight, don't double-request
+
+async function updateWakeLock(wanted) {
+    _wakeLockWanted = wanted;
+    if (!("wakeLock" in navigator)) return;
+    if (!wanted) {
+        if (_wakeLock) {
+            _wakeLock.release().catch(() => { /* already released */ });
+            _wakeLock = null;
+        }
+        return;
+    }
+    // Hidden page: request() would reject. The visibilitychange
+    // listener below re-runs this when the page comes back.
+    if (_wakeLock || _wakeLockPending || document.hidden) return;
+    _wakeLockPending = true;
+    try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (!_wakeLockWanted) {
+            // Tracking toggled off while the request was in flight;
+            // don't keep a lock nobody wants.
+            lock.release().catch(() => {});
+            return;
+        }
+        _wakeLock = lock;
+        // The browser releases the lock itself on page hide; observe
+        // that so the re-acquire path knows the sentinel is dead.
+        lock.addEventListener("release", () => {
+            if (_wakeLock === lock) _wakeLock = null;
+        });
+    } catch {
+        // Refused; degrade to the normal screen timeout.
+    } finally {
+        _wakeLockPending = false;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && _wakeLockWanted) updateWakeLock(true);
+});
+
+// ============================================================
 // Initialization
 // ============================================================
 // Required CONFIG fields, checked at boot. If the build produces a
@@ -3172,6 +3231,13 @@ async function init() {
             state === "active-error" ||
             state === "background-error";
         locateBtn.setAttribute("aria-pressed", tracking ? "true" : "false");
+        // Wake lock tracks the same boundary as the sensor stream:
+        // wanted in every state except truly-off. Unlike `tracking`
+        // above, "waiting" counts as on, so the request fires straight
+        // from the Locate tap (inside the user-gesture window) and
+        // there's no release/re-acquire churn when waiting stacks
+        // with active during transitions.
+        updateWakeLock(state !== "idle" && state !== "disabled");
         // When tracking is truly off (idle = user toggled Locate
         // off; disabled = no permission / no GPS), clear the cached
         // fix so the off-screen indicator hides itself. Doing this
