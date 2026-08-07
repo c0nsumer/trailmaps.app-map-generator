@@ -23,7 +23,8 @@ Oaks Map as of 2026-Jul-05*
   server that supports Range requests (Caddy, nginx, Apache).
 - Optional: A fully installable Progressive Web App. After the first visit, the
   map is usable offline, including PMTiles range requests served from cache.
-- Self-hosted basemap tiles (Protomaps), optional terrain hillshade
+- Self-hosted basemap tiles (Protomaps), optional terrain hillshade with
+  contour lines
   (Mapterhorn), and optional custom raster basemaps.
 - On-map controls: Locate, Reset View, and Options buttons (top-right), plus
   the routes panel (bottom-right):
@@ -226,6 +227,7 @@ their licenses and origins are listed here:
 | [Mapterhorn](https://mapterhorn.com) | Terrain DEM aggregation (USGS 3DEP, EU-DEM, JAXA AW3D30) | Public-domain inputs aggregated under permissive license |
 | [USGS 3D Elevation Program (3DEP)](https://www.usgs.gov/3d-elevation-program) | Per-route elevation profiles | Public domain (US government work) |
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
+| [maplibre-contour](https://github.com/onthegomap/maplibre-contour) | In-browser contour lines from the terrain tiles | BSD-3-Clause |
 | [PMTiles](https://github.com/protomaps/PMTiles) | Single-file tile archive format and JS reader | BSD-3-Clause |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers) | UI iconography (inline SVG) | Apache 2.0 |
 | [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (Noto Sans via Protomaps) and the self-hosted Inter UI webfont | OFL 1.1 |

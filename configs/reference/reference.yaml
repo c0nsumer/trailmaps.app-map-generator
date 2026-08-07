@@ -134,7 +134,7 @@ relations:
 # Fetch amenity=bicycle_repair_station nodes.
 # show_bicycle_repair_stations: true
 
-# Fetch terrain tiles and render the hillshade layer.
+# Fetch terrain tiles and render the hillshade and contour-line layers.
 # show_terrain: true
 
 # Generate IMBA difficulty symbols; auto-hidden if no way carries mtb:scale:imba.
