@@ -382,6 +382,16 @@ def generate_service_worker(config, output_dir):
         # hash are unchanged.
         if rel_url == "og-image.png":
             continue
+        # The document is already precached as the "./" seed above - the
+        # form every entry point actually navigates to (manifest
+        # start_url, homepage links). Also precaching the walked
+        # "index.html" stored the same ~60 KB twice, double-counted it
+        # in the readiness total, and fetched it twice per install. It
+        # stays in all_files so the cache hash still tracks its bytes;
+        # an explicit .../index.html visit is cached on first fetch by
+        # the SW's cache-on-fetch path.
+        if rel_url == "index.html":
+            continue
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)
         else:

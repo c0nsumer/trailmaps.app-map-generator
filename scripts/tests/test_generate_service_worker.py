@@ -91,6 +91,21 @@ def test_precache_bytes_keyed_by_url(tmp_path):
     assert cfg["PRECACHE_BYTES"]["app.js"] == len(TREE["app.js"])
 
 
+def test_index_html_precached_only_as_root_seed(tmp_path):
+    # The document precaches once, as the "./" seed every entry point
+    # navigates to. The walked "index.html" duplicated the same bytes
+    # in the cache, the readiness total, and the install download. It
+    # must still deploy and bust the cache when edited.
+    root = str(tmp_path)
+    v1, _ = _generate(root)
+    assert "index.html" not in v1["PRECACHE_URLS"]
+    assert v1["PRECACHE_URLS"][0] == "./"
+    with open(os.path.join(root, "index.html"), "wb") as f:
+        f.write(b"<html>edited page</html>")
+    v2, _ = _generate(root)
+    assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
+
+
 def test_og_image_excluded_from_precache_but_hashed(tmp_path):
     # The orchestrator-injected social card is scraper-only: the app
     # never renders it, so it must not cost every fresh install ~580 KB.
