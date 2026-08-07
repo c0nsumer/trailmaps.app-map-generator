@@ -157,6 +157,65 @@ function basemapFlavor(scheme) {
     return s === "dark" ? "dark" : "light";
 }
 
+// Basemap color overrides merged onto the stock Protomaps flavors
+// (adopted 2026-08-07 after the Session D on-device style review;
+// candidates and rejected alternatives are recorded in
+// .claude/plans/style-lab-session-d.md). Light is the community
+// "bio" flavor's vegetation/water/earth: all vegetation unified at
+// one calm sage so the trail network reads as the foreground;
+// muted naturalist water. Dark is our own sage-cast tuning of the
+// stock dark flavor. Only vegetation / water / earth keys and the
+// low-zoom landcover block are overridden: roads, labels, and POIs
+// stay stock, so the shipped light/dark sprite atlases and the
+// suppression helpers keep working unchanged. wood/park/scrub each
+// carry _a (low zoom) and _b (high zoom) variants, and landcover
+// paints the low-zoom world, so both are overridden together or
+// low and mid zooms would disagree about how green the woods are.
+const BASEMAP_FLAVOR_OVERRIDES = {
+    light: {
+        background: "#dddddd", earth: "#ededed",
+        wood_a: "#bfc99c", wood_b: "#bfc99c",
+        park_a: "#bfc99c", park_b: "#bfc99c",
+        scrub_a: "#bfc99c", scrub_b: "#bfc99c",
+        water: "#84b7cf",
+        sand: "#ebe7da", beach: "#ebe7da",
+        landcover: {
+            forest: "#bfc99c", grassland: "#ccd4ab",
+            farmland: "#d6dcb9", scrub: "#c5cea3",
+            barren: "#e8e3d0", urban_area: "#e4e4e4",
+        },
+    },
+    dark: {
+        background: "#33362f", earth: "#1f1f1c",
+        wood_a: "#24291e", wood_b: "#24291e",
+        park_a: "#24291e", park_b: "#24291e",
+        scrub_a: "#24291e", scrub_b: "#24291e",
+        water: "#2c3a45",
+        landcover: {
+            forest: "#24291e", grassland: "#262b20",
+            farmland: "#282d22", scrub: "#252a1f",
+            barren: "#262622", urban_area: "#1c1c1c",
+        },
+    },
+};
+
+// The stock flavor with our overrides applied. Both style builders
+// (buildStyle and rebuildBasemapLayers) go through this instead of
+// calling basemaps.namedFlavor directly. Returns a fresh merged
+// object; never mutates the vendor flavor (the vendored basemaps
+// bundle exposes its exports through getter-only properties, so
+// in-place patching is a silent no-op anyway; Session D learned
+// this the hard way).
+function resolvedNamedFlavor(name) {
+    const flavor = basemaps.namedFlavor(name);
+    const overrides = BASEMAP_FLAVOR_OVERRIDES[name];
+    if (!overrides) return flavor;
+    const merged = Object.assign({}, flavor, overrides);
+    merged.landcover = Object.assign(
+        {}, flavor.landcover, overrides.landcover || {});
+    return merged;
+}
+
 // Zoom stops for trail line widths, by layer role. Centralized so the
 // casing/fill pair can't drift out of proportion (the casing's whole job is
 // to extend ~1-1.5 px past the fill).
@@ -4314,7 +4373,7 @@ function buildStyle() {
     // toggles at runtime go through applyColorScheme →
     // rebuildBasemapLayers, which re-derives the flavor the same way.
     const flavor = basemapFlavor();
-    const basemapLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
+    const basemapLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
 
     return {
         version: 8,
@@ -10430,7 +10489,7 @@ function rebuildBasemapLayers() {
         // Same flavor logic as buildStyle, picks dark/light
         // Protomaps tiles to match the current color scheme.
         const flavor = basemapFlavor();
-        baseLayers = basemaps.layers("basemap", basemaps.namedFlavor(flavor), { lang: "en" });
+        baseLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
         spritePath = `${base}sprites/v4/${flavor}`;
 
         // Rebuild the basemap source too, mirroring the custom branch
