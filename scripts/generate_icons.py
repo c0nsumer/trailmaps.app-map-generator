@@ -14,6 +14,7 @@ Usage as standalone:
 """
 
 import argparse
+import io
 import json
 import os
 import shutil
@@ -23,7 +24,7 @@ import tempfile
 import console
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageChops
 except ImportError:
     Image = None
 
@@ -41,6 +42,41 @@ ICON_SIZES = [
     ("icons/android-chrome-256x256.png", 256, 256, False),
     ("icons/android-chrome-512x512.png", 512, 512, False),
 ]
+
+
+# Palette quantization guard: the 256-color file ships only when it is
+# BOTH smaller and within this max per-channel error against the
+# true-color original. Flat logo art passes easily (production logos
+# measured max error 15/255 for a ~5x size cut, ~392 KB → ~70 KB of
+# precached icons per map); gradient-heavy art fails the guard and
+# keeps the true-color save.
+QUANT_MAX_CHANNEL_ERROR = 32
+
+
+def _save_png(img, out_path):
+    """Save a PNG, palette-quantized when that is visually lossless.
+
+    Encodes both variants in memory and writes whichever the guard
+    picks; alpha participates in the error measurement, so a soft
+    drop-shadow that dithers badly also keeps true color.
+    """
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    data = buf.getvalue()
+
+    # FASTOCTREE is the only Pillow quantizer that keeps an alpha channel.
+    quant = img.quantize(colors=256, method=Image.Quantize.FASTOCTREE)
+    qbuf = io.BytesIO()
+    quant.save(qbuf, format="PNG", optimize=True)
+    qdata = qbuf.getvalue()
+
+    diff = ImageChops.difference(img.convert("RGBA"), quant.convert("RGBA"))
+    max_err = max(hi for _lo, hi in (band.getextrema() for band in diff.split()))
+    if len(qdata) < len(data) and max_err <= QUANT_MAX_CHANNEL_ERROR:
+        data = qdata
+
+    with open(out_path, "wb") as f:
+        f.write(data)
 
 
 def _composite_on_white(img):
@@ -96,7 +132,7 @@ def generate_png_icons(source_img, output_dir):
         if on_white:
             resized = _composite_on_white(resized)
         out_path = os.path.join(output_dir, filename)
-        resized.save(out_path, format="PNG", optimize=True)
+        _save_png(resized, out_path)
         count += 1
 
     # Retired icons: output dirs persist between builds (that's what
@@ -198,7 +234,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     canvas.paste(src, (x, y), src)
 
     out_path = os.path.join(output_dir, "icons", f"android-chrome-maskable-{size}x{size}.png")
-    canvas.save(out_path, format="PNG", optimize=True)
+    _save_png(canvas, out_path)
 
 
 def generate_favicon_ico(source_img, output_dir):

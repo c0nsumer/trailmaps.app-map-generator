@@ -18,6 +18,7 @@ from generate_icons import (  # noqa: E402
     _composite_on_white,
     _detect_bleed_color,
     _rgba_to_hex,
+    _save_png,
     generate_favicon_ico,
     generate_icons,
     generate_maskable_icon,
@@ -84,13 +85,16 @@ def test_maskable_full_bleed_has_no_white_ring():
 
 def test_maskable_transparent_logo_still_white():
     """No regression for transparent-background logos: bleed stays white
-    to match the manifest background_color and apple-touch composite."""
+    to match the manifest background_color and apple-touch composite.
+    Tolerance ±2: the palette save (_save_png) may shift channels by a
+    hair when anti-aliased near-whites share the white's palette cell;
+    the guarded property is the bleed field, not bit-exact white."""
     with tempfile.TemporaryDirectory() as d:
         os.makedirs(os.path.join(d, "icons"))
         generate_maskable_icon(_logo_on((0, 0, 0, 0), 512), d)
         out = os.path.join(d, "icons", "android-chrome-maskable-512x512.png")
         m = Image.open(out).convert("RGBA")
-        assert m.getpixel((0, 0)) == WHITE
+        assert all(abs(a - b) <= 2 for a, b in zip(m.getpixel((0, 0)), WHITE))
 
 
 def _read_manifest_bg(output_dir):
@@ -131,6 +135,53 @@ def test_favicon_ico_carries_all_three_frames():
         generate_favicon_ico(_logo_on(WHITE), tmp)
         ico = Image.open(os.path.join(tmp, "favicon.ico"))
         assert ico.info["sizes"] == {(16, 16), (32, 32), (48, 48)}
+
+
+def _flat_logo(size=512):
+    """Logo-like flat art: a few flat fields, LANCZOS-downscaled so the
+    edges anti-alias into the color spread real logo sources have."""
+    big = Image.new("RGBA", (size * 2, size * 2), WHITE)
+    big.paste(Image.new("RGBA", (500, 500), (20, 80, 200, 255)), (100, 100))
+    big.paste(Image.new("RGBA", (400, 400), GREEN), (500, 500))
+    big.paste(Image.new("RGBA", (300, 200), (200, 30, 30, 255)), (600, 150))
+    return big.resize((size, size), Image.LANCZOS)
+
+
+def test_save_png_quantizes_flat_art():
+    # Flat logo art must ship palette-quantized (smaller file) while
+    # staying inside the invisible-error guard.
+    from generate_icons import QUANT_MAX_CHANNEL_ERROR
+    from PIL import ImageChops
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "icon.png")
+        img = _flat_logo()
+        _save_png(img, out)
+        saved = Image.open(out)
+        assert saved.mode == "P", "flat art should save palettized"
+        diff = ImageChops.difference(img, saved.convert("RGBA"))
+        max_err = max(hi for _lo, hi in (band.getextrema() for band in diff.split()))
+        assert max_err <= QUANT_MAX_CHANNEL_ERROR
+
+
+def test_save_png_keeps_true_color_for_gradients():
+    # A smooth two-axis gradient needs far more than 256 colors;
+    # quantizing it either dithers past the error threshold or grows
+    # the file, so the true-color save must win.
+    import io
+
+    grad = Image.new("RGBA", (512, 512))
+    grad.putdata(
+        [(x % 256, y % 256, (x + y) % 256, 255) for y in range(512) for x in range(512)]
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "icon.png")
+        _save_png(grad, out)
+        saved = Image.open(out)
+        assert saved.mode != "P", "gradient art should stay true-color"
+        buf = io.BytesIO()
+        grad.save(buf, format="PNG", optimize=True)
+        assert os.path.getsize(out) == len(buf.getvalue())
 
 
 def test_trace_composite_turns_transparency_white():
