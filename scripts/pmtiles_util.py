@@ -11,11 +11,26 @@ is renamed into place only on success, so the deploy path only ever
 holds a complete archive (or nothing).
 """
 
+import math
 import os
 import shutil
 import subprocess
 
 import console
+
+
+def extract_minzoom(config):
+    """Lowest tile zoom worth shipping, shared by basemap and terrain.
+
+    The app clamps to min_zoom (default 10, template_inject.py) inside
+    maxBounds, so tiles below that are unreachable: at map zoom z the
+    512px vector basemap loads tiles at floor(z) and the 256px
+    raster-dem at floor(z)+1, so ``floor(min_zoom) - 1`` keeps one
+    spare level under both archives. Without the bound, both ship
+    z0-z9 world tiles (~0.5-0.6 MB basemap + ~2.6-3.1 MB terrain per
+    map) that no rider can ever pan out far enough to see.
+    """
+    return max(0, math.floor(config.get("min_zoom", 10)) - 1)
 
 
 def find_pmtiles_cli():
@@ -33,7 +48,7 @@ def find_pmtiles_cli():
     return None
 
 
-def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom):
+def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
     """Run ``pmtiles extract`` atomically. Returns True on success.
 
     Extracts to ``<output_path>.tmp`` and ``os.replace``s into place
@@ -58,6 +73,7 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom):
         source_url,
         tmp_path,
         f"--bbox={bbox_str}",
+        f"--minzoom={minzoom}",
         f"--maxzoom={maxzoom}",
     ]
     console.info(f"Running: {' '.join(cmd)}")

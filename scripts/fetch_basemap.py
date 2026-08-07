@@ -17,7 +17,7 @@ import cli
 import console
 import requests
 import yaml
-from pmtiles_util import extract, find_pmtiles_cli
+from pmtiles_util import extract, extract_minzoom, find_pmtiles_cli
 
 PROTOMAPS_BUILD_BASE = "https://build.protomaps.com"
 # How many days back to search for an available build
@@ -64,6 +64,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     # Fall back to bbox when called with a pre-pan_bbox config.
     bbox = config.get("pan_bbox") or config["bbox"]
     maxzoom = config.get("basemap_maxzoom", 15)
+    minzoom = extract_minzoom(config)
 
     # Pad the bbox slightly to ensure edge tiles are included
     pad = 0.02
@@ -83,7 +84,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
     console.step(f"Extracting basemap for {config['name']}...")
     console.info(f"Bbox: {padded_bbox} (padded from {bbox})")
-    console.info(f"Max zoom: {maxzoom}")
+    console.info(f"Zoom range: {minzoom}-{maxzoom}")
     console.info(f"Source: {planet}")
 
     pmtiles_cli = find_pmtiles_cli()
@@ -102,7 +103,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     # Atomic: extracts to a .tmp sibling and renames into place only on
     # success, so a failed/interrupted extract can't leave a partial
     # basemap.pmtiles for the service-worker sweep to precache and ship.
-    if not extract(pmtiles_cli, planet, output_path, padded_bbox, maxzoom):
+    if not extract(pmtiles_cli, planet, output_path, padded_bbox, maxzoom, minzoom):
         sys.exit(1)
 
     size_mb = os.path.getsize(output_path) / (1024 * 1024)

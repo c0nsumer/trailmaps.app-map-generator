@@ -12,9 +12,15 @@ import os
 import console
 
 
-def _bbox_signature(bbox, maxzoom):
-    """Stable text signature for an (bbox, maxzoom) extraction request."""
-    return f"bbox={','.join(f'{v:.4f}' for v in bbox)};maxzoom={maxzoom}"
+def _bbox_signature(bbox, maxzoom, minzoom=0):
+    """Stable text signature for a (bbox, minzoom, maxzoom) extraction
+    request. minzoom joined the signature when extraction gained a
+    --minzoom bound; pre-existing sidecars lack the field and so
+    mismatch, which is the point: a min_zoom config edit (or the
+    upgrade itself) must re-extract, or the archive keeps carrying
+    unreachable low-zoom tiles."""
+    sig = f"bbox={','.join(f'{v:.4f}' for v in bbox)};maxzoom={maxzoom}"
+    return sig + f";minzoom={minzoom}"
 
 
 def _signature_path(output_path):
@@ -155,13 +161,13 @@ def _trails_needs_refetch(trails_path, config):
     return False, None
 
 
-def _pmtiles_needs_regen(output_path, bbox, maxzoom):
-    """True if the cached PMTiles is missing OR its (bbox, maxzoom)
+def _pmtiles_needs_regen(output_path, bbox, maxzoom, minzoom=0):
+    """True if the cached PMTiles is missing OR its (bbox, zoom-range)
     signature doesn't match what's being requested. Returns a tuple
     (needs_regen: bool, reason: str | None) so the caller can log why."""
     if not os.path.exists(output_path):
         return True, "file missing"
-    expected = _bbox_signature(bbox, maxzoom)
+    expected = _bbox_signature(bbox, maxzoom, minzoom)
     actual = _load_signature(output_path)
     if actual is None:
         return True, "signature sidecar missing (legacy build)"

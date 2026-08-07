@@ -550,6 +550,20 @@ def _validate_geometry(report, config):
         except TypeError:
             pass  # already reported as a type error above
 
+    # Extraction ships only zooms >= floor(min_zoom) - 1 (pmtiles_util.
+    # extract_minzoom), so a min_zoom above basemap_maxzoom would bound
+    # the archive to a zoom range the extractor can't satisfy.
+    if "min_zoom" in config and "basemap_maxzoom" in config:
+        try:
+            if config["min_zoom"] > config["basemap_maxzoom"]:
+                report.err(
+                    "min_zoom",
+                    f"min_zoom ({config['min_zoom']}) > "
+                    f"basemap_maxzoom ({config['basemap_maxzoom']})",
+                )
+        except TypeError:
+            pass  # already reported as a type error above
+
 
 def _reject_unknown_keys(report, where, mapping, allowed):
     """Reject unknown keys in a nested dict, with a did-you-mean hint.

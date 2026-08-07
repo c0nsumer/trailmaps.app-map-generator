@@ -68,6 +68,16 @@ def test_wrong_scalar_type_rejected():
     assert any("zoom" in e for e in _errors(zoom="not-a-number"))
 
 
+def test_min_zoom_above_basemap_maxzoom_rejected():
+    # Extraction ships only zooms >= floor(min_zoom) - 1, so this config
+    # would demand a zoom range the extractor can't produce.
+    assert any("basemap_maxzoom" in e for e in _errors(min_zoom=16, basemap_maxzoom=15))
+
+
+def test_min_zoom_at_basemap_maxzoom_accepted():
+    assert _errors(min_zoom=15, basemap_maxzoom=15) == []
+
+
 # --- geometry source: relations | custom_routes | event_mode.routes -------
 
 def test_event_mode_routes_without_relations_is_valid():

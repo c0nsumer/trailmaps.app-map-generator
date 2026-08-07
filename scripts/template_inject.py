@@ -26,6 +26,7 @@ from font_trimmer import (
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
+from pmtiles_util import extract_minzoom
 from validate_config import DEFAULT_VISIBLE_LAYERS, VALID_DAYS, match_day_token
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1262,7 +1263,7 @@ def copy_assets(config, output_dir):
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
-    copy_trimmed_fonts(output_dir, fonts_src)
+    copy_trimmed_fonts(output_dir, fonts_src, minzoom=extract_minzoom(config))
 
     # Self-hosted UI webfont - DOM chrome text (the PBF fonts above are
     # map-canvas glyphs; these are @font-face files for HTML/CSS). Copied

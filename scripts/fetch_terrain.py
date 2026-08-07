@@ -23,7 +23,7 @@ import subprocess
 import cli
 import console
 import yaml
-from pmtiles_util import extract, find_pmtiles_cli
+from pmtiles_util import extract, extract_minzoom, find_pmtiles_cli
 
 # Mapterhorn (Protomaps terrain) - pre-built Terrarium-encoded RGB PMTiles
 # This is the simpler alternative to building from SRTM
@@ -35,7 +35,7 @@ def load_config(config_path):
         return yaml.safe_load(f)
 
 
-def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
+def extract_from_mapterhorn(bbox, output_path, maxzoom=12, minzoom=0):
     """Extract terrain tiles from Mapterhorn (Protomaps' terrain PMTiles).
 
     This is the simplest approach - Mapterhorn provides pre-built terrain
@@ -65,7 +65,7 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12):
     # matters more here than for the basemap - terrain failure is
     # NON-fatal (build.py continues without hillshade), so a partial
     # file wouldn't stop the build and would be precached and shipped.
-    return extract(pmtiles_cli, terrain_url, output_path, padded, maxzoom)
+    return extract(pmtiles_cli, terrain_url, output_path, padded, maxzoom, minzoom)
 
 
 def build_from_srtm(bbox, output_path, maxzoom=12):
@@ -186,16 +186,17 @@ def fetch_terrain(config_or_path, output_path):
     # user can pan to, matching the basemap extraction footprint.
     bbox = config.get("pan_bbox") or config["bbox"]
     maxzoom = config.get("terrain_maxzoom", 12)
+    minzoom = extract_minzoom(config)
 
     console.step(f"Generating terrain tiles for {config['name']}...")
     console.info(f"Bbox: {bbox}")
-    console.info(f"Max zoom: {maxzoom}")
+    console.info(f"Zoom range: {minzoom}-{maxzoom}")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
     # Try Mapterhorn first (simplest, no GDAL needed)
     console.info("Attempting Mapterhorn extract (pre-built terrain tiles)...")
-    if extract_from_mapterhorn(bbox, output_path, maxzoom):
+    if extract_from_mapterhorn(bbox, output_path, maxzoom, minzoom):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
         console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
         return True

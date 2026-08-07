@@ -97,13 +97,20 @@ def collect_text_from_config(config):
     return chars
 
 
-def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
+def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoom=0):
     """Extract rendered-label text from a PMTiles vector tile archive.
 
     Only the name fields the style actually renders (``rendered_fields``)
     are scanned; other localized `name:*` / `pgf:*` tile properties exist
     for i18n but are never painted, so counting them would keep glyph
     ranges no client ever fetches. See RENDERED_NAME_FIELDS.
+
+    ``minzoom`` skips tiles below the zoom the app can reach (the camera
+    clamps to min_zoom). Extraction already drops those tiles
+    (pmtiles_util.extract_minzoom), but a cached pre-bound archive still
+    carries z0-z5 world tiles whose place names would drag global-script
+    glyph ranges into the trim; the guard keeps the scan honest either
+    way.
     """
     try:
         import mapbox_vector_tile
@@ -121,7 +128,11 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
                     return mm[offset : offset + length]
 
                 count = 0
-                for _zxy, data in pmreader.all_tiles(get_bytes):
+                skipped = 0
+                for zxy, data in pmreader.all_tiles(get_bytes):
+                    if zxy[0] < minzoom:
+                        skipped += 1
+                        continue
                     try:
                         raw = gzip.decompress(data)
                     except (gzip.BadGzipFile, OSError):
@@ -138,7 +149,8 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS):
                                 if isinstance(v, str):
                                     chars.update(v)
                     count += 1
-                console.info(f"Scanned {count} basemap tiles")
+                below = f" (skipped {skipped} below zoom {minzoom})" if skipped else ""
+                console.info(f"Scanned {count} basemap tiles{below}")
             finally:
                 mm.close()
     except (FileNotFoundError, OSError, ValueError) as e:
@@ -289,11 +301,12 @@ def warn_uncovered_canvas_ranges(all_chars, needed_ranges, needed_faces, fonts_s
     return missing
 
 
-def copy_trimmed_fonts(output_dir, fonts_src):
+def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     """Copy only the needed font face directories and PBF range files.
 
     Scans basemap PMTiles and GeoJSON data to determine which Unicode
     ranges are actually used, then copies only matching PBF files.
+    ``minzoom`` bounds the basemap scan (see collect_text_from_pmtiles).
     """
     if not os.path.exists(fonts_src) or not os.listdir(fonts_src):
         console.warn(f"Fonts not found at {fonts_src}")
@@ -309,7 +322,7 @@ def copy_trimmed_fonts(output_dir, fonts_src):
     all_chars = set()
 
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
-    basemap_chars = collect_text_from_pmtiles(basemap_path)
+    basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=minzoom)
     if basemap_chars is None:
         # PMTiles libraries not available - fall back to full copy
         console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")

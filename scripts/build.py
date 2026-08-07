@@ -58,6 +58,7 @@ from fetch_pois import POI_SHOW_FLAGS, fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
+from pmtiles_util import extract_minzoom
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
 from validate_config import validate_config
@@ -921,13 +922,15 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         console.info("basemap: SKIPPED (--no-basemap)")
     else:
         bm_zoom = config.get("basemap_maxzoom", 15)
-        console.info(f"basemap: pan_bbox extracted to maxzoom {bm_zoom}")
+        console.info(
+            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}")
     if args.no_terrain or not config.get("show_terrain", True):
         reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
     else:
         tr_zoom = config.get("terrain_maxzoom", 12)
-        console.info(f"terrain: pan_bbox extracted to maxzoom {tr_zoom}")
+        console.info(
+            f"terrain: pan_bbox extracted, zoom {extract_minzoom(config)}-{tr_zoom}")
     console.blank()
 
     # ---- Route stats ----
@@ -1546,15 +1549,17 @@ def main(argv=None):
     # messages stay tidy. Only the actual fetch + signature-save runs
     # concurrently; subprocess output from the two fetches will
     # interleave on stdout, which is acceptable for build logs.
+    tiles_minzoom = extract_minzoom(config)
+
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_bbox = config.get("pan_bbox") or config["bbox"]
     basemap_maxzoom = config.get("basemap_maxzoom", 15)
-    basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom)
+    basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom, tiles_minzoom)
 
     terrain_path = os.path.join(output_dir, "terrain.pmtiles")
     terrain_bbox = config.get("pan_bbox") or config["bbox"]
     terrain_maxzoom = config.get("terrain_maxzoom", 12)
-    terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom)
+    terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom, tiles_minzoom)
 
     fetch_tasks = []  # list of (label, callable) for parallel work
     post_messages = []  # printed AFTER all parallel tasks complete
@@ -1563,7 +1568,8 @@ def main(argv=None):
     if args.no_basemap:
         post_messages.append("Basemap: Skipped (--no-basemap)")
     else:
-        needs_regen, reason = _pmtiles_needs_regen(basemap_path, basemap_bbox, basemap_maxzoom)
+        needs_regen, reason = _pmtiles_needs_regen(
+            basemap_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
         if args.refresh or needs_regen:
             if not args.refresh and reason:
                 console.step(f"Basemap: regenerating ({reason})")
@@ -1596,7 +1602,8 @@ def main(argv=None):
     elif args.no_terrain:
         post_messages.append("Terrain: Skipped (--no-terrain)")
     else:
-        needs_regen, reason = _pmtiles_needs_regen(terrain_path, terrain_bbox, terrain_maxzoom)
+        needs_regen, reason = _pmtiles_needs_regen(
+            terrain_path, terrain_bbox, terrain_maxzoom, tiles_minzoom)
         if args.refresh or needs_regen:
             if not args.refresh and reason:
                 console.step(f"Terrain: regenerating ({reason})")
