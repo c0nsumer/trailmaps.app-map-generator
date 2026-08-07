@@ -40,7 +40,6 @@ ICON_SIZES = [
     ("icons/android-chrome-192x192.png", 192, 192, False),
     ("icons/android-chrome-256x256.png", 256, 256, False),
     ("icons/android-chrome-512x512.png", 512, 512, False),
-    ("icons/mstile-150x150.png", 150, 150, False),
 ]
 
 
@@ -99,6 +98,21 @@ def generate_png_icons(source_img, output_dir):
         out_path = os.path.join(output_dir, filename)
         resized.save(out_path, format="PNG", optimize=True)
         count += 1
+
+    # Retired icons: output dirs persist between builds (that's what
+    # makes basemap reuse work) and the service-worker precache list
+    # is built by walking the tree, so a file dropped from ICON_SIZES
+    # would otherwise keep shipping to riders forever on rebuilt maps.
+    # Same pattern as build.py's stale-terrain removal.
+    #
+    # mstile-150x150.png (removed 2026-08): Windows Start tile for
+    # IE11 / EdgeHTML pinning. Unreachable all along - discovery needs
+    # an msapplication-TileImage meta or browserconfig.xml, and the
+    # app shipped neither - and both consumers are retired.
+    for stale in ("icons/mstile-150x150.png",):
+        stale_path = os.path.join(output_dir, stale)
+        if os.path.exists(stale_path):
+            os.remove(stale_path)
 
     return count
 

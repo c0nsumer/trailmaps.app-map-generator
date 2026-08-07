@@ -1107,7 +1107,6 @@ The build generates the following files from the source image:
 | `icons/android-chrome-256x256.png` | 256x256 | Android home screen (high-DPI) |
 | `icons/android-chrome-512x512.png` | 512x512 | Android home screen (Chrome WebAPK) |
 | `icons/android-chrome-maskable-512x512.png` | 512x512 | Maskable PWA tile (Android). Content sits in the inner 80% safe zone; the margin bleeds the icon's own field color so it fills any OEM mask shape (circle, squircle, …) |
-| `icons/mstile-150x150.png` | 150x150 | Windows Start tile |
 | `icons/favicon-32x32.png` | 32x32 | Standard browser tab icon |
 | `icons/favicon-16x16.png` | 16x16 | Small browser tab icon |
 | `favicon.ico` | 16, 32, 48 | Multi-resolution ICO for legacy browsers |
