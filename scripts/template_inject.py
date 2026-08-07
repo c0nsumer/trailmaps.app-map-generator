@@ -675,6 +675,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # the runtime omit the row.
     config_obj["appVersion"], config_obj["appVersionDate"] = _engine_app_version()
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
+    # True when this build's output contains terrain.pmtiles (stashed by
+    # build.py after the fetch step). addTerrainLayers skips its HEAD
+    # probe when true; when false it still probes, so a directly-driven
+    # build that bypasses the stash degrades to the old probe behavior
+    # instead of losing hillshade.
+    config_obj["hasTerrain"] = bool(config.get("_has_terrain"))
     # Build-time scan for trail-property gates that surface Options
     # toggles. Done at build time (rather than counting placed
     # decorations at runtime) because the first computeDecorations()

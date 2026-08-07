@@ -3379,6 +3379,13 @@ async function init() {
     };
     map.on("move", scheduleIndicatorUpdate);
     map.on("zoom", scheduleIndicatorUpdate);
+    // Resize also drops the indicator's cached layout insets
+    // (safe-area bottom + FAB-stack reserve): rotation and viewport
+    // changes move both, and resize is the only event where they can
+    // change. Registered before the shared rAF handler, though order
+    // isn't load-bearing - the recompute happens lazily inside the
+    // deferred update either way.
+    map.on("resize", () => { _osiInsets = null; });
     map.on("resize", scheduleIndicatorUpdate);
 
     // Attribution: compact (i) form, but EXPANDED at page load so the
@@ -3460,7 +3467,8 @@ async function init() {
         // resolves AT an idle, so we hide directly here; registering a
         // fresh once('idle') could wait for a busy→idle transition that
         // never comes. __hideMapLoading is idempotent; the 30s inline
-        // safety net covers a stalled terrain header (rare, HEAD passed).
+        // safety net covers a stalled terrain header (rare - the
+        // archive existed at build time, or its HEAD probe passed).
         const _hideBar = () => {
             if (window.__hideMapLoading) window.__hideMapLoading();
             _signalMapSettled();
@@ -4391,16 +4399,26 @@ let _terrainTilesLoaded = null;
 let _signalMapSettled = () => {};
 const _mapSettled = new Promise((resolve) => { _signalMapSettled = resolve; });
 async function addTerrainLayers() {
-    // fetchWithTimeout, not bare fetch: loadTrails awaits this probe
-    // BEFORE creating any trail layer, so on "reported but dead"
-    // cellular a hung HEAD would hold the entire map (basemap only,
-    // no trails, no error) for the browser's native timeout. A bounded
-    // failure just means "no terrain", which the catch already handles.
-    try {
-        const resp = await fetchWithTimeout("terrain.pmtiles", 20000, { method: "HEAD" });
-        if (!resp.ok) return;
-    } catch {
-        return;
+    // CONFIG.hasTerrain is a build-time fact: terrain.pmtiles was in
+    // the output when this app.js was generated. When true, the HEAD
+    // probe below is pure overhead - one serialized RTT before any
+    // trail layer is created on every cold load (plus a SW-synthesized
+    // response offline) - so skip it. When false, probe anyway: a
+    // build produced outside the normal stash path (or a hand-placed
+    // archive) then degrades to the old probe behavior instead of
+    // losing hillshade.
+    if (!CONFIG.hasTerrain) {
+        // fetchWithTimeout, not bare fetch: loadTrails awaits this probe
+        // BEFORE creating any trail layer, so on "reported but dead"
+        // cellular a hung HEAD would hold the entire map (basemap only,
+        // no trails, no error) for the browser's native timeout. A bounded
+        // failure just means "no terrain", which the catch already handles.
+        try {
+            const resp = await fetchWithTimeout("terrain.pmtiles", 20000, { method: "HEAD" });
+            if (!resp.ok) return;
+        } catch {
+            return;
+        }
     }
 
     map.addSource("terrain", {
@@ -11255,10 +11273,37 @@ function attachOffScreenIndicatorHandler() {
     });
 }
 
+// Cached DOM references and cached layout-derived insets for the
+// off-screen indicator. updateLocationIndicator is the app's only
+// per-frame handler (every pan/zoom frame while Locate is on), so it
+// must not query the DOM, rebuild innerHTML, or force layout on the
+// common path. The element and its two children are static markup in
+// index.html; the refs are resolved once on first use. The insets
+// (safe-area bottom + FAB-stack reserve) come from getComputedStyle /
+// getBoundingClientRect - both forced-layout reads - and only change
+// when the viewport does, so they're cached until the map 'resize'
+// event clears them (wired next to scheduleIndicatorUpdate in init).
+let _osiRefs = null;    // { el, arrowEl, distEl }
+let _osiInsets = null;  // { safeBottom, fabTopReserve }
+
 function updateLocationIndicator() {
-    let el = document.getElementById("off-screen-indicator");
+    if (!_osiRefs) {
+        const el = document.getElementById("off-screen-indicator");
+        if (!el) return;
+        _osiRefs = {
+            el,
+            arrowEl: el.querySelector(".off-screen-indicator-arrow"),
+            distEl: el.querySelector(".off-screen-indicator-dist"),
+        };
+        // The base class carries display:none; flex is the shown
+        // state. Set it once here - while .hidden is present its
+        // !important display:none wins, so this is inert until the
+        // first reveal below.
+        el.style.display = "flex";
+    }
+    const { el, arrowEl, distEl } = _osiRefs;
     if (!userLocation || !map) {
-        if (el) el.classList.add("hidden");
+        el.classList.add("hidden");
         return;
     }
 
@@ -11266,6 +11311,22 @@ function updateLocationIndicator() {
     const canvas = map.getCanvas();
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+
+    // Hide the indicator when the dot is actually visible on the
+    // canvas. This uses the TRUE canvas bounds (0..w, 0..h), NOT the
+    // inset rectangle the clamp uses below: a dot sitting inside the
+    // edge margin or under the top FAB reserve is still visible to the
+    // rider, so drawing a pointer on top of it is wrong. Matches the
+    // off-screen definition already used by maybeShowOffScreenToast and
+    // the post-pan check in attachOffScreenIndicatorHandler. Checked
+    // FIRST: it's the overwhelmingly common outcome while riding (dot
+    // on screen, nothing to draw), and everything below it costs real
+    // work per frame.
+    if (point.x >= 0 && point.x <= w &&
+        point.y >= 0 && point.y <= h) {
+        el.classList.add("hidden");
+        return;
+    }
 
     // Inset rectangle the indicator is allowed to occupy. The bottom
     // edge accounts for safe-area-inset-bottom (notch / home bar).
@@ -11279,43 +11340,31 @@ function updateLocationIndicator() {
     // added (the indicator arrow clamped under the Options FAB,
     // which draws above it at z-index 5). The brand at top-left and
     // the highlight chip at top-center are handled by the standard
-    // 48px edgeMargin.
-    const cs = getComputedStyle(document.documentElement);
-    const safeBottom = parseFloat(cs.getPropertyValue("--safe-bottom")) || 0;
+    // 48px edgeMargin. The stack's contents are fixed after boot
+    // (build flags, not runtime toggles), so cache-until-resize
+    // can't go stale on it.
     const edgeMargin = 48;
-    const fabStack = document.getElementById("fab-stack-top");
-    const fabStackTopReserve = fabStack
-        ? fabStack.getBoundingClientRect().bottom + 12
-        : edgeMargin;
+    if (!_osiInsets) {
+        const cs = getComputedStyle(document.documentElement);
+        const fabStack = document.getElementById("fab-stack-top");
+        _osiInsets = {
+            safeBottom: parseFloat(cs.getPropertyValue("--safe-bottom")) || 0,
+            fabTopReserve: fabStack
+                ? fabStack.getBoundingClientRect().bottom + 12
+                : edgeMargin,
+        };
+    }
     const xLeft = edgeMargin;
     const xRight = w - edgeMargin;
-    const yTop = Math.max(edgeMargin, fabStackTopReserve);
-    const yBottom = h - safeBottom - edgeMargin;
+    const yTop = Math.max(edgeMargin, _osiInsets.fabTopReserve);
+    const yBottom = h - _osiInsets.safeBottom - edgeMargin;
 
     // Degenerate rectangle (canvas too short for the reserve), skip.
     if (xRight <= xLeft || yBottom <= yTop) {
-        if (el) el.classList.add("hidden");
+        el.classList.add("hidden");
         return;
     }
 
-    // Hide the indicator when the dot is actually visible on the
-    // canvas. This uses the TRUE canvas bounds (0..w, 0..h), NOT the
-    // inset rectangle the clamp uses below: a dot sitting inside the
-    // edge margin or under the top FAB reserve is still visible to the
-    // rider, so drawing a pointer on top of it is wrong. Matches the
-    // off-screen definition already used by maybeShowOffScreenToast and
-    // the post-pan check in attachOffScreenIndicatorHandler.
-    if (point.x >= 0 && point.x <= w &&
-        point.y >= 0 && point.y <= h) {
-        if (el) el.classList.add("hidden");
-        return;
-    }
-
-    // The element is pre-rendered in index.html, so el is always
-    // truthy here. The click listener is attached once at app init
-    // (see attachOffScreenIndicatorHandler below), historically the
-    // listener was attached inside an `if (!el)` block here, which
-    // never ran because the element pre-existed, leaving taps dead.
     el.classList.remove("hidden");
 
     const cx = w / 2;
@@ -11358,25 +11407,19 @@ function updateLocationIndicator() {
     const edge = map.unproject([cx + cosA * tEdge, cy + sinA * tEdge]);
     const dist = haversineDistance([edge.lng, edge.lat], userLocation);
 
-    // mdi:arrow-up-bold (Apache 2.0, Pictogrammers), a chunky
-    // shafted arrow that reads as a directional pointer rather
-    // than a location marker. Earlier this was the Unicode
-    // triangle ▲ (U+25B2), which had a 3-fold rotational
-    // symmetry problem: at rotations like 60° / 120° / 180° the
-    // base corners read as visually equal to the apex, making
-    // the pointing direction ambiguous at small sizes. The
-    // shafted arrow's clear head + tail kills that ambiguity.
-    // Apex is at the top of the 24×24 viewBox so the existing
-    // bearing-to-rotation math (0° = north = up) is unchanged.
-    el.innerHTML = `<span class="off-screen-indicator-arrow" style="transform:rotate(${degrees}deg)">`
-        + `<svg viewBox="0 0 24 24" aria-hidden="true">`
-        + `<path d="M14,20H10V11L6.5,14.5L4.08,12.08L12,4.16L19.92,12.08L17.5,14.5L14,11V20Z"/>`
-        + `</svg>`
-        + `</span>`
-        + `<span class="off-screen-indicator-dist">${formatDistance(dist)}</span>`;
+    // Per-frame writes only: the arrow SVG and distance pill are
+    // static markup in index.html (see the comment there for the
+    // mdi:arrow-up-bold choice rationale); this used to be an
+    // innerHTML rebuild per frame. The transform and left/top change
+    // essentially every frame while panning, so they're written
+    // unconditionally; the formatted distance changes rarely (it's
+    // rounded), so it's guarded - a textContent write dirties layout
+    // even when the string is identical.
+    arrowEl.style.transform = `rotate(${degrees}deg)`;
+    const distText = formatDistance(dist);
+    if (distEl.textContent !== distText) distEl.textContent = distText;
     el.style.left = `${x}px`;
     el.style.top = `${y}px`;
-    el.style.display = "flex";
 }
 
 // ============================================================

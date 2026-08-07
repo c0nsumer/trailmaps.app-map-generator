@@ -99,6 +99,16 @@
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
 
+    <!-- Start the trails.geojson download now, overlapping it with the
+         vendor JS download/parse instead of waiting for app.js to run
+         loadTrails(). `crossorigin` is REQUIRED even though the file is
+         same-origin: preload matching compares request modes, and
+         fetch()'s default mode is "cors" while a bare preload's is
+         "no-cors" - without the attribute the browser fetches the file
+         twice. loadTrails() must keep fetch() defaults (no mode/
+         credentials overrides) for the same reason. -->
+    <link rel="preload" href="trails.geojson" as="fetch" crossorigin>
+
     <!-- App styles -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -225,7 +235,26 @@
     </div>
 
     <!-- Off-screen location indicator (managed by app.js) -->
-    <div id="off-screen-indicator" class="off-screen-indicator hidden" aria-hidden="true"></div>
+    <!-- Off-screen location indicator. Static markup, not rebuilt per
+         frame: updateLocationIndicator (app.js) runs on every pan/zoom
+         frame while Locate is active and only touches the arrow's
+         rotate transform, the distance pill's text, and the container's
+         left/top - an innerHTML rebuild here forced style+layout work
+         on every frame of a ride-long interaction.
+
+         The arrow is mdi:arrow-up-bold (Apache 2.0, Pictogrammers), a
+         chunky shafted arrow that reads as a directional pointer rather
+         than a location marker. Its predecessor, the Unicode triangle ▲
+         (U+25B2), had a 3-fold rotational symmetry problem: at rotations
+         like 60° / 120° / 180° the base corners read as visually equal
+         to the apex, making the pointing direction ambiguous at small
+         sizes. The shafted arrow's clear head + tail kills that
+         ambiguity. Apex is at the top of the 24×24 viewBox so app.js's
+         bearing-to-rotation math (0° = north = up) maps directly. -->
+    <div id="off-screen-indicator" class="off-screen-indicator hidden" aria-hidden="true">
+        <span class="off-screen-indicator-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,20H10V11L6.5,14.5L4.08,12.08L12,4.16L19.92,12.08L17.5,14.5L14,11V20Z"/></svg></span>
+        <span class="off-screen-indicator-dist"></span>
+    </div>
 
     <!-- Highlight chip - floating at top of map when a route or trail is highlighted.
          The .highlight-chip-text wrapper holds the primary label and an optional

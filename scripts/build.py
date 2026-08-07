@@ -1672,6 +1672,16 @@ def main(argv=None):
         console.step(line)
     console.blank()
 
+    # Tell the runtime whether terrain.pmtiles exists in this build, so
+    # it can skip the HEAD probe (one serialized RTT before any trail
+    # layer is created on every cold load). Checked AFTER the fetch step
+    # above: extraction may have just written the file, a show_terrain
+    # flip may have just removed it, and a soft terrain-fetch failure
+    # removes a stale wrong-extent file. A --no-terrain build serving an
+    # archive left by a previous build still reads True, matching what
+    # the runtime's probe would have concluded.
+    config["_has_terrain"] = os.path.exists(terrain_path)
+
     # Step 5: Copy templates and assets. Order matters: copy_assets
     # runs first because it stashes processed-logo dimensions on
     # config["_brand_img_dims"] which copy_templates reads when
