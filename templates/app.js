@@ -213,8 +213,13 @@ function applyMapPaintForScheme(scheme) {
     // labels dark-inner light-outer" bug); without the casing/halo flip the
     // edges would freeze at the build-time scheme.
     const arrowHalo = clipArrowHaloExpr();
-    if (map.getStyle && map.getStyle()) {
-        for (const layer of map.getStyle().layers) {
+    // Single getStyle() call: it serializes every source and layer
+    // (~130 basemap layers plus ~5 per route), so calling it once for
+    // the guard and again for the iteration doubled real work on both
+    // the boot path and every scheme toggle.
+    const style = map.getStyle && map.getStyle();
+    if (style) {
+        for (const layer of style.layers) {
             if (layer.id.startsWith("trail-label-")) {
                 map.setPaintProperty(layer.id, "text-color", t.labelText);
                 map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
