@@ -2426,13 +2426,32 @@ body::after {
 }
 
 /* Push the user-location marker (dot + accuracy circle) above POI
- * markers in the DOM overlay. MapLibre renders each location element
- * inside its own .maplibregl-marker wrapper; raising that wrapper's
- * z-index keeps the blue dot visible even when a parking / trailhead
- * / feature marker sits at the same spot. */
+ * markers in the DOM overlay, so the blue dot stays visible even when
+ * a parking / trailhead / feature marker sits at the same spot.
+ * TWO selector shapes: GeolocateControl passes its dot/circle div AS
+ * the Marker element, so .maplibregl-marker lands on that same
+ * element (the class-pair selectors, the live match in MapLibre
+ * 5.x). The :has(> ...) wrapper variants are kept for the
+ * marker-wraps-child DOM some versions produce; with only those,
+ * this rule silently matched nothing and the dot fell to z-auto
+ * (found 2026-08-07 via the wedge-over-popup bug). */
+.maplibregl-marker.maplibregl-user-location-dot,
+.maplibregl-marker.maplibregl-user-location-accuracy-circle,
 .maplibregl-marker:has(> .maplibregl-user-location-dot),
 .maplibregl-marker:has(> .maplibregl-user-location-accuracy-circle) {
     z-index: 2;
+}
+
+/* Popups must cover every map-anchored DOM element, including the
+ * z-indexed location stack above. MapLibre mounts popups as later
+ * SIBLINGS of the canvas container with no z-index of their own, so
+ * they beat z-auto markers by DOM order but LOSE to any positive
+ * z-index (the heading wedge at z-1 showed through open popups,
+ * 2026-08-07). z-3 restores popup-on-top ordering: POI markers
+ * (auto) < wedge (1) < dot (2) < popup (3), still under the brand
+ * (4) and FABs (5). */
+.maplibregl-popup {
+    z-index: 3;
 }
 
 /* ----- Compass heading wedge ---------------------------------------
