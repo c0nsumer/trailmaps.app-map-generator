@@ -16,6 +16,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import UTC, datetime
@@ -112,12 +113,92 @@ def _round_geojson_precision(geojson, ndigits=COORD_PRECISION):
     return geojson
 
 
-def _minify_assets(output_dir):
-    """Minify app.js + style.css in-place, logging progress via console.
+MINIFY_TARGETS = [
+    ("app.js", "rjsmin"),
+    ("style.css", "rcssmin"),
+    ("index.html", "html"),
+]
+
+# sw.js is minified on its own pass because it does not exist yet when
+# MINIFY_TARGETS runs: the service worker is generated later (it needs
+# the complete file list to build its precache manifest). Minifying the
+# template up front would also break the build - generate_service_worker
+# injects its config by substituting the `/*__SW_CONFIG__*/` block
+# comment, and rjsmin strips comments, leaving no token to substitute
+# into and a service worker with no config.
+MINIFY_TARGETS_SW = [
+    ("sw.js", "rjsmin"),
+]
+
+
+# Inline <script>/<style> bodies, captured with their opening and closing
+# tags so the surrounding markup survives untouched. Skips external
+# references (src=) - those files are handled as their own targets, or
+# left alone entirely in vendor/'s case.
+_INLINE_BLOCK_RE = re.compile(
+    r"(<(script|style)(?![^>]*\bsrc=)[^>]*>)(.*?)(</\2>)", re.S | re.I
+)
+
+# A downlevel-hidden conditional comment (`<!--[if lt IE 9]>…`) is markup,
+# not commentary: stripping it would silently drop whatever it guards.
+# Nothing in the template uses one today, but the cost of respecting them
+# is one predicate.
+_CONDITIONAL_COMMENT_RE = re.compile(r"^<!--\s*\[if\b", re.I)
+
+
+def _minify_html(src):
+    """Strip comments from an HTML document without touching its markup.
+
+    Deliberately NOT a full HTML minifier: attribute-quote removal and
+    inline-whitespace collapsing are where those tools change rendering,
+    and they would buy little here on top of the comment stripping. This
+    only removes what a reader never sees anyway.
+
+    Three passes: HTML comments outside inline <script>/<style> (the
+    template carries ~23 KB of design rationale in these), then rjsmin /
+    rcssmin over inline block bodies (app.js minification never reaches
+    the theme-bootstrap script embedded in the page), then a collapse of
+    the blank lines the first pass leaves behind.
+
+    Safe to run only on a BUILT copy, never on templates/index.html:
+    template_inject deletes optional blocks by matching paired
+    `<!-- Share start -->` / `<!-- Share end -->` markers, so a stripped
+    template would silently ship every optional block on every map. The
+    build reaches this at step 5.5, after copy_templates has already
+    consumed those markers.
+    """
+    import rcssmin
+    import rjsmin
+
+    out, pos = [], 0
+    for m in _INLINE_BLOCK_RE.finditer(src):
+        out.append(_strip_html_comments(src[pos : m.start()]))
+        body = m.group(3)
+        minifier = rcssmin.cssmin if m.group(2).lower() == "style" else rjsmin.jsmin
+        out.append(m.group(1) + minifier(body) + m.group(4))
+        pos = m.end()
+    out.append(_strip_html_comments(src[pos:]))
+
+    return re.sub(r"\n[ \t]*\n+", "\n", "".join(out))
+
+
+def _strip_html_comments(chunk):
+    """Remove HTML comments from a run of markup, keeping conditionals."""
+    return re.sub(
+        r"<!--.*?-->[ \t]*\n?",
+        lambda m: m.group(0) if _CONDITIONAL_COMMENT_RE.match(m.group(0)) else "",
+        chunk,
+        flags=re.S,
+    )
+
+
+def _minify_assets(output_dir, targets=None):
+    """Minify the given targets in-place, logging progress via console.
 
     Used by main() unless --no-minify is passed (minification is on by
-    default). Conservative pure-python
-    minifiers (rjsmin / rcssmin): they preserve string literals
+    default). Defaults to MINIFY_TARGETS. Conservative pure-python
+    minifiers (rjsmin / rcssmin, plus _minify_html for the page itself,
+    which reuses both for its inline blocks): they preserve string literals
     verbatim (so the embedded CONFIG JSON in app.js stays intact),
     don't rewrite identifiers (no breaking changes for code that
     hooks into named DOM ids / event handlers), and only strip
@@ -132,11 +213,7 @@ def _minify_assets(output_dir):
     stays in place, so the deploy still ships a working (just larger)
     artifact.
     """
-    targets = [
-        ("app.js", "rjsmin"),
-        ("style.css", "rcssmin"),
-    ]
-    for fname, lib in targets:
+    for fname, lib in targets if targets is not None else MINIFY_TARGETS:
         path = os.path.join(output_dir, fname)
         if not os.path.exists(path):
             console.info(f"{fname}: not present, skipping")
@@ -149,6 +226,8 @@ def _minify_assets(output_dir):
                 import rjsmin
 
                 minified = rjsmin.jsmin(src)
+            elif lib == "html":
+                minified = _minify_html(src)
             else:
                 import rcssmin
 
@@ -159,8 +238,11 @@ def _minify_assets(output_dir):
             pct = (1 - after / before) * 100 if before else 0
             console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
+            # The html target has no minifier of its own; it leans on both.
+            missing = "rjsmin rcssmin" if lib == "html" else lib
             console.warn(
-                f"{lib} not installed - {fname} left unminified. Run: .venv/bin/pip install {lib}"
+                f"{missing} not installed - {fname} left unminified. "
+                f"Run: .venv/bin/pip install {missing}"
             )
         except (OSError, UnicodeDecodeError) as e:
             console.warn(f"failed to minify {fname} ({e}) - left unminified")
@@ -1576,7 +1658,8 @@ def main(argv=None):
     copy_templates(config, output_dir, trails_geojson)
     console.blank()
 
-    # Step 5.5: Minify app.js + style.css unless --no-minify was passed. Runs
+    # Step 5.5: Minify app.js + style.css + index.html unless --no-minify
+    # was passed. Runs
     # AFTER copy_templates (which writes the files we minify) and
     # BEFORE generate_service_worker (which hashes file contents into
     # CACHE_VERSION - so the SW's hash refers to the final minified
@@ -1596,6 +1679,14 @@ def main(argv=None):
     if config.get("pwa", True):
         console.step("Generating PWA assets...")
         generate_service_worker(config, output_dir)
+
+        # Step 7.5: Minify the service worker we just wrote (see
+        # MINIFY_TARGETS_SW for why it cannot ride along with step 5.5).
+        # Safe here: the SW's own bytes are deliberately excluded from
+        # CACHE_VERSION, so rewriting them does not invalidate the hash,
+        # and step 8's sidecars then compress the minified bytes.
+        if args.minify:
+            _minify_assets(output_dir, MINIFY_TARGETS_SW)
 
         # Check for missing pieces that will prevent the PWA from being installable
         pwa_warnings = []
