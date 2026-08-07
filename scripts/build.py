@@ -70,6 +70,10 @@ VENDOR_LIBS = {
     "maplibre-gl.js": "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
     "pmtiles.js": "https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js",
     "basemaps.js": "https://unpkg.com/@protomaps/basemaps@5.7.2/dist/basemaps.js",
+    # Client-side contour isolines from the terrain raster-dem
+    # (templates/app.js addContourLayers). Upstream ships index.min.js;
+    # renamed here to match the vendor/ one-lib-one-name convention.
+    "maplibre-contour.js": "https://unpkg.com/maplibre-contour@0.1.0/dist/index.min.js",
 }
 
 

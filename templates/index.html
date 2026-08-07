@@ -98,6 +98,11 @@
     <script src="vendor/maplibre-gl.js" defer></script>
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
+    <!-- Isolines from the shipped terrain raster-dem; loaded
+         unconditionally (31 KB) but only exercised when this map
+         has terrain (addContourLayers gates on the terrain source
+         and degrades to no contours if this script is missing). -->
+    <script src="vendor/maplibre-contour.js" defer></script>
 
     <!-- Start the trails.geojson download now, overlapping it with the
          vendor JS download/parse instead of waiting for app.js to run

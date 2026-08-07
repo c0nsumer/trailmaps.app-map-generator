@@ -119,6 +119,14 @@ const MAP_PAINT_TOKENS = {
         trailCasing:      "rgba(0,0,0,0.6)",
         arrowHalo:        "rgba(0,0,0,0.85)",
         highlightOutline: "#000000",
+        // Contour lines: warm brown at moderate alpha so they read
+        // as terrain annotation under the trail network, not as
+        // routes. Labels keep full contrast in both schemes; a
+        // contour label you cannot read in sunlight is clutter
+        // with no payoff (same reasoning as the label halos).
+        contourLine:      "rgba(96,74,48,0.42)",
+        contourLabelText: "#7c6144",
+        contourLabelHalo: "rgba(245,242,234,0.9)",
     },
     dark: {
         labelText:  "#f0f0f0",
@@ -137,6 +145,12 @@ const MAP_PAINT_TOKENS = {
         trailCasing:      "rgba(255,255,255,0.6)",
         arrowHalo:        "rgba(255,255,255,0.85)",
         highlightOutline: "#ffffff",
+        // Lower alpha than light: pale lines on a dark ground gain
+        // apparent contrast, and 0.25 was judged right on-device
+        // during Session D.
+        contourLine:      "rgba(214,208,190,0.25)",
+        contourLabelText: "#c9c2ae",
+        contourLabelHalo: "rgba(26,26,24,0.9)",
     },
 };
 
@@ -315,6 +329,11 @@ function applyMapPaintForScheme(scheme) {
     if (map.getLayer("hillshade")) {
         map.setPaintProperty("hillshade", "hillshade-shadow-color", t.hillshadeShadow);
         map.setPaintProperty("hillshade", "hillshade-highlight-color", t.hillshadeHighlight);
+    }
+    if (map.getLayer("contour-lines")) {
+        map.setPaintProperty("contour-lines", "line-color", t.contourLine);
+        map.setPaintProperty("contour-labels", "text-color", t.contourLabelText);
+        map.setPaintProperty("contour-labels", "text-halo-color", t.contourLabelHalo);
     }
 }
 
@@ -4299,6 +4318,15 @@ function buildAboutModalContent() {
             "https://mapterhorn.com",
             "Mapterhorn",
             " (Aggregates public-domain elevation sources; USGS 3DEP, EU-DEM, JAXA AW3D30, etc.).");
+        // Same gate as the terrain credit: contour lines are derived
+        // from those tiles, so they exist exactly when terrain does.
+        // The BSD notice matters here: the minified vendor file ships
+        // without its license header, so this credit is where the
+        // attribution requirement is met.
+        credit("Contour lines generated in-browser by ",
+            "https://github.com/onthegomap/maplibre-contour",
+            "maplibre-contour",
+            " (BSD-3-Clause).");
     }
     // USGS 3DEP credit is shown only when the map actually displays
     // route elevation. Detected at runtime by looking for any route
@@ -4514,6 +4542,10 @@ async function addTerrainLayers() {
         },
     }, beforeLayer);
 
+    // Contour lines ride with terrain (adopted with the bio basemap,
+    // Session D 2026-08-07): same gate, same data, no config key.
+    addContourLayers(beforeLayer);
+
     // Resolve when terrain has SETTLED for the opening viewport, used to
     // time the initial-load progress bar hide. "Settled" means either the
     // hillshade tiles have loaded, OR the view genuinely needs none (it's
@@ -4541,6 +4573,152 @@ async function addTerrainLayers() {
         };
         map.on("idle", onIdle);
     });
+}
+
+// ============================================================
+// Contour lines (client-side isolines from the terrain raster-dem)
+// ============================================================
+// maplibre-contour (vendor/maplibre-contour.js) computes isolines
+// from the SAME terrain.pmtiles the hillshade reads: zero extra tile
+// weight, works offline, and the archive's Mapterhorn attribution
+// already covers the derived lines. The library cannot read PMTiles
+// natively (it template-fetches z/x/y URLs), so a narrow fetch
+// intercept serves its "contour-dem://{z}/{x}/{y}" requests straight
+// from the archive through pmtiles.js. worker:false keeps those
+// fetches on the main thread where the intercept lives; the isoline
+// math therefore also runs on-thread. Session D traced this as
+// acceptable; if a future profile disagrees, the escape hatch is a
+// fork with a pluggable tile reader, not worker:true (a worker
+// cannot see the intercept).
+const _contourState = {
+    archive: null,   // pmtiles.PMTiles for direct tile reads
+    flatTile: null,  // Promise<Blob>, constant-elevation fallback
+    realFetch: null,
+};
+
+// Out-of-coverage fallback: a constant-elevation terrarium tile. A
+// flat field has zero isoline crossings, so tiles beyond the
+// extraction bbox simply contribute no lines; a 404 here would
+// surface as a MapLibre tile error on every pan past the wall.
+function _contourFlatTile() {
+    if (!_contourState.flatTile) {
+        _contourState.flatTile = new Promise((resolve) => {
+            const v = 32768 + 300; // any constant elevation works
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 256;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = `rgb(${v >> 8},${v & 255},0)`;
+            ctx.fillRect(0, 0, 256, 256);
+            canvas.toBlob(resolve, "image/png");
+        });
+    }
+    return _contourState.flatTile;
+}
+
+function _installContourDemFetch() {
+    if (_contourState.realFetch) return;
+    _contourState.realFetch = window.fetch.bind(window);
+    _contourState.archive = new pmtiles.PMTiles(
+        new URL("terrain.pmtiles", window.location.href).href);
+    window.fetch = function (resource, options) {
+        const url = typeof resource === "string" ? resource : (resource && resource.url);
+        if (url && url.startsWith("contour-dem://")) {
+            const [z, x, y] = url.slice("contour-dem://".length).split("/").map(Number);
+            return _contourState.archive.getZxy(z, x, y)
+                .catch(() => null)
+                .then((tile) =>
+                    tile && tile.data && tile.data.byteLength
+                        ? new Response(new Blob([tile.data]), { status: 200 })
+                        : _contourFlatTile().then(
+                            (blob) => new Response(blob, { status: 200 })));
+        }
+        return _contourState.realFetch(resource, options);
+    };
+}
+
+// Called from addTerrainLayers once the terrain source exists (so the
+// showTerrain gate and the HEAD-probe fallback are already settled).
+// beforeLayer is the first symbol layer: contours land above the
+// hillshade, below basemap labels; trail layers are appended later
+// and therefore draw over them. The layers survive scheme rebuilds
+// like every non-basemap layer, and applyMapPaintForScheme re-tones
+// them afterward.
+async function addContourLayers(beforeLayer) {
+    // Graceful degrade: a build without the vendor lib (or a browser
+    // that failed to load it) just has no contour lines.
+    if (typeof window.mlcontour === "undefined") return;
+    try {
+        _installContourDemFetch();
+        const header = await _contourState.archive.getHeader();
+        const demSource = new window.mlcontour.DemSource({
+            url: "contour-dem://{z}/{x}/{y}",
+            encoding: "terrarium",
+            maxzoom: header.maxZoom,
+            worker: false,
+            cacheSize: 64,
+            timeoutMs: 15000,
+        });
+        demSource.setupMaplibre(maplibregl);
+
+        map.addSource("contours", {
+            type: "vector",
+            tiles: [demSource.contourProtocolUrl({
+                // Feet, matching the app's imperial route stats.
+                // [minor, major] per zoom; majors draw thicker and
+                // carry labels. The z13 20/100 step is one overzoom
+                // level past the z12 terrain data, still honest;
+                // finer than 20 ft anywhere would render
+                // interpolation noise as confident lines.
+                multiplier: 3.28084,
+                thresholds: {
+                    9: [200, 1000], 10: [200, 1000], 11: [100, 500],
+                    12: [50, 200], 13: [20, 100],
+                    14: [20, 100], 15: [20, 100],
+                },
+                contourLayer: "contours",
+                elevationKey: "ele",
+                levelKey: "level",
+                extent: 4096,
+                buffer: 1,
+            })],
+            maxzoom: 15,
+        });
+
+        const t = mapPaintTokens();
+        map.addLayer({
+            id: "contour-lines",
+            type: "line",
+            source: "contours",
+            "source-layer": "contours",
+            paint: {
+                "line-color": t.contourLine,
+                "line-width": ["match", ["get", "level"], 1, 1.2, 0.6],
+            },
+        }, beforeLayer);
+        map.addLayer({
+            id: "contour-labels",
+            type: "symbol",
+            source: "contours",
+            "source-layer": "contours",
+            filter: [">", ["get", "level"], 0],
+            layout: {
+                "symbol-placement": "line",
+                "text-field": ["concat", ["to-string", ["get", "ele"]], " ft"],
+                "text-font": ["Noto Sans Regular"],
+                "text-size": 9.5,
+                "symbol-spacing": 350,
+            },
+            paint: {
+                "text-color": t.contourLabelText,
+                "text-halo-color": t.contourLabelHalo,
+                "text-halo-width": 1.2,
+            },
+        }, beforeLayer);
+    } catch (e) {
+        // Contours are enhancement, never load-bearing; a failure
+        // here must not take the map down with it.
+        console.warn("Contour layer setup failed: " + e.message);
+    }
 }
 
 // Resolve the color a route appears as on the map, in priority order:
