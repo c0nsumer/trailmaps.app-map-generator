@@ -1906,8 +1906,16 @@ body::after {
  * dark mode. Override the background-image with the same path but
  * a light fill, so the (i) glyph stays readable. The path data is
  * identical to vendor's, only the fill='%23f0f0f0' attribute is
- * added to color the glyph. */
+ * added to color the glyph.
+ *
+ * background-color must be cleared too: vendor gives the button its
+ * own hsla(0,0%,100%,.5) disc. White-on-white and invisible on the
+ * light chip, but on the dark chip it survives as a bright 24px
+ * circle that outshines the FABs (whose icons are the same
+ * --sheet-text as the glyph; the disc was the eye-catcher). This
+ * selector out-specifies the vendor rule, no !important needed. */
 [data-color-scheme="dark"] .maplibregl-ctrl-attrib-button {
+    background-color: transparent;
     background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%23f0f0f0' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E");
 }
 
