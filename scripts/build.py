@@ -500,9 +500,9 @@ def generate_service_worker(config, output_dir):
 
 
 # ---------------------------------------------------------------------------
-# Build-time precompression (.gz / .zst sidecars)
+# Build-time precompression (.gz / .br sidecars)
 # ---------------------------------------------------------------------------
-# Compressible static assets are gzip- and zstd-compressed once at build
+# Compressible static assets are gzip- and brotli-compressed once at build
 # time. A precompressed-aware static server (Caddy `precompressed`, nginx
 # `gzip_static`/`brotli_static`, …) then ships the compressed bytes with
 # zero request-time CPU - and at higher levels than on-the-fly encoding
@@ -510,6 +510,14 @@ def generate_service_worker(config, output_dir):
 # without precompressed support simply ignores them and serves the
 # original, so the build output stays host-agnostic. The runtime never
 # requests a sidecar by name; the server negotiates it via Accept-Encoding.
+#
+# Brotli replaced zstd (2026-08): Safari never sends `zstd` in
+# Accept-Encoding, so iOS riders fell back to gzip-9, while br-11
+# measured ~2.5x smaller than gzip-9 on trails.geojson and 5-10% under
+# zstd-19 everywhere else. Every zstd-capable browser also accepts br,
+# which makes `.zst` dead weight once `.br` exists - swap, don't add.
+# The stale-sidecar sweep below still clears `.zst` so rebuilds over a
+# pre-swap output dir can't leave orphans.
 #
 # Skipped: already-compressed media (png/webp/ico) where gzip only adds
 # bytes, and .pmtiles, which MUST stay uncompressed so HTTP Range slicing
@@ -556,7 +564,7 @@ def _load_json_or_none(path):
 
 
 def precompress_assets(output_dir):
-    """Write .gz + .zst sidecars for compressible assets in output_dir.
+    """Write .gz + .br sidecars for compressible assets in output_dir.
 
     MUST run after generate_service_worker: the SW hashes and precaches the
     ORIGINAL files, and the sidecars must not exist when that file list is
@@ -568,9 +576,9 @@ def precompress_assets(output_dir):
     import gzip as _gzip
 
     try:
-        from compression import zstd as _zstd  # Python 3.14+ stdlib
+        import brotli as _brotli
     except ImportError:
-        _zstd = None
+        _brotli = None
 
     # Clear prior sidecars for deterministic output.
     for root, _dirs, files in os.walk(output_dir):
@@ -582,7 +590,7 @@ def precompress_assets(output_dir):
     for root, _dirs, files in os.walk(output_dir):
         for fname in files:
             # Don't compress build-only artifacts - they aren't deployed,
-            # and their .gz/.zst wouldn't match the rsync excludes.
+            # and their .gz/.br wouldn't match the rsync excludes.
             if _is_build_only_artifact(fname):
                 continue
             if not fname.lower().endswith(PRECOMPRESS_EXTENSIONS):
@@ -601,11 +609,11 @@ def precompress_assets(output_dir):
             if len(gz) < len(raw):
                 with open(path + ".gz", "wb") as f:
                     f.write(gz)
-            if _zstd is not None:
-                zz = _zstd.compress(raw, level=19)
-                if len(zz) < len(raw):
-                    with open(path + ".zst", "wb") as f:
-                        f.write(zz)
+            if _brotli is not None:
+                br = _brotli.compress(raw, quality=11)
+                if len(br) < len(raw):
+                    with open(path + ".br", "wb") as f:
+                        f.write(br)
             count += 1
             orig_total += len(raw)
             comp_total += len(gz)
@@ -613,12 +621,12 @@ def precompress_assets(output_dir):
     if count:
         console.info(
             f"Precompressed {count} assets "
-            f"({'gzip + zstd' if _zstd is not None else 'gzip'}): "
+            f"({'gzip + brotli' if _brotli is not None else 'gzip'}): "
             f"{orig_total / 1024:.0f} KB -> {comp_total / 1024:.0f} KB gzip "
             f"(-{100 * (1 - comp_total / orig_total):.0f}%)"
         )
-    if _zstd is None:
-        console.warn("compression.zstd unavailable - wrote gzip sidecars only")
+    if _brotli is None:
+        console.warn("brotli unavailable - wrote gzip sidecars only")
 
 
 def load_config(config_path):
@@ -1080,13 +1088,13 @@ def main(argv=None):
         "enabled). Use for local-iteration debug where readable output "
         "is more useful than smaller output; for deploy, leave it on.",
     )
-    # The .gz/.zst sidecars are inert on a server that doesn't serve them
+    # The .gz/.br sidecars are inert on a server that doesn't serve them
     # (and on serve.py), so precompress default-on is safe.
     parser.add_argument(
         "--no-precompress",
         dest="precompress",
         action="store_false",
-        help="Disable .gz/.zst sidecars for compressible assets (default: "
+        help="Disable .gz/.br sidecars for compressible assets (default: "
         "enabled). The sidecars let a precompressed-aware server (Caddy "
         "`precompressed`, nginx `gzip_static`) serve them with no "
         "request-time CPU. Skip for fast local-iteration builds.",

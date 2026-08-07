@@ -113,7 +113,7 @@ changed bbox re-extracts tiles.
   defaults. The package form (`python -m map_generator build …`) forwards
   both unchanged.
 - `--no-minify` and `--no-precompress` opt out of the default-on
-  minification and `.gz`/`.zst` precompression for fast local iteration.
+  minification and `.gz`/`.br` precompression for fast local iteration.
   Leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
 - `--quiet` suppresses step and progress output, leaving only notes,
   warnings, and errors.

@@ -84,9 +84,10 @@ Caddy. The Caddy-specific config below is one example of headers you may want
 to set on whichever host you use. The same intent translates to most server
 configs: cache JS/CSS forever, revalidate HTML, allow Range on PMTiles.
 
-The build also writes precompressed `.gz` and `.zst` sidecars next to each
-text asset. Caddy, nginx, and Apache can serve these directly (see the
-`precompressed` block below). Managed hosts like S3, Netlify, Cloudflare
+The build also writes precompressed `.gz` and `.br` (Brotli) sidecars next to
+each text asset. Brotli is the encoding every modern browser accepts,
+including Safari, which never accepts zstd. Caddy, nginx, and Apache can
+serve the sidecars directly (see the `precompressed` block below). Managed hosts like S3, Netlify, Cloudflare
 Pages, and GitHub Pages cannot; they compress on their own terms and ignore
 sidecar files. If you deploy to one of those, build with `--no-precompress`
 so the sidecars are not generated and uploaded for nothing.
@@ -100,14 +101,16 @@ mytrailmaps.com {
     root * /var/www/mytrailmaps.com
     encode zstd gzip
 
-    # Serve the build's precompressed .zst/.gz sidecars when the client
+    # Serve the build's precompressed .br/.gz sidecars when the client
     # accepts them. Without `precompressed`, Caddy ignores the sidecars
     # and re-compresses on the fly at a lower level - and `encode` skips
     # types outside its default allowlist entirely, which includes
     # .geojson and the font .pbf glyphs. Sidecars are never generated
-    # for .pmtiles, so HTTP Range slicing is unaffected.
+    # for .pmtiles, so HTTP Range slicing is unaffected. Order matters:
+    # it is Caddy's preference list, and br must win when both are
+    # accepted.
     file_server {
-        precompressed zstd gzip
+        precompressed br gzip
     }
 
     header {

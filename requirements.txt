@@ -30,6 +30,10 @@ mapbox-vector-tile==2.2.0
 # CONFIG JSON literal in app.js. ~50KB JS + ~13KB CSS savings per map.
 rjsmin==1.2.5
 rcssmin==1.2.2
+# Brotli sidecars for the build.py precompress pass (.br next to .gz).
+# Safari never accepts zstd, so brotli is what iOS riders actually get;
+# br-11 also beat zstd-19 by 5-10% everywhere it was measured.
+Brotli==1.2.0
 
 # Transitive (pinned for reproducibility — do not remove)
 certifi==2026.2.25
