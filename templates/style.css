@@ -379,6 +379,34 @@ body {
      * to all children. Override on specific content links if needed
      * (none currently). */
     -webkit-tap-highlight-color: transparent;
+    /* Nothing in this app is copy: every string is a label on a
+     * control (routes key rows, FAB labels, sheet headings, toasts).
+     * Without this, a long-press on any of them - most reachably the
+     * Routes key rows - starts a native text selection with drag
+     * handles, and on Android nothing in our UI clears it: taps land
+     * on the map or on buttons that don't collapse the selection, so
+     * the blue highlight and handles sit on the chrome until the
+     * rider finds an empty spot to tap. Reproduced on Android
+     * (2026-08-09). Inherits to every descendant; the search field
+     * opts back in below. -webkit-touch-callout also suppresses iOS
+     * Safari's long-press callout menu, which is a separate gesture
+     * from selection and survives user-select: none on its own. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* The one place text really is text. Selection is part of editing a
+ * query (long-press to position the caret, double-tap to fix a word),
+ * so the app-wide `user-select: none` above must not reach it. The
+ * textarea arm covers the hidden element fallbackCopyShareUrl()
+ * builds for the legacy execCommand("copy") path, which needs a
+ * selectable node to call .select() on. */
+input,
+textarea {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
 }
 
 #map {
