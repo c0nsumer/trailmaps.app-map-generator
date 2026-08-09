@@ -114,9 +114,22 @@ const MAP_PAINT_TOKENS = {
         // treatment (casing, clip-arrow halo, highlight outline) contrasts
         // the basemap the same way: dark on the light basemap, light on the
         // dark basemap. Re-applied on scheme toggle by applyMapPaintForScheme.
-        // (Casing 0.6 alpha; its line-opacity 0.5 → ~0.3 effective. Arrow
-        // halo 0.85. Outline opaque.)
-        trailCasing:      "rgba(0,0,0,0.6)",
+        // (Arrow halo 0.85. Outline opaque.)
+        //
+        // Casing effective alpha is this value times the casing layer's
+        // line-opacity 0.5, so 1.0 here paints at 0.50. Light deliberately
+        // runs twice as strong as dark (0.50 vs 0.30): measured across 4,145
+        // colored segments, 39% fall below 1.5:1 against the light basemap's
+        // vegetation, versus 2% against the dark one. Trail signage favors
+        // bright saturated colors (orange is 1.13:1 on light and 7.54:1 on
+        // dark; yellow, tan, and gold behave the same), which are
+        // intrinsically high-luminance and so collide with any light ground
+        // while separating cleanly on a dark one. At 0.30 the light casing
+        // blended to a mid-tone barely distinguishable from either side
+        // (1.99:1 vs the vegetation, 1.95:1 vs a gold fill); 0.50 gives the
+        // edge a real step (3.51 / 3.43) without tipping into the black
+        // outline around a colored core that shows up past ~0.6.
+        trailCasing:      "rgba(0,0,0,1)",
         arrowHalo:        "rgba(0,0,0,0.85)",
         highlightOutline: "#000000",
         // Contour lines: warm brown at moderate alpha so they read
@@ -142,6 +155,10 @@ const MAP_PAINT_TOKENS = {
         // that plain #ffffff produces.
         hillshadeShadow:    "#000000",
         hillshadeHighlight: "rgba(255, 255, 255, 0.15)",
+        // Left at the original 0.6 (effective 0.30) while light moved to
+        // 0.50. See the light casing note: the dark basemap's collision rate
+        // is 2%, so a stronger casing here would only fatten lines that
+        // already separate cleanly.
         trailCasing:      "rgba(255,255,255,0.6)",
         arrowHalo:        "rgba(255,255,255,0.85)",
         highlightOutline: "#ffffff",
