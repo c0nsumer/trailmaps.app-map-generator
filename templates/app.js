@@ -352,6 +352,13 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("contour-labels", "text-color", t.contourLabelText);
         map.setPaintProperty("contour-labels", "text-halo-color", t.contourLabelHalo);
     }
+    // The loops above just set every name label back to the flat
+    // scheme color; updateLabels() re-applies the highlight-aware
+    // dim/bright split on top (same "recompute on scheme toggle"
+    // precedent as the highlight silhouettes above), so a scheme
+    // toggle mid-highlight doesn't flash every label bright for a
+    // frame or leave them all stuck bright.
+    updateLabels();
 }
 
 // Shared "recede the background" scrim density, used by BOTH the in-map
@@ -1659,7 +1666,8 @@ function computeDecorations() {
             const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
             if (!name || agg.n === 0) continue;
             emitOverviewLabel(name, agg.longest,
-                { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid });
+                { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid,
+                  trail_name: agg.longest.trailName });
         }
     }
     if (POINT_LABELS_IN_TRAILS_MODE && CONFIG.showTrails !== false) {
@@ -2051,10 +2059,10 @@ function updateChevronFilters() {
 }
 
 // Refresh the diamond + arrow filters in response to highlight state
-// changes. Name-label visibility is handled in updateLabels(): all name
-// labels narrow to a highlighted ROUTE there, while TRAIL highlights
-// leave labels un-narrowed for wayfinding, only diamonds / arrows
-// narrow here.
+// changes. Diamonds/arrows narrow hard (filtered out entirely outside
+// the highlight) since they'd otherwise punch through the tint on
+// other lines; name labels take the softer dim/bright treatment in
+// updateLabels() instead, they stay legible for wayfinding either way.
 function updateDecorationsHighlight() {
     if (map.getLayer("decor-diamond")) {
         map.setFilter("decor-diamond", buildDecorFilter(KIND.DIAMOND));
@@ -5783,39 +5791,57 @@ async function loadTrails() {
     _applyPerRouteLayerVisibility();
 }
 
-// Build a filter expression for a label layer on the trail-decorations
-// source. Always includes the KIND/zoom gate (so the layer only renders
-// features of the right kind, at zooms ≥ the feature's min_zoom);
-// callers append any highlight-narrowing filters as `extraFilters`.
-//
-// Centralizing the gate prevents the three label-layer blocks below
-// from drifting in their kind/zoom logic, every label feature is
-// gated through this one place.
-function buildLabelFilter(kind, ...extraFilters) {
-    return ["all",
-        ["==", ["get", "kind"], kind],
-        ["<=", ["get", "min_zoom"], ["zoom"]],
-        ...extraFilters,
-    ];
+// Blend a scheme paint color toward black by the highlight wash's own
+// SCRIM_OPACITY — Porter-Duff "black at alpha a over opaque color C"
+// reduces to C*(1-a), so this reproduces exactly what drawing the
+// dim-tint wash OVER that color would look like, at the same density
+// the wash already uses everywhere else. Reuses parseColorRgb (below)
+// rather than a bespoke hex parser, it already resolves any CSS color
+// via a 1x1 canvas.
+function washDim(cssColor) {
+    const [r, g, b] = parseColorRgb(cssColor);
+    const k = 1 - SCRIM_OPACITY;
+    return `rgb(${Math.round(r * k)}, ${Math.round(g * k)}, ${Math.round(b * k)})`;
+}
+
+// Paint value for a name-label layer's `prop` (text-color or
+// text-halo-color) under the current highlight: `normal` for labels
+// belonging to the highlighted route/trail, washDim(normal) for the
+// rest — still visible (a rider retracing the network to reach the
+// highlight needs to read the surrounding names), dimmed by the exact
+// same wash the rest of the map uses under a highlight, fill AND
+// halo both. An early version dimmed only the fill and left the halo
+// at full opaque brightness; against the darkened wash that bright
+// halo read as MORE prominent than an unhighlighted label should, the
+// opposite of "receded" (and before that, fading text-opacity ghosted
+// both fill and halo unevenly — worse). `matchExprFn` is a THUNK, not
+// a built expression: routeIdentityMatch / trailIdentityMatch read
+// `highlight.key`, which is null when no highlight is active, so they
+// must not run until the highlightDimActive() check below has passed.
+function labelDimExpr(normal, matchExprFn) {
+    return highlightDimActive()
+        ? ["case", matchExprFn(), normal, washDim(normal)]
+        : normal;
+}
+
+// Match expressions for the two label identities. Route highlights
+// brighten a route's own name plus the trail names along it; trail
+// highlights brighten that trail's own name plus the route name(s) it
+// belongs to. Reused across every label layer below so a route/trail
+// highlight dims the whole label set (route mode AND trail mode) the
+// same way, not just whichever mode happens to be on screen.
+function routeIdentityMatch() {
+    return highlight.kind === "route"
+        ? ["==", ["get", "solo_route_id"], highlight.key]
+        : ["==", ["get", "trail_name"], highlight.key];
+}
+function trailIdentityMatch() {
+    return highlight.kind === "trail"
+        ? ["==", ["get", "trail_name"], highlight.key]
+        : ["in", highlight.key, ["get", "shared_routes"]];
 }
 
 function updateLabels() {
-    // Under a ROUTE-highlight dim, ALL name labels narrow to the
-    // highlighted route: route names to the route itself (an event map's
-    // "Full Route" label riding a dimmed line while Short Route is
-    // spotlit reads as if the wrong route were highlighted), and trail
-    // names to the trails along that route (bright names floating on
-    // dimmed background lines undercut the spotlight, the route's own
-    // segment names are what the rider is tracing).
-    //
-    // Under a TRAIL highlight, labels are deliberately NOT narrowed: the
-    // wash recedes the surrounding network visually, but its names stay
-    // readable so a rider can still trace the connecting trails needed
-    // to reach the highlighted one (the in-field "how do I get there?"
-    // case).
-    const routeNarrow = (highlightDimActive() && highlight.kind === "route")
-        ? highlight.key : null;
-
     // Per-route route-name label layers, each scoped to one route via
     // its baseline filter (set at layer creation, not here). Source
     // data (computeLabelData) only carries shared-way features now;
@@ -5825,9 +5851,25 @@ function updateLabels() {
         const layerId = `trail-label-${routeId}`;
         if (!map.getLayer(layerId)) continue;
 
-        const visible = labelMode === "routes" && visibleRoutes.has(routeId)
-            && (!routeNarrow || routeId === routeNarrow);
+        const visible = labelMode === "routes" && visibleRoutes.has(routeId);
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+        if (visible) {
+            const t = mapPaintTokens();
+            if (highlightDimActive() && highlight.kind === "route") {
+                // This layer holds only routeId's own ways, so a route
+                // highlight is a uniform match, no per-feature expression
+                // needed.
+                const bright = routeId === highlight.key;
+                map.setPaintProperty(layerId, "text-color", bright ? t.labelText : washDim(t.labelText));
+                map.setPaintProperty(layerId, "text-halo-color", bright ? t.labelHalo : washDim(t.labelHalo));
+            } else {
+                // No highlight, or a TRAIL highlight: the latter still
+                // needs the per-feature trail_name check routeIdentityMatch
+                // builds (this route may or may not contain that trail).
+                map.setPaintProperty(layerId, "text-color", labelDimExpr(t.labelText, routeIdentityMatch));
+                map.setPaintProperty(layerId, "text-halo-color", labelDimExpr(t.labelHalo, routeIdentityMatch));
+            }
+        }
     }
 
     // Solo-way route-name labels (one LineString per way with exactly
@@ -5843,10 +5885,11 @@ function updateLabels() {
         map.setLayoutProperty("decor-route-name",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-route-name", routeNarrow
-                ? buildLabelFilter(KIND.ROUTE_NAME,
-                    ["==", ["get", "solo_route_id"], routeNarrow])
-                : buildLabelFilter(KIND.ROUTE_NAME));
+            const t = mapPaintTokens();
+            map.setPaintProperty("decor-route-name", "text-color",
+                labelDimExpr(t.labelText, routeIdentityMatch));
+            map.setPaintProperty("decor-route-name", "text-halo-color",
+                labelDimExpr(t.labelHalo, routeIdentityMatch));
         }
     }
 
@@ -5857,10 +5900,11 @@ function updateLabels() {
         map.setLayoutProperty("decor-trail-name", "visibility",
             visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-trail-name", routeNarrow
-                ? buildLabelFilter(KIND.TRAIL_NAME,
-                    ["in", routeNarrow, ["get", "shared_routes"]])
-                : buildLabelFilter(KIND.TRAIL_NAME));
+            const t = mapPaintTokens();
+            map.setPaintProperty("decor-trail-name", "text-color",
+                labelDimExpr(t.labelText, trailIdentityMatch));
+            map.setPaintProperty("decor-trail-name", "text-halo-color",
+                labelDimExpr(t.labelHalo, trailIdentityMatch));
         }
     }
 
@@ -5872,10 +5916,11 @@ function updateLabels() {
         map.setLayoutProperty("decor-route-name-pt",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-route-name-pt", routeNarrow
-                ? buildLabelFilter(KIND.ROUTE_LABEL_PT,
-                    ["==", ["get", "solo_route_id"], routeNarrow])
-                : buildLabelFilter(KIND.ROUTE_LABEL_PT));
+            const t = mapPaintTokens();
+            map.setPaintProperty("decor-route-name-pt", "text-color",
+                labelDimExpr(t.labelText, routeIdentityMatch));
+            map.setPaintProperty("decor-route-name-pt", "text-halo-color",
+                labelDimExpr(t.labelHalo, routeIdentityMatch));
         }
     }
     if (map.getLayer("decor-trail-name-pt")) {
@@ -5883,10 +5928,11 @@ function updateLabels() {
         map.setLayoutProperty("decor-trail-name-pt",
             "visibility", visible ? "visible" : "none");
         if (visible) {
-            map.setFilter("decor-trail-name-pt", routeNarrow
-                ? buildLabelFilter(KIND.TRAIL_LABEL_PT,
-                    ["in", routeNarrow, ["get", "shared_routes"]])
-                : buildLabelFilter(KIND.TRAIL_LABEL_PT));
+            const t = mapPaintTokens();
+            map.setPaintProperty("decor-trail-name-pt", "text-color",
+                labelDimExpr(t.labelText, trailIdentityMatch));
+            map.setPaintProperty("decor-trail-name-pt", "text-halo-color",
+                labelDimExpr(t.labelHalo, trailIdentityMatch));
         }
     }
 }
@@ -6395,13 +6441,22 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 //   - The `dim-tint` background layer fades in, washing the basemap +
 //     non-highlighted trail casings/fills toward black (strength is
 //     SCRIM_OPACITY, from scrim_opacity).
-//   - Difficulty icons, one-way arrows, and clip-arrows are narrowed to
-//     the highlighted route/trail only (so they don't punch through the
-//     tint on other lines). When a ROUTE is highlighted, name labels
-//     (route AND trail names) narrow with them (see updateLabels); under
-//     a TRAIL highlight, labels are deliberately NOT narrowed, they
-//     stay readable so connecting trails can still be followed to reach
-//     the highlighted one.
+//   - Difficulty icons, one-way arrows, and clip-arrows narrow HARD to
+//     the highlighted route/trail only (filtered out elsewhere, so they
+//     don't punch through the tint on other lines).
+//   - Name labels (route AND trail names, whichever labelMode is
+//     active) take a softer treatment in updateLabels(): the ones
+//     belonging to the highlight keep the normal scheme color,
+//     everything else recolors (fill AND halo) via washDim() — the
+//     same black-at-SCRIM_OPACITY blend the wash itself would produce
+//     if drawn over that color, so a dimmed label matches the map's
+//     dimming exactly instead of drifting toward its own look. Labels
+//     stay visible rather than hiding, a rider retracing the network
+//     to reach the highlight still needs to read the connecting
+//     names. Same rule for both highlight kinds: a route highlight
+//     brightens that route's name + the trail names along it; a
+//     trail highlight brightens that trail's name + the route
+//     name(s) it belongs to.
 //   - POI markers (DOM overlay, above the WebGL canvas) fade to ~0.25
 //     unless adjacent to the highlight, via Marker.setOpacity() in
 //     updateMarkerDimState().
