@@ -4839,13 +4839,17 @@ const POI_PROXIMITY_METERS = CONFIG.poiProximityMeters ?? 50;
 const POI_AMENITY_PROXIMITY_METERS = 500;
 
 // Threshold (meters) for "on the highlighted route" during the
-// spotlight dim. Intentionally tight, when a single route/trail is
-// highlighted, only POIs that sit essentially on its geometry stay at
-// full brightness; everything else (parking lots, trailheads, POIs on
-// adjacent trails) dims to 25 % opacity so the highlighted feature
-// reads as a clean spotlight. Not user-configurable; this is a UI
-// polish knob, not a data-visibility knob like POI_PROXIMITY_METERS.
-const HIGHLIGHT_POI_PROXIMITY_METERS = 10;
+// spotlight dim. A highlighted route/trail can run a mile or more,
+// and POIs are hand-placed or geocoded rather than snapped to the
+// line, so 10 m (the original value) clipped real trailside POIs, a
+// parking area set back from the road, a feature a few paces off the
+// tread, to "dimmed" even though they plainly belong to the
+// highlight. 50 m keeps the spotlight meaningfully selective
+// (adjacent trails and far-side amenities still dim) without
+// punishing ordinary placement slop along a route that length. Not
+// user-configurable; this is a UI polish knob, not a data-visibility
+// knob like POI_PROXIMITY_METERS.
+const HIGHLIGHT_POI_PROXIMITY_METERS = 50;
 
 function pointToSegmentDistance(px, py, ax, ay, bx, by) {
     const cosLat = Math.cos(((py + ay + by) / 3) * Math.PI / 180);
@@ -4920,33 +4924,118 @@ function distanceToHighlighted(lng, lat) {
     return minDist;
 }
 
-// Fade markers that aren't adjacent to the highlighted route/trail.
-// Uses MapLibre's Marker.setOpacity() API rather than touching the DOM
-// element directly. Reason: MapLibre's render loop writes
-// `_element.style.opacity` on every tick (for terrain-occlusion
-// handling, `_opacity` vs `_opacityWhenCovered`). An inline opacity
-// or CSS class rule on `.maplibregl-marker` gets clobbered by that
-// inline write within one frame, which is why every earlier fix
-// attempt looked like it worked in isolation but did nothing live.
-// setOpacity() feeds the value into MapLibre's own state so the per-
-// frame writer uses it. User-location markers are never enumerated
-// here, so they never dim. Safe to call repeatedly.
+// Elements + CSS properties that carry a marker type's own color,
+// keyed by POI_MARKER_ARRAYS's type names. Driven off the marker's
+// existing CSS (see the "On-map POI markers" block in style.css) so
+// curator-configured colors (--parking-color etc, set by the
+// setPoiColorVars IIFE above) recolor correctly with no hex values
+// duplicated here. `sel: null` targets the marker's own root element;
+// any other value is a selector run against that root.
+const MARKER_DIM_TARGETS = {
+    trail_marker:           [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
+    parking:                [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
+    trailhead:              [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
+    toilet:                 [{ sel: null, props: ["backgroundColor", "borderColor"] },
+                              { sel: "svg", props: ["fill"] }],
+    drinking_water:         [{ sel: null, props: ["backgroundColor", "borderColor"] },
+                              { sel: "svg", props: ["fill"] }],
+    bicycle_repair_station: [{ sel: null, props: ["backgroundColor", "borderColor"] },
+                              { sel: "svg", props: ["fill"] }],
+    hub: [
+        { sel: ".hub-marker-shape", props: ["fill", "stroke"] },
+        { sel: ".hub-marker-letter", props: ["fill"] },
+        { sel: ".hub-marker-label", props: ["color", "textShadow"] },
+    ],
+    feature: [
+        { sel: ".feature-marker-icon", props: ["backgroundColor", "borderColor"] },
+        { sel: ".feature-marker-label", props: ["color", "textShadow"] },
+    ],
+};
+
+// Wash every rgb()/rgba() token inside a computed value. Plain color
+// properties (backgroundColor, fill, ...) always resolve to a single
+// token, but text-shadow's computed form repeats the halo color once
+// per offset (see .feature-marker-label / .hub-marker-label in
+// style.css), so a single washDim() call can't touch it directly.
+function washCssColorTokens(computedValue) {
+    return computedValue.replace(/rgba?\([^)]*\)/g, (token) => washDim(token));
+}
+
+// Fully transparent values must be skipped, not washed: washDim()
+// resolves colors through parseColorRgb(), which drops the alpha
+// channel, so washing e.g. "rgba(0, 0, 0, 0)" (a computed default for
+// "no background set") would paint solid black where nothing should
+// render at all.
+function isVisibleCssColor(value) {
+    if (!value || value === "none") return false;
+    const m = value.match(/^rgba?\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)$/);
+    return !m || parseFloat(m[1]) > 0;
+}
+
+// Recolor one marker's chip/label parts toward the spotlight wash
+// instead of fading them. Mirrors the lesson from the name-label dim
+// (see labelDimExpr): fading opacity lets the basemap show through a
+// "dimmed" icon, which reads as a rendering glitch rather than a
+// deliberate recede. Resolved colors are cached per marker element
+// the first time it's dimmed, createPoiMarkers never restyles a
+// marker's DOM after building it, so the bright values are stable for
+// the marker's lifetime and repeated highlight changes just swap
+// between two known strings instead of re-parsing colors every time.
+//
+// The cache must NOT be built while rootEl is detached from the
+// document: a POI category that starts hidden (no default_visible
+// entry) exists in the DOM but isn't .addTo(map)'d yet, and
+// updateTrailDisplay() (which every visibility change routes through)
+// calls applyDimState() BEFORE updateMarkerProximity() attaches
+// newly-shown markers. getComputedStyle() on a detached element
+// resolves color properties to "", which isVisibleCssColor() reads as
+// "nothing to dim" - caching that would permanently lock the marker
+// out of the wash even after it's mounted. Skipping (rather than
+// caching an empty result) lets the next call, once mounted, build
+// the real cache.
+const _markerDimCache = new WeakMap();
+function washMarkerElement(rootEl, type, dimmed) {
+    const spec = MARKER_DIM_TARGETS[type];
+    if (!spec) return;
+    let cached = _markerDimCache.get(rootEl);
+    if (!cached) {
+        if (!rootEl.isConnected) return;
+        cached = [];
+        for (const { sel, props } of spec) {
+            const el = sel ? rootEl.querySelector(sel) : rootEl;
+            if (!el) continue;
+            const cs = getComputedStyle(el);
+            for (const prop of props) {
+                const bright = cs[prop];
+                if (prop !== "textShadow" && !isVisibleCssColor(bright)) continue;
+                const dim = prop === "textShadow" ? washCssColorTokens(bright) : washDim(bright);
+                cached.push({ el, prop, bright, dim });
+            }
+        }
+        _markerDimCache.set(rootEl, cached);
+    }
+    for (const { el, prop, bright, dim } of cached) {
+        el.style[prop] = dimmed ? dim : bright;
+    }
+}
+
+// Recolor markers that aren't adjacent to the highlighted route/trail
+// via washMarkerElement() above, rather than fading their opacity.
+// User-location markers are never enumerated here, so they never dim.
+// Safe to call repeatedly.
 function updateMarkerDimState() {
     const active = highlightDimActive();
-    const apply = (markers) => {
-        for (const marker of markers) {
+    for (const [type, arr] of Object.entries(POI_MARKER_ARRAYS)) {
+        // Event POIs keep full brightness; they are not part of the dim pass.
+        if (type === "event") continue;
+        for (const marker of arr) {
             let dimmed = false;
             if (active) {
                 const { lng, lat } = marker.getLngLat();
-                const dist = distanceToHighlighted(lng, lat);
-                dimmed = dist > HIGHLIGHT_POI_PROXIMITY_METERS;
+                dimmed = distanceToHighlighted(lng, lat) > HIGHLIGHT_POI_PROXIMITY_METERS;
             }
-            marker.setOpacity(dimmed ? "0.25" : "1");
+            washMarkerElement(marker.getElement(), type, dimmed);
         }
-    };
-    // Event POIs keep full opacity; they are not part of the dim pass.
-    for (const [type, arr] of Object.entries(POI_MARKER_ARRAYS)) {
-        if (type !== "event") apply(arr);
     }
 }
 
@@ -6457,9 +6546,11 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 //     brightens that route's name + the trail names along it; a
 //     trail highlight brightens that trail's name + the route
 //     name(s) it belongs to.
-//   - POI markers (DOM overlay, above the WebGL canvas) fade to ~0.25
-//     unless adjacent to the highlight, via Marker.setOpacity() in
-//     updateMarkerDimState().
+//   - POI markers (DOM overlay, above the WebGL canvas) recolor
+//     toward the same wash unless adjacent to the highlight, via
+//     washMarkerElement() in updateMarkerDimState(). Recolored rather
+//     than faded, for the same reason as labels: fading opacity would
+//     let the basemap show through the marker.
 // The in-map wash and the Search / Options / About menu backdrops share
 // one scrim density (SCRIM_OPACITY / --scrim-opacity) but are never both
 // animated at once: while a highlight is active the wash is steady and
