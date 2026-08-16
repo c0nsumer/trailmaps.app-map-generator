@@ -4684,7 +4684,7 @@ async function addTerrainLayers() {
 // cannot see the intercept).
 const _contourState = {
     archive: null,   // pmtiles.PMTiles for direct tile reads
-    flatTile: null,  // Promise<Blob>, constant-elevation fallback
+    flatTile: null,  // Promise<ArrayBuffer>, constant-elevation fallback
     realFetch: null,
 };
 
@@ -4692,6 +4692,18 @@ const _contourState = {
 // flat field has zero isoline crossings, so tiles beyond the
 // extraction bbox simply contribute no lines; a 404 here would
 // surface as a MapLibre tile error on every pan past the wall.
+//
+// Caches the encoded PNG bytes (the canvas draw + toBlob is the
+// expensive part) but hands back a fresh ArrayBuffer.slice(0) copy on
+// every call. MapLibre transfers a custom protocol's returned buffer
+// to a worker, which detaches it; every out-of-coverage tile past the
+// first used to share the SAME buffer instance, so its Response wrapped
+// an already-detached buffer - "attempting to access detached
+// ArrayBuffer", firing on essentially every tile near the coverage
+// edge (profiled 2026-08-16 while testing mfo's east edge). Documented
+// addProtocol pitfall: maplibre/maplibre-gl-js discussion #1845 (the
+// MISSING_TILE.buffer.slice(0) fix). ArrayBuffer.slice always copies,
+// unlike Blob.slice.
 function _contourFlatTile() {
     if (!_contourState.flatTile) {
         _contourState.flatTile = new Promise((resolve) => {
@@ -4701,10 +4713,10 @@ function _contourFlatTile() {
             const ctx = canvas.getContext("2d");
             ctx.fillStyle = `rgb(${v >> 8},${v & 255},0)`;
             ctx.fillRect(0, 0, 256, 256);
-            canvas.toBlob(resolve, "image/png");
+            canvas.toBlob((blob) => resolve(blob.arrayBuffer()), "image/png");
         });
     }
-    return _contourState.flatTile;
+    return _contourState.flatTile.then((buf) => buf.slice(0));
 }
 
 function _installContourDemFetch() {
@@ -4728,7 +4740,10 @@ function _installContourDemFetch() {
                     tile && tile.data && tile.data.byteLength
                         ? new Response(new Blob([tile.data]), { status: 200 })
                         : _contourFlatTile().then(
-                            (blob) => new Response(blob, { status: 200 })));
+                            (buf) => new Response(buf, {
+                                status: 200,
+                                headers: { "Content-Type": "image/png" },
+                            })));
         }
         return _contourState.realFetch(resource, options);
     };
