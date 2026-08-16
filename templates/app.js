@@ -5050,7 +5050,12 @@ function distanceToHighlighted(lng, lat) {
 // duplicated here. `sel: null` targets the marker's own root element;
 // any other value is a selector run against that root.
 const MARKER_DIM_TARGETS = {
-    trail_marker:           [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
+    // Two DOM shapes here (marker_shape): box / pill / circle paint
+    // the root element, diamond paints an SVG inside it. Entries whose
+    // selector finds nothing are skipped, so one spec covers both.
+    trail_marker:           [{ sel: null, props: ["backgroundColor", "borderColor", "color"] },
+                              { sel: ".trail-marker-shape", props: ["fill", "stroke"] },
+                              { sel: ".trail-marker-letter", props: ["fill"] }],
     parking:                [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
     trailhead:              [{ sel: null, props: ["backgroundColor", "borderColor", "color"] }],
     toilet:                 [{ sel: null, props: ["backgroundColor", "borderColor"] },
@@ -8308,28 +8313,76 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 // :root so the Options swatches stay in lockstep with the on-map
 // markers, see "On-map POI markers" block in style.css.
 
-// marker_shape: circle pins the chip to a fixed-diameter circle, so
-// the label has to fit that footprint instead of the chip growing to
-// fit the label. Two characters is what fits legibly at the tight
-// font size inside a 22 px circle; longer refs ("EAP-1") are cut
-// rather than shrunk, since shrinking the font per-marker would make
-// refs of different lengths render at different sizes.
-const MARKER_CIRCLE_MAX_CHARS = 2;
+// marker_shape values that pin the chip to a fixed 1:1 footprint, so
+// the label has to fit the chip instead of the chip growing to fit
+// the label. Two characters is what fits legibly in either
+// silhouette; longer refs ("EAP-1") are cut rather than shrunk, since
+// shrinking the font per-marker would make refs of different lengths
+// render at different sizes.
+const MARKER_FIXED_SHAPES = new Set(["circle", "diamond"]);
+const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
+
+// Fall back to "#" when OSM carries neither ref nor name: matches the
+// Options-row swatch, preserves the marker's physical footprint (an
+// empty string would collapse a box chip via min-width), and signals
+// "guidepost / trail marker" to the rider.
+function trailMarkerLabel(props) {
+    const label = props.ref || props.name || "#";
+    return MARKER_FIXED_SHAPES.has(CONFIG.markerShape)
+        ? label.slice(0, MARKER_FIXED_SHAPE_MAX_CHARS)
+        : label;
+}
+
+// marker_shape: diamond - a square rotated 45 degrees with sharp
+// mitered points. Drawn as an SVG polygon rather than a CSS-rotated
+// chip because the chip element IS the MapLibre marker, and MapLibre
+// owns that element's `transform` for pixel positioning: a rotate()
+// there is either overwritten by MapLibre's inline transform or
+// breaks the anchor math. SVG `stroke` also follows the silhouette
+// where CSS `border` would not, the same reasoning as HUB_SVG below.
+function trailMarkerDiamondSvg(label) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">'
+        // Vertices 1.5 units in from each edge of the 24x24 viewBox.
+        // That slack clears the 2-unit stroke, whose mitered points
+        // extend stroke_width / 2 * sqrt(2) = 1.41 units past each
+        // vertex on a 90-degree corner.
+        + '<polygon class="trail-marker-shape" points="12,1.5 22.5,12 12,22.5 1.5,12"/>'
+        // Same baseline math as HUB_SVG: SVG <text> y is the
+        // BASELINE, so centering a capital's optical center on the
+        // shape's center means y = 12 + cap_height * font_size / 2.
+        // Inter's cap-height is 0.7275 and .trail-marker-letter sets
+        // font-size 7.5, giving 12 + 0.7275 * 7.5 / 2 = 14.7.
+        + `<text class="trail-marker-letter" x="12" y="14.7" text-anchor="middle">${escapeHtml(label)}</text>`
+        + "</svg>";
+}
+
+// The Options overlay ships a static "#" text swatch for trail
+// markers (index.html). box / pill / circle restyle it with CSS
+// alone, but diamond needs the same SVG the on-map marker uses, so
+// the swatch stays a miniature of the marker. Finder-row swatches go
+// through poiSwatchContent() instead.
+function applyDiamondMarkerSwatches() {
+    for (const el of document.querySelectorAll(".marker-swatch")) {
+        el.classList.add("marker-swatch-diamond");
+        el.innerHTML = trailMarkerDiamondSvg("#");
+    }
+}
 
 function addTrailMarkers(addToMap) {
-    const circle = CONFIG.markerShape === "circle";
+    const diamond = CONFIG.markerShape === "diamond";
+    if (diamond) applyDiamondMarkerSwatches();
     createPoiMarkers({
         poiType: POI.TRAIL_MARKER,
-        className: "poi-marker trail-marker",
-        // Fall back to "#" when OSM carries neither ref nor name,
-        // matches the Options-row swatch, preserves the marker's
-        // physical footprint (empty string would collapse it via
-        // min-width), and signals "guidepost / trail marker" to the
-        // rider.
-        labelFn: (p) => {
-            const label = p.ref || p.name || "#";
-            return circle ? label.slice(0, MARKER_CIRCLE_MAX_CHARS) : label;
-        },
+        // Diamond opts out of .poi-marker / .trail-marker: those paint
+        // the rectangular chip (background, border, radius) that the
+        // SVG silhouette replaces. Same split the hub marker uses.
+        className: diamond ? "trail-marker-diamond" : "poi-marker trail-marker",
+        labelFn: trailMarkerLabel,
+        contentFn: diamond
+            ? (el, props) => {
+                el.innerHTML = trailMarkerDiamondSvg(trailMarkerLabel(props));
+            }
+            : null,
         addToMap,
         targetArray: trailMarkerMarkers,
     });
@@ -10485,7 +10538,15 @@ function poiSwatchContent(el, type) {
             break;
         case "trail_marker":
             el.classList.add("marker-swatch");
-            el.textContent = "#";
+            // marker_shape: diamond renders as an inline SVG, same as
+            // the hub above; the other shapes are CSS-only on the
+            // text swatch.
+            if (CONFIG.markerShape === "diamond") {
+                el.classList.add("marker-swatch-diamond");
+                el.innerHTML = trailMarkerDiamondSvg("#");
+            } else {
+                el.textContent = "#";
+            }
             break;
         case "feature":
             el.classList.add("feature-swatch");

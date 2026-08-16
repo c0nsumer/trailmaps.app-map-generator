@@ -257,6 +257,7 @@ def test_marker_shape_validated():
     assert _errors(marker_shape="box") == []
     assert _errors(marker_shape="pill") == []
     assert _errors(marker_shape="circle") == []
+    assert _errors(marker_shape="diamond") == []
 
 
 def test_default_trail_color_dict_shape_validated():

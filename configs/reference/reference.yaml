@@ -261,13 +261,16 @@ relations:
 # Trail-marker halo color.
 # marker_border_color: "white"
 
-# Trail-marker chip shape: box (default, rounded rect), pill, or
-# circle.
+# Trail-marker chip shape: box (default, rounded rect), pill,
+# circle, or diamond. All four use marker_color, marker_text_color,
+# and marker_border_color.
 # box and pill size the chip to fit the ref text. A short ref
 # ("23", "#") renders pill as a true circle; a longer ref
 # ("EAP-1") renders it as a rounded pill.
-# circle is a fixed-size circle for every marker. The ref text is
-# truncated to the first two characters to fit ("EAP-1" shows "EA").
+# circle and diamond are fixed-size and 1:1 for every marker. The
+# ref text is truncated to the first two characters to fit
+# ("EAP-1" shows "EA"). diamond is a square rotated 45 degrees
+# with sharp points.
 # marker_shape: box
 
 # Parking chip fill.

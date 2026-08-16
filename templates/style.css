@@ -207,6 +207,12 @@
     --marker-radius: var(--poi-marker-radius);
     --marker-width: auto;
     --marker-padding: 0 4px;
+    /* marker_shape: diamond footprint. Larger than the box chip's
+     * 22px because a diamond's usable interior is half its bounding
+     * box, so the same 2-character label needs a bigger box to stay
+     * legible; the painted area still reads as the same visual
+     * weight as a 2-character box chip. */
+    --poi-marker-size-trail-marker-diamond: 32px;
     --poi-marker-border: 2px;
     --poi-marker-font-text: 13px;          /* P (parking) */
     --poi-marker-font-text-tight: 11px;    /* TH, trail-marker refs */
@@ -1195,6 +1201,38 @@ body::after {
     border: var(--poi-marker-border) solid var(--marker-border-color, #fff);
     border-radius: var(--marker-radius);
     font-size: var(--poi-marker-font-text-tight);
+}
+
+/* marker_shape: diamond swatch (Options row + finder rows). The
+ * container is reduced to a plain box for the SVG, exactly as
+ * .hub-swatch does. The base .layer-swatch box-shadow hairline goes
+ * too, unlike the hub's: a faint SQUARE outline around a diamond
+ * reads as the box shape the rider just opted out of. */
+.marker-swatch-diamond {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.marker-swatch-diamond svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
+/* Off state, same three-cue treatment the hub swatch gets: the base
+ * .layer-swatch off-state rule handles the container (gray rectangle
+ * + diagonal slash), so only the SVG content needs graying. */
+.opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-shape,
+.opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-shape {
+    fill: transparent !important;
+    stroke: #9aa0a6 !important;
+}
+
+.opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-letter,
+.opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-letter {
+    fill: #9aa0a6 !important;
 }
 
 /* Emergency route-bucket swatch - still used on the Map-options
@@ -2234,6 +2272,62 @@ body::after {
     padding: var(--marker-padding);
     pointer-events: none;
     cursor: default;
+}
+
+/* Diamond trail markers (marker_shape: diamond) - a square rotated 45
+ * degrees with sharp mitered points, drawn as an inline SVG (see
+ * trailMarkerDiamondSvg in app.js for why not a CSS rotation).
+ * Deliberately does NOT carry .poi-marker / .trail-marker: those
+ * paint the rectangular chip this silhouette replaces. Same split the
+ * hub marker uses. pointer-events: none matches .trail-marker, no
+ * popup is wired for either. */
+.trail-marker-diamond {
+    width: var(--poi-marker-size-trail-marker-diamond);
+    height: var(--poi-marker-size-trail-marker-diamond);
+    display: flex;
+    pointer-events: none;
+    cursor: default;
+}
+
+.trail-marker-diamond svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* Let the stroke's mitered points and the drop-shadow extend past
+     * the polygon's bounding box without being clipped. */
+    overflow: visible;
+    /* drop-shadow rather than box-shadow so the shadow follows the
+     * diamond instead of its bounding rect; shares
+     * --poi-marker-shadow-color with .poi-marker so the two can't
+     * drift. Matches .hub-marker-icon. */
+    filter: drop-shadow(0 1px 4px var(--poi-marker-shadow-color));
+}
+
+/* Fill / border / glyph all read the same per-map tokens the box chip
+ * does (marker_color, marker_border_color, marker_text_color), so the
+ * shape switch never changes a map's palette. */
+.trail-marker-shape {
+    fill: var(--marker-color, #795548);
+    stroke: var(--marker-border-color, #fff);
+    stroke-width: 2;
+    /* miter keeps the four corners sharp points; round would blunt
+     * them and pull the silhouette toward a circle. */
+    stroke-linejoin: miter;
+}
+
+.trail-marker-letter {
+    fill: var(--marker-text-color, #fff);
+    /* SVG USER UNITS inside the 24x24 viewBox, not CSS px, so one
+     * value serves the on-map chip, the Options swatch, and the
+     * finder row swatch at their three different sizes. Sized to fit
+     * two characters between the diamond's slanted edges. The binding
+     * constraint is at the cap-height extremes, not the vertical
+     * center: the interior is 2 * (9.09 - 2.73) = 12.7 units wide
+     * there, which clears a 2-digit ref (9.5) and a wide capital pair
+     * like "EA" (10.4) with room to spare. */
+    font-size: 7.5px;
+    font-weight: 700;
+    font-family: inherit;
 }
 
 .feature-marker {

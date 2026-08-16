@@ -1,6 +1,7 @@
 """CONFIG.markerShape emission (marker_shape config key).
 
-Trail-marker chip shape: "box" (default), "pill", or "circle". Plain scalar
+Trail-marker chip shape: "box" (default), "pill", "circle", or
+"diamond". Plain scalar
 pass-through via CONFIG_SPEC, same as marker_color/marker_text_color/
 marker_border_color.
 
@@ -45,3 +46,7 @@ def test_marker_shape_pill_passed_through():
 
 def test_marker_shape_circle_passed_through():
     assert _config_obj({**BASE, "marker_shape": "circle"})["markerShape"] == "circle"
+
+
+def test_marker_shape_diamond_passed_through():
+    assert _config_obj({**BASE, "marker_shape": "diamond"})["markerShape"] == "diamond"

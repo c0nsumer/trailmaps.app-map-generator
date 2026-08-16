@@ -271,7 +271,7 @@ row).
 | `marker_color` | No | `"#795548"` | Trail-marker chip fill (merged guideposts + emergency-access points). |
 | `marker_text_color` | No | `"white"` | Trail-marker glyph (`ref` / `name` / fallback `#`) color. |
 | `marker_border_color` | No | `"white"` | Trail-marker outer halo border color. |
-| `marker_shape` | No | `"box"` | Trail-marker chip shape: `box` (rounded rect), `pill`, or `circle`. `box` and `pill` size the chip to fit the ref text. A short ref (`"23"`, `"#"`) renders `pill` as a true circle; a longer ref (`"EAP-1"`) renders it as a rounded pill. `circle` is a fixed-size circle for every marker, and truncates the ref text to the first two characters to fit (`"EAP-1"` shows `"EA"`). |
+| `marker_shape` | No | `"box"` | Trail-marker chip shape: `box` (rounded rect), `pill`, `circle`, or `diamond`. `box` and `pill` size the chip to fit the ref text. A short ref (`"23"`, `"#"`) renders `pill` as a true circle; a longer ref (`"EAP-1"`) renders it as a rounded pill. `circle` and `diamond` are fixed-size and 1:1 for every marker, and truncate the ref text to the first two characters to fit (`"EAP-1"` shows `"EA"`). `diamond` is a square rotated 45 degrees with sharp points. All four shapes use the same `marker_color`, `marker_text_color`, and `marker_border_color`. |
 | `parking_color` | No | `"#2980b9"` | Parking chip fill. |
 | `parking_text_color` | No | `"white"` | Parking glyph (`P`) color. |
 | `parking_border_color` | No | `"white"` | Parking outer halo border color. |
