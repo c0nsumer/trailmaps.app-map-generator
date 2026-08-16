@@ -233,7 +233,7 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
-VALID_MARKER_SHAPES = {"box", "circle"}
+VALID_MARKER_SHAPES = {"box", "pill"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {

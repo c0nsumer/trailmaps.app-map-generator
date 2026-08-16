@@ -199,7 +199,7 @@
     --poi-marker-radius: 4px;
     /* Trail-marker-only shape override (marker_shape config key).
      * Defaults to the shared box radius; JS sets this to 50% for
-     * marker_shape: circle. Scoped to trail markers, not
+     * marker_shape: pill. Scoped to trail markers, not
      * --poi-marker-radius, so parking/trailhead/hub/etc. chips are
      * unaffected. */
     --marker-radius: var(--poi-marker-radius);

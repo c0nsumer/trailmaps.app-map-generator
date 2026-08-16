@@ -20,7 +20,7 @@
     if (CONFIG.markerColor)          root.style.setProperty("--marker-color",          CONFIG.markerColor);
     if (CONFIG.markerTextColor)      root.style.setProperty("--marker-text-color",     CONFIG.markerTextColor);
     if (CONFIG.markerBorderColor)    root.style.setProperty("--marker-border-color",   CONFIG.markerBorderColor);
-    if (CONFIG.markerShape === "circle") root.style.setProperty("--marker-radius", "50%");
+    if (CONFIG.markerShape === "pill") root.style.setProperty("--marker-radius", "50%");
     // Parking
     if (CONFIG.parkingColor)         root.style.setProperty("--parking-color",         CONFIG.parkingColor);
     if (CONFIG.parkingTextColor)     root.style.setProperty("--parking-text-color",    CONFIG.parkingTextColor);

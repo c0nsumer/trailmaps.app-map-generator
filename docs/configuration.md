@@ -271,7 +271,7 @@ row).
 | `marker_color` | No | `"#795548"` | Trail-marker chip fill (merged guideposts + emergency-access points). |
 | `marker_text_color` | No | `"white"` | Trail-marker glyph (`ref` / `name` / fallback `#`) color. |
 | `marker_border_color` | No | `"white"` | Trail-marker outer halo border color. |
-| `marker_shape` | No | `"box"` | Trail-marker chip shape: `box` (rounded rect) or `circle`. |
+| `marker_shape` | No | `"box"` | Trail-marker chip shape: `box` (rounded rect) or `pill`. The chip is variable-width to fit the ref text. A short ref (`"23"`, `"#"`) renders `pill` as a true circle; a longer ref (`"EAP-1"`) renders it as a rounded pill. |
 | `parking_color` | No | `"#2980b9"` | Parking chip fill. |
 | `parking_text_color` | No | `"white"` | Parking glyph (`P`) color. |
 | `parking_border_color` | No | `"white"` | Parking outer halo border color. |
