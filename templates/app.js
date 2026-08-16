@@ -4769,7 +4769,18 @@ async function addContourLayers(beforeLayer) {
             maxzoom: header.maxZoom,
             worker: false,
             cacheSize: 64,
-            timeoutMs: 15000,
+            // maplibre-contour races its own fetch against this timer,
+            // starting when getTile() is CALLED - not when the network
+            // transfer actually begins. That includes any time the
+            // request sits queued behind installPmtilesFetchLimiter's
+            // 16-concurrent cap, on top of the transfer itself. Profiled
+            // completions on a large map (mfo) ran up to ~39s even
+            // before the limiter existed; the library's 15s default
+            // aborts (and logs an uncaught "timed out") requests that
+            // were still on track to succeed. This only affects contour
+            // lines, which degrade gracefully to "none for that tile" -
+            // generous is strictly better than premature here.
+            timeoutMs: 45000,
         });
         demSource.setupMaplibre(maplibregl);
 
