@@ -2881,6 +2881,81 @@ async function init() {
         return;
     }
 
+    // Bound concurrent .pmtiles range-request fetches.
+    //
+    // MapLibre's own maxParallelImageRequests (default 16) only throttles
+    // the built-in raster/image loader; pmtiles.Protocol's tile() calls
+    // window.fetch directly (so does the contour-DEM shim below, and the
+    // terrain hillshade source), entirely bypassing that queue. On a large
+    // map, a fast zoom or pan can reveal enough new tiles to fire 100+
+    // simultaneous range requests competing for the same connection's
+    // bandwidth - profiled 2026-08-15 on mfo at up to 137 concurrent, with
+    // individual completions stretching past 35s even though nothing was
+    // actually broken. The newly revealed area just renders blank (basemap
+    // fill, then hillshade/contours) until its tile's turn finally comes.
+    // Installed here, before any PMTiles archive can issue its first
+    // fetch, so every .pmtiles reader - basemap, terrain hillshade, and
+    // the contour-DEM shim's own archive reads - shares one bounded queue.
+    // 16 matches MapLibre's own default for the analogous image-request
+    // case; queued entries honor the caller's AbortSignal so a tile that
+    // scrolls out of view before its turn never wastes a slot.
+    (function installPmtilesFetchLimiter() {
+        const MAX_CONCURRENT = 16;
+        const realFetch = window.fetch.bind(window);
+        let active = 0;
+        const queue = [];
+
+        function dequeueNext() {
+            if (active >= MAX_CONCURRENT || queue.length === 0) return;
+            const job = queue.shift();
+            active++;
+            job();
+        }
+
+        function runFetch(resource, options, settle) {
+            realFetch(resource, options)
+                .then(settle.resolve, settle.reject)
+                .finally(() => {
+                    active--;
+                    dequeueNext();
+                });
+        }
+
+        window.fetch = function (resource, options) {
+            const url = typeof resource === "string" ? resource : (resource && resource.url);
+            if (!url || !/\.pmtiles(\?|$)/.test(url)) {
+                return realFetch(resource, options);
+            }
+            return new Promise((resolve, reject) => {
+                const signal = options && options.signal;
+                const job = () => runFetch(resource, options, { resolve, reject });
+                if (active < MAX_CONCURRENT) {
+                    active++;
+                    job();
+                    return;
+                }
+                if (signal && signal.aborted) {
+                    reject(new DOMException("The operation was aborted.", "AbortError"));
+                    return;
+                }
+                queue.push(job);
+                if (signal) {
+                    signal.addEventListener(
+                        "abort",
+                        () => {
+                            const idx = queue.indexOf(job);
+                            if (idx !== -1) {
+                                queue.splice(idx, 1);
+                                reject(new DOMException("The operation was aborted.", "AbortError"));
+                            }
+                        },
+                        { once: true }
+                    );
+                }
+            });
+        };
+    })();
+
     // Register PMTiles protocol
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
