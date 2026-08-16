@@ -20,7 +20,17 @@
     if (CONFIG.markerColor)          root.style.setProperty("--marker-color",          CONFIG.markerColor);
     if (CONFIG.markerTextColor)      root.style.setProperty("--marker-text-color",     CONFIG.markerTextColor);
     if (CONFIG.markerBorderColor)    root.style.setProperty("--marker-border-color",   CONFIG.markerBorderColor);
-    if (CONFIG.markerShape === "pill") root.style.setProperty("--marker-radius", "50%");
+    // pill rounds the variable-width chip; circle additionally pins the
+    // width to the chip height so every marker is the same true circle
+    // regardless of ref length (labels are truncated to fit, see
+    // MARKER_CIRCLE_MAX_CHARS).
+    if (CONFIG.markerShape === "pill" || CONFIG.markerShape === "circle") {
+        root.style.setProperty("--marker-radius", "50%");
+    }
+    if (CONFIG.markerShape === "circle") {
+        root.style.setProperty("--marker-width", "var(--poi-marker-size-trail-marker-h)");
+        root.style.setProperty("--marker-padding", "0");
+    }
     // Parking
     if (CONFIG.parkingColor)         root.style.setProperty("--parking-color",         CONFIG.parkingColor);
     if (CONFIG.parkingTextColor)     root.style.setProperty("--parking-text-color",    CONFIG.parkingTextColor);
@@ -8298,7 +8308,16 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 // :root so the Options swatches stay in lockstep with the on-map
 // markers, see "On-map POI markers" block in style.css.
 
+// marker_shape: circle pins the chip to a fixed-diameter circle, so
+// the label has to fit that footprint instead of the chip growing to
+// fit the label. Two characters is what fits legibly at the tight
+// font size inside a 22 px circle; longer refs ("EAP-1") are cut
+// rather than shrunk, since shrinking the font per-marker would make
+// refs of different lengths render at different sizes.
+const MARKER_CIRCLE_MAX_CHARS = 2;
+
 function addTrailMarkers(addToMap) {
+    const circle = CONFIG.markerShape === "circle";
     createPoiMarkers({
         poiType: POI.TRAIL_MARKER,
         className: "poi-marker trail-marker",
@@ -8307,7 +8326,10 @@ function addTrailMarkers(addToMap) {
         // physical footprint (empty string would collapse it via
         // min-width), and signals "guidepost / trail marker" to the
         // rider.
-        labelFn: (p) => p.ref || p.name || "#",
+        labelFn: (p) => {
+            const label = p.ref || p.name || "#";
+            return circle ? label.slice(0, MARKER_CIRCLE_MAX_CHARS) : label;
+        },
         addToMap,
         targetArray: trailMarkerMarkers,
     });

@@ -256,6 +256,7 @@ def test_marker_shape_validated():
     assert any("marker_shape" in e for e in _errors(marker_shape="triangle"))
     assert _errors(marker_shape="box") == []
     assert _errors(marker_shape="pill") == []
+    assert _errors(marker_shape="circle") == []
 
 
 def test_default_trail_color_dict_shape_validated():

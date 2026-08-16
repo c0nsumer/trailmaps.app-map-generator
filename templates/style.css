@@ -197,12 +197,16 @@
     --poi-marker-size-trail-marker-h: 22px;
     --poi-marker-size-trail-marker-min-w: 22px;
     --poi-marker-radius: 4px;
-    /* Trail-marker-only shape override (marker_shape config key).
-     * Defaults to the shared box radius; JS sets this to 50% for
-     * marker_shape: pill. Scoped to trail markers, not
-     * --poi-marker-radius, so parking/trailhead/hub/etc. chips are
-     * unaffected. */
+    /* Trail-marker-only shape overrides (marker_shape config key).
+     * Default to the shared box radius and the variable-width chip
+     * geometry; JS sets the radius to 50% for marker_shape: pill, and
+     * for marker_shape: circle also pins the width to the chip height
+     * and drops the padding so every chip is the same true circle.
+     * Scoped to trail markers, not --poi-marker-radius, so
+     * parking/trailhead/hub/etc. chips are unaffected. */
     --marker-radius: var(--poi-marker-radius);
+    --marker-width: auto;
+    --marker-padding: 0 4px;
     --poi-marker-border: 2px;
     --poi-marker-font-text: 13px;          /* P (parking) */
     --poi-marker-font-text-tight: 11px;    /* TH, trail-marker refs */
@@ -2214,7 +2218,10 @@ body::after {
  * varying length ("23", "EAP-1", "#"). min-width keeps a single-
  * character chip from collapsing below readability; padding gives
  * multi-character refs breathing room. pointer-events: none so
- * the marker doesn't intercept map clicks (no popup wired). */
+ * the marker doesn't intercept map clicks (no popup wired).
+ * marker_shape: circle overrides --marker-width / --marker-padding
+ * to lock the chip to a fixed square footprint; min-width equals the
+ * height, so a fixed width plus 50% radius yields a true circle. */
 .trail-marker {
     background: var(--marker-color, #795548);
     color: var(--marker-text-color, #fff);
@@ -2223,8 +2230,8 @@ body::after {
     font-size: var(--poi-marker-font-text-tight);
     height: var(--poi-marker-size-trail-marker-h);
     min-width: var(--poi-marker-size-trail-marker-min-w);
-    width: auto;
-    padding: 0 4px;
+    width: var(--marker-width);
+    padding: var(--marker-padding);
     pointer-events: none;
     cursor: default;
 }
