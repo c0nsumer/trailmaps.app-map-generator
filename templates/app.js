@@ -4640,8 +4640,14 @@ function _installContourDemFetch() {
     window.fetch = function (resource, options) {
         const url = typeof resource === "string" ? resource : (resource && resource.url);
         if (url && url.startsWith("contour-dem://")) {
+            // Forward the AbortSignal: maplibre-contour aborts DEM fetches for
+            // tiles that scroll out of view before they land. Dropping the
+            // signal here left every one of those PMTiles range reads running
+            // to completion, so fast panning on a large map piled up 100+
+            // uncancellable requests fighting the in-view ones for bandwidth
+            // (profiled 2026-08-15).
             const [z, x, y] = url.slice("contour-dem://".length).split("/").map(Number);
-            return _contourState.archive.getZxy(z, x, y)
+            return _contourState.archive.getZxy(z, x, y, options && options.signal)
                 .catch(() => null)
                 .then((tile) =>
                     tile && tile.data && tile.data.byteLength
