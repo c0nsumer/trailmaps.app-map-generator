@@ -252,6 +252,12 @@ def test_hub_colors_validated():
     assert any("hub_border_color" in e for e in _errors(hub_border_color="#zzzzzz"))
 
 
+def test_marker_shape_validated():
+    assert any("marker_shape" in e for e in _errors(marker_shape="triangle"))
+    assert _errors(marker_shape="box") == []
+    assert _errors(marker_shape="circle") == []
+
+
 def test_default_trail_color_dict_shape_validated():
     errs = _errors(default_trail_color={"colour": "#123456", "pattern": "2 2", "cap": "rond"})
     assert any("default_trail_color.colour" in e and "'color'" in e for e in errs), errs

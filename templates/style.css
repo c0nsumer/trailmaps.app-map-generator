@@ -197,6 +197,12 @@
     --poi-marker-size-trail-marker-h: 22px;
     --poi-marker-size-trail-marker-min-w: 22px;
     --poi-marker-radius: 4px;
+    /* Trail-marker-only shape override (marker_shape config key).
+     * Defaults to the shared box radius; JS sets this to 50% for
+     * marker_shape: circle. Scoped to trail markers, not
+     * --poi-marker-radius, so parking/trailhead/hub/etc. chips are
+     * unaffected. */
+    --marker-radius: var(--poi-marker-radius);
     --poi-marker-border: 2px;
     --poi-marker-font-text: 13px;          /* P (parking) */
     --poi-marker-font-text-tight: 11px;    /* TH, trail-marker refs */
@@ -1183,6 +1189,7 @@ body::after {
     background: var(--marker-color, #795548);
     color: var(--marker-text-color, #fff);
     border: var(--poi-marker-border) solid var(--marker-border-color, #fff);
+    border-radius: var(--marker-radius);
     font-size: var(--poi-marker-font-text-tight);
 }
 
@@ -2212,6 +2219,7 @@ body::after {
     background: var(--marker-color, #795548);
     color: var(--marker-text-color, #fff);
     border-color: var(--marker-border-color, #fff);
+    border-radius: var(--marker-radius);
     font-size: var(--poi-marker-font-text-tight);
     height: var(--poi-marker-size-trail-marker-h);
     min-width: var(--poi-marker-size-trail-marker-min-w);

@@ -267,6 +267,7 @@ CONFIG_SPEC = [
     ("marker_color", "markerColor", "#795548"),
     ("marker_text_color", "markerTextColor", "white"),
     ("marker_border_color", "markerBorderColor", "white"),
+    ("marker_shape", "markerShape", "box"),
     ("parking_color", "parkingColor", "#2980b9"),
     ("parking_text_color", "parkingTextColor", "white"),
     ("parking_border_color", "parkingBorderColor", "white"),

@@ -94,6 +94,7 @@ KNOWN_KEYS = {
     "marker_color": str,
     "marker_text_color": str,
     "marker_border_color": str,
+    "marker_shape": str,
     "parking_color": str,
     "parking_text_color": str,
     "parking_border_color": str,
@@ -232,6 +233,7 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
+VALID_MARKER_SHAPES = {"box", "circle"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
@@ -422,6 +424,12 @@ def _validate_enums(report, config):
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
+        )
+
+    if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:
+        report.err(
+            "marker_shape",
+            f"must be one of {sorted(VALID_MARKER_SHAPES)}, got {config['marker_shape']!r}",
         )
 
     if "distance_units" in config and config["distance_units"] not in VALID_DISTANCE_UNITS:
