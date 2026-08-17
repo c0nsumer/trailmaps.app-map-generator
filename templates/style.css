@@ -196,13 +196,6 @@
     --poi-marker-size-trailhead-w: 30px;
     --poi-marker-size-trail-marker-h: 22px;
     --poi-marker-size-trail-marker-min-w: 22px;
-    /* Dot painted on markers OSM carries no ref or name for, and on
-     * every trail-marker swatch. Sized to read as a deliberate mark
-     * rather than a speck, without out-weighing a 2-character ref:
-     * about a quarter of the 22px chip, close to the ink a "23"
-     * lays down. The diamond's SVG dot is sized to match (r=2 in
-     * viewBox units, see trailMarkerDiamondSvg). */
-    --poi-marker-dot-size: 5px;
     --poi-marker-radius: 4px;
     /* Trail-marker-only shape overrides (marker_shape config key).
      * Default to the shared box radius and the variable-width chip
@@ -1228,16 +1221,6 @@ body::after {
     overflow: visible;
 }
 
-/* The static Options swatch ships with .trail-marker-unlabeled, so it
- * shows the dot for box / pill / circle. The diamond swatch replaces
- * the chip with an SVG that draws its own dot, so the CSS disc has to
- * go or a second one lands beside the diamond. The compound selector
- * is deliberate: .trail-marker-unlabeled::before is declared further
- * down the file and would win on source order at equal specificity. */
-.marker-swatch-diamond.trail-marker-unlabeled::before {
-    content: none;
-}
-
 /* Off state, same three-cue treatment the hub swatch gets: the base
  * .layer-swatch off-state rule handles the container (gray rectangle
  * + diagonal slash), so only the SVG content needs graying. */
@@ -1248,9 +1231,7 @@ body::after {
 }
 
 .opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-letter,
-.opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-letter,
-.opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-dot,
-.opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-dot {
+.opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-letter {
     fill: #9aa0a6 !important;
 }
 
@@ -2294,25 +2275,6 @@ body::after {
     cursor: default;
 }
 
-/* Guideposts OSM carries neither ref nor name for, plus the Options
- * and finder swatches that stand in for a marker. Drawn as a CSS
- * disc rather than a "•" text glyph: Inter's bullet is small and
- * sits below a capital's optical center, so a text dot lands low in
- * the chip and reads as a speck at 11px. currentColor picks up
- * --marker-text-color on the map and the gray the Options off-state
- * forces on swatches, so the dot needs no color rules of its own.
- * Rides on the flex centering .poi-marker / .layer-swatch already
- * set up; flex-shrink: 0 keeps a tight chip from squashing the disc
- * into an ellipse. */
-.trail-marker-unlabeled::before {
-    content: "";
-    width: var(--poi-marker-dot-size);
-    height: var(--poi-marker-dot-size);
-    flex-shrink: 0;
-    border-radius: 50%;
-    background: currentColor;
-}
-
 /* Diamond trail markers (marker_shape: diamond) - a square rotated 45
  * degrees with sharp mitered points, drawn as an inline SVG (see
  * trailMarkerDiamondSvg in app.js for why not a CSS rotation).
@@ -2367,13 +2329,6 @@ body::after {
     font-size: 7.5px;
     font-weight: 700;
     font-family: inherit;
-}
-
-/* The <circle> counterpart of .trail-marker-letter, drawn when a
- * guidepost has no ref or name. Same fill token, same off-state
- * graying, so the diamond's dot tracks the box chip's. */
-.trail-marker-dot {
-    fill: var(--marker-text-color, #fff);
 }
 
 .feature-marker {
