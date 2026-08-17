@@ -8322,15 +8322,32 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 const MARKER_FIXED_SHAPES = new Set(["circle", "diamond"]);
 const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
 
-// Fall back to "#" when OSM carries neither ref nor name: matches the
-// Options-row swatch, preserves the marker's physical footprint (an
-// empty string would collapse a box chip via min-width), and signals
-// "guidepost / trail marker" to the rider.
+// Guideposts that carry neither ref nor name get no text at all, and
+// the chip paints a centered dot instead (setTrailMarkerContent /
+// trailMarkerDiamondSvg below). "#" used to fill that slot, but it
+// reads as "this marker is numbered and the number is missing" when
+// the truth is that the post simply carries no ID. The dot claims
+// nothing. A "•" text glyph would have been the cheap version and is
+// deliberately NOT used: Inter's bullet is 0.31 em tall and centered
+// 0.29 em above the baseline against a capital's 0.36 em, so at the
+// chip's 11px it lands low and reads as a 3px speck. The CSS/SVG dot
+// is centered geometrically and sized to the chip.
 function trailMarkerLabel(props) {
-    const label = props.ref || props.name || "#";
+    const label = props.ref || props.name || "";
     return MARKER_FIXED_SHAPES.has(CONFIG.markerShape)
         ? label.slice(0, MARKER_FIXED_SHAPE_MAX_CHARS)
         : label;
+}
+
+// Paints a box / pill / circle chip. A ref or name renders as text;
+// an unlabeled marker gets the dot class instead, whose ::before
+// draws the disc (see .trail-marker-unlabeled in style.css). No text
+// is set in that branch; the chip holds its footprint through
+// min-width, exactly as it did for "#". Also used by the Options and finder
+// swatches, which stand in for a marker and so show the same dot.
+function setTrailMarkerContent(el, label) {
+    if (label) el.textContent = label;
+    else el.classList.add("trail-marker-unlabeled");
 }
 
 // marker_shape: diamond - a square rotated 45 degrees with sharp
@@ -8341,30 +8358,38 @@ function trailMarkerLabel(props) {
 // breaks the anchor math. SVG `stroke` also follows the silhouette
 // where CSS `border` would not, the same reasoning as HUB_SVG below.
 function trailMarkerDiamondSvg(label) {
+    // Same baseline math as HUB_SVG: SVG <text> y is the BASELINE, so
+    // centering a capital's optical center on the shape's center
+    // means y = 12 + cap_height * font_size / 2. Inter's cap-height
+    // is 0.7275 and .trail-marker-letter sets font-size 7.5, giving
+    // 12 + 0.7275 * 7.5 / 2 = 14.7. The unlabeled dot skips all of
+    // that: a <circle> centers on the shape's center by construction,
+    // no font metrics involved. r=2 in viewBox units is ~5 CSS px on
+    // the 32px diamond, matching --poi-marker-dot-size on the 22px
+    // box chip, so the shapes carry the same dot at a glance.
+    const glyph = label
+        ? `<text class="trail-marker-letter" x="12" y="14.7" text-anchor="middle">${escapeHtml(label)}</text>`
+        : '<circle class="trail-marker-dot" cx="12" cy="12" r="2"/>';
     return '<svg viewBox="0 0 24 24" aria-hidden="true">'
         // Vertices 1.5 units in from each edge of the 24x24 viewBox.
         // That slack clears the 2-unit stroke, whose mitered points
         // extend stroke_width / 2 * sqrt(2) = 1.41 units past each
         // vertex on a 90-degree corner.
         + '<polygon class="trail-marker-shape" points="12,1.5 22.5,12 12,22.5 1.5,12"/>'
-        // Same baseline math as HUB_SVG: SVG <text> y is the
-        // BASELINE, so centering a capital's optical center on the
-        // shape's center means y = 12 + cap_height * font_size / 2.
-        // Inter's cap-height is 0.7275 and .trail-marker-letter sets
-        // font-size 7.5, giving 12 + 0.7275 * 7.5 / 2 = 14.7.
-        + `<text class="trail-marker-letter" x="12" y="14.7" text-anchor="middle">${escapeHtml(label)}</text>`
+        + glyph
         + "</svg>";
 }
 
-// The Options overlay ships a static "#" text swatch for trail
-// markers (index.html). box / pill / circle restyle it with CSS
-// alone, but diamond needs the same SVG the on-map marker uses, so
-// the swatch stays a miniature of the marker. Finder-row swatches go
-// through poiSwatchContent() instead.
+// The Options overlay ships a static dot swatch for trail markers
+// (index.html). box / pill / circle restyle it with CSS alone, but
+// diamond needs the same SVG the on-map marker uses, so the swatch
+// stays a miniature of the marker. Passing an empty label gives that
+// SVG the dot, matching the swatch it replaces. Finder-row swatches
+// go through poiSwatchContent() instead.
 function applyDiamondMarkerSwatches() {
     for (const el of document.querySelectorAll(".marker-swatch")) {
         el.classList.add("marker-swatch-diamond");
-        el.innerHTML = trailMarkerDiamondSvg("#");
+        el.innerHTML = trailMarkerDiamondSvg("");
     }
 }
 
@@ -8377,12 +8402,15 @@ function addTrailMarkers(addToMap) {
         // the rectangular chip (background, border, radius) that the
         // SVG silhouette replaces. Same split the hub marker uses.
         className: diamond ? "trail-marker-diamond" : "poi-marker trail-marker",
-        labelFn: trailMarkerLabel,
+        // Both shapes go through contentFn rather than labelFn: the
+        // unlabeled case needs a class on the element, not a string.
         contentFn: diamond
             ? (el, props) => {
                 el.innerHTML = trailMarkerDiamondSvg(trailMarkerLabel(props));
             }
-            : null,
+            : (el, props) => {
+                setTrailMarkerContent(el, trailMarkerLabel(props));
+            },
         addToMap,
         targetArray: trailMarkerMarkers,
     });
@@ -10539,13 +10567,14 @@ function poiSwatchContent(el, type) {
         case "trail_marker":
             el.classList.add("marker-swatch");
             // marker_shape: diamond renders as an inline SVG, same as
-            // the hub above; the other shapes are CSS-only on the
-            // text swatch.
+            // the hub above; the other shapes are CSS-only on the dot
+            // swatch. Either way the label is empty, so the swatch
+            // shows the dot an unlabeled marker does.
             if (CONFIG.markerShape === "diamond") {
                 el.classList.add("marker-swatch-diamond");
-                el.innerHTML = trailMarkerDiamondSvg("#");
+                el.innerHTML = trailMarkerDiamondSvg("");
             } else {
-                el.textContent = "#";
+                setTrailMarkerContent(el, "");
             }
             break;
         case "feature":
