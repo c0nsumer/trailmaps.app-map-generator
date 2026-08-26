@@ -36,7 +36,7 @@ def _feature(way_ids, coords, *, route_id="1", trail="", imba="", oneway=""):
     }
 
 
-def _snap(features, routes=None, ts="2026-07-01T00:00:00Z"):
+def _snap(features, routes=None, supers=None, ts="2026-07-01T00:00:00Z"):
     return {
         "type": "FeatureCollection",
         "features": features,
@@ -45,9 +45,14 @@ def _snap(features, routes=None, ts="2026-07-01T00:00:00Z"):
                 "name": "Main Loop", "colour": "orange", "ref": "",
                 "seasonal": "",
             }},
+            "super_relation_expansions": supers or {},
             "data_timestamp": ts,
         },
     }
+
+
+def _route(name, colour="orange"):
+    return {"name": name, "colour": colour, "ref": "", "seasonal": ""}
 
 
 # A ~780 m leg and a ~780 m continuation, at UP Michigan latitudes.
@@ -61,7 +66,8 @@ def test_identical_snapshots_report_no_change():
     assert diff["changed"] is False
     assert summarize(diff) == [
         "OSM data is unchanged since the previous snapshot."]
-    assert "No route, way, trail, or tag changes." in format_report(diff, "x")
+    assert ("No route, membership, way, trail, or tag changes."
+            in format_report(diff, "x"))
 
 
 def test_remerge_after_tag_change_is_not_reported_as_churn():
@@ -213,6 +219,164 @@ def test_malformed_geometry_is_skipped_not_fatal():
     diff = diff_snapshots(bad, bad)
     assert diff["total_length_new_m"] == 0.0
     assert diff["way_count_new"] == 1
+
+
+_TWO_ROUTES = {"1": _route("Main Loop"), "2": _route("Blue Loop", "blue")}
+
+
+def test_way_moving_between_relations_is_reported():
+    """The gap this section closes: same ways, same names, same lengths.
+
+    Nothing else in the diff moves when a way is re-sorted from one relation
+    to another, yet it changes which lane the segment draws in and which
+    route toggle shows it.
+    """
+    before = _snap([
+        _feature([10], _LEG_A, route_id="1", trail="Bootjack"),
+        _feature([20], _LEG_B, route_id="2", trail="Ridge"),
+    ], routes=_TWO_ROUTES)
+    after = _snap([
+        _feature([10], _LEG_A, route_id="2", trail="Bootjack"),
+        _feature([20], _LEG_B, route_id="2", trail="Ridge"),
+    ], routes=_TWO_ROUTES)
+    diff = diff_snapshots(before, after)
+    assert diff["changed"] is True
+    assert diff["membership_changes"] == [{
+        "old": ["1"], "new": ["2"], "ways": 1, "way_ids": ["10"],
+        "trails": ["Bootjack"],
+    }]
+    # And it must not masquerade as any other kind of edit.
+    assert diff["ways_added"] == []
+    assert diff["ways_removed"] == []
+    assert diff["trails_added"] == []
+    assert diff["trail_renames"] == []
+    assert diff["length_changes"] == []
+
+
+def test_way_gaining_a_second_relation_is_reported():
+    before = _snap([
+        _feature([10], _LEG_A, route_id="1", trail="Bootjack"),
+        _feature([20], _LEG_B, route_id="2", trail="Ridge"),
+    ], routes=_TWO_ROUTES)
+    after = _snap([
+        _feature([10], _LEG_A, route_id="1", trail="Bootjack"),
+        _feature([10], _LEG_A, route_id="2", trail="Bootjack"),
+        _feature([20], _LEG_B, route_id="2", trail="Ridge"),
+    ], routes=_TWO_ROUTES)
+    diff = diff_snapshots(before, after)
+    assert len(diff["membership_changes"]) == 1
+    change = diff["membership_changes"][0]
+    assert change["old"] == ["1"]
+    assert change["new"] == ["1", "2"]
+    # Shared geometry is still counted once, so no phantom length change.
+    assert diff["length_changes"] == []
+
+
+def test_new_relation_does_not_report_per_way_membership_churn():
+    """A whole relation arriving moves every way it carries.
+
+    Reporting that as one membership line per way would bury the genuine
+    edits, so route IDs that are themselves added or removed are excluded.
+    """
+    before = _snap([
+        _feature([10], _LEG_A, route_id="1", trail="Bootjack"),
+        _feature([11], _LEG_B, route_id="1", trail="Ridge"),
+    ], routes={"1": _route("Main Loop")})
+    after = _snap([
+        _feature([10], _LEG_A, route_id="1", trail="Bootjack"),
+        _feature([11], _LEG_B, route_id="1", trail="Ridge"),
+        _feature([10], _LEG_A, route_id="2", trail="Bootjack"),
+        _feature([11], _LEG_B, route_id="2", trail="Ridge"),
+    ], routes=_TWO_ROUTES)
+    diff = diff_snapshots(before, after)
+    assert diff["routes_added"] == [("2", "Blue Loop")]
+    assert diff["membership_changes"] == []
+
+
+def test_membership_changes_aggregate_by_transition():
+    """One relation reshuffle is one line, not one line per way."""
+    before = _snap([_feature([100 + i], _LEG_A, route_id="1",
+                             trail=f"Trail {i}") for i in range(12)],
+                   routes=_TWO_ROUTES)
+    after = _snap([_feature([100 + i], _LEG_A, route_id="2",
+                            trail=f"Trail {i}") for i in range(12)],
+                  routes=_TWO_ROUTES)
+    diff = diff_snapshots(before, after)
+    assert len(diff["membership_changes"]) == 1
+    assert diff["membership_changes"][0]["ways"] == 12
+    report = format_report(diff, "reshuffle")
+    assert "## Route membership changes (1)" in report
+    # The inline name sample is capped, and says so.
+    assert "+6 more" in report
+
+
+def test_super_relation_reparenting_is_reported():
+    """A child moving between supers keeps every other fact identical.
+
+    Parentage decides which config fan-out (winter, summer, emergency,
+    direction schedules) reaches the route, so this has to surface.
+    """
+    routes = {"10": _route("Child A"), "11": _route("Child B")}
+    feats = [
+        _feature([10], _LEG_A, route_id="10", trail="Alpha"),
+        _feature([20], _LEG_B, route_id="11", trail="Beta"),
+    ]
+    before = _snap(feats, routes=routes, supers={"900": ["10", "11"]})
+    after = _snap(feats, routes=routes,
+                  supers={"900": ["10"], "901": ["11"]})
+    diff = diff_snapshots(before, after)
+    assert diff["changed"] is True
+    assert diff["super_changes"] == [{
+        "old": ["900"], "new": ["901"], "children": [("11", "Child B")],
+    }]
+    assert diff["super_relations_added"] == ["901"]
+    assert diff["super_relations_removed"] == []
+    report = format_report(diff, "supers")
+    assert "Route parentage drives config fan-out." in report
+    assert "super-relation 900 → 901" in report
+
+
+def test_route_leaving_every_super_is_reported():
+    """Dropping out of the expansion table is a parentage change too.
+
+    The route survives, but config keys naming its old parent stop covering
+    it, which is exactly the silent case.
+    """
+    routes = {"10": _route("Child A")}
+    feats = [_feature([10], _LEG_A, route_id="10", trail="Alpha")]
+    before = _snap(feats, routes=routes, supers={"900": ["10"]})
+    after = _snap(feats, routes=routes, supers={})
+    diff = diff_snapshots(before, after)
+    assert diff["super_changes"] == [{
+        "old": ["900"], "new": [], "children": [("10", "Child A")],
+    }]
+    assert "→ (none)" in format_report(diff, "supers")
+
+
+def test_super_child_added_is_not_double_reported():
+    """A child joining a super already shows up as a route added."""
+    before = _snap([_feature([10], _LEG_A, route_id="10", trail="Alpha")],
+                   routes={"10": _route("Child A")},
+                   supers={"900": ["10"]})
+    after = _snap([
+        _feature([10], _LEG_A, route_id="10", trail="Alpha"),
+        _feature([20], _LEG_B, route_id="11", trail="Beta"),
+    ], routes={"10": _route("Child A"), "11": _route("Child B")},
+        supers={"900": ["10", "11"]})
+    diff = diff_snapshots(before, after)
+    assert diff["routes_added"] == [("11", "Child B")]
+    assert diff["super_changes"] == []
+
+
+def test_snapshot_without_expansions_is_inert():
+    """Maps that use no super-relations must not gain phantom sections."""
+    before = _snap([_feature([10], _LEG_A, trail="Bootjack")])
+    after = _snap([_feature([10], _LEG_A, trail="Bootjack", oneway="yes")])
+    diff = diff_snapshots(before, after)
+    assert diff["super_changes"] == []
+    assert diff["super_relations_added"] == []
+    assert diff["super_relations_removed"] == []
+    assert "parentage" not in format_report(diff, "plain")
 
 
 if __name__ == "__main__":

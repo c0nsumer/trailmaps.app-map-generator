@@ -6,7 +6,7 @@ only when they intend to, then personally vets it. Until now a
 nothing, so "what actually changed upstream?" meant eyeballing the rendered
 map. This module answers it directly.
 
-Two deliberate choices about WHAT gets compared:
+Three deliberate choices about WHAT gets compared:
 
 * **Keyed on OSM way IDs, never on merged features.**
   ``fetch_trails.merge_consecutive_ways`` fuses consecutive ways sharing a
@@ -20,6 +20,15 @@ Two deliberate choices about WHAT gets compared:
   every refresh look catastrophic while burying the tag and topology changes
   that actually matter. Per-trail length deltas below ``_LENGTH_NOISE_M`` are
   suppressed for the same reason.
+
+* **Relation membership is compared at two levels, both churn-suppressed.**
+  Which relations carry a way, and which super-relation a route hangs off,
+  both change what the map renders without touching any way, name, tag, or
+  length. Neither is visible in the other sections, so both are diffed
+  directly. A relation that is itself added or removed moves every way it
+  carries, so those relation IDs are excluded from the membership comparison
+  and their routes are skipped in the parentage comparison; otherwise one
+  new relation would report as one line per way it contains.
 
 Everything here except :func:`write_report` is pure: :func:`diff_snapshots`
 takes two already-parsed snapshot dicts and returns a plain dict, which keeps
@@ -43,6 +52,9 @@ _LENGTH_NOISE_M = 20.0
 # everything" when it isn't.
 _MAX_LIST = 40
 _MAX_CONSOLE = 5
+# Trail / route names shown inline on one aggregated membership line before
+# it spills into a "+N more" tail. The line is a pointer, not the full list.
+_MAX_INLINE_NAMES = 6
 
 _ROUTE_FIELDS = ("name", "colour", "ref", "seasonal")
 # Way-level tag fields, mapped to the label used in output.
@@ -73,15 +85,35 @@ def _feature_length_m(feature):
     return total
 
 
+def _parents_by_child(supers):
+    """Invert ``{parent: {children}}`` into ``{child: {parents}}``.
+
+    A child route can sit under more than one config-listed super-relation,
+    so the value is a set rather than a single parent.
+    """
+    out = {}
+    for parent, children in supers.items():
+        for child in children:
+            out.setdefault(child, set()).add(parent)
+    return out
+
+
 def _index_snapshot(snap):
     """Reduce a snapshot to the comparable facts.
 
-    Returns ``{routes, ways, trails, total_length_m, data_timestamp}`` where
-    ``ways`` maps way id to its way-level tags plus the routes carrying it,
-    and ``trails`` maps trail name to its way set and total length.
+    Returns ``{routes, supers, ways, trails, total_length_m,
+    data_timestamp}`` where ``ways`` maps way id to its way-level tags plus
+    the routes carrying it, ``trails`` maps trail name to its way set and
+    total length, and ``supers`` maps super-relation id to its child route
+    ids.
     """
     meta = snap.get("metadata") or {}
     routes = {str(k): (v or {}) for k, v in (meta.get("routes") or {}).items()}
+    supers = {
+        str(parent): {str(c) for c in (children or [])}
+        for parent, children in
+        (meta.get("super_relation_expansions") or {}).items()
+    }
 
     ways = {}
     trails = {}
@@ -125,6 +157,7 @@ def _index_snapshot(snap):
 
     return {
         "routes": routes,
+        "supers": supers,
         "ways": ways,
         "trails": trails,
         "total_length_m": total_length,
@@ -156,6 +189,13 @@ def diff_snapshots(prev, cur):
                     "new": new,
                 })
 
+    # A relation that appears or vanishes moves every way it carries, which
+    # would swamp the handful of ways that genuinely changed relation. Those
+    # relation IDs are dropped from both membership comparisons below; the
+    # routes_added / routes_removed sections already report the event.
+    churn_routes = ({r for r, _ in routes_added}
+                    | {r for r, _ in routes_removed})
+
     wa, wb = a["ways"], b["ways"]
     ways_added = sorted(set(wb) - set(wa), key=natural_key)
     ways_removed = sorted(set(wa) - set(wb), key=natural_key)
@@ -166,6 +206,10 @@ def diff_snapshots(prev, cur):
     # way changed its name tag.
     renames = {}
     tag_changes = []
+    # Keyed on the (old routes, new routes) transition, not on the way: a
+    # relation reshuffle touches every way the same way, and forty identical
+    # lines bury the fact that it was one edit.
+    memberships = {}
     for wid in surviving:
         old_trail = wa[wid].get("trail") or ""
         new_trail = wb[wid].get("trail") or ""
@@ -183,6 +227,55 @@ def diff_snapshots(prev, cur):
                     "old": old,
                     "new": new,
                 })
+        old_routes = frozenset(wa[wid].get("routes") or ()) - churn_routes
+        new_routes = frozenset(wb[wid].get("routes") or ()) - churn_routes
+        if old_routes != new_routes:
+            mkey = (tuple(sorted(old_routes, key=natural_key)),
+                    tuple(sorted(new_routes, key=natural_key)))
+            entry = memberships.setdefault(mkey, {"ways": [], "trails": set()})
+            entry["ways"].append(wid)
+            if new_trail or old_trail:
+                entry["trails"].add(new_trail or old_trail)
+
+    membership_changes = [
+        {
+            "old": list(old),
+            "new": list(new),
+            "ways": len(entry["ways"]),
+            "way_ids": entry["ways"],
+            "trails": sorted(entry["trails"]),
+        }
+        for (old, new), entry in sorted(memberships.items())
+    ]
+
+    # Super-relation parentage. A child route moving between two parents
+    # keeps its id, name, ways, tags, and length, so nothing above sees it -
+    # yet the config fans winter/summer/emergency membership and
+    # direction_schedule.per_route entries from a parent slot out to whatever
+    # children it has at fetch time (fetch_trails._expand_through_supers and
+    # the same table re-read in build.py). Re-parenting silently moves a
+    # route between those buckets.
+    sa, sb = a["supers"], b["supers"]
+    super_relations_added = sorted(set(sb) - set(sa), key=natural_key)
+    super_relations_removed = sorted(set(sa) - set(sb), key=natural_key)
+
+    pa, pb = _parents_by_child(sa), _parents_by_child(sb)
+    reparented = {}
+    for child in sorted(set(pa) | set(pb), key=natural_key):
+        if child in churn_routes:
+            continue
+        old_parents = frozenset(pa.get(child) or ())
+        new_parents = frozenset(pb.get(child) or ())
+        if old_parents == new_parents:
+            continue
+        skey = (tuple(sorted(old_parents, key=natural_key)),
+                tuple(sorted(new_parents, key=natural_key)))
+        name = (rb.get(child) or ra.get(child) or {}).get("name") or ""
+        reparented.setdefault(skey, []).append((child, name))
+    super_changes = [
+        {"old": list(old), "new": list(new), "children": children}
+        for (old, new), children in sorted(reparented.items())
+    ]
 
     renamed_from = {old for old, _new in renames}
     renamed_to = {new for _old, new in renames}
@@ -218,6 +311,10 @@ def diff_snapshots(prev, cur):
             for (old, new), n in sorted(renames.items())
         ],
         "tag_changes": tag_changes,
+        "membership_changes": membership_changes,
+        "super_changes": super_changes,
+        "super_relations_added": super_relations_added,
+        "super_relations_removed": super_relations_removed,
         "length_changes": length_changes,
         "total_length_old_m": a["total_length_m"],
         "total_length_new_m": b["total_length_m"],
@@ -229,6 +326,8 @@ def diff_snapshots(prev, cur):
             "routes_added", "routes_removed", "route_changes",
             "ways_added", "ways_removed", "trails_added", "trails_removed",
             "trail_renames", "tag_changes", "length_changes",
+            "membership_changes", "super_changes",
+            "super_relations_added", "super_relations_removed",
         )
     )
     return diff
@@ -253,6 +352,54 @@ def _capped(items, cap=_MAX_LIST):
     return shown, dropped
 
 
+def _count_noun(n, noun):
+    """"1 way" / "2 ways". Every count in this report is curator-facing."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _id_list(ids):
+    """Render a relation-id list, naming the empty set explicitly.
+
+    An empty side is a real outcome (a way left every relation, a route left
+    every super-relation), and a blank there would read as a formatting bug.
+    """
+    return ", ".join(ids) if ids else "(none)"
+
+
+def _inline_names(names):
+    """Comma-joined name sample for one aggregated line, with a count tail."""
+    shown = [n or "(unnamed)" for n in names[:_MAX_INLINE_NAMES]]
+    dropped = len(names) - len(shown)
+    if not shown:
+        return ""
+    tail = f", +{dropped} more" if dropped else ""
+    return ": " + ", ".join(shown) + tail
+
+
+def _render_membership(change):
+    line = (f"routes {_id_list(change['old'])} → {_id_list(change['new'])} "
+            f"({_count_noun(change['ways'], 'way')}"
+            f"{_inline_names(change['trails'])})")
+    # Way IDs are the handle for actually checking the edit in OSM, but only
+    # while the list is short enough to scan; past that the trail names are
+    # the usable pointer and the IDs are noise.
+    if change["ways"] <= _MAX_INLINE_NAMES:
+        noun = "way" if change["ways"] == 1 else "ways"
+        line += f" - {noun} " + ", ".join(change["way_ids"])
+    return line
+
+
+def _render_super(change):
+    names = [f"`{cid}` {name or '(unnamed)'}" for cid, name in
+             change["children"][:_MAX_INLINE_NAMES]]
+    dropped = len(change["children"]) - len(names)
+    tail = f", +{dropped} more" if dropped else ""
+    return (f"super-relation {_id_list(change['old'])} → "
+            f"{_id_list(change['new'])} "
+            f"({_count_noun(len(change['children']), 'route')}: "
+            f"{', '.join(names)}{tail})")
+
+
 def summarize(diff, units="mi"):
     """Short console summary: a few lines, no item dumps."""
     if not diff.get("changed"):
@@ -274,6 +421,16 @@ def summarize(diff, units="mi"):
     _count("trails renamed", "trail_renames")
     _count("tag changes", "tag_changes")
     _count("trails with length changes", "length_changes")
+    if diff["membership_changes"]:
+        moved = sum(c["ways"] for c in diff["membership_changes"])
+        lines.append(f"ways changed route membership: {moved} (in "
+                     f"{_count_noun(len(diff['membership_changes']), 'transition')})")
+    if diff["super_changes"]:
+        moved = sum(len(c["children"]) for c in diff["super_changes"])
+        lines.append(f"routes changed super-relation: {moved} (in "
+                     f"{_count_noun(len(diff['super_changes']), 'transition')})")
+    _count("super-relations added", "super_relations_added")
+    _count("super-relations removed", "super_relations_removed")
 
     lines.append(
         f"ways {diff['way_count_old']} → {diff['way_count_new']}, "
@@ -291,7 +448,11 @@ def summarize(diff, units="mi"):
         lines.append(f"  - trail {name}")
     for r in diff["trail_renames"][:_MAX_CONSOLE]:
         lines.append(f"  ~ trail {r['old'] or '(unnamed)'} → "
-                     f"{r['new'] or '(unnamed)'} ({r['ways']} ways)")
+                     f"{r['new'] or '(unnamed)'} ({_count_noun(r['ways'], 'way')})")
+    for m in diff["membership_changes"][:_MAX_CONSOLE]:
+        lines.append(f"  ~ {_render_membership(m)}")
+    for s in diff["super_changes"][:_MAX_CONSOLE]:
+        lines.append(f"  ~ {_render_super(s)}")
     return lines
 
 
@@ -310,7 +471,7 @@ def format_report(diff, slug, units="mi"):
     out.append("")
 
     if not diff.get("changed"):
-        out.append("No route, way, trail, or tag changes.")
+        out.append("No route, membership, way, trail, or tag changes.")
         out.append("")
         return "\n".join(out)
 
@@ -318,6 +479,18 @@ def format_report(diff, slug, units="mi"):
     out.append("comparison, and per-trail changes under "
                f"{_LENGTH_NOISE_M:.0f} m are treated as noise.")
     out.append("")
+
+    if diff["super_changes"]:
+        out.append("Route parentage drives config fan-out. A "
+                   "`winter_relations` entry,")
+        out.append("a summer or emergency bucket, and a "
+                   "`direction_schedule.per_route` entry")
+        out.append("keyed on a super-relation all apply to whichever children "
+                   "that")
+        out.append("relation has at fetch time, so a re-parented route "
+                   "changes buckets")
+        out.append("without changing its name, ways, or length.")
+        out.append("")
 
     def section(title, items, render):
         if not items:
@@ -339,11 +512,18 @@ def format_report(diff, slug, units="mi"):
     section("Route field changes", diff["route_changes"],
             lambda c: f"`{c['id']}` {c['name'] or '(unnamed)'} - "
                       f"{c['field']}: `{c['old']}` → `{c['new']}`")
+    section("Route membership changes", diff["membership_changes"],
+            _render_membership)
+    section("Route parentage changes", diff["super_changes"], _render_super)
+    section("Super-relations added", diff["super_relations_added"],
+            lambda r: f"https://www.openstreetmap.org/relation/{r}")
+    section("Super-relations removed", diff["super_relations_removed"],
+            lambda r: f"https://www.openstreetmap.org/relation/{r}")
     section("Trails added", diff["trails_added"], lambda n: n)
     section("Trails removed", diff["trails_removed"], lambda n: n)
     section("Trails renamed", diff["trail_renames"],
             lambda r: f"{r['old'] or '(unnamed)'} → "
-                      f"{r['new'] or '(unnamed)'} ({r['ways']} ways)")
+                      f"{r['new'] or '(unnamed)'} ({_count_noun(r['ways'], 'way')})")
     section("Tag changes", diff["tag_changes"],
             lambda c: f"way `{c['way_id']}` "
                       f"({c['trail'] or 'unnamed'}) - {c['tag']}: "
