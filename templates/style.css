@@ -472,6 +472,38 @@ textarea {
      * pans (where the page has nothing to scroll, but iOS Safari
      * still leaks subtle visual-viewport drift via that path). */
     touch-action: none;
+    /* Per-map tint for the Safari 26 browser chrome, hidden from the
+     * rider by the background-image below.
+     *
+     * Safari 26 on macOS/iOS/iPadOS 26 ignores <meta name="theme-color">
+     * and derives its toolbar tint from the page: first a position:
+     * fixed, full-width, >=6px-tall element at the block start,
+     * otherwise the body/html background. #map is exactly that element
+     * (fixed, inset: 0); with no background-color of its own Safari
+     * fell through to --page-bg, a framework constant, so every map
+     * tinted the chrome the same gray. --accent resolves per scheme and
+     * per map from the config palette, so this brands the chrome with
+     * no extra element and no JS.
+     *
+     * Setting it alone is not enough, though: this background is also
+     * the full-screen boot color before MapLibre's canvas covers #map,
+     * so a bare accent flashed the whole viewport on every cold load.
+     * Deferring it to a class added at the map-painted gate did not
+     * work either (field-tested 2026-08-29, chrome stayed gray) -
+     * Safari samples early and does not re-read a later mutation.
+     *
+     * So the accent stays on background-color, where Safari reads it,
+     * and the gradient paints --page-bg over it for the rider. The
+     * first 6px are left transparent deliberately: if a Safari build
+     * ever samples rendered pixels instead of the computed property,
+     * the strip it looks at is still accent. Those 6px are only ever
+     * visible during the pre-canvas boot window, as a thin line at the
+     * very top edge.
+     *
+     * The meta tag stays in index.html: Android Chrome and the
+     * installed WebAPK still read it, and neither uses this path. */
+    background-color: var(--accent);
+    background-image: linear-gradient(transparent 0 6px, var(--page-bg) 6px);
 }
 
 /* ----- iOS standalone status-bar scrim ----------------------------- */
