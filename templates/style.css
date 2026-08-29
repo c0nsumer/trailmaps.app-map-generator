@@ -663,8 +663,8 @@ body::after {
 
 /* ----- Options-overlay toggle rows (full-width buttons) ------------
  *
- * Layout: swatch on left + label in middle + ON/OFF state on right.
- * Driven by aria-pressed. Wired up by wirePeekToggle() in app.js
+ * Layout: swatch on left + label in middle + On/Off pill on right.
+ * Driven by data-on. Wired up by wirePeekToggle() in app.js
  * (the helper kept its peek-era name; behavior is unchanged). */
 .opt-row.opt-toggle-row {
     display: flex;
@@ -696,12 +696,12 @@ body::after {
     user-select: none;
 }
 
-/* Every toggle row opts into whole-row click via the
- * .opt-toggle-row-clickable marker class: binary rows toggle
- * (wirePeekToggle), multi-option rows (Labels / Season / Appearance)
- * advance to the next option (wireSegmentedRowCycle). One gesture
- * across the overlay: tap the row, the state advances; tap a
- * specific segment, that state is chosen. */
+/* Binary rows opt into whole-row click via the
+ * .opt-toggle-row-clickable marker class (wirePeekToggle): the label,
+ * the swatch and the On/Off pill all flip the same state, which is the
+ * list-item pattern every mobile settings screen uses for a toggle.
+ * Multi-option rows (Labels / Season / Appearance) deliberately do NOT
+ * opt in - see .opt-toggle-row-segmented below. */
 .opt-toggle-row-clickable {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
@@ -852,25 +852,22 @@ body::after {
 
 /* Follow the row's off state: when Difficulty is toggled off the glyphs
  * aren't on the map, so the key recedes with the row it belongs to. */
-.opt-toggle-row[aria-pressed="false"] .opt-key-strip {
+.opt-toggle-row[data-on="false"] .opt-key-strip {
     opacity: 0.45;
 }
 
-/* (.opt-toggle-row-state was the old single On/Off pill on the
- * right side of each toggle-row. It's been replaced by the
- * segmented On/Off pill (.opt-segmented-pill with two buttons),
- * which matches the Season row's visual pattern. The CSS for the
- * segmented pill lives further up in the file under "Segmented-
- * pill (Labels: Routes / Trails / None)".) */
+/* (The binary rows' right-hand control is .opt-toggle-pill, defined
+ * further up. .opt-segmented-pill now serves only the genuinely
+ * multi-option rows: Labels, Season and Appearance.) */
 
 /* Off state on swatches inside Options-overlay toggles - three-cue
  * treatment (transparent fill + gray border + slash). The
  * `data-multi-off="true"` selector is for multi-option rows whose
- * "off" state isn't a binary aria-pressed=false but a specific
+ * "off" state isn't a binary data-on=false but a specific
  * value choice (e.g. Labels = "None" → row visually reads as off
  * the same way a binary toggle in off state does). JS sets the
  * data attribute when the chosen value is the "off" one. */
-.opt-toggle-row[aria-pressed="false"] .layer-swatch,
+.opt-toggle-row[data-on="false"] .layer-swatch,
 .opt-toggle-row[data-multi-off="true"] .layer-swatch {
     background: transparent !important;
     border: 1.5px solid #9aa0a6 !important;
@@ -878,7 +875,7 @@ body::after {
     box-shadow: none !important;
 }
 
-.opt-toggle-row[aria-pressed="false"] .layer-swatch::after,
+.opt-toggle-row[data-on="false"] .layer-swatch::after,
 .opt-toggle-row[data-multi-off="true"] .layer-swatch::after {
     content: "";
     position: absolute;
@@ -892,9 +889,91 @@ body::after {
     pointer-events: none;
 }
 
-.opt-toggle-row[aria-pressed="false"] .opt-toggle-row-label,
+.opt-toggle-row[data-on="false"] .opt-toggle-row-label,
 .opt-toggle-row[data-multi-off="true"] .opt-toggle-row-label {
     color: #6a6a6a;
+}
+
+/* ----- Binary toggle pill (POI / layer rows) -----------------------
+ *
+ * Looks exactly like the two-segment On/Off pill these rows have always
+ * worn, and like the segments on the Labels / Season / Appearance rows
+ * beside them. The difference is underneath: it is ONE button, not a
+ * radio pair, and the two words are spans.
+ *
+ * The radio pair had one defect, but a repeatable one - a tap on the
+ * already-active segment set the state it was already in, so it did
+ * nothing, and that is the half a rider aiming at "the toggle" lands on
+ * about half the time. They then tapped the same dead spot again.
+ *
+ * Collapsing it to a single button is what removes the dead half rather
+ * than papering over it, and it costs nothing in precision: with
+ * exactly two options, "set the value I tapped" and "flip" are the same
+ * result every time (from ON, tapping OFF gives off; so does flipping).
+ * So every point on the pill, and on the row around it, flips the
+ * state. Nothing here is inert.
+ *
+ * State lives on the button as aria-checked (the accessible truth) and
+ * is mirrored onto the row as data-on, which drives the off-state
+ * swatch slash / label dim / key-strip fade further up this file. */
+.opt-toggle-pill {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    position: relative;
+    gap: 0;
+    padding: 2px;
+    border: none;
+    border-radius: 999px;
+    background: var(--pill-bg);
+    font: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Metrics copied from .opt-segmented-pill .opt-segmented-btn so the two
+ * controls are indistinguishable in a column. Spans, not buttons: the
+ * words label the states, they are not separate targets. */
+.opt-toggle-pill-opt {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    color: var(--sheet-text-muted);
+    transition: background 0.12s, color 0.12s;
+}
+
+/* Fill whichever word is the current state, the same accent fill an
+ * active segment gets on the multi-option rows. */
+.opt-toggle-pill[aria-checked="true"] .opt-toggle-pill-opt:first-child,
+.opt-toggle-pill[aria-checked="false"] .opt-toggle-pill-opt:last-child {
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+/* The pill is ~26px tall but the row is 44px, and the space between
+ * rows is dead. Claim the full row height so a gloved thumb aimed at
+ * the control cannot miss high or low. Vertical only: the row itself
+ * already takes taps to either side. */
+.opt-toggle-pill::after {
+    content: "";
+    position: absolute;
+    inset: -9px 0;
+}
+
+.opt-toggle-pill:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .opt-toggle-pill-opt {
+        transition: none;
+    }
 }
 
 /* ----- Segmented-pill (Labels: Routes / Trails / None) ------------
@@ -904,9 +983,13 @@ body::after {
  * pill segment; aria-checked drives the active fill. Stays compact
  * enough to fit alongside the row label on a phone screen. */
 .opt-toggle-row-segmented {
-    /* Row layout matches the toggle-row, but suppress the toggle-row's
-     * "tap-anywhere-to-flip" cursor - only the segmented buttons do
-     * anything; the rest of the row is passive. */
+    /* Multi-option rows only (Labels / Season / Appearance). The rest of
+     * the row really is passive here: picking one of three named values
+     * has no "next" a row tap could stand for, and an earlier
+     * cycle-on-row-tap made an accidental tap silently walk the setting
+     * to a value nobody chose. Riders tap the value they want; the
+     * segments carry a full-row-height hit area so that stays easy with
+     * gloves. */
     cursor: default;
 }
 
@@ -942,6 +1025,21 @@ body::after {
     cursor: pointer;
     line-height: 1.2;
     transition: background 0.12s, color 0.12s;
+    /* Anchor for the hit-area pseudo-element below. */
+    position: relative;
+}
+
+/* Stretch each segment's touch target to the row's full 44px height
+ * without changing how the pill looks. The visible segment is only
+ * ~20px tall, below the 24px WCAG 2.5.8 floor and far below the 44px
+ * Apple / 48dp Material guidance - and these rows get tapped mid-ride
+ * with gloves on. Vertical only: the segments already sit edge to edge,
+ * so widening the targets would make neighbors overlap and steal each
+ * other's taps. */
+.opt-segmented-pill .opt-segmented-btn::after {
+    content: "";
+    position: absolute;
+    inset: -12px 0;
 }
 
 .opt-segmented-pill .opt-segmented-btn:hover {
@@ -1256,13 +1354,13 @@ body::after {
 /* Off state, same three-cue treatment the hub swatch gets: the base
  * .layer-swatch off-state rule handles the container (gray rectangle
  * + diagonal slash), so only the SVG content needs graying. */
-.opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-shape,
+.opt-toggle-row[data-on="false"] .marker-swatch-diamond .trail-marker-shape,
 .opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-shape {
     fill: transparent !important;
     stroke: #9aa0a6 !important;
 }
 
-.opt-toggle-row[aria-pressed="false"] .marker-swatch-diamond .trail-marker-letter,
+.opt-toggle-row[data-on="false"] .marker-swatch-diamond .trail-marker-letter,
 .opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-letter {
     fill: #9aa0a6 !important;
 }
@@ -1370,13 +1468,13 @@ body::after {
  * inner glyph + diagonal slash" pattern, with the hex silhouette
  * playing the role that the "P" or "TH" letter plays in other
  * swatches. */
-.opt-toggle-row[aria-pressed="false"] .hub-swatch .hub-marker-shape,
+.opt-toggle-row[data-on="false"] .hub-swatch .hub-marker-shape,
 .opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-shape {
     fill: transparent !important;
     stroke: #9aa0a6 !important;
 }
 
-.opt-toggle-row[aria-pressed="false"] .hub-swatch .hub-marker-letter,
+.opt-toggle-row[data-on="false"] .hub-swatch .hub-marker-letter,
 .opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-letter {
     fill: #9aa0a6 !important;
 }
@@ -1514,7 +1612,7 @@ body::after {
     pointer-events: none;
 }
 
-/* Off-state: the base .opt-toggle-row[aria-pressed="false"]
+/* Off-state: the base .opt-toggle-row[data-on="false"]
  * .layer-swatch rule above already grays the chip and draws the
  * slash. Also hollow out the inner ::before shapes (purple dot,
  * black diamond) so they match the outline-only motif instead of
@@ -3886,14 +3984,14 @@ body.modal-open .gpx-overlay.is-open {
 }
 
 /* Off-state hollowing for swatches with ::before fills. Same visual
- * as the row's aria-pressed=false slash treatment: transparent fill
+ * as the row's data-on=false slash treatment: transparent fill
  * + gray border so the toggled-off swatch reads as "outline only." */
-.opt-toggle-row[aria-pressed="false"] .feature-swatch::before {
+.opt-toggle-row[data-on="false"] .feature-swatch::before {
     background: transparent;
     border: 1.5px solid #9aa0a6;
     box-shadow: none;
 }
-.opt-toggle-row[aria-pressed="false"] .difficulty-swatch::before {
+.opt-toggle-row[data-on="false"] .difficulty-swatch::before {
     background: transparent;
     border-color: #9aa0a6;
 }

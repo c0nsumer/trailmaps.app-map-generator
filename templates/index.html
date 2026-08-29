@@ -529,13 +529,10 @@
                         </div>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented opt-toggle-row-haskey" id="toggle-difficulty" data-poi="difficulty" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row opt-toggle-row-haskey" id="toggle-difficulty" data-poi="difficulty" data-on="true">
                         <span class="layer-swatch difficulty-swatch" aria-hidden="true"></span>
                         <span class="opt-toggle-row-label">Difficulty</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Difficulty">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Difficulty"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                         <!-- Difficulty rating key. The row's swatch shows one
                              representative diamond; this names the actual IMBA
                              ratings so a first-time visitor can read the on-map
@@ -559,7 +556,7 @@
                          along one-way / reversible trails). Hidden
                          entirely when the build emitted no arrows
                          (set by app.js after the layer renders). -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-direction-arrows" data-poi="direction_arrows" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row hidden" id="toggle-direction-arrows" data-poi="direction_arrows" data-on="true">
                         <span class="layer-swatch direction-arrows-swatch" aria-hidden="true">
                             <!-- Arrow path pixel-matched to the on-map
                                  drawArrow() canvas shape (see app.js).
@@ -587,28 +584,19 @@
                             <span class="opt-toggle-row-label">Direction Arrows</span>
                             <span class="opt-toggle-row-help" id="direction-arrows-help">Shown on one-way trails.</span>
                         </span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Direction Arrows">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Direction Arrows" aria-describedby="direction-arrows-help"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-markers" data-poi="markers" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row" id="toggle-markers" data-poi="markers" data-on="true">
                         <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
                         <span class="opt-toggle-row-label">Trail Markers</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Trail Markers">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Trail Markers"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-trailheads" data-poi="trailheads" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row" id="toggle-trailheads" data-poi="trailheads" data-on="true">
                         <span class="layer-swatch trailhead-swatch" aria-hidden="true">TH</span>
                         <span class="opt-toggle-row-label">Trailheads</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Trailheads">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Trailheads"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Trail hubs - curator-supplied named on-trail
@@ -618,7 +606,7 @@
                          parking pattern - hubs are not proximity-
                          gated so they don't need the toilet / water
                          start-hidden-then-reveal flow). -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-hubs" data-poi="hubs" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row" id="toggle-hubs" data-poi="hubs" data-on="true">
                         <!-- Inline SVG matches the on-map hub marker (HUB_SVG
                              in app.js) and the finder POI row swatch
                              (poiSwatchContent case "hub"). Three contexts,
@@ -631,34 +619,25 @@
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label">Hubs</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Hubs">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Hubs"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-parking" data-poi="parking" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row" id="toggle-parking" data-poi="parking" data-on="true">
                         <span class="layer-swatch parking-swatch" aria-hidden="true">P</span>
                         <span class="opt-toggle-row-label">Parking</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Parking">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Parking"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="toggle-features" data-poi="features" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row" id="toggle-features" data-poi="features" data-on="true">
                         <span class="layer-swatch feature-swatch" aria-hidden="true"></span>
                         <span class="opt-toggle-row-label">Features</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Features">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Features"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Toilets - OSM amenity=toilets. Hidden by default;
                          app.js reveals only when pois.geojson contains
                          at least one toilet feature. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-toilets" data-poi="toilets" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row hidden" id="toggle-toilets" data-poi="toilets" data-on="true">
                         <span class="layer-swatch toilet-swatch" aria-hidden="true">
                             <!-- mdi:human-male-female (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -666,16 +645,13 @@
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label">Toilets</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Toilets">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Toilets"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Drinking water - OSM amenity=drinking_water.
                          Hidden by default; app.js reveals only when
                          pois.geojson contains at least one. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-drinking-water" data-poi="drinking_water" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row hidden" id="toggle-drinking-water" data-poi="drinking_water" data-on="true">
                         <span class="layer-swatch drinking-water-swatch" aria-hidden="true">
                             <!-- mdi:water (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -683,17 +659,14 @@
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label">Drinking Water</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Drinking Water">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Drinking Water"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Bicycle repair stations - OSM
                          amenity=bicycle_repair_station. Hidden by
                          default; app.js reveals only when
                          pois.geojson contains at least one. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-bicycle-repair-stations" data-poi="bicycle_repair_stations" aria-pressed="true">
+                    <div class="opt-row opt-toggle-row hidden" id="toggle-bicycle-repair-stations" data-poi="bicycle_repair_stations" data-on="true">
                         <span class="layer-swatch bicycle-repair-station-swatch" aria-hidden="true">
                             <!-- mdi:tools (Apache 2.0, Pictogrammers) -->
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
@@ -701,25 +674,19 @@
                             </svg>
                         </span>
                         <span class="opt-toggle-row-label">Bicycle Repair</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Bicycle Repair">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="true">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="false">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Bicycle Repair"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Emergency Access - same toggle-row format as the
-                         POI toggles. Uses aria-pressed; app.js wires
+                         POI toggles. Uses data-on; app.js wires
                          click handler that mirrors emergencyOn into
                          localStorage + applyVisibilityChange(). Hidden
                          by default; revealed only when the map has at
                          least one emergency-tagged route. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="toggle-emergency-routes" aria-pressed="false">
+                    <div class="opt-row opt-toggle-row hidden" id="toggle-emergency-routes" data-on="false">
                         <span class="layer-swatch emergency-swatch" aria-hidden="true">!</span>
                         <span class="opt-toggle-row-label">Emergency Access Routes</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-label="Emergency Access Routes">
-                            <button type="button" class="opt-segmented-btn" data-value="on" role="radio" aria-checked="false">On</button>
-                            <button type="button" class="opt-segmented-btn" data-value="off" role="radio" aria-checked="true">Off</button>
-                        </div>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="false" aria-label="Emergency Access Routes"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Season - segmented control with both options

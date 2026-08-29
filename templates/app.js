@@ -5162,16 +5162,32 @@ function updateMarkerDimState() {
     }
 }
 
+// Paint a binary toggle row's state. aria-checked on the pill is the
+// accessible truth, and it also picks which of the pill's two words
+// gets the accent fill (see .opt-toggle-pill in style.css). data-on
+// mirrors it onto the row because the off-state visuals (slashed
+// swatch, dimmed label, faded key strip) are row-level, and isOn()
+// reads it back. The mirror is a data attribute rather than
+// aria-pressed: the row is a role-less div, where aria-pressed is
+// invalid and risks being announced alongside the pill's own state.
+// Same reasoning as the Labels row's data-multi-off.
+function setRowToggleState(row, isOn) {
+    if (!row) return;
+    row.setAttribute("data-on", isOn ? "true" : "false");
+    const pill = row.querySelector(".opt-toggle-pill");
+    if (pill) pill.setAttribute("aria-checked", isOn ? "true" : "false");
+}
+
 // Deferred, coalescing wrapper for updateMarkerProximity(), the POI
 // analog of applyVisibilityChange's deferred half: a proximity-gated
 // POI toggle paid 115-151 ms of scanning inside its click handler
 // (distanceToVisibleTrails is O(markers x trail segments)), the worst
 // remaining interaction class once season toggles were deferred. The
-// aria-pressed flip has already happened by the time a toggle handler
+// row state flip has already happened by the time a toggle handler
 // calls this, so the control responds in the tap's own frame and the
 // scan lands in a task right after that frame paints (rAF alone runs
 // before the frame presents; see applyVisibilityChange). The scan
-// reads toggle state (aria-pressed) and visibleRoutes at run time, so
+// reads toggle state (data-on) and visibleRoutes at run time, so
 // back-to-back toggles coalesce into one pass over the final state.
 let _markerProximityPending = false;
 
@@ -5191,12 +5207,12 @@ function updateMarkerProximity() {
     // A synchronous run (boot, visibility refresh) makes any queued
     // deferred pass redundant; absorb it.
     _markerProximityPending = false;
-    // Toggle rows use aria-pressed semantics (not checkbox .checked).
-    // Trail markers (guideposts + emergency access points) share the
-    // single "Markers" toggle.
+    // Toggle rows mirror their switch's state onto the row as data-on
+    // (see setRowToggleState). Trail markers (guideposts + emergency
+    // access points) share the single "Markers" toggle.
     const isOn = (id) => {
-        const btn = document.getElementById(id);
-        return !!btn && btn.getAttribute("aria-pressed") === "true";
+        const row = document.getElementById(id);
+        return !!row && row.getAttribute("data-on") === "true";
     };
 
     const filterMarkers = (markers, on, threshold) => {
@@ -5238,7 +5254,7 @@ function updateMarkerProximity() {
 
 // True iff at least one POI of the given type is within `threshold`
 // meters of a currently-visible trail. Independent of the toggle's
-// aria-pressed state (we ask "would anything show if it were on?",
+// data-on state (we ask "would anything show if it were on?",
 // not "is anything showing now?"). Used by
 // updatePoiToggleVisibility() to decide which proximity-gated
 // toggle rows to render.
@@ -5261,7 +5277,7 @@ function hasVisibleProximityPois(poiType, threshold) {
 // type render at the per-type threshold. Called on initial POI load
 // and after every route-visibility change. The toggle row is
 // `.hidden` when dead so the Options list collapses cleanly;
-// persisted aria-pressed state is untouched, so toggling a
+// persisted row state is untouched, so toggling a
 // category back on once a near-trail POI of that type reappears
 // just works.
 //
@@ -5290,7 +5306,7 @@ function updatePoiToggleVisibility() {
         // skipped the click wiring (the rider gets no off affordance).
         // Keep it hidden, re-revealing it on a proximity pass would
         // resurrect a dead, unclickable control. The layer itself stays
-        // visible via the aria-pressed default + proximity filter,
+        // visible via the data-on default + proximity filter,
         // independent of the row. See isForcedVisible / wirePeekToggle.
         if (isForcedVisible(layerName)) {
             btn.classList.add("hidden");
@@ -8185,7 +8201,7 @@ async function loadPOIs() {
     }
 
     // Toilets + drinking water + bicycle repair stations, proximity-
-    // gated like Features. Set aria-pressed from persisted state
+    // gated like Features. Set the row's state from persisted state
     // (used by updateMarkerProximity when it filters), but the
     // toggle ROW visibility is decided by updatePoiToggleVisibility()
     // on the first applyVisibilityChange() pass after init, based on
@@ -8194,17 +8210,17 @@ async function loadPOIs() {
     if (CONFIG.showToilets && wcCount > 0) {
         addToiletMarkers(wcDefault);
         const wcBtn = document.getElementById("toggle-toilets");
-        if (wcBtn) wcBtn.setAttribute("aria-pressed", wcDefault ? "true" : "false");
+        if (wcBtn) setRowToggleState(wcBtn, wcDefault);
     }
     if (CONFIG.showDrinkingWater && dwCount > 0) {
         addDrinkingWaterMarkers(dwDefault);
         const dwBtn = document.getElementById("toggle-drinking-water");
-        if (dwBtn) dwBtn.setAttribute("aria-pressed", dwDefault ? "true" : "false");
+        if (dwBtn) setRowToggleState(dwBtn, dwDefault);
     }
     if (CONFIG.showBicycleRepairStations && brCount > 0) {
         addBicycleRepairStationMarkers(brDefault);
         const brBtn = document.getElementById("toggle-bicycle-repair-stations");
-        if (brBtn) brBtn.setAttribute("aria-pressed", brDefault ? "true" : "false");
+        if (brBtn) setRowToggleState(brBtn, brDefault);
     }
 
     // Event POIs (event_mode.pois), always rendered, no rider toggle,
@@ -9312,7 +9328,7 @@ function setupFloatingChrome() {
             });
         }
         reflectSeason();
-        wireSegmentedRowCycle(seasonField.querySelector(".opt-segmented"));
+        wireRadiogroupKeys(seasonField.querySelector(".opt-segmented"));
     } else if (seasonField) {
         seasonField.classList.add("hidden");
         // Force summer regardless of persisted state so renders are silent.
@@ -9321,7 +9337,7 @@ function setupFloatingChrome() {
 
     // ----- Emergency Access toggle (single authority) ---------------
     //
-    // Same segmented On/Off format as the POI toggles. Shown only
+    // Same On/Off pill format as the POI toggles. Shown only
     // when the current map has at least one route with
     // `emergency: true`. Reveal the row first, then wire, wirePeekToggle
     // bails on hidden rows.
@@ -9353,21 +9369,19 @@ function setupFloatingChrome() {
     // on-map marker appearance (colored dot + ring + drop shadow)
     // is rendered by .feature-swatch::before whose fill lives in CSS.
 
-    // ----- POI toggle rows (aria-pressed buttons) -------------------
+    // ----- POI toggle rows (switches) -------------------------------
     //
-    // Each row carries on/off state via aria-pressed. The wirePeekToggle
-    // helper reads persisted state, sets the initial pressed value, and
-    // wires the click handler. Rows already hidden (no data) are skipped.
-    // The visible UI is a segmented On/Off pair (matches the Season
-    // row's two side-by-side segments). aria-pressed lives on the row
-    // div for the existing CSS off-state-slash treatment to keep
-    // working; aria-checked drives the visible "fill the active
-    // segment" appearance.
+    // The wirePeekToggle helper reads persisted state, paints the
+    // initial state, and wires the click handlers. Rows already hidden
+    // (no data) are skipped. The visible UI is a single On/Off pill on
+    // the right of the row - one button, not two, so neither word is a
+    // dead tap; the whole row is a second, larger target for the same
+    // flip.
     function wirePeekToggle(id, lsKey, defaultOn, onChange, layerName) {
         const row = document.getElementById(id);
         if (!row) return;
         // forced_visible: if this layer is in CONFIG.forcedVisible,
-        // mark the row on (aria-pressed=true), hide it entirely,
+        // mark the row on (data-on=true), hide it entirely,
         // force-fire onChange(true) once so the layer renders visible,
         // and skip the click wiring. The rider has no off affordance
         // and any persisted LS state is ignored (write-through
@@ -9383,11 +9397,11 @@ function setupFloatingChrome() {
         // also start hidden
         // in the template, so the guard would otherwise short-circuit
         // the force-on and the layer would silently never render.
-        // aria-pressed must be set first because the proximity-gated
+        // The row state must be set first because the proximity-gated
         // POI layers render via updateMarkerProximity() → isOn(), which
-        // reads exactly this attribute (not isForcedVisible).
+        // reads exactly that attribute (not isForcedVisible).
         if (layerName && isForcedVisible(layerName)) {
-            row.setAttribute("aria-pressed", "true");
+            setRowToggleState(row, true);
             row.classList.add("hidden");
             onChange(true);
             return;
@@ -9395,77 +9409,91 @@ function setupFloatingChrome() {
         // No data for this layer, loadPOIs()/the template left the row
         // hidden. Skip wiring so we don't surface a dead control.
         if (row.classList.contains("hidden")) return;
-        const onBtn = row.querySelector('[data-value="on"]');
-        const offBtn = row.querySelector('[data-value="off"]');
-        if (!onBtn || !offBtn) return;
+        const pill = row.querySelector(".opt-toggle-pill");
+        if (!pill) return;
         const initial = LS.get(lsKey, defaultOn);
-        function applyState(isOn) {
-            row.setAttribute("aria-pressed", isOn ? "true" : "false");
-            onBtn.setAttribute("aria-checked", isOn ? "true" : "false");
-            offBtn.setAttribute("aria-checked", isOn ? "false" : "true");
-        }
         function setState(isOn) {
             // No-op if the state isn't changing, avoids spurious
             // onChange calls (which can trigger expensive recomputes
-            // like updateMarkerProximity) when the user re-taps the
-            // already-active button.
-            const already = row.getAttribute("aria-pressed") === "true";
-            if (already === isOn) return;
-            applyState(isOn);
+            // like updateMarkerProximity) when a row tap and a switch
+            // tap both resolve to the state we're already in.
+            if ((row.getAttribute("data-on") === "true") === isOn) return;
+            setRowToggleState(row, isOn);
             LS.set(lsKey, isOn);
             onChange(isOn);
         }
-        applyState(initial);
-        onBtn.addEventListener("click", (e) => {
+        setRowToggleState(row, initial);
+        const flip = () => setState(row.getAttribute("data-on") !== "true");
+        pill.addEventListener("click", (e) => {
+            // The row handler below would otherwise flip it straight
+            // back on the same tap.
             e.stopPropagation();
-            setState(true);
+            flip();
         });
-        offBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            setState(false);
-        });
-
-        // Whole-row click toggles the binary state. The buttons'
-        // stopPropagation above keeps direct button clicks from
-        // double-firing here. Mouse/touch only, keyboard users
-        // still tab through the inner buttons (no separate row tab
-        // stop, otherwise every binary row would add visual noise to
-        // the keyboard tour without providing new functionality).
-        // The marker class drives the cursor + hover affordance in
-        // CSS so non-binary rows (Labels / Season) stay inert
-        // outside their buttons.
+        // Whole-row click flips the same state. This is the settings-
+        // list pattern (Material makes the entire list item the target
+        // for a toggle row) and it gives a gloved thumb the full 44px
+        // row instead of the pill alone. Pointer only: the pill is the
+        // row's single tab stop, so keyboard users get one control per
+        // row rather than a redundant second one.
         row.classList.add("opt-toggle-row-clickable");
-        row.addEventListener("click", () => {
-            const currentlyOn = row.getAttribute("aria-pressed") === "true";
-            setState(!currentlyOn);
-        });
+        row.addEventListener("click", flip);
     }
 
-    // Whole-row advance for segmented multi-option rows (Labels /
-    // Season / Appearance). Binary rows toggle on a row tap
-    // (wirePeekToggle above); these cycle to the next option, which is
-    // the same gesture generalized - a binary toggle IS a two-state
-    // cycle. Clicks inside the segmented pill are excluded here (one
-    // guard) instead of per-button stopPropagation, so buttons wired
-    // elsewhere don't each need to remember it. Buttons are re-queried
-    // per click because the Labels row can lose its Trails segment at
-    // wiring time (show_trails: false).
-    function wireSegmentedRowCycle(group) {
+    // Keyboard support for the multi-option segmented rows (Labels /
+    // Season / Appearance), per the ARIA radiogroup pattern: the group
+    // is ONE tab stop, arrow keys move focus and selection together,
+    // Home / End jump to the ends. Without it each segment was its own
+    // tab stop and the arrow keys did nothing, which is how a row of
+    // plain buttons behaves, not a radiogroup - so anyone driving the
+    // overlay from a keyboard or a switch-control device had to tab
+    // through every option to reach the one they wanted. Buttons are
+    // re-queried per event because the Labels row can lose its Trails
+    // segment at wiring time (show_trails: false).
+    function wireRadiogroupKeys(group) {
         if (!group) return;
-        const row = group.closest(".opt-toggle-row");
-        if (!row) return;
-        row.classList.add("opt-toggle-row-clickable");
-        row.addEventListener("click", (e) => {
-            if (e.target.closest(".opt-segmented")) return;
-            const buttons = Array.from(
-                group.querySelectorAll(".opt-segmented-btn"));
-            if (!buttons.length) return;
-            // findIndex miss (-1) lands on the first button, a sane
-            // recovery if no segment is somehow checked.
-            const i = buttons.findIndex(
+        const segments = () =>
+            Array.from(group.querySelectorAll(".opt-segmented-btn"));
+        // Roving tabindex: only the checked segment is tabbable. A
+        // findIndex miss (-1) falls back to the first segment so the
+        // group is never left with no way in.
+        const syncTabStops = () => {
+            const list = segments();
+            const checked = list.findIndex(
                 (b) => b.getAttribute("aria-checked") === "true");
-            buttons[(i + 1) % buttons.length].click();
+            const stop = checked === -1 ? 0 : checked;
+            list.forEach((b, i) => { b.tabIndex = i === stop ? 0 : -1; });
+        };
+        group.addEventListener("keydown", (e) => {
+            const list = segments();
+            const cur = list.indexOf(document.activeElement);
+            if (cur === -1) return;
+            let next;
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                next = (cur + 1) % list.length;
+            } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                next = (cur - 1 + list.length) % list.length;
+            } else if (e.key === "Home") {
+                next = 0;
+            } else if (e.key === "End") {
+                next = list.length - 1;
+            } else {
+                return;
+            }
+            // Arrow keys scroll the overlay otherwise.
+            e.preventDefault();
+            list[next].focus();
+            // Selection follows focus, per the pattern. click() reuses
+            // each group's existing handler instead of duplicating the
+            // persist + apply logic here.
+            list[next].click();
         });
+        // Re-point the tab stop after any selection change, including
+        // ones made with the pointer. The segments' own click handlers
+        // run at target, so aria-checked is already current by the time
+        // this bubble listener fires.
+        group.addEventListener("click", syncTabStops);
+        syncTabStops();
     }
 
     // Trail markers, merged guideposts + emergency access points.
@@ -9696,7 +9724,7 @@ function setupFloatingChrome() {
             });
         }
         watchSystemColorScheme();
-        wireSegmentedRowCycle(schemeGroup);
+        wireRadiogroupKeys(schemeGroup);
     }
 
     // ----- Show Trails gating -----
@@ -9770,7 +9798,7 @@ function setupFloatingChrome() {
                 updateLabels();
             });
         }
-        wireSegmentedRowCycle(labelGroup);
+        wireRadiogroupKeys(labelGroup);
     }
 
     const basemapField = document.getElementById("basemap-field");
