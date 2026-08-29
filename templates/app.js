@@ -11717,9 +11717,9 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
         }
 
         // iOS Safari: show the install row with platform-specific title
-        // and help text ("Add to home screen" / "Tap Share, then Add to
-        // Home Screen" instead of the Android-side "Install this app" /
-        // "Add to your home screen for offline access."). iOS has no
+        // and help text ("Add to home screen" plus the manual
+        // Share-menu path, instead of the Android-side "Install this
+        // app" / "Add to your home screen for offline access."). iOS has no
         // programmatic install API - there's no real "install," just a
         // home-screen shortcut - so the wording avoids overclaiming, and
         // the actual flow lives in the browser chrome (Share → Add to
@@ -11737,8 +11737,18 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
                 }
                 const help = installBtn.querySelector(".opt-action-help");
                 if (help) {
-                    help.innerHTML = "Tap <strong>Share</strong>, "
-                                   + "then <strong>Add to Home Screen</strong>.";
+                    // "Safari's Share menu" is bolded as one phrase on
+                    // purpose. The earlier copy bolded a bare "Share",
+                    // which read as a reference to something on this
+                    // page - and the nearest match is our own "Share
+                    // this view" row directly above, which riders were
+                    // tapping instead (reported 2026-08-29). Naming the
+                    // owner inside the emphasized phrase is the whole
+                    // fix; where Safari keeps that menu (a toolbar
+                    // button before iOS 26, the three-dots menu after)
+                    // is a question riders were not actually stuck on.
+                    help.innerHTML = "Use <strong>Safari's Share menu</strong>, "
+                                   + "then tap <strong>Add to Home Screen</strong>.";
                 }
             }
             revealInstallSection(true);
