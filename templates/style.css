@@ -500,6 +500,20 @@ textarea {
      * visible during the pre-canvas boot window, as a thin line at the
      * very top edge.
      *
+     * KNOWN LIMITATION, ACCEPTED 2026-08-30: on a FIRST visit, the one
+     * where the welcome modal opens, the chrome ends up untinted for
+     * the rest of that session. Field results: welcomed=true tints,
+     * welcomed unset does not, and it tints again after any reload.
+     * Safari evidently re-samples when the modal goes away, and by then
+     * MapLibre's canvas covers the 6px strip, so it falls back to the
+     * body gray. The fix would be a permanently painted 6px accent bar
+     * above every overlay, gated by UA to iOS 26 Safari so it isn't a
+     * stray line on Android and desktop where it buys nothing. That was
+     * built, verified across five user agents, and REJECTED as too much
+     * machinery and too many edge cases for a cosmetic tint. Do not
+     * re-propose it. This is one load out of a rider's whole history
+     * with a map, and it corrects itself on the next one.
+     *
      * The meta tag stays in index.html: Android Chrome and the
      * installed WebAPK still read it, and neither uses this path. */
     background-color: var(--accent);
