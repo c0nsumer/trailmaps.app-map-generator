@@ -2535,7 +2535,7 @@ function applyPendingShareHighlight() {
             highlightTrail(h.key);
         }
     } else if (h.kind === "poi") {
-        // h.key is a Finder row descriptor (poi:/group:/category:).
+        // h.key is a Finder row descriptor (poi:/group:/refgroup:/category:).
         // highlightPoiByRef resolves it against the live POI index and
         // re-creates the single / group / category highlight, or no-ops
         // if nothing matches.
@@ -7139,13 +7139,29 @@ function highlightPoiGroup(group) {
 // link's `/p/<ref>` segment) into its shape. Returns one of:
 //   { mode: "single",   uid }: a single POI, matched by uid
 //   { mode: "group",    type, name }: all POIs of a (type, name)
+//   { mode: "group",    type, name, chip }: trail markers of a name whose
+//                       map chip reads `chip` (a named post with a ref)
 //   { mode: "category", type }: all POIs of a type
 // or null if the ref is malformed. The `group:` form splits on the FIRST
 // colon after the prefix only, so a POI name containing ":" survives.
+// `refgroup:` percent-encodes the chip text, so its first colon is
+// always the separator before the name.
 function _parsePoiRef(ref) {
     if (typeof ref !== "string" || !ref) return null;
     if (ref.startsWith("poi:")) {
         return { mode: "single", uid: ref };
+    }
+    if (ref.startsWith("refgroup:")) {
+        const rest = ref.slice("refgroup:".length);
+        const sep = rest.indexOf(":");
+        if (sep < 0) return null;
+        let chip;
+        try {
+            chip = decodeURIComponent(rest.slice(0, sep));
+        } catch (_) {
+            return null;
+        }
+        return { mode: "group", type: POI.TRAIL_MARKER, name: rest.slice(sep + 1), chip };
     }
     if (ref.startsWith("group:")) {
         const rest = ref.slice("group:".length);
@@ -7177,7 +7193,8 @@ function highlightPoiByRef(ref) {
     let members;
     let name;
     if (parsed.mode === "group") {
-        members = poiIndex.filter((p) => p.type === parsed.type && p.name === parsed.name);
+        members = poiIndex.filter((p) => p.type === parsed.type && p.name === parsed.name
+            && (parsed.chip === undefined || trailMarkerIdentity(p) === parsed.chip));
         name = parsed.name;
     } else { // category
         members = poiIndex.filter((p) => p.type === parsed.type);
@@ -7245,7 +7262,8 @@ function findPoiMarker(p) {
 let _highlightedPois = [];                       // module-scope state
 // Serializable descriptor of the *current* POI highlight, mirroring the
 // Finder row the rider tapped: a single POI's `poi:<type>:<lng>,<lat>`
-// uid, a name-group's `group:<type>:<name>` uid, or a category row's
+// uid, a name-group's `group:<type>:<name>` uid (`refgroup:<ref>:<name>`
+// for same-named trail markers that share a different ref), or a category row's
 // `category:<type>` uid. buildShareUrl() serializes this so a POI
 // highlight round-trips through a share link the way a route/trail does
 // via `highlight`. Set by highlightPoi / highlightPoiGroup, nulled by
@@ -8445,6 +8463,15 @@ const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
 // category row whose members differ returns undefined and keeps the
 // legend-style "#", as do other types. The index stores a missing
 // ref's synthesized "Trail Marker" in `name`, so that doesn't count.
+// A trail marker index entry's full chip text before any shape
+// truncation: ref first, else a real name, else "" (unlabeled; the
+// index's synthesized "Trail Marker" name doesn't count). Search
+// grouping and share links key on this, so "EAP-1" and "EAP-2" stay
+// distinct even where a circle chip cuts both to "EA".
+function trailMarkerIdentity(p) {
+    return p.ref || (p.synthesized ? "" : p.name);
+}
+
 function sharedTrailMarkerLabel(pois) {
     if (!pois || !pois.length) return undefined;
     const labels = new Set();
@@ -10332,7 +10359,12 @@ function rebuildFinderList() {
 function groupPoisByName(pois) {
     const buckets = new Map();
     for (const p of pois) {
-        const key = `${p.type}:${p.name}`;
+        // Trail markers also key on the text their map chip shows (ref
+        // first): posts that share a name but carry different refs
+        // ("Junction" A and B) are different signs on the ground, so
+        // they stay separate rows. Only posts identical in both collapse.
+        const chip = p.type === POI.TRAIL_MARKER ? ` ${trailMarkerIdentity(p)}` : "";
+        const key = `${p.type}:${p.name}${chip}`;
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(p);
     }
@@ -10341,9 +10373,21 @@ function groupPoisByName(pois) {
         if (members.length === 1) {
             out.push(members[0]);
         } else {
+            const first = members[0];
+            // Share descriptor. The plain group:<type>:<name> form names
+            // the set by name alone, which is exact whenever the chip
+            // text IS the name (ref-only or name-only posts, e.g.
+            // "14 (× 3)") or there is none. A named post with a
+            // different ref needs the ref too, or a share link would
+            // reopen every same-named post (see _parsePoiRef).
+            const identity = first.type === POI.TRAIL_MARKER && !first.synthesized
+                ? trailMarkerIdentity(first) : first.name;
+            const uid = identity === first.name
+                ? `group:${first.type}:${first.name}`
+                : `refgroup:${encodeURIComponent(identity)}:${first.name}`;
             out.push({
                 isGroup: true,
-                uid: `group:${members[0].type}:${members[0].name}`,
+                uid,
                 type: members[0].type,
                 name: members[0].name,
                 count: members.length,
