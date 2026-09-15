@@ -7586,12 +7586,18 @@ function highlightPoiSet(pois, label) {
         }
     }
 
-    // Highlight chip, re-uses the existing chip element. Yellow
-    // swatch matches the inner ring color so the visual link
-    // between chip and on-map highlights is obvious.
+    // Highlight chip, re-uses the existing chip element. A POI has an
+    // identity of its own (P, TH, the hub hexagon, the event flag), so
+    // the chip shows that icon the way a route highlight shows the
+    // route's swatch; the ring on the map surrounds that same icon.
+    // Every highlight set is single-type (one place, a same-name
+    // group, or a category), so the yellow ring-color dot is only a
+    // fallback for a mixed set.
+    const types = new Set(pois.map((p) => p.type));
     showHighlightChip({
         label,
         color: "#FFEC00",
+        poiType: types.size === 1 ? pois[0].type : null,
         stats: "",
         note: "",
     });
@@ -7708,7 +7714,7 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note, line }) {
+function showHighlightChip({ label, color, stats, note, line, poiType }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
@@ -7720,14 +7726,21 @@ function showHighlightChip({ label, color, stats, note, line }) {
     // dashColors}); when present the chip renders the same line
     // swatch the key and finder rows use (routeSwatchEl): a flat bar
     // for solid routes and trails, the mini-SVG ribbon for dashed
-    // routes. Point highlights (POIs) pass `color` instead and get a
-    // dot. Rebuilding rather than mutating means a POI highlight
-    // following a route gets its dot back without SVG-vs-span
-    // special cases.
+    // routes. Point highlights (POIs) pass `poiType` and get that
+    // type's icon, or `color` alone for the dot. Rebuilding rather
+    // than mutating means a POI highlight following a route gets its
+    // icon back without SVG-vs-span special cases.
     if (swatch) {
         let next;
         if (line) {
             next = routeSwatchEl(line, "highlight-chip-swatch is-line");
+        } else if (poiType) {
+            // The search row's icon (same .layer-swatch recipe), sized
+            // for the chip by .highlight-chip-swatch.is-poi.
+            next = document.createElement("span");
+            next.className = "highlight-chip-swatch is-poi layer-swatch";
+            next.setAttribute("aria-hidden", "true");
+            poiSwatchContent(next, poiType);
         } else {
             next = document.createElement("span");
             next.className = "highlight-chip-swatch";

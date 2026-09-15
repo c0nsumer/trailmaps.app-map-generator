@@ -588,6 +588,26 @@ body::after {
     flex-shrink: 0;
 }
 
+/* POI highlights show the place's own icon: the search row's
+ * .layer-swatch + per-type recipe (those rules come later in this
+ * file, so they win over the dot styling above on equal specificity).
+ * 20px rather than the search row's 22px, with padding-block trimmed
+ * from 6px to 4px, keeps the chip at the 30px a route highlight has,
+ * so switching between the two doesn't make the chip jump. The 14px
+ * glyphs and 10px "TH" / marker text still clear the 2px border. */
+.highlight-chip-swatch.is-poi {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+    position: relative;  /* .feature-swatch::before centers on it */
+    overflow: visible;
+}
+
+.highlight-chip:has(.highlight-chip-swatch.is-poi) {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
 /* Text container - primary label on top, optional second-line note
  * below. Column-flex with min-width:0 so each child can ellipsis-
  * truncate independently. The wrapper is always present in the DOM;
