@@ -800,6 +800,18 @@ const _popupIconCache = {};
 // gone by then. Closing is the honest move.
 let _trailPopup = null;
 
+// Also closed when a new highlight replaces the view (route key, finder,
+// share link): those fly or fit the camera elsewhere, and MapLibre's
+// closeOnClick only reacts to taps on the map itself, so the card would
+// otherwise linger off-screen and reappear beside an unrelated highlight
+// when the rider pans back.
+function closeTrailPopup() {
+    if (_trailPopup) {
+        _trailPopup.remove();
+        _trailPopup = null;
+    }
+}
+
 function difficultyIconDataUrl(imba) {
     const n = parseInt(imba, 10);
     if (!(n >= 0 && n < IMBA_RATINGS.length)) return null;
@@ -6492,10 +6504,7 @@ function applyVisibilityChange(immediate = false) {
     // An open trail popup lists route memberships computed against the
     // OLD visibleRoutes set; close it rather than let it lie. (The tap
     // context needed to rebuild it is long gone.)
-    if (_trailPopup) {
-        _trailPopup.remove();
-        _trailPopup = null;
-    }
+    closeTrailPopup();
     // The Finder's in-scope POI cache keys off visibleRoutes. Drop it
     // synchronously (not in the deferred pass) so a finder keystroke
     // landing between the tap and the refresh recomputes against the
@@ -6882,6 +6891,7 @@ function highlightRoute(routeId) {
     // (rings, force-mounted markers, open popup) before lighting a
     // route. The route/trail filters clear each other inline below.
     clearPoiHighlight();
+    closeTrailPopup();
     highlight = { kind: "route", key: routeId };
 
     // Highlight the route in its OWN color, not a non-native accent
@@ -6992,6 +7002,7 @@ function highlightTrail(trailName) {
     // Drop any POI highlight before lighting a trail (single-highlight
     // invariant across kinds); route filters clear inline below.
     clearPoiHighlight();
+    closeTrailPopup();
     highlight = { kind: "trail", key: trailName };
 
     // Trails span multiple routes, no single native color to
@@ -7520,6 +7531,7 @@ function highlightPoiSet(pois, label) {
     // the prior search lingers beside the new one (the chip only ever
     // shows the latest). Must run before _highlightedPois is reassigned.
     closeHighlightedPoiPopups();
+    closeTrailPopup();
     // Drop any route/trail highlight so the POI rings don't sit on top
     // of a stale ribbon, then resync the spotlight dim / dimmed labels /
     // narrowed decorations that key off `highlight` (POIs never dim).
