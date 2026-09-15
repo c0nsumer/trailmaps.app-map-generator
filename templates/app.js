@@ -9142,6 +9142,16 @@ function setupFloatingChrome() {
         const hasPois = poiIndex && poiIndex.length > 0;
         const chipFilters = searchFiltersEl
             .querySelectorAll(".search-filter-chip");
+        // ARIA tabs pattern: the tablist is ONE Tab stop (the selected
+        // chip), Left/Right move between visible chips and Home/End
+        // jump to the ends (keydown handler below). Selection follows
+        // focus since filtering is instant, the same call the Options
+        // radiogroups make.
+        const syncFilterTabStops = () => {
+            for (const c of chipFilters) {
+                c.tabIndex = c.getAttribute("aria-selected") === "true" ? 0 : -1;
+            }
+        };
         for (const chip of chipFilters) {
             const f = chip.dataset.filter;
             // Hide chips whose category has no data
@@ -9157,9 +9167,27 @@ function setupFloatingChrome() {
                     c.setAttribute("aria-selected",
                         c.dataset.filter === f ? "true" : "false");
                 }
+                syncFilterTabStops();
                 rebuildFinderList();
             });
         }
+
+        searchFiltersEl.addEventListener("keydown", (e) => {
+            const visible = Array.from(chipFilters)
+                .filter((c) => !c.classList.contains("hidden"));
+            const cur = visible.indexOf(document.activeElement);
+            if (cur === -1) return;
+            let next;
+            if (e.key === "ArrowRight") next = (cur + 1) % visible.length;
+            else if (e.key === "ArrowLeft") next = (cur - 1 + visible.length) % visible.length;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = visible.length - 1;
+            else return;
+            e.preventDefault();
+            visible[next].focus();
+            visible[next].click();
+        });
+        syncFilterTabStops();
     }
 
     // Options overlay's Close button + tap-on-backdrop dismissal.
@@ -9997,11 +10025,14 @@ function setupFinder() {
     syncClearVisibility();
 
     // Desktop keyboard navigation. Up/Down move through the result
-    // list, Home/End jump to the ends, Enter triggers the active row
-    // (or the first row if nothing's active yet, common shortcut for
-    // "search and go"). Esc has two-stage behavior: clears the input
-    // first if it has text, closes the overlay otherwise. preventDefault
-    // on Up/Down so the text-input caret doesn't jump around.
+    // list, Enter triggers the active row (or the first row if
+    // nothing's active yet, common shortcut for "search and go"). Esc
+    // has two-stage behavior: clears the input first if it has text,
+    // closes the overlay otherwise. preventDefault on Up/Down so the
+    // text-input caret doesn't jump around. Home/End are left to the
+    // input: in an editable combobox they move the caret (ARIA
+    // combobox pattern), and jumping the list instead took away the
+    // way to reach the start of the query.
     input.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -10009,15 +10040,6 @@ function setupFinder() {
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
             moveFinderActive(-1);
-        } else if (e.key === "Home") {
-            e.preventDefault();
-            setFinderActive(0);
-        } else if (e.key === "End") {
-            const rows = getFinderRows();
-            if (rows.length) {
-                e.preventDefault();
-                setFinderActive(rows.length - 1);
-            }
         } else if (e.key === "Escape") {
             // Two-stage Esc when the input is focused: first press
             // clears the search text (if any); second press falls
@@ -10066,8 +10088,14 @@ function getFinderRows() {
 function setFinderActive(index) {
     const rows = getFinderRows();
     const input = document.getElementById("finder-input");
-    // Clear prior active row regardless of where we land.
-    for (const r of rows) r.classList.remove("is-active");
+    // Clear prior active row regardless of where we land. aria-selected
+    // tracks the active row as the ARIA combobox pattern specifies: the
+    // option aria-activedescendant points at is the selected one, which
+    // is what VoiceOver keys its "selected" announcement off.
+    for (const r of rows) {
+        r.classList.remove("is-active");
+        r.setAttribute("aria-selected", "false");
+    }
 
     if (index < 0 || index >= rows.length) {
         _finderActiveIndex = -1;
@@ -10077,6 +10105,7 @@ function setFinderActive(index) {
     _finderActiveIndex = index;
     const row = rows[index];
     row.classList.add("is-active");
+    row.setAttribute("aria-selected", "true");
     if (input && row.id) input.setAttribute("aria-activedescendant", row.id);
     // scrollIntoView with block: "nearest" only scrolls when the row
     // is actually off-screen, no-op when already visible.
