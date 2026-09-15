@@ -1,4 +1,4 @@
-# mtb-map-framework Python dependencies — pinned for reproducible builds.
+# mtb-map-framework Python dependencies, pinned for reproducible builds.
 #
 # Requires Python 3.11+ (tested through 3.14). The only direct deps are those
 # under "Direct dependencies" below; everything else is a pinned transitive (captured via
@@ -12,7 +12,7 @@
 # updated lockfile.
 #
 # OS-level dependencies (NOT installed by pip):
-#   - pmtiles CLI (Go binary) — for basemap/terrain PMTiles extraction.
+#   - pmtiles CLI (Go binary), for basemap/terrain PMTiles extraction.
 #     Install via Homebrew: `brew install pmtiles` (macOS), or build from
 #     https://github.com/protomaps/go-pmtiles releases.
 #   (Pillow ships manylinux/macOS wheels that bundle libjpeg/zlib, so no
@@ -24,7 +24,7 @@ PyYAML==6.0.3
 Pillow==12.2.0
 pmtiles==3.7.0
 mapbox-vector-tile==2.2.0
-# Pure-python minifiers — used by build.py --minify pass on app.js +
+# Pure-python minifiers, used by build.py --minify pass on app.js +
 # style.css before deploy. Conservative (preserve string literals,
 # don't rewrite identifiers) so they're safe against the embedded
 # CONFIG JSON literal in app.js. ~50KB JS + ~13KB CSS savings per map.
@@ -35,7 +35,7 @@ rcssmin==1.2.2
 # br-11 also beat zstd-19 by 5-10% everywhere it was measured.
 Brotli==1.2.0
 
-# Transitive (pinned for reproducibility — do not remove)
+# Transitive (pinned for reproducibility; do not remove)
 certifi==2026.2.25
 charset-normalizer==3.4.7
 idna==3.11

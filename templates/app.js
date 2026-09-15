@@ -6037,7 +6037,7 @@ async function loadTrails() {
 }
 
 // Blend a scheme paint color toward black by the highlight wash's own
-// SCRIM_OPACITY — Porter-Duff "black at alpha a over opaque color C"
+// SCRIM_OPACITY: Porter-Duff "black at alpha a over opaque color C"
 // reduces to C*(1-a), so this reproduces exactly what drawing the
 // dim-tint wash OVER that color would look like, at the same density
 // the wash already uses everywhere else. Reuses parseColorRgb (below)
@@ -6052,14 +6052,14 @@ function washDim(cssColor) {
 // Paint value for a name-label layer's `prop` (text-color or
 // text-halo-color) under the current highlight: `normal` for labels
 // belonging to the highlighted route/trail, washDim(normal) for the
-// rest — still visible (a rider retracing the network to reach the
+// rest, still visible (a rider retracing the network to reach the
 // highlight needs to read the surrounding names), dimmed by the exact
 // same wash the rest of the map uses under a highlight, fill AND
 // halo both. An early version dimmed only the fill and left the halo
 // at full opaque brightness; against the darkened wash that bright
 // halo read as MORE prominent than an unhighlighted label should, the
 // opposite of "receded" (and before that, fading text-opacity ghosted
-// both fill and halo unevenly — worse). `matchExprFn` is a THUNK, not
+// both fill and halo unevenly, which was worse). `matchExprFn` is a THUNK, not
 // a built expression: routeIdentityMatch / trailIdentityMatch read
 // `highlight.key`, which is null when no highlight is active, so they
 // must not run until the highlightDimActive() check below has passed.
@@ -6689,7 +6689,7 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 //   - Name labels (route AND trail names, whichever labelMode is
 //     active) take a softer treatment in updateLabels(): the ones
 //     belonging to the highlight keep the normal scheme color,
-//     everything else recolors (fill AND halo) via washDim() — the
+//     everything else recolors (fill AND halo) via washDim(): the
 //     same black-at-SCRIM_OPACITY blend the wash itself would produce
 //     if drawn over that color, so a dimmed label matches the map's
 //     dimming exactly instead of drifting toward its own look. Labels
