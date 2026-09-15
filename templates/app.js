@@ -7598,9 +7598,9 @@ function highlightPoiSet(pois, label) {
         label,
         color: "#FFEC00",
         poiType: types.size === 1 ? pois[0].type : null,
-        // A lone trail marker shows its own chip ("23"); a set of
-        // them keeps the generic "#".
-        markerLabel: pois.length === 1 ? trailMarkerSwatchLabel(pois[0]) : undefined,
+        // Trail markers show their own chip ("23") when the whole set
+        // shares it; mixed labels keep the generic "#".
+        markerLabel: sharedTrailMarkerLabel(pois),
         stats: "",
         note: "",
     });
@@ -8416,15 +8416,28 @@ const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
 // the same size as a labeled one, on the map and in the obstacle
 // scan. The Options / finder swatches are NOT the fallback: they
 // stand for the layer, which is numbered posts, so they keep "#".
-// What a search row or highlight chip shows for a POI index entry: a
-// single trail marker's own chip text (truncated per marker_shape
-// exactly like the map, and "" for an unlabeled post, which the map
-// draws blank). Groups, categories, and other types return undefined,
-// keeping the legend-style "#". The index stores a missing ref's
-// synthesized "Trail Marker" in `name`, so that doesn't count.
+// What a search row or highlight chip shows for a set of POI index
+// entries: the trail markers' own chip text when every one of them
+// draws the same chip on the map (truncated per marker_shape exactly
+// like the map, "" for unlabeled posts, which the map draws blank).
+// So "14 (× 3)", three posts all labeled 14, shows "14", while a
+// category row whose members differ returns undefined and keeps the
+// legend-style "#", as do other types. The index stores a missing
+// ref's synthesized "Trail Marker" in `name`, so that doesn't count.
+function sharedTrailMarkerLabel(pois) {
+    if (!pois || !pois.length) return undefined;
+    const labels = new Set();
+    for (const p of pois) {
+        if (p.type !== POI.TRAIL_MARKER) return undefined;
+        labels.add(trailMarkerLabel({ ref: p.ref, name: p.synthesized ? "" : p.name }));
+    }
+    return labels.size === 1 ? [...labels][0] : undefined;
+}
+
+// Search-row form: a group row stands for its members.
 function trailMarkerSwatchLabel(p) {
-    if (!p || p.isGroup || p.type !== POI.TRAIL_MARKER) return undefined;
-    return trailMarkerLabel({ ref: p.ref, name: p.synthesized ? "" : p.name });
+    if (!p) return undefined;
+    return sharedTrailMarkerLabel(p.isGroup ? p.members : [p]);
 }
 
 function trailMarkerLabel(props) {
