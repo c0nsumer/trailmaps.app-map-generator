@@ -1389,12 +1389,17 @@ body::after {
     font-size: var(--poi-marker-font-text-tight);
 }
 
-/* Labeled diamond: at the 22px swatch box the SVG's 7.5-unit text
- * would render under 7px. The SVG draws at 28px (text ~8.75px, the
- * map's own diamond is 32px) and spills 3px past each edge of the
- * box; its empty corners fall in the row gap, and in the 30px chip
- * the points reach exactly the inner edge of the border. */
-.layer-swatch.marker-swatch-diamond.is-labeled svg {
+/* Diamond in a search row or the highlight chip: at the 22px swatch
+ * box the SVG's 7.5-unit text would render under 7px. The SVG draws at
+ * 28px (text ~8.75px, the map's own diamond is 32px) and spills 3px
+ * past each edge of the box; its empty corners fall in the row gap,
+ * and in the 30px chip the points reach exactly the inner edge of the
+ * border. Keyed on context rather than .is-labeled, so the "#" legend
+ * on a category row ("Trail Marker (× 40)") matches its numbered
+ * neighbors instead of rendering a size smaller. The Options key keeps
+ * its own sizing. */
+.finder-row-poi-swatch.marker-swatch-diamond svg,
+.highlight-chip-swatch.marker-swatch-diamond svg {
     width: 28px;
     height: 28px;
     margin: -3px;
