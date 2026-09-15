@@ -728,6 +728,9 @@ Rules:
   whose schedule lists today.
 - Setting a schedule never makes an untagged way one-way; OSM tagging still
   controls which ways get arrows. The schedule only controls rotation.
+- The trail popup follows the schedule, not the tag. If a one-way way belongs
+  to a relation with a schedule, the popup reads "One-way (reverses by day)".
+  Other one-way ways read "One-way".
 
 ### `reversible` is required to pair with a schedule
 

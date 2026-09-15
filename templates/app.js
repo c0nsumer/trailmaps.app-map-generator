@@ -9835,7 +9835,7 @@ function setupFloatingChrome() {
         }, "direction_arrows");
         // The row's static help line says what the chevrons mean. Add
         // the alternation clause only when this map actually schedules a
-        // reversal, matching the popup's "One-way (alternating)" wording
+        // reversal, matching the popup's "One-way (reverses by day)" wording
         // rather than implying every map's directions can flip.
         const arrowsHelp = document.getElementById("direction-arrows-help");
         if (arrowsHelp
@@ -11096,8 +11096,16 @@ function setupInteractions() {
             html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
         }
         if (oneway === "yes" || oneway === "reversible") {
-            const text = oneway === "reversible"
-                ? "One-way (alternating)" : "One-way";
+            // The qualifier follows the config's direction_schedule, the
+            // same thing that flips the arrows, not the OSM tag: a
+            // reversible way always has a schedule (the build fails
+            // otherwise), and a plain one-way on a scheduled route
+            // reverses too. CONFIG.directionSchedules holds only routes
+            // with non-empty reverse_days. The wording matches
+            // reverse_days and the Options help ("Some reverse by day").
+            const schedules = CONFIG.directionSchedules || {};
+            const text = routeIds.some((id) => schedules[id])
+                ? "One-way (reverses by day)" : "One-way";
             html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
         }
         if (routeItems) {

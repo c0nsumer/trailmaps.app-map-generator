@@ -160,7 +160,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup, and drives the share/finder direction-aware behavior. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
+| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup ("One-way (reverses by day)" when a `direction_schedule` covers the way), and drives the share/finder direction-aware behavior. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
 | [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa). This is the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
