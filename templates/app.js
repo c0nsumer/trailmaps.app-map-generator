@@ -10363,8 +10363,9 @@ function groupPoisByName(pois) {
         // first): posts that share a name but carry different refs
         // ("Junction" A and B) are different signs on the ground, so
         // they stay separate rows. Only posts identical in both collapse.
-        const chip = p.type === POI.TRAIL_MARKER ? ` ${trailMarkerIdentity(p)}` : "";
-        const key = `${p.type}:${p.name}${chip}`;
+        const key = JSON.stringify(p.type === POI.TRAIL_MARKER
+            ? [p.type, p.name, trailMarkerIdentity(p)]
+            : [p.type, p.name]);
         if (!buckets.has(key)) buckets.set(key, []);
         buckets.get(key).push(p);
     }
