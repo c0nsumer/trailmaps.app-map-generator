@@ -426,8 +426,10 @@
          chrome (half-sheet on mobile, centered card on desktop).
          Triggered by the routes panel's Search row; dismissed by
          Cancel button, Esc, tap on the backdrop (anywhere outside
-         the panel), or result selection. -->
-    <div id="search-overlay" class="search-overlay" role="dialog" aria-modal="false" aria-label="Search routes, trails, and places" hidden>
+         the panel), or result selection. aria-modal="true": the
+         backdrop covers the map and the FABs / routes panel fade out
+         under it, and Tab is trapped inside (dialogFocusIn in app.js). -->
+    <div id="search-overlay" class="search-overlay" role="dialog" aria-modal="true" aria-label="Search routes, trails, and places" hidden>
         <div class="search-overlay-panel">
             <div class="search-overlay-header">
                 <div class="search-input-wrap">
@@ -473,9 +475,11 @@
          file, so a curiosity tap shows a dismissible sheet instead of
          instantly dropping a file. Stays open across row taps so a
          rider can grab several routes; dismissed by Close X, Esc, tap
-         on the backdrop, or tapping the GPX FAB again. -->
-    <div id="gpx-overlay" class="gpx-overlay" role="dialog" aria-modal="false" aria-labelledby="gpx-overlay-title" hidden>
-        <div class="gpx-overlay-panel">
+         on the backdrop, or tapping the GPX FAB again. Modal for the
+         same reasons as Search; the panel's tabindex="-1" is the
+         initial focus target, as in Options. -->
+    <div id="gpx-overlay" class="gpx-overlay" role="dialog" aria-modal="true" aria-labelledby="gpx-overlay-title" hidden>
+        <div class="gpx-overlay-panel" tabindex="-1">
             <div class="gpx-overlay-header">
                 <h2 id="gpx-overlay-title" class="gpx-overlay-title">Download GPX</h2>
                 <button id="gpx-close" class="overlay-close-btn" type="button" aria-label="Close GPX downloads">

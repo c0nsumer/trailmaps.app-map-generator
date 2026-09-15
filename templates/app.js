@@ -3715,9 +3715,9 @@ async function init() {
 const WELCOMED_FLAG_KEY = "mtb.welcomed";
 
 // ============================================================
-// Dialog focus management (Options / Welcome / About)
+// Dialog focus management (Options / Welcome / About / Search / GPX)
 // ============================================================
-// The three aria-modal="true" dialogs tell assistive tech the
+// The aria-modal="true" dialogs tell assistive tech the
 // background is inert, but aria-modal moves no focus by itself:
 // keyboard focus stayed behind on the trigger, so a screen-reader
 // user who opened About could Tab onto FABs they can't perceive. On
@@ -3746,9 +3746,13 @@ const _DIALOG_FOCUSABLE = [
 
 function _dialogFocusables(dialog) {
     // getClientRects filters hidden controls (display:none rows in
-    // collapsed accordion sections, feature-gated buttons).
+    // collapsed accordion sections, feature-gated buttons). The
+    // tabIndex check drops controls taken out of the Tab order (the
+    // search results, reached by arrow keys): the selector matches
+    // every enabled button, and a trap wrapping on an untabbable
+    // "last" item never fires, so Tab would walk out of the dialog.
     return Array.from(dialog.querySelectorAll(_DIALOG_FOCUSABLE)).filter(
-        (el) => el.getClientRects().length > 0
+        (el) => el.tabIndex >= 0 && el.getClientRects().length > 0
     );
 }
 
@@ -3781,7 +3785,9 @@ function dialogFocusIn(dialog, panelSelector) {
             }
         });
     }
-    const panel = panelSelector ? dialog.querySelector(panelSelector) : dialog;
+    // No selector: the caller owns initial focus (search focuses its
+    // input only on pointer-primary devices).
+    const panel = panelSelector ? dialog.querySelector(panelSelector) : null;
     if (panel) panel.focus({ preventScroll: true });
 }
 
@@ -7731,6 +7737,10 @@ function showHighlightChip({ label, color, stats, note, line }) {
         swatch.replaceWith(next);
     }
     if (labelEl) labelEl.textContent = label;
+    // The button's visible content is just the name plus a decorative
+    // ×, so without this a screen reader announces "Epic Loop, button"
+    // with no hint that activating it clears the highlight.
+    chip.setAttribute("aria-label", `Clear highlight: ${label}`);
     // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
     // routeStatsText(), empty string or missing means hide the span
     // entirely. Trail highlights pass nothing (per-route stats don't
@@ -7942,13 +7952,18 @@ function initRoutePanel() {
         : routePanelDefaultCollapsed();
     applyCollapsed(collapsed);
 
+    // Each control hides itself, which drops a keyboard rider's focus
+    // to <body>; hand it to its counterpart so Enter toggles in place.
+    // Pointer taps skip the handoff (no focus ring on a tap).
     chip.addEventListener("click", () => {
         applyCollapsed(false);
         LS.set("mtb.routePanelExpanded", true);
+        if (_lastInputWasKeyboard) collapseBtn.focus();
     });
     collapseBtn.addEventListener("click", () => {
         applyCollapsed(true);
         LS.set("mtb.routePanelExpanded", false);
+        if (_lastInputWasKeyboard) chip.focus();
     });
 }
 
@@ -8988,6 +9003,9 @@ function setupFloatingChrome() {
             setOverlayOpen(gpxOverlay, gpxBtn, false);
         }
         setOverlayOpen(searchOverlay, searchBtn, true);
+        // Remember the opener and trap Tab; initial focus stays with
+        // the input logic below.
+        dialogFocusIn(searchOverlay);
         // Auto-focus the input ONLY on devices whose primary input is
         // a real pointer (desktop / laptop with mouse or trackpad).
         // On touch-primary devices (phones, tablets, PWAs running
@@ -9012,6 +9030,9 @@ function setupFloatingChrome() {
         // Drop focus from the input so iOS can dismiss the keyboard.
         const finderInput = document.getElementById("finder-input");
         if (finderInput) finderInput.blur();
+        // Keyboard close (Escape, Enter on a result) returns focus to
+        // the Search row instead of dropping it to <body>.
+        dialogFocusOut(searchOverlay);
     }
     function toggleSearchOverlay() {
         if (!searchOverlay) return;
@@ -9149,6 +9170,7 @@ function setupFloatingChrome() {
     }
     function closeGpxOverlay() {
         setOverlayOpen(gpxOverlay, gpxBtn, false);
+        dialogFocusOut(gpxOverlay);
     }
     function openGpxOverlay() {
         // Single-overlay invariant, same as Search / Options.
@@ -9159,6 +9181,7 @@ function setupFloatingChrome() {
             setOverlayOpen(optionsOverlay, optionsBtn, false);
         }
         setOverlayOpen(gpxOverlay, gpxBtn, true);
+        dialogFocusIn(gpxOverlay, ".gpx-overlay-panel");
     }
     const gpxList = document.getElementById("gpx-list");
     if (gpxOverlay && gpxBtn && gpxList) {
@@ -9872,6 +9895,16 @@ function setupFloatingChrome() {
             if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
                 e.preventDefault();
                 clearHighlight();
+                // Clearing hides the chip, and a focused element that
+                // hides drops focus to <body>, back to the top of the
+                // Tab order. Land on the routes panel's entry point
+                // instead: its Search row, or the Show routes chip when
+                // docked.
+                const panel = document.getElementById("route-panel");
+                const target = panel && panel.classList.contains("is-collapsed")
+                    ? document.getElementById("route-panel-chip")
+                    : document.getElementById("route-panel-search");
+                if (target) target.focus();
             }
         });
     }
@@ -10160,8 +10193,15 @@ function rebuildFinderList() {
     // Assign sequential ids so aria-activedescendant on the input can
     // reference whichever row is currently keyboard-active. Also
     // makes the rows targetable by the keydown handler in setupFinder.
+    // tabIndex -1: the input owns keyboard navigation (arrow keys move
+    // aria-activedescendant), so the rows stay out of the Tab order.
+    // As Tab stops, a 150-row list sat between the filters and the
+    // wrap back to the input.
     const rows = list.querySelectorAll(".finder-row");
-    rows.forEach((row, i) => { row.id = `finder-opt-${i}`; });
+    rows.forEach((row, i) => {
+        row.id = `finder-opt-${i}`;
+        row.tabIndex = -1;
+    });
 }
 
 // Collapse same-type same-name POIs into group entries. Entries with

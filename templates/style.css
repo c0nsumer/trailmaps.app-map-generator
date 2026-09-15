@@ -1822,7 +1822,8 @@ body::after {
    ring a keyboard-triggered open would otherwise draw around the
    whole card; the controls inside keep their own focus styles. */
 .about-modal-content:focus,
-.options-overlay-panel:focus {
+.options-overlay-panel:focus,
+.gpx-overlay-panel:focus {
     outline: none;
 }
 
