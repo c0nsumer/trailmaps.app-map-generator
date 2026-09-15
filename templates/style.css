@@ -239,6 +239,11 @@
     --poi-marker-label-anchor-shift: -7px;
     --poi-marker-shadow-color: rgba(0, 0, 0, 0.3);
     --poi-marker-map-shadow: 0 1px 4px var(--poi-marker-shadow-color);
+    /* POI search highlight (marker outline + arrival pulse):
+     * highlighter yellow framed by a halo that flips black/white with
+     * the scheme, as a route highlight's outline does. */
+    --poi-highlight-color: #FFEC00;
+    --poi-highlight-halo: rgba(0, 0, 0, 0.75);
     /* Feature-marker label (DOM text below the dot, painted directly
      * on the basemap). Mirrors MAP_PAINT_TOKENS for trail labels:
      * dark text + white halo on light basemap, light text + dark
@@ -327,6 +332,7 @@
     --poi-marker-shadow-color: rgba(0, 0, 0, 0.5);
     --poi-marker-map-shadow: 0 1px 4px var(--poi-marker-shadow-color),
                               0 0 0 1px rgba(255, 255, 255, 0.1);
+    --poi-highlight-halo: rgba(255, 255, 255, 0.9);
     --feature-label-color: #f0f0f0;
     --feature-label-halo: #000000;
 }
@@ -4350,11 +4356,141 @@ body.modal-open .gpx-overlay.is-open {
     }
 }
 
-/* POI persistent highlight - rendered as MapLibre circle layers
- * (sandwich pattern: dark outer stroke + bright yellow inner stroke,
- * see ensurePoiHighlightLayers in app.js). No CSS needed; the
- * stroke colors and widths live on the layers themselves so they
- * stay aligned with the in-map geometry across pan/zoom. */
+/* ----- POI search highlight --------------------------------------
+ * A found POI's marker is outlined in its own shape, the way a route
+ * highlight outlines the route line: 3px highlighter yellow outside the
+ * marker's white border, then a 1.5px halo that flips black/white with
+ * the scheme. Classes are set by syncPoiHighlightMarkers /
+ * pulsePoiHighlightOnArrival in app.js.
+ *
+ * Chips (P, TH, amenities, event, box/pill/circle trail markers) and
+ * the feature dot take it as box-shadow rings, which follow
+ * border-radius, so a pill stays a pill and a "Mile 0.5" chip is framed
+ * edge to edge. z-index lifts a highlighted marker over overlapping
+ * neighbors. */
+.maplibregl-marker.is-poi-highlighted {
+    z-index: 1;
+}
+
+/* Popups were above every marker by DOM order alone (appended later,
+ * z-index auto); the highlighted marker's z-index would now lift it
+ * over its own info card's tip, so popups take the next layer up. */
+.maplibregl-popup {
+    z-index: 2;
+}
+
+.poi-marker.is-poi-highlighted,
+.feature-marker.is-poi-highlighted .feature-marker-icon {
+    box-shadow: 0 0 0 3px var(--poi-highlight-color),
+                0 0 0 4.5px var(--poi-highlight-halo),
+                var(--poi-marker-map-shadow);
+}
+
+/* The diamond and hexagon are SVG, so their outline is two polygons
+ * along the same silhouette under the shape (poiRingPolygons in
+ * app.js), hidden until highlighted. Stroke widths are in each SVG's
+ * own user units and centered on the path, so a width is
+ * 2 x (white border's outer edge + visible px / px-per-unit):
+ *   diamond, 32px over 24 units (1.333 px/unit): yellow
+ *     2 x (1 + 3 / 1.333) = 6.5, halo 2 x (3.25 + 1.5 / 1.333) = 8.75
+ *   hexagon, 26px over 24 units (1.083 px/unit): yellow
+ *     2 x (1 + 3 / 1.083) = 7.5, halo 2 x (3.77 + 1.5 / 1.083) = 10.3
+ * Miter joins keep the points sharp; both SVGs let the strokes spill
+ * past the viewBox. */
+.poi-ring,
+.poi-ring-halo {
+    display: none;
+    fill: none;
+    stroke-linejoin: miter;
+}
+
+.is-poi-highlighted .poi-ring,
+.is-poi-highlighted .poi-ring-halo {
+    display: inline;
+}
+
+.poi-ring { stroke: var(--poi-highlight-color); }
+.poi-ring-halo { stroke: var(--poi-highlight-halo); }
+.trail-marker-diamond .poi-ring { stroke-width: 6.5; }
+.trail-marker-diamond .poi-ring-halo { stroke-width: 8.75; }
+.hub-marker-icon .poi-ring { stroke-width: 7.5; }
+.hub-marker-icon .poi-ring-halo { stroke-width: 10.3; }
+
+.hub-marker-icon svg {
+    overflow: visible;
+}
+
+/* Arrival pulse: once the camera settles on the result, a yellow ring
+ * with its halo grows out from the marker's outline and fades, twice.
+ * Two, because a single 0.7s ping is easy to miss while the eye is
+ * still tracking the fly-to, and more than two starts to read as an
+ * alert. It's ::after on the element that carries the outline shape,
+ * so the static outline stays put underneath, and it grows by
+ * animating its insets rather than scale, so a wide pill ripples
+ * evenly instead of stretching. Shape per marker: inherited
+ * border-radius for chips and the dot, a 45-degree square for the
+ * diamond (side 19.8px, the polygon's 14px half-diagonal x sqrt 2),
+ * a circle for the hexagon. The resting style is opacity 0, so nothing
+ * lingers when the two iterations end. Reduced motion: the static
+ * outline only. */
+.poi-marker.is-poi-pulsing::after,
+.feature-marker.is-poi-pulsing .feature-marker-icon::after,
+.hub-marker.is-poi-pulsing .hub-marker-icon::after,
+.trail-marker-diamond.is-poi-pulsing::after {
+    content: "";
+    position: absolute;
+    border: 3px solid var(--poi-highlight-color);
+    box-shadow: 0 0 0 1.5px var(--poi-highlight-halo);
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* Chips and the dot start at the outer edge of their 2px border. */
+.poi-marker.is-poi-pulsing::after,
+.feature-marker.is-poi-pulsing .feature-marker-icon::after {
+    border-radius: inherit;
+    animation: poi-pulse 0.7s ease-out 2;
+}
+
+.feature-marker-icon,
+.hub-marker-icon {
+    position: relative;
+}
+
+.hub-marker.is-poi-pulsing .hub-marker-icon::after {
+    border-radius: 50%;
+    animation: poi-pulse-from-box 0.7s ease-out 2;
+}
+
+.trail-marker-diamond.is-poi-pulsing::after {
+    transform: rotate(45deg);
+    animation: poi-pulse-diamond 0.7s ease-out 2;
+}
+
+@keyframes poi-pulse {
+    from { top: -2px; right: -2px; bottom: -2px; left: -2px; opacity: 1; }
+    to { top: -16px; right: -16px; bottom: -16px; left: -16px; opacity: 0; }
+}
+
+@keyframes poi-pulse-from-box {
+    from { top: 0; right: 0; bottom: 0; left: 0; opacity: 1; }
+    to { top: -14px; right: -14px; bottom: -14px; left: -14px; opacity: 0; }
+}
+
+/* (32px box - 19.8px diamond side) / 2 = 6.1px start inset. */
+@keyframes poi-pulse-diamond {
+    from { top: 6.1px; right: 6.1px; bottom: 6.1px; left: 6.1px; opacity: 1; }
+    to { top: -4px; right: -4px; bottom: -4px; left: -4px; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .poi-marker.is-poi-pulsing::after,
+    .feature-marker.is-poi-pulsing .feature-marker-icon::after,
+    .hub-marker.is-poi-pulsing .hub-marker-icon::after,
+    .trail-marker-diamond.is-poi-pulsing::after {
+        animation: none;
+    }
+}
 
 /* ============================================================
  * POI search rows (Phase 3 POI search)

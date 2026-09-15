@@ -7074,7 +7074,7 @@ function _cancelPendingPoiPopup() {
 }
 
 // highlightPoi, single POI highlight. Hands off to highlightPoiSet
-// (which does the pan/zoom + persistent ring + chip), then opens the
+// (which does the pan/zoom + outline + chip), then opens the
 // marker's popup once the camera settles so the rider gets the info
 // card immediately.
 function highlightPoi(p) {
@@ -7108,7 +7108,7 @@ function highlightPoi(p) {
 
 // highlightPoiGroup, for a group of same-type, same-name POIs
 // (e.g. all 5 unnamed toilets on the map). Hands off to
-// highlightPoiSet which fits bounds + draws a persistent ring on
+// highlightPoiSet which fits bounds + outlines
 // each member. No popups (would be visually noisy with multiple
 // overlapping cards); the rider can tap an individual marker for
 // details, or read the chip ("Toilets (× 3)") for the count.
@@ -7212,23 +7212,25 @@ function findPoiMarker(p) {
 // POI persistent-highlight system.
 //
 // When the rider taps a POI search result (single OR group), the
-// matching POIs get a persistent ring drawn around them on the map.
-// The ring stays put while the rider pans and zooms, so they can
-// navigate toward whichever one is most relevant. Cleared explicitly
-// via the highlight chip's X, the Esc key, or by triggering a new
-// highlight (which replaces the set).
+// matching markers are outlined in their own shape: highlighter yellow
+// plus a halo that flips black/white with the scheme, the way a route
+// highlight outlines the route line. The outline stays put while the
+// rider pans and zooms, so they can navigate toward whichever one is
+// most relevant. Cleared explicitly via the highlight chip's X, the Esc
+// key, or by triggering a new highlight (which replaces the set).
 //
-// No animation, no map dim, the rings are static decorations that
-// say "here are your matches, pick the one you want." For single-POI
-// highlights we ALSO open the marker's popup so the rider gets the
-// info card immediately. For group highlights we skip the popup
-// (would be visually noisy with N overlapping cards).
+// No map dim. Once the camera settles on the result, the outline pulses
+// outward twice to pull the eye to the spot after the fly-to, then stays
+// static (reduced-motion: static only). For single-POI highlights we
+// ALSO open the marker's popup so the rider gets the info card
+// immediately. For group highlights we skip the popup (would be
+// visually noisy with N overlapping cards).
 //
-// Implementation: one MapLibre GeoJSON source + two stacked circle
-// layers (dark stroke outside, bright stroke inside, sandwich
-// pattern visible on any basemap). setData fires once per
-// highlight change; no per-frame updates → no MapLibre render
-// re-entrancy issue.
+// Implementation: CSS classes on the DOM marker elements
+// (.is-poi-highlighted, .is-poi-pulsing; see the POI search highlight
+// block in style.css). An earlier version drew two fixed 18px circle
+// layers on the canvas: they ignored the dark scheme, and wider markers
+// ("Mile 0.5" chips, event labels) spilled past them and slid under.
 
 let _highlightedPois = [];                       // module-scope state
 // Serializable descriptor of the *current* POI highlight, mirroring the
@@ -7240,10 +7242,12 @@ let _highlightedPois = [];                       // module-scope state
 // clearPoiHighlight. The single-highlight invariant (see commit history)
 // keeps this and `highlight` mutually exclusive: at most one is non-null.
 let _poiHighlightRef = null;
-const POI_HIGHLIGHT_SOURCE = "poi-highlight-source";
-const POI_HIGHLIGHT_OUTER  = "poi-highlight-outer";
-const POI_HIGHLIGHT_INNER  = "poi-highlight-inner";
-const POI_HIGHLIGHT_RADIUS = 18;                 // pixels, fixed at all zooms
+// Marker elements currently wearing the highlight outline (and, briefly,
+// the arrival pulse). Tracked so a new highlight or a clear strips
+// exactly these instead of scanning every marker.
+let _poiHighlightEls = [];
+let _poiPulseTimer = null;
+let _poiPulseMoveHandler = null;
 
 // Hybrid search-scope policy:
 //   - Proximity filter (automatic, per-type radius) → POI dropped
@@ -7355,7 +7359,7 @@ function _defaultVisibleNameForType(type) {
 
 // Force-show machinery: when a highlight lands on POIs of a type
 // whose Options toggle is OFF, mount that type's markers
-// temporarily so the rings have content underneath. Toggle state
+// temporarily so the outlined markers are on the map. Toggle state
 // in localStorage is NOT touched. On highlight clear (or
 // replacement), the markers come back off.
 //
@@ -7466,63 +7470,66 @@ function pruneInvisibleHighlights() {
         clearPoiHighlight();  // also hides the chip
     } else {
         _highlightedPois = stillVisible;
-        setPoiHighlightData(_highlightedPois);
+        syncPoiHighlightMarkers(_highlightedPois);
     }
 }
 
-function ensurePoiHighlightLayers() {
-    if (!map.getSource(POI_HIGHLIGHT_SOURCE)) {
-        map.addSource(POI_HIGHLIGHT_SOURCE, {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-        });
+function _cancelPoiPulse() {
+    if (_poiPulseTimer !== null) {
+        clearTimeout(_poiPulseTimer);
+        _poiPulseTimer = null;
     }
-    // Outer dark stroke first so the inner bright stroke sits on
-    // top. Translucent dark for any-light-background contrast.
-    if (!map.getLayer(POI_HIGHLIGHT_OUTER)) {
-        map.addLayer({
-            id: POI_HIGHLIGHT_OUTER,
-            type: "circle",
-            source: POI_HIGHLIGHT_SOURCE,
-            paint: {
-                "circle-radius": POI_HIGHLIGHT_RADIUS,
-                "circle-color": "transparent",
-                "circle-stroke-color": "rgba(0, 0, 0, 0.7)",
-                "circle-stroke-width": 5,
-            },
-        });
-    }
-    if (!map.getLayer(POI_HIGHLIGHT_INNER)) {
-        map.addLayer({
-            id: POI_HIGHLIGHT_INNER,
-            type: "circle",
-            source: POI_HIGHLIGHT_SOURCE,
-            paint: {
-                "circle-radius": POI_HIGHLIGHT_RADIUS,
-                "circle-color": "transparent",
-                "circle-stroke-color": "#FFEC00",  // highlighter yellow
-                "circle-stroke-width": 2.5,
-            },
-        });
+    if (_poiPulseMoveHandler) {
+        map.off("moveend", _poiPulseMoveHandler);
+        _poiPulseMoveHandler = null;
     }
 }
 
-function setPoiHighlightData(pois) {
-    ensurePoiHighlightLayers();
-    const src = map.getSource(POI_HIGHLIGHT_SOURCE);
-    if (!src) return;
-    src.setData({
-        type: "FeatureCollection",
-        features: pois.map((p) => ({
-            type: "Feature",
-            properties: {},
-            geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-        })),
-    });
+// Move the outline to `pois`' markers. The marker elements persist
+// across toggle mount/unmount (createPoiMarkers builds them once), so a
+// force-mounted or re-mounted marker keeps its class.
+function syncPoiHighlightMarkers(pois) {
+    _cancelPoiPulse();
+    for (const el of _poiHighlightEls) {
+        el.classList.remove("is-poi-highlighted", "is-poi-pulsing");
+    }
+    _poiHighlightEls = [];
+    for (const p of pois) {
+        const m = findPoiMarker(p);
+        if (!m) continue;
+        const el = m.getElement();
+        el.classList.add("is-poi-highlighted");
+        _poiHighlightEls.push(el);
+    }
+}
+
+// Start the arrival pulse once the camera settles on the highlight: a
+// pulse played during the fly-to happens while the marker is still
+// sliding into place, where the eye isn't yet. moveend is the normal
+// trigger; the timer covers a fly-to that ends where it began (no
+// moveend guaranteed) and runs just past the 700ms camera duration.
+// Same one-shot moveend-plus-timer shape as highlightPoi's popup.
+function pulsePoiHighlightOnArrival() {
+    _cancelPoiPulse();
+    const start = () => {
+        _cancelPoiPulse();
+        for (const el of _poiHighlightEls) {
+            // Re-adding the class alone won't restart a finished CSS
+            // animation on a repeat highlight of the same marker; the
+            // reflow between remove and add does.
+            el.classList.remove("is-poi-pulsing");
+            // eslint-disable-next-line no-unused-expressions
+            el.offsetWidth;
+            el.classList.add("is-poi-pulsing");
+        }
+    };
+    _poiPulseMoveHandler = start;
+    map.on("moveend", start);
+    _poiPulseTimer = setTimeout(start, 900);
 }
 
 // Set the persistent POI highlight to a list of POIs. Pans/zooms to
-// fit them all, draws the rings, shows the highlight chip with the
+// fit them all, outlines the markers, shows the highlight chip with the
 // label and count.
 function highlightPoiSet(pois, label) {
     if (!pois || !pois.length) return;
@@ -7538,17 +7545,17 @@ function highlightPoiSet(pois, label) {
     // shows the latest). Must run before _highlightedPois is reassigned.
     closeHighlightedPoiPopups();
     closeTrailPopup();
-    // Drop any route/trail highlight so the POI rings don't sit on top
+    // Drop any route/trail highlight so the POI outlines don't sit on top
     // of a stale ribbon, then resync the spotlight dim / dimmed labels /
     // narrowed decorations that key off `highlight` (POIs never dim).
     clearRouteTrailHighlight();
     applyDimState();
 
     _highlightedPois = pois.slice();
-    setPoiHighlightData(_highlightedPois);
+    syncPoiHighlightMarkers(_highlightedPois);
 
     // Force-mount any toggle-hidden types in the highlight so the
-    // rings have markers underneath. Proximity-hidden POIs aren't
+    // outlined markers are on the map. Proximity-hidden POIs aren't
     // reachable here (search-scope filter excludes them), so this
     // only fires when the rider deliberately turned a category off.
     const newTypes = new Set(_highlightedPois.map((p) => p.type));
@@ -7585,11 +7592,12 @@ function highlightPoiSet(pois, label) {
             );
         }
     }
+    pulsePoiHighlightOnArrival();
 
     // Highlight chip, re-uses the existing chip element. A POI has an
     // identity of its own (P, TH, the hub hexagon, the event flag), so
     // the chip shows that icon the way a route highlight shows the
-    // route's swatch; the ring on the map surrounds that same icon.
+    // route's swatch; the map outlines that same icon.
     // Every highlight set is single-type (one place, a same-name
     // group, or a category), so the yellow ring-color dot is only a
     // fallback for a mixed set.
@@ -7632,10 +7640,7 @@ function clearPoiHighlight() {
     _cancelPendingPoiPopup();
     closeHighlightedPoiPopups();
     _highlightedPois = [];
-    const src = map.getSource(POI_HIGHLIGHT_SOURCE);
-    if (src) {
-        src.setData({ type: "FeatureCollection", features: [] });
-    }
+    syncPoiHighlightMarkers(_highlightedPois);
     // Roll back any types we'd force-mounted. Snapshot, _unforcePoiType
     // mutates the set as we iterate.
     for (const t of Array.from(_forcedPoiTypes)) {
@@ -7669,7 +7674,7 @@ function clearRouteTrailHighlight() {
 
 function clearHighlight() {
     clearRouteTrailHighlight();
-    // POI rings + chip, clearPoiHighlight is a no-op if nothing's
+    // POI outlines + chip, clearPoiHighlight is a no-op if nothing's
     // currently highlighted, and it tears down the chip itself, so
     // calling it here unifies the chip's clear path for both
     // route/trail highlights and POI highlights.
@@ -8454,6 +8459,18 @@ function trailMarkerLabel(props) {
 // there is either overwritten by MapLibre's inline transform or
 // breaks the anchor math. SVG `stroke` also follows the silhouette
 // where CSS `border` would not, the same reasoning as HUB_SVG below.
+// Search-highlight outline for the SVG markers (diamond, hexagon): a
+// halo stroke and a yellow stroke along the marker's own silhouette,
+// drawn before the shape so its fill and white border stay on top.
+// Hidden unless the marker element carries .is-poi-highlighted (see
+// the POI search highlight block in style.css, which sets the widths
+// per shape); the Options and search swatches reuse this markup and
+// never get that class.
+function poiRingPolygons(points) {
+    return `<polygon class="poi-ring-halo" points="${points}"/>`
+        + `<polygon class="poi-ring" points="${points}"/>`;
+}
+
 function trailMarkerDiamondSvg(label) {
     // Same baseline math as HUB_SVG: SVG <text> y is the BASELINE, so
     // centering a capital's optical center on the shape's center
@@ -8469,6 +8486,7 @@ function trailMarkerDiamondSvg(label) {
         // That slack clears the 2-unit stroke, whose mitered points
         // extend stroke_width / 2 * sqrt(2) = 1.41 units past each
         // vertex on a 90-degree corner.
+        + poiRingPolygons("12,1.5 22.5,12 12,22.5 1.5,12")
         + '<polygon class="trail-marker-shape" points="12,1.5 22.5,12 12,22.5 1.5,12"/>'
         + glyph
         + "</svg>";
@@ -8560,6 +8578,7 @@ const HUB_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
     // (top edge at y ≈ 2.5, bottom edge at y ≈ 21.5; hex center at
     // y=12). The 1 px slack on each side leaves room for the 2 px
     // stroke.
+    + poiRingPolygons("6.5,2.5 17.5,2.5 23,12 17.5,21.5 6.5,21.5 1,12")
     + '<polygon class="hub-marker-shape" points="6.5,2.5 17.5,2.5 23,12 17.5,21.5 6.5,21.5 1,12"/>'
     // "H" centered horizontally via text-anchor=middle. SVG <text>'s
     // `y` is the BASELINE, not the visual center, so to place the
@@ -8604,7 +8623,7 @@ function addHubMarkers(addToMap) {
 // swatch with a stylized figure glyph. No popup: the marker IS
 // the entire signal a rider needs ("there's a toilet here"); name
 // + access/fee metadata are noise mid-ride and the popup-card adds
-// tap friction. Search-overlay selection still pans + ring-pulses;
+// tap friction. Search-overlay selection still pans + outline-pulses;
 // createPoiMarkers and highlightPoi both gate popup attachment
 // behind a popupHtmlFn check so omitting it cleanly skips the
 // popup path.
