@@ -7598,6 +7598,9 @@ function highlightPoiSet(pois, label) {
         label,
         color: "#FFEC00",
         poiType: types.size === 1 ? pois[0].type : null,
+        // A lone trail marker shows its own chip ("23"); a set of
+        // them keeps the generic "#".
+        markerLabel: pois.length === 1 ? trailMarkerSwatchLabel(pois[0]) : undefined,
         stats: "",
         note: "",
     });
@@ -7714,7 +7717,7 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note, line, poiType }) {
+function showHighlightChip({ label, color, stats, note, line, poiType, markerLabel }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
@@ -7740,7 +7743,7 @@ function showHighlightChip({ label, color, stats, note, line, poiType }) {
             next = document.createElement("span");
             next.className = "highlight-chip-swatch is-poi layer-swatch";
             next.setAttribute("aria-hidden", "true");
-            poiSwatchContent(next, poiType);
+            poiSwatchContent(next, poiType, markerLabel);
         } else {
             next = document.createElement("span");
             next.className = "highlight-chip-swatch";
@@ -8413,6 +8416,17 @@ const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
 // the same size as a labeled one, on the map and in the obstacle
 // scan. The Options / finder swatches are NOT the fallback: they
 // stand for the layer, which is numbered posts, so they keep "#".
+// What a search row or highlight chip shows for a POI index entry: a
+// single trail marker's own chip text (truncated per marker_shape
+// exactly like the map, and "" for an unlabeled post, which the map
+// draws blank). Groups, categories, and other types return undefined,
+// keeping the legend-style "#". The index stores a missing ref's
+// synthesized "Trail Marker" in `name`, so that doesn't count.
+function trailMarkerSwatchLabel(p) {
+    if (!p || p.isGroup || p.type !== POI.TRAIL_MARKER) return undefined;
+    return trailMarkerLabel({ ref: p.ref, name: p.synthesized ? "" : p.name });
+}
+
 function trailMarkerLabel(props) {
     const label = props.ref || props.name || "";
     return MARKER_FIXED_SHAPES.has(CONFIG.markerShape)
@@ -10636,7 +10650,7 @@ function makePoiRow(p) {
     const swatch = document.createElement("span");
     swatch.className = "layer-swatch finder-row-poi-swatch";
     swatch.setAttribute("aria-hidden", "true");
-    poiSwatchContent(swatch, p.type);
+    poiSwatchContent(swatch, p.type, trailMarkerSwatchLabel(p));
     row.appendChild(swatch);
 
     const name = document.createElement("span");
@@ -10674,8 +10688,10 @@ function makePoiRow(p) {
 // finder POI row. Each POI type has a designated swatch class
 // (already styled in style.css with the right background color and
 // content), we just slap on the type class and inject the glyph
-// (text or SVG) that the on-map marker uses.
-function poiSwatchContent(el, type) {
+// (text or SVG) that the on-map marker uses. `markerLabel` (trail
+// markers only) replaces the generic "#" with one marker's own text
+// (see trailMarkerSwatchLabel); omit it for the legend-style "#".
+function poiSwatchContent(el, type, markerLabel) {
     switch (type) {
         case "parking":
             el.classList.add("parking-swatch");
@@ -10693,18 +10709,25 @@ function poiSwatchContent(el, type) {
             // border treatment.
             el.innerHTML = HUB_SVG;
             break;
-        case "trail_marker":
+        case "trail_marker": {
             el.classList.add("marker-swatch");
+            // A labeled swatch takes the map chip's own geometry
+            // (.marker-swatch.is-labeled in style.css), so "23" or an
+            // unlabeled post's blank chip looks like the marker itself.
+            const labeled = markerLabel !== undefined;
+            if (labeled) el.classList.add("is-labeled");
+            const text = labeled ? markerLabel : "#";
             // marker_shape: diamond renders as an inline SVG, same as
             // the hub above; the other shapes are CSS-only on the
             // text swatch.
             if (CONFIG.markerShape === "diamond") {
                 el.classList.add("marker-swatch-diamond");
-                el.innerHTML = trailMarkerDiamondSvg("#");
+                el.innerHTML = trailMarkerDiamondSvg(text);
             } else {
-                el.textContent = "#";
+                el.textContent = text;
             }
             break;
+        }
         case "feature":
             el.classList.add("feature-swatch");
             // .feature-swatch::before draws the inner dot; nothing

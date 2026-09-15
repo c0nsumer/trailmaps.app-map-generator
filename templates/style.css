@@ -590,22 +590,22 @@ body::after {
 
 /* POI highlights show the place's own icon: the search row's
  * .layer-swatch + per-type recipe (those rules come later in this
- * file, so they win over the dot styling above on equal specificity).
- * 20px rather than the search row's 22px, with padding-block trimmed
- * from 6px to 4px, keeps the chip at the 30px a route highlight has,
- * so switching between the two doesn't make the chip jump. The 14px
- * glyphs and 10px "TH" / marker text still clear the 2px border. */
+ * file, so they win over the dot styling above on equal specificity),
+ * at the search row's 22px, which is also a trail marker's height on
+ * the map. padding-block trimmed from 6px to 3px holds the chip at
+ * the 30px a route highlight has, so switching between the two
+ * doesn't make the chip jump. */
 .highlight-chip-swatch.is-poi {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
     position: relative;  /* .feature-swatch::before centers on it */
     overflow: visible;
 }
 
 .highlight-chip:has(.highlight-chip-swatch.is-poi) {
-    padding-top: 4px;
-    padding-bottom: 4px;
+    padding-top: 3px;
+    padding-bottom: 3px;
 }
 
 /* Text container - primary label on top, optional second-line note
@@ -1365,6 +1365,34 @@ body::after {
     border: var(--poi-marker-border) solid var(--marker-border-color, #fff);
     border-radius: var(--marker-radius);
     font-size: var(--poi-marker-font-text-tight);
+}
+
+/* One marker's swatch (search row, highlight chip) carries its real
+ * label ("23", or blank for an unlabeled post) instead of the "#"
+ * legend, so it takes the on-map chip's own geometry from the same
+ * tokens .trail-marker uses: 22px tall, growing with the ref under
+ * box/pill, pinned to a true circle under circle (setPoiColorVars
+ * sets --marker-width / --marker-padding). The :not() leaves diamond
+ * to the SVG rules below. Specificity outranks the fixed-size
+ * .finder-row-poi-swatch and .highlight-chip-swatch.is-poi boxes. */
+.layer-swatch.marker-swatch.is-labeled:not(.marker-swatch-diamond) {
+    height: var(--poi-marker-size-trail-marker-h);
+    min-width: var(--poi-marker-size-trail-marker-min-w);
+    width: var(--marker-width);
+    padding: var(--marker-padding);
+    font-size: var(--poi-marker-font-text-tight);
+}
+
+/* Labeled diamond: at the 22px swatch box the SVG's 7.5-unit text
+ * would render under 7px. The SVG draws at 28px (text ~8.75px, the
+ * map's own diamond is 32px) and spills 3px past each edge of the
+ * box; its empty corners fall in the row gap, and in the 30px chip
+ * the points reach exactly the inner edge of the border. */
+.layer-swatch.marker-swatch-diamond.is-labeled svg {
+    width: 28px;
+    height: 28px;
+    margin: -3px;
+    flex: 0 0 auto;
 }
 
 /* marker_shape: diamond swatch (Options row + finder rows). The
