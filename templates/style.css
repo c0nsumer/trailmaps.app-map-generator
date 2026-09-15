@@ -1369,9 +1369,8 @@ body::after {
 
 /* marker_shape: diamond swatch (Options row + finder rows). The
  * container is reduced to a plain box for the SVG, exactly as
- * .hub-swatch does. The base .layer-swatch box-shadow hairline goes
- * too, unlike the hub's: a faint SQUARE outline around a diamond
- * reads as the box shape the rider just opted out of. */
+ * .hub-swatch does, hairline included: a faint SQUARE outline around
+ * a diamond reads as the box shape the rider just opted out of. */
 .marker-swatch-diamond {
     background: transparent;
     border: none;
@@ -1477,10 +1476,13 @@ body::after {
  * The base .layer-swatch rule applies `background: ...` and `border:
  * 2px solid white;` - both of which would draw the standard
  * rectangular chip behind our SVG. Override to transparent +
- * borderless so only the SVG's hex silhouette is visible. */
+ * borderless so only the SVG's hex silhouette is visible. The
+ * hairline box-shadow goes too: the hexagon has no box on the map,
+ * and a faint square outline around it read as one. */
 .hub-swatch {
     background: transparent;
     border: none;
+    box-shadow: none;
 }
 
 .hub-swatch svg {
@@ -1592,18 +1594,18 @@ body::after {
  * The mtb-locate-spin @keyframes referenced by the live block
  * also lives further down. */
 
-/* Feature swatch - the chip itself gets the same outer treatment as
- * Parking / Markers / Trailheads: a visible 1.5px border and the
- * subtle dark halo inherited from .layer-swatch base. What it does
- * NOT get is a colored (purple) chip fill - the space between the
- * chip's border and the inner dot's white ring stays transparent so
- * the ring actually reads against the sheet background, the way
- * it does against map tiles on the map. The ::before reproduces
- * the on-map feature marker (see .feature-marker-icon below):
- * 12×12 purple circle, 2px white ring, soft drop shadow. */
+/* Feature swatch - just the dot, the way the map draws it: the
+ * ::before reproduces the on-map feature marker (see
+ * .feature-marker-icon below), a 12×12 purple circle with a 2px
+ * white ring and soft drop shadow. The container drops the
+ * .layer-swatch fill, border, and hairline: on the map a feature has
+ * no chip around it, and the inherited white border drew a visible
+ * square around the dot on the dark sheet. Same reasoning as the
+ * diamond and hub swatches. */
 .feature-swatch {
     background: transparent;
-    /* border + box-shadow (halo) inherited from .layer-swatch base. */
+    border: none;
+    box-shadow: none;
 }
 .feature-swatch::before {
     content: "";
