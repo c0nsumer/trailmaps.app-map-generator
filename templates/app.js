@@ -7075,8 +7075,9 @@ function _cancelPendingPoiPopup() {
 
 // highlightPoi, single POI highlight. Hands off to highlightPoiSet
 // (which does the pan/zoom + outline + chip), then opens the
-// marker's popup once the camera settles so the rider gets the info
-// card immediately.
+// marker's popup once the camera settles and the first arrival pulse
+// has played, so the rider sees where the POI is before the info card
+// appears over it.
 function highlightPoi(p) {
     if (!p || typeof p.lng !== "number" || typeof p.lat !== "number") return;
 
@@ -7088,20 +7089,29 @@ function highlightPoi(p) {
     _poiHighlightRef = p.uid || null;
 
     // Defer popup until the flyTo finishes so the popup positions
-    // correctly relative to its new screen position. One-shot with a
-    // safety timeout in case moveend doesn't fire; opening via either
-    // path disarms the other (see _cancelPendingPoiPopup).
+    // correctly relative to its new screen position, then hold it for
+    // one pulse cycle: opened at the same moment, the card pulled the
+    // eye away from the ripple and covered its upper half. Reduced
+    // motion has no pulse to wait for. Arrival is moveend or the same
+    // fallback timer the pulse uses; either path disarms the other, and
+    // the hold timer shares _poiPopupTimer so a new highlight or a clear
+    // cancels it (see _cancelPendingPoiPopup).
     const marker = findPoiMarker(p);
     if (marker && typeof marker.getPopup === "function") {
         const popup = marker.getPopup();
         if (popup) {
-            const openOnce = () => {
+            const holdMs = window.matchMedia(
+                "(prefers-reduced-motion: reduce)").matches ? 0 : POI_PULSE_MS;
+            const onArrival = () => {
                 _cancelPendingPoiPopup();
-                if (!popup.isOpen()) marker.togglePopup();
+                _poiPopupTimer = setTimeout(() => {
+                    _poiPopupTimer = null;
+                    if (!popup.isOpen()) marker.togglePopup();
+                }, holdMs);
             };
-            _poiPopupMoveHandler = openOnce;
-            map.on("moveend", openOnce);
-            _poiPopupTimer = setTimeout(openOnce, 1200);
+            _poiPopupMoveHandler = onArrival;
+            map.on("moveend", onArrival);
+            _poiPopupTimer = setTimeout(onArrival, POI_ARRIVAL_FALLBACK_MS);
         }
     }
 }
@@ -7248,6 +7258,12 @@ let _poiHighlightRef = null;
 let _poiHighlightEls = [];
 let _poiPulseTimer = null;
 let _poiPulseMoveHandler = null;
+// One arrival-pulse cycle; must match the poi-pulse animation duration
+// in style.css. highlightPoi holds the info card this long.
+const POI_PULSE_MS = 1100;
+// Arrival fallback when moveend doesn't come: just past the 700ms
+// highlight fly-to.
+const POI_ARRIVAL_FALLBACK_MS = 900;
 
 // Hybrid search-scope policy:
 //   - Proximity filter (automatic, per-type radius) → POI dropped
@@ -7525,7 +7541,7 @@ function pulsePoiHighlightOnArrival() {
     };
     _poiPulseMoveHandler = start;
     map.on("moveend", start);
-    _poiPulseTimer = setTimeout(start, 900);
+    _poiPulseTimer = setTimeout(start, POI_ARRIVAL_FALLBACK_MS);
 }
 
 // Set the persistent POI highlight to a list of POIs. Pans/zooms to
