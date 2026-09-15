@@ -8294,6 +8294,19 @@ function directionsLink(coords, directionsUrl) {
     return `<a class="popup-directions" href="${url}" target="_blank" rel="noopener">Get Directions &rarr;</a>`;
 }
 
+// "Trailhead: Main", "Toilets", "Trail Marker: 12". Trail markers
+// prefer ref like trailMarkerLabel, but untruncated: the chip text
+// may be clipped to fit the shape, the spoken name shouldn't be.
+// Event markers are curator-named race fixtures, so the name alone.
+function poiMarkerAriaLabel(poiType, props) {
+    const name = poiType === POI.TRAIL_MARKER
+        ? (props.ref || props.name)
+        : props.name;
+    if (poiType === POI.EVENT) return name || "Event marker";
+    const type = POI_TYPE_FALLBACK_NAME[poiType] || "Place";
+    return name ? `${type}: ${name}` : type;
+}
+
 function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
                             popupHtmlFn, popupMaxWidth, popupClass,
                             addToMap, targetArray }) {
@@ -8310,6 +8323,11 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
         } else {
             el.textContent = labelFn(props);
         }
+
+        // MapLibre labels every marker "Map marker" unless the element
+        // already has an aria-label, and markers with a popup are Tab
+        // stops, so name them for what they are.
+        el.setAttribute("aria-label", poiMarkerAriaLabel(poiType, props));
 
         const marker = new maplibregl.Marker({ element: el }).setLngLat(coords);
 
