@@ -106,13 +106,27 @@
 
     <!-- Start the trails.geojson download now, overlapping it with the
          vendor JS download/parse instead of waiting for app.js to run
-         loadTrails(). `crossorigin` is REQUIRED even though the file is
-         same-origin: preload matching compares request modes, and
-         fetch()'s default mode is "cors" while a bare preload's is
-         "no-cors" - without the attribute the browser fetches the file
-         twice. loadTrails() must keep fetch() defaults (no mode/
-         credentials overrides) for the same reason. -->
-    <link rel="preload" href="trails.geojson" as="fetch" crossorigin>
+         loadTrails(), which consumes this request instead of issuing
+         its own. An early fetch() rather than <link rel="preload">:
+         Safari never matches an as=fetch preload to a later fetch()
+         (with or without `crossorigin`), so it downloaded the file
+         twice, in parallel, with no speedup; profiled 2026-09-15 on
+         Safari 27. Chromium dedupes the preload, but a shared request
+         is one download in every engine. The 20s abort matches
+         fetchWithTimeout's default and, like it, covers only the wait
+         for response headers. The rejection handler marks a failure
+         as handled here; loadTrails() still sees it and shows the
+         error toast. -->
+    <script>
+    (function () {
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, 20000);
+        var request = fetch('trails.geojson', { signal: controller.signal });
+        request.then(function () { clearTimeout(timer); },
+                     function () { clearTimeout(timer); });
+        window.__trailsRequest = request;
+    })();
+    </script>
 
     <!-- App styles -->
     <link rel="stylesheet" href="style.css">

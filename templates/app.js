@@ -5377,7 +5377,12 @@ async function loadTrails() {
     // app has nothing to render. Fail loudly with a visible message
     // instead of letting downstream addSource calls die opaquely.
     try {
-        const resp = await fetchWithTimeout("trails.geojson");
+        // Reuse the request index.html's <head> started at parse time
+        // (see the comment there); one-shot, so any later call fetches
+        // fresh instead of re-reading a consumed body.
+        const early = window.__trailsRequest;
+        window.__trailsRequest = null;
+        const resp = await (early || fetchWithTimeout("trails.geojson"));
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
