@@ -4804,7 +4804,7 @@ async function addContourLayers(beforeLayer) {
             // request sits queued behind installPmtilesFetchLimiter's
             // 16-concurrent cap, on top of the transfer itself. Profiled
             // completions on a large map (mfo) ran up to ~39s even
-            // before the limiter existed; the library's 15s default
+            // before the limiter existed; the library's 10s default
             // aborts (and logs an uncaught "timed out") requests that
             // were still on track to succeed. This only affects contour
             // lines, which degrade gracefully to "none for that tile" -
