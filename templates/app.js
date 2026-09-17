@@ -5462,7 +5462,12 @@ async function loadTrails() {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
         });
+        map.addSource(LANE_HIGHLIGHT_SOURCE, {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+        });
         map.on("moveend", refreshLaneFeatures);
+        map.on("zoomend", refreshLaneHighlight);
     }
 
     // Decoration source, pre-deconflicted Point features (trail
@@ -5816,11 +5821,12 @@ async function loadTrails() {
     // visibility work by receding everything else.
     const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
     const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
-    // Lane plugin: the route ribbon traces the lane features the layer
-    // emits, which are already in lane position, so no line-offset.
-    // The trail ribbon stays on the native source: lane features carry
-    // no trail_name (plugin gap), so it sits at the legacy offsets.
-    const routeHlSource = lanePlugin ? LANE_FEATURES_SOURCE : "trails";
+    // Lane plugin: the route ribbon traces the highlighted route's own
+    // lane, laid out over the whole graph (see refreshLaneHighlight),
+    // which is already in lane position, so no line-offset. The trail
+    // ribbon stays on the native source: lane features carry no
+    // trail_name (plugin gap), so it sits at the legacy offsets.
+    const routeHlSource = lanePlugin ? LANE_HIGHLIGHT_SOURCE : "trails";
     const routeHlOffset = lanePlugin ? 0 : makeOffsetExpr();
 
     // Route highlight ribbon (bottom → top), over an optional amber glow:
@@ -6352,6 +6358,7 @@ let laneGraph = null;        // laneGraphFull filtered to visibleRoutes
 let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
+const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
 
 function usingLanePlugin() {
     return CONFIG.laneRenderer === "plugin"
@@ -6450,24 +6457,53 @@ function refreshLaneGraph() {
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
         }
-        map.once("idle", refreshLaneFeatures);
+        map.once("idle", () => {
+            refreshLaneFeatures();
+            refreshLaneHighlight();
+        });
     }).catch((e) => console.error("lanes: ordering failed", e));
 }
 
-// Lane geometry as GeoJSON for the symbol and highlight layers that
-// otherwise read the offset "trails" source, re-keyed to the property
-// names those layers filter on. Lane positions are per zoom and the
+// Lane geometry as GeoJSON for the layers that otherwise read the
+// offset "trails" source, re-keyed to the property names those layers
+// filter on.
+function laneFeatureCollection(options) {
+    const fc = laneLayer.laneFeatures(options);
+    for (const f of fc.features) {
+        f.properties.route_id = f.properties.route;
+        f.properties.route_name = f.properties.name;
+    }
+    return fc;
+}
+
+// Lanes for the symbol layers. Lane positions are per zoom and the
 // layout is culled to the built area, so this refreshes on moveend
 // (which follows every zoom too) and after every graph swap.
 function refreshLaneFeatures() {
     const src = map.getSource(LANE_FEATURES_SOURCE);
     if (!src || !laneLayer) return;
-    const fc = laneLayer.laneFeatures();
-    for (const f of fc.features) {
-        f.properties.route_id = f.properties.route;
-        f.properties.route_name = f.properties.name;
-    }
-    src.setData(fc);
+    src.setData(laneFeatureCollection());
+}
+
+// The highlighted route's lanes for the route ribbon layers, laid out
+// over the WHOLE graph rather than the culled build area. The ribbon
+// cannot share the symbol layers' source: that one is empty beyond
+// the build area, so after a pan the ribbon had nothing to draw until
+// moveend refilled it and the worker re-tiled it, about half a second
+// with no ribbon on every pan. A full layout of one route is cheap
+// (15-30 ms for RAMBA, cached per zoom by the plugin) and stays valid
+// while the map pans, so this source refreshes on zoomend, on the
+// highlight paths, and after every graph swap. During a zoom animation
+// the ribbon slides off its lane and snaps back at zoomend; that is
+// inherent to geometry laid out for one zoom, and the plugin's
+// in-layer highlight (LaneLayer.setHighlight) is the way out if it
+// ever matters.
+function refreshLaneHighlight() {
+    const src = map.getSource(LANE_HIGHLIGHT_SOURCE);
+    if (!src || !laneLayer) return;
+    src.setData(highlight && highlight.kind === "route"
+        ? laneFeatureCollection({ extent: "full", routes: [highlight.key] })
+        : { type: "FeatureCollection", features: [] });
 }
 
 // ============================================================
@@ -7162,6 +7198,10 @@ function highlightRoute(routeId) {
         map.setPaintProperty("route-highlight-underlay", "line-opacity",
             hasUnderlay ? 1 : 0);
     }
+    // Lane plugin: the ribbon source holds only the highlighted route,
+    // filled here before the filters expose the layers (no-op under
+    // the native renderer, whose ribbon reads the "trails" source).
+    refreshLaneHighlight();
     for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, routeFilter);
@@ -7235,6 +7275,7 @@ function highlightTrail(trailName) {
             map.setFilter(layerId, ROUTE_NONE_FILTER);
         }
     }
+    refreshLaneHighlight();
 
     fitToRouteOrTrail({ trailName });
     // A trail is a line on the map, so the chip gets a line swatch
@@ -7897,6 +7938,7 @@ function clearRouteTrailHighlight() {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
         }
     }
+    refreshLaneHighlight();
     // Panel active-row mark follows the highlight lifecycle. Synced
     // here (not in clearHighlight) so POI highlights, which route
     // through this teardown, not clearHighlight, also unmark the row.
