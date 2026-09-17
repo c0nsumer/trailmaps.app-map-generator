@@ -325,15 +325,15 @@ function applyMapPaintForScheme(scheme) {
                 map.setPaintProperty(layer.id, "text-color", t.labelText);
                 map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
             } else if (layer.id.startsWith("trail-casing-")) {
-                // Lane plugin: LaneLayer takes casingColor only at
-                // construction (no setter yet, plugin gap), so under
-                // the plugin the casing keeps its boot-time scheme.
                 map.setPaintProperty(layer.id, "line-color", t.trailCasing);
             } else if (layer.id.startsWith("clip-arrow-")) {
                 map.setPaintProperty(layer.id, "icon-halo-color", arrowHalo);
             }
         }
     }
+    // Lane plugin: the casing is one color on the layer, not a layer
+    // per route, so it is swapped through the plugin's setter.
+    if (laneLayer) laneLayer.setCasingColor(laneCasingColor());
     // Highlight silhouettes. The TRAIL outline is a constant scheme-
     // contrasting silhouette (black on the light basemap, white on dark).
     // The ROUTE outline is luminance-matched to the highlighted route's
@@ -2023,6 +2023,11 @@ function buildChevronFilter(rev) {
         ["==", ["get", "chevron_owner"], true],
         ["match", ["get", "oneway"], ["yes", "reversible"], true, false],
     ];
+    // Lane plugin: lane features run in the route's direction of
+    // travel where it is known (direction 1); the glyph must not be
+    // placed on a piece the plugin left in graph order (direction 0,
+    // a route running both ways over the edge).
+    if (usingLanePlugin()) f.push(["==", ["get", "direction"], 1]);
     const ids = [...reverseRoutesToday];
     // A feature is reversed-today when its own route or any sharing
     // route is in today's reverse set (shared_routes may be absent on
@@ -2062,7 +2067,10 @@ function addChevronLayers() {
         map.addLayer({
             id,
             type: "symbol",
-            source: "trails",
+            // Lane plugin: chevrons ride the lane features (built
+            // extent, refreshed on moveend like the labels) so they
+            // sit on the lanes instead of at the legacy offsets.
+            source: usingLanePlugin() ? LANE_FEATURES_SOURCE : "trails",
             filter: buildChevronFilter(rev),
             layout: {
                 "symbol-placement": "line",
@@ -6384,6 +6392,20 @@ function laneStyleAt(zoom) {
     return { spacing: width + 1, width, casing };
 }
 
+// The plugin has no casing opacity, so the native casing layers'
+// 50% line-opacity is folded into the alpha of the scheme's casing
+// color (the tokens are rgba() strings). Drawn under the fill, a
+// translucent casing shows the basemap through its outer rim, which
+// is the native look. What stays different: the native casing is
+// hidden entirely for single-color dashed routes, and the plugin has
+// no per-route casing switch (plugin gap).
+function laneCasingColor() {
+    const css = trailCasingColor();
+    const m = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/.exec(css);
+    if (!m) return css;
+    return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
+}
+
 // Per-route metadata for buildLineGraph, read from the same
 // CONFIG.routes fields the native layers use. Dash units already
 // agree: MapLibre's line-dasharray and the plugin's `dash` are both
@@ -6419,6 +6441,9 @@ function initLaneRenderer() {
         colorProperty: "route_colour",
         nameProperty: "route_name",
         routes: laneRouteMeta(),
+        // Way facts the chevron filters read. An edge ends where one of
+        // these changes, and every lane feature carries them by name.
+        uniformProperties: ["oneway", "trail_name"],
     });
     refreshLaneGraph();
 }
@@ -6453,7 +6478,7 @@ function refreshLaneGraph() {
                 id: LANE_LAYER_ID,
                 graph: next,
                 style: laneStyleAt,
-                casingColor: trailCasingColor(),
+                casingColor: laneCasingColor(),
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
         }
@@ -6466,12 +6491,33 @@ function refreshLaneGraph() {
 
 // Lane geometry as GeoJSON for the layers that otherwise read the
 // offset "trails" source, re-keyed to the property names those layers
-// filter on.
+// filter on. The chevron filters also want the native source's
+// per-way facts, rebuilt here from the plugin's `edge` id: every lane
+// of an edge lists the edge's routes as shared_routes, and exactly one
+// lane per edge (the lowest route id, so the choice is stable from one
+// edge to the next along a corridor) is the chevron_owner, the same
+// one-row-per-physical-way rule computeOffsetsAndFilter stamps for the
+// native layers. Regenerated on every graph swap, so ownership follows
+// route toggles as it does there.
 function laneFeatureCollection(options) {
     const fc = laneLayer.laneFeatures(options);
+    const edgeRoutes = new Map();
     for (const f of fc.features) {
-        f.properties.route_id = f.properties.route;
-        f.properties.route_name = f.properties.name;
+        const p = f.properties;
+        p.route_id = p.route;
+        p.route_name = p.name;
+        if (p.kind !== "lane") continue;
+        let routes = edgeRoutes.get(p.edge);
+        if (!routes) edgeRoutes.set(p.edge, routes = []);
+        if (!routes.includes(p.route)) routes.push(p.route);
+    }
+    for (const routes of edgeRoutes.values()) routes.sort();
+    for (const f of fc.features) {
+        const p = f.properties;
+        const routes = edgeRoutes.get(p.edge);
+        if (!routes) continue;
+        p.shared_routes = routes;
+        p.chevron_owner = p.kind === "lane" && p.route === routes[0];
     }
     return fc;
 }
