@@ -73,20 +73,11 @@ VENDOR_LIBS = {
     # Client-side contour isolines from the terrain raster-dem
     # (templates/app.js addContourLayers). Upstream ships index.min.js;
     # renamed here to match the vendor/ one-lib-one-name convention.
-    #
-    # TEMPORARY fork build, not unpkg. Released 0.1.0 returns its cached
-    # ArrayBuffer itself, and MapLibre detaches that buffer when it
-    # transfers the tile to its worker, so the next cache hit yields an
-    # empty tile ("DataCloneError" in Safari, "detached ArrayBuffer" in
-    # Chromium) and that tile loses its contour lines. Only the
-    # worker:false path is affected, which is the one this app uses. The
-    # URL is pinned to a commit SHA so it cannot change under the app.
-    # Fix upstream at onthegomap/maplibre-contour#437; switch back to
-    # unpkg once a release carries it.
-    "maplibre-contour.js": (
-        "https://raw.githubusercontent.com/c0nsumer/maplibre-contour/"
-        "bc54655849a6e8f051ae8f6f7b7c5debdeb70e9f/dist/index.min.js"
-    ),
+    # 0.1.1 is the floor: 0.1.0 returned its cached ArrayBuffer itself,
+    # MapLibre detached it on transfer to its worker, and the next cache
+    # hit lost that tile's contours on the worker:false path this app
+    # uses (fixed in onthegomap/maplibre-contour#437).
+    "maplibre-contour.js": "https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js",
 }
 
 
