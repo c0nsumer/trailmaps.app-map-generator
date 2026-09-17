@@ -90,6 +90,7 @@ KNOWN_KEYS = {
     "default_labels": str,
     "forced_labels": str,
     "color_by": str,
+    "lane_renderer": str,
     "default_trail_color": (str, dict),
     "marker_color": str,
     "marker_text_color": str,
@@ -233,6 +234,11 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
+# "native" is the build-time subway-style expansion drawn with MapLibre
+# line layers; "plugin" draws lanes at load time with maplibre-gl-lanes.
+# The plugin path is under evaluation, so native stays the default and
+# production maps do not change until a config opts in.
+VALID_LANE_RENDERERS = {"native", "plugin"}
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
@@ -424,6 +430,12 @@ def _validate_enums(report, config):
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
+        )
+
+    if "lane_renderer" in config and config["lane_renderer"] not in VALID_LANE_RENDERERS:
+        report.err(
+            "lane_renderer",
+            f"must be one of {sorted(VALID_LANE_RENDERERS)}, got {config['lane_renderer']!r}",
         )
 
     if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:

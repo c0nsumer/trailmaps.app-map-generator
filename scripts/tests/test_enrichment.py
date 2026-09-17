@@ -90,3 +90,73 @@ if __name__ == "__main__":
     import pytest
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+# ---------------------------------------------------------------------------
+# lane_renderer: plugin keeps the canonical features
+# ---------------------------------------------------------------------------
+
+_A = [-83.44, 42.67]
+_B = [-83.45, 42.68]
+_C = [-83.46, 42.69]
+
+
+def _shared_corridor_fc():
+    """Two routes sharing the A-B run, the second traversing it B->A so
+    the native corridor alignment would rewrite its vertex order."""
+
+    def feat(rid, name, colour, coords, shared):
+        return {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {
+                "route_id": rid,
+                "route_name": name,
+                "route_colour": colour,
+                "route_ref": "",
+                "trail_name": "",
+                "shared_routes": shared,
+                "imba_difficulty": "",
+                "oneway": "",
+                "segment_index": 0,
+                "way_ids": [],
+            },
+        }
+
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            feat(1, "One", "red", [_A, _B], [1, 2]),
+            feat(1, "One", "red", [_B, _C], [1]),
+            feat(2, "Two", "blue", [_B, _A], [1, 2]),
+        ],
+        "metadata": {
+            "routes": {
+                "1": {"name": "One", "colour": "red", "ref": "", "seasonal": ""},
+                "2": {"name": "Two", "colour": "blue", "ref": "", "seasonal": ""},
+            },
+            # What build.py seeds from a previous native build's output.
+            "routeOrders": {"summer": ["1", "2"]},
+            "corridorBaselines": {"summer": {"1|2": 0}},
+        },
+    }
+
+
+def test_native_renderer_expands_shared_corridor():
+    g = _shared_corridor_fc()
+    _enrich_trails_geojson({}, g, ".")
+    assert "routeOrders" in g["metadata"]
+    two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
+    assert two[0]["geometry"]["coordinates"][0] == _A, "copy realigned to the canonical order"
+
+
+def test_plugin_renderer_keeps_canonical_features():
+    g = _shared_corridor_fc()
+    _enrich_trails_geojson({"lane_renderer": "plugin"}, g, ".")
+    props = [f["properties"] for f in g["features"]]
+    assert len(props) == 3
+    assert not any(p.get("isStub") or p.get("mode") or p.get("_subwayHostVariant") for p in props)
+    two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
+    assert two[0]["geometry"]["coordinates"] == [_B, _A], "travel direction preserved"
+    assert "routeOrders" not in g["metadata"]
+    assert "corridorBaselines" not in g["metadata"]

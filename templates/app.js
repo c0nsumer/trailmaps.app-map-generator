@@ -325,6 +325,9 @@ function applyMapPaintForScheme(scheme) {
                 map.setPaintProperty(layer.id, "text-color", t.labelText);
                 map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
             } else if (layer.id.startsWith("trail-casing-")) {
+                // Lane plugin: LaneLayer takes casingColor only at
+                // construction (no setter yet, plugin gap), so under
+                // the plugin the casing keeps its boot-time scheme.
                 map.setPaintProperty(layer.id, "line-color", t.trailCasing);
             } else if (layer.id.startsWith("clip-arrow-")) {
                 map.setPaintProperty(layer.id, "icon-halo-color", arrowHalo);
@@ -1599,7 +1602,11 @@ function computeDecorations() {
                 });
             }
         }
-        if (way.soloRouteName && routeLabelAllowed(way.soloRouteId)) {
+        // Lane plugin: route names ride the lane features instead (the
+        // per-route trail-label layers carry solo lanes too), so a
+        // second copy here would double-label every solo way.
+        if (way.soloRouteName && routeLabelAllowed(way.soloRouteId)
+                && !usingLanePlugin()) {
             for (const run of runs) {
                 decorations.push({
                     type: "Feature",
@@ -5445,6 +5452,19 @@ async function loadTrails() {
         data: computeLabelData(),
     });
 
+    const lanePlugin = usingLanePlugin();
+    if (CONFIG.laneRenderer === "plugin" && !lanePlugin) {
+        console.error("lane_renderer: plugin, but vendor/maplibre-gl-lanes.js "
+            + "did not load; drawing the native line layers instead.");
+    }
+    if (lanePlugin) {
+        map.addSource(LANE_FEATURES_SOURCE, {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+        });
+        map.on("moveend", refreshLaneFeatures);
+    }
+
     // Decoration source, pre-deconflicted Point features (trail
     // names, route names, IMBA diamonds; direction chevrons live on
     // their own line-symbol layers). All placement decisions happen
@@ -5509,6 +5529,28 @@ async function loadTrails() {
 
     const byDifficulty = CONFIG.colorBy === "trail";
 
+    // Lane plugin: no per-route line layers. One transparent line layer
+    // over every route copy keeps the tap hit-test (_collectAllRoutesAt)
+    // and desktop hover reading the way under the finger: trail name,
+    // difficulty, one-way tag and full route membership, which the
+    // plugin's queryLane does not expose. queryRenderedFeatures ignores
+    // paint opacity, so the invisible layer still answers. It takes the
+    // first casing's slot, which promoteBasemapLabels anchors on.
+    if (lanePlugin) {
+        map.addLayer({
+            id: "trail-hit",
+            type: "line",
+            source: "trails",
+            paint: {
+                "line-width": trailWidthExpr("casingVisible"),
+                "line-offset": makeOffsetExpr(),
+                "line-opacity": 0,
+            },
+        });
+        initLaneRenderer();
+    }
+    const lineRoutes = lanePlugin ? [] : sortedRoutes;
+
     // Pass 1: casings
     //
     // Casing halo posture:
@@ -5529,7 +5571,7 @@ async function loadTrails() {
     //     is in line-widths, so a wider casing produces longer dashes
     //     than the fill at the same array), defer until there's a
     //     concrete need.
-    for (const [routeId, routeInfo] of sortedRoutes) {
+    for (const [routeId, routeInfo] of lineRoutes) {
         const dashed = isDashed(routeInfo);
         const dashColors = getDashColors(routeInfo);
         const cap = getDashCap(routeInfo);
@@ -5564,7 +5606,7 @@ async function loadTrails() {
     }
 
     // Pass 2: fills
-    for (const [routeId, routeInfo] of sortedRoutes) {
+    for (const [routeId, routeInfo] of lineRoutes) {
         const color = routeInfo.colour || CONFIG.defaultTrailColor;
         const dashed = isDashed(routeInfo);
         const cap = getDashCap(routeInfo);
@@ -5774,6 +5816,12 @@ async function loadTrails() {
     // visibility work by receding everything else.
     const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
     const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
+    // Lane plugin: the route ribbon traces the lane features the layer
+    // emits, which are already in lane position, so no line-offset.
+    // The trail ribbon stays on the native source: lane features carry
+    // no trail_name (plugin gap), so it sits at the legacy offsets.
+    const routeHlSource = lanePlugin ? LANE_FEATURES_SOURCE : "trails";
+    const routeHlOffset = lanePlugin ? 0 : makeOffsetExpr();
 
     // Route highlight ribbon (bottom → top), over an optional amber glow:
     //   outline:  thick silhouette around the highlight ribbon. Color
@@ -5822,14 +5870,14 @@ async function loadTrails() {
         map.addLayer({
             id: "route-highlight-glow",
             type: "line",
-            source: "trails",
+            source: routeHlSource,
             filter: NONE_FILTER_ROUTE,
             paint: {
                 "line-color": "#ffb700",
                 "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 17, 18, 28],
                 "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 5, 18, 7],
                 "line-opacity": 1,
-                "line-offset": makeOffsetExpr(),
+                "line-offset": routeHlOffset,
             },
             layout: { "line-cap": "round", "line-join": "round" },
         });
@@ -5837,21 +5885,21 @@ async function loadTrails() {
     map.addLayer({
         id: "route-highlight-outline",
         type: "line",
-        source: "trails",
+        source: routeHlSource,
         filter: NONE_FILTER_ROUTE,
         paint: {
             "line-color": "#000",
             "line-color-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
             "line-opacity": 1,
-            "line-offset": makeOffsetExpr(),
+            "line-offset": routeHlOffset,
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
     map.addLayer({
         id: "route-highlight-underlay",
         type: "line",
-        source: "trails",
+        source: routeHlSource,
         filter: NONE_FILTER_ROUTE,
         paint: {
             "line-color": "#000",
@@ -5862,14 +5910,14 @@ async function loadTrails() {
             "line-opacity": 0,
             "line-opacity-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
-            "line-offset": makeOffsetExpr(),
+            "line-offset": routeHlOffset,
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
     map.addLayer({
         id: "route-highlight-stroke",
         type: "line",
-        source: "trails",
+        source: routeHlSource,
         filter: NONE_FILTER_ROUTE,
         paint: {
             // Initial fill is amber as a fail-safe in case the dynamic
@@ -5889,7 +5937,7 @@ async function loadTrails() {
             "line-dasharray-transition": { duration: 0 },
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
             "line-opacity": 1,
-            "line-offset": makeOffsetExpr(),
+            "line-offset": routeHlOffset,
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
@@ -5979,7 +6027,10 @@ async function loadTrails() {
         map.addLayer({
             id: `trail-label-${routeId}`,
             type: "symbol",
-            source: "trails-labels",
+            // Lane plugin: every lane, solo ways included, so route
+            // names follow the plugin's lanes (computeDecorations
+            // then emits no solo-way route names, see there).
+            source: lanePlugin ? LANE_FEATURES_SOURCE : "trails-labels",
             minzoom: LABEL_CROSSOVER_ZOOM,
             filter: ["==", ["get", "route_id"], routeId],
             layout: {
@@ -6274,6 +6325,149 @@ function offsetLineGeometry(coords, offsetPx) {
         ]);
     }
     return result;
+}
+
+// ============================================================
+// maplibre-gl-lanes renderer (CONFIG.laneRenderer === "plugin")
+// ============================================================
+// Under the plugin the browser lays out the shared-corridor lanes
+// itself: the build ships the canonical features (one per route per
+// run of way, no stubs, no per-mode host variants) and loadTrails
+// hands them to maplibreLanes, whose LaneLayer stands in for the
+// per-route casing + fill line layers. Everything else (the "trails"
+// source, chevrons, trail highlights, decorations, the tap hit-test)
+// keeps running on the native machinery, which falls back to the
+// centered legacy offsets because a plugin build ships no
+// routeOrders / corridorBaselines. Where that machinery only needs
+// lane geometry (route-name labels, the route highlight ribbon) it is
+// pointed at the lane features the layer emits instead. What is left
+// misaligned (one-way chevrons, trail highlights, difficulty
+// coloring, the casing color on a scheme toggle) are plugin API gaps
+// recorded in .claude/plans/maplibre-gl-lanes-integration.md; they
+// are deliberately not papered over here so the plugin grows the
+// right feature.
+let laneLayer = null;        // LaneLayer, once the first ordering resolves
+let laneGraphFull = null;    // graph over every route in trails.geojson
+let laneGraph = null;        // laneGraphFull filtered to visibleRoutes
+let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
+const LANE_LAYER_ID = "trail-lanes";
+const LANE_FEATURES_SOURCE = "trail-lanes-features";
+
+function usingLanePlugin() {
+    return CONFIG.laneRenderer === "plugin"
+        && typeof window.maplibreLanes !== "undefined";
+}
+
+// Lane geometry per zoom, in px. The fill width follows
+// TRAIL_WIDTH_STOPS.fill exactly, the spacing exceeds it by 1 px for
+// the same casing seam makeOffsetExpr keeps between adjacent lanes,
+// and the casing is the per-side excess of the visible casing stops
+// over the fill. One difference stands: the plugin draws that casing
+// opaque where the native layer draws it at 50% opacity.
+function laneStyleAt(zoom) {
+    const at = (stops) => {
+        if (zoom <= 10) return stops[0];
+        if (zoom >= 18) return stops[2];
+        return zoom <= 14
+            ? stops[0] + (stops[1] - stops[0]) * (zoom - 10) / 4
+            : stops[1] + (stops[2] - stops[1]) * (zoom - 14) / 4;
+    };
+    const width = at(TRAIL_WIDTH_STOPS.fill);
+    const casing = (at(TRAIL_WIDTH_STOPS.casingVisible) - width) / 2;
+    return { spacing: width + 1, width, casing };
+}
+
+// Per-route metadata for buildLineGraph, read from the same
+// CONFIG.routes fields the native layers use. Dash units already
+// agree: MapLibre's line-dasharray and the plugin's `dash` are both
+// in line widths. Only the first dash/gap pair carries over and the
+// cap does not (the plugin takes neither), both noted as gaps.
+function laneRouteMeta() {
+    const meta = {};
+    for (const [id, info] of Object.entries(CONFIG.routes)) {
+        const m = { color: effectiveRouteColor(info), name: info.name };
+        if (isDashed(info)) {
+            const pattern = getDashPattern(info);
+            m.dash = [pattern[0], pattern[1]];
+            const dashColors = getDashColors(info);
+            if (dashColors && dashColors.length >= 2) m.dashColor = dashColors[1];
+        }
+        meta[id] = m;
+    }
+    return meta;
+}
+
+// Build the full graph from the shipped features and order the
+// visible subset. Called from loadTrails in place of the casing/fill
+// passes; the layer itself arrives when the ordering resolves.
+function initLaneRenderer() {
+    const L = window.maplibreLanes;
+    // Canonical features only. A plugin build ships nothing else, but
+    // the filter keeps a stale native output from feeding stubs and
+    // per-mode host variants to the graph as extra routes.
+    const features = routesData.features.filter(
+        (f) => f.properties.isStub !== true && !f.properties.mode);
+    laneGraphFull = L.buildLineGraph(features, {
+        routeProperty: "route_id",
+        colorProperty: "route_colour",
+        nameProperty: "route_name",
+        routes: laneRouteMeta(),
+    });
+    refreshLaneGraph();
+}
+
+// (Re)order the lanes for the current visibleRoutes: filter the full
+// graph, seed the ordering with the lane orders in force so routes
+// that stay visible hold their lanes, and swap the result in. The
+// ordering runs in the plugin's worker (RAMBA takes ~1.4 s on desktop
+// Safari) with the map interactive meanwhile; results are token-
+// checked so a toggle that lands mid-ordering wins. The layer is
+// added the first time through, directly under dim-tint, the slot
+// the native casing/fill layers occupy, so the spotlight wash and
+// every overlay above it stack identically in both renderers.
+function refreshLaneGraph() {
+    if (!laneGraphFull) return;
+    const L = window.maplibreLanes;
+    const seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
+    const next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
+    const token = ++laneOrderToken;
+    const t0 = performance.now();
+    L.orderLanesAsync(next, { stabilize: {}, seed }).then((cost) => {
+        if (token !== laneOrderToken) return;
+        laneGraph = next;
+        // Kept as a console line on purpose: ordering time on a phone
+        // is one of the measurements the plugin evaluation asks for.
+        console.info(`lanes: ordered ${next.edges.length} edges, cost ${cost}, `
+            + `${Math.round(performance.now() - t0)} ms`);
+        if (laneLayer) {
+            laneLayer.setGraph(next);
+        } else {
+            laneLayer = new L.LaneLayer({
+                id: LANE_LAYER_ID,
+                graph: next,
+                style: laneStyleAt,
+                casingColor: trailCasingColor(),
+            });
+            map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
+        }
+        map.once("idle", refreshLaneFeatures);
+    }).catch((e) => console.error("lanes: ordering failed", e));
+}
+
+// Lane geometry as GeoJSON for the symbol and highlight layers that
+// otherwise read the offset "trails" source, re-keyed to the property
+// names those layers filter on. Lane positions are per zoom and the
+// layout is culled to the built area, so this refreshes on moveend
+// (which follows every zoom too) and after every graph swap.
+function refreshLaneFeatures() {
+    const src = map.getSource(LANE_FEATURES_SOURCE);
+    if (!src || !laneLayer) return;
+    const fc = laneLayer.laneFeatures();
+    for (const f of fc.features) {
+        f.properties.route_id = f.properties.route;
+        f.properties.route_name = f.properties.name;
+    }
+    src.setData(fc);
 }
 
 // ============================================================
@@ -6613,6 +6807,9 @@ function updateTrailDisplay() {
 
     const labelSource = map.getSource("trails-labels");
     if (labelSource) labelSource.setData(computeLabelData());
+
+    // Lane plugin: re-order for the new visible set (async, seeded).
+    refreshLaneGraph();
 
     // Decorations (diamonds, trail/route name labels) are
     // pre-deconflicted Point features. Recompute on every visibility
@@ -10936,8 +11133,9 @@ function setupInteractions() {
             return 6;
         }
     })();
-    const _trailCasingLayerIds = Object.keys(CONFIG.routes)
-        .map((rid) => `trail-casing-${rid}`);
+    const _trailCasingLayerIds = usingLanePlugin()
+        ? ["trail-hit"]
+        : Object.keys(CONFIG.routes).map((rid) => `trail-casing-${rid}`);
 
     // Nearest point on segment A->B to P, in lng/lat. Returns
     // { dist (meters), point [lng,lat] }. Mirrors
@@ -11069,8 +11267,8 @@ function setupInteractions() {
     }
 
     // Per-route hover handlers (desktop cursor feedback only).
-    for (const routeId of Object.keys(CONFIG.routes)) {
-        attachTrailHoverHandlers(`trail-casing-${routeId}`);
+    for (const layerId of _trailCasingLayerIds) {
+        attachTrailHoverHandlers(layerId);
     }
 
     // Single map-wide click handler. Runs once per click regardless
@@ -11080,6 +11278,15 @@ function setupInteractions() {
     // the design rationale comment above.
     map.on("click", (e) => {
         if (poiMarkerTapped) return;
+        // Lane plugin: the layer knows where the lanes really are, so
+        // it decides whether the tap hit one and which route it was;
+        // the way-level facts still come from the native hit-test.
+        let laneHit = null;
+        if (usingLanePlugin()) {
+            if (!laneLayer) return;
+            laneHit = laneLayer.queryLane(e.point, TRAIL_TAP_BUFFER_PX);
+            if (!laneHit) return;
+        }
         const r = TRAIL_TAP_BUFFER_PX;
         const box = [
             [e.point.x - r, e.point.y - r],
@@ -11087,6 +11294,12 @@ function setupInteractions() {
         ];
         const { routeIds, trailName, anchor, imba, oneway } =
             _collectAllRoutesAt(box, e.lngLat);
+        if (laneHit) {
+            // Lead the popup with the lane that was actually tapped.
+            const i = routeIds.indexOf(laneHit.route);
+            if (i > 0) routeIds.splice(i, 1);
+            if (i !== 0) routeIds.unshift(laneHit.route);
+        }
         if (!routeIds.length) return;
 
         // List only memberships the rider can currently see, using the
@@ -11191,7 +11404,8 @@ function promoteBasemapLabels() {
         .map((l) => l.id);
 
     const firstTrailLayer = style.layers.find(
-        (l) => l.id.startsWith("trail-casing-") || l.id === "hillshade"
+        (l) => l.id.startsWith("trail-casing-") || l.id === "trail-hit"
+            || l.id === "hillshade"
     );
     const beforeId = firstTrailLayer ? firstTrailLayer.id : undefined;
 

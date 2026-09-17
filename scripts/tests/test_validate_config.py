@@ -330,3 +330,12 @@ if __name__ == "__main__":
         print(f"\n{failed}/{len(tests)} failed")
         sys.exit(1)
     print(f"\nAll {len(tests)} tests passed.")
+
+
+def test_lane_renderer_accepts_native_and_plugin():
+    assert not any("lane_renderer" in e for e in _errors(lane_renderer="native"))
+    assert not any("lane_renderer" in e for e in _errors(lane_renderer="plugin"))
+
+
+def test_lane_renderer_rejects_unknown_value():
+    assert any("lane_renderer" in e for e in _errors(lane_renderer="subway"))

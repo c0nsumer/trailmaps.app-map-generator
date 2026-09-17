@@ -182,6 +182,11 @@ relations:
 # Trail line coloring: "relation" (route color) or "trail" (per-way IMBA palette).
 # color_by: relation
 
+# How routes sharing a path are drawn as parallel lanes: "native" (build-time
+# expansion, MapLibre line layers) or "plugin" (maplibre-gl-lanes, under
+# evaluation). See docs/configuration.md (Display).
+# lane_renderer: native
+
 # Fallback trail color, or an object with color / pattern / cap for dashed
 # uncolored trails.
 # default_trail_color: "#808080"

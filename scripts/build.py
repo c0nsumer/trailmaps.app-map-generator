@@ -267,7 +267,14 @@ def _minify_assets(output_dir, targets=None):
             console.warn(f"failed to minify {fname} ({e}) - left unminified")
 
 
-def download_vendor_libs(output_dir, cache_dir):
+# Pinned by copy under vendor/ (see vendor/README.md) because the plugin
+# has no published release to point a URL at yet. Shipped only to maps
+# that set lane_renderer: plugin, so no other map downloads or executes
+# the 50 KB.
+LANES_VENDOR_FILE = "maplibre-gl-lanes.js"
+
+
+def download_vendor_libs(output_dir, cache_dir, config=None):
     """Download CDN dependencies to vendor/ for offline use.
 
     Downloads are cached in cache/vendor/ so subsequent builds skip the
@@ -308,9 +315,21 @@ def download_vendor_libs(output_dir, cache_dir):
 
         shutil.copy2(cached, dst)
 
+    bundled = len(VENDOR_LIBS)
+    lanes_dst = os.path.join(vendor_dst, LANES_VENDOR_FILE)
+    if (config or {}).get("lane_renderer") == "plugin":
+        lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
+        shutil.copy2(lanes_src, lanes_dst)
+        bundled += 1
+    elif os.path.exists(lanes_dst):
+        # A map switched back to the native renderer: drop the script so
+        # the service worker precache list (a filesystem walk) does not
+        # keep shipping it.
+        os.remove(lanes_dst)
+
     if downloaded:
         console.info(f"Downloaded {downloaded} vendor libraries")
-    console.info(f"Bundled {len(VENDOR_LIBS)} vendor libraries")
+    console.info(f"Bundled {bundled} vendor libraries")
 
 
 def generate_service_worker(config, output_dir):
@@ -1725,7 +1744,7 @@ def main(argv=None):
 
     # Step 6: Bundle vendor libraries (CDN deps served locally for offline)
     console.step("Bundling vendor libraries...")
-    download_vendor_libs(output_dir, cache_dir)
+    download_vendor_libs(output_dir, cache_dir, config)
     console.blank()
 
     # Step 7: Generate service worker (MUST be last - needs complete file list)

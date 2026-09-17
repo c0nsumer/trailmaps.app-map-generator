@@ -349,6 +349,18 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         if props.pop("_subwayHasVariants", None) is not None:
             changed = True
 
+    # ----- Lane renderer switch -----
+    # Under lane_renderer: plugin the browser builds the lane layout
+    # itself (maplibre-gl-lanes) from the canonical features: one per
+    # route per run of way, shared paths sharing vertices, in each
+    # route's own travel direction. The corridor alignment, route
+    # ordering, corridor baselines and subway-style expansion below
+    # exist only to feed MapLibre's line-offset renderer, and their
+    # stub micro-features and per-mode host variants would read to the
+    # plugin as extra routes sharing extra paths, so the whole tail is
+    # skipped. Route stats still run: they want canonical geometry too.
+    lane_plugin = config.get("lane_renderer") == "plugin"
+
     # ----- Align shared-corridor copies -----
     # Each route's stitched chain traverses shared trail in its own
     # direction, but MapLibre's line-offset is signed by vertex order,
@@ -359,7 +371,9 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # match) and before anything downstream consumes the geometry.
     from parallel_routes import canonicalize_shared_corridors
 
-    aligned, skipped_oneway = canonicalize_shared_corridors(trails_geojson["features"])
+    aligned, skipped_oneway = (
+        (0, 0) if lane_plugin else canonicalize_shared_corridors(trails_geojson["features"])
+    )
     if aligned:
         console.info(
             f"Corridor alignment: rewrote {aligned} shared-corridor "
@@ -387,6 +401,18 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
 
     if compute_and_attach(trails_geojson, config, cache_dir):
         changed = True
+
+    if lane_plugin:
+        # build.py seeds these from the previous build's output for
+        # rebuild stability; a plugin build has nothing to seed and must
+        # not ship stale native-renderer tables in CONFIG.
+        meta = trails_geojson.setdefault("metadata", {})
+        if meta.pop("routeOrders", None) is not None:
+            changed = True
+        if meta.pop("corridorBaselines", None) is not None:
+            changed = True
+        console.info("Lane renderer: plugin (subway-style expansion skipped)")
+        return changed
 
     # ---- Compute route ordering per visible mode ----------------
     # The MLNCM (Metro-Line Node Crossing Minimization) optimizer in

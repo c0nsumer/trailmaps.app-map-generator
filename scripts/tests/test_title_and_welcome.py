@@ -157,3 +157,21 @@ def test_welcome_stays_none_when_absent_or_empty():
     rather than an object that says nothing."""
     assert _config_obj(dict(BASE))["welcome"] is None
     assert _config_obj({**BASE, "welcome": {}})["welcome"] is None
+
+
+# ---------------------------------------------------------------------------
+# lane_renderer script tag (template_inject.copy_templates)
+# ---------------------------------------------------------------------------
+
+
+def test_lane_plugin_script_only_when_opted_in(tmp_path):
+    copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "maplibre-gl-lanes.js" not in html
+    assert "__LANE_RENDERER_SCRIPT__" not in html
+    assert _config_obj(dict(BASE))["laneRenderer"] == "native"
+
+    copy_templates({**BASE, "lane_renderer": "plugin"}, str(tmp_path), dict(TRAILS))
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert '<script src="vendor/maplibre-gl-lanes.js" defer></script>' in html
+    assert _config_obj({**BASE, "lane_renderer": "plugin"})["laneRenderer"] == "plugin"
