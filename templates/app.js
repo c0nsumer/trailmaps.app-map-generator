@@ -11393,10 +11393,10 @@ function setupInteractions() {
         if (poiMarkerTapped) return;
         // Lane plugin: the layer knows where the lanes really are, so
         // it decides whether the tap hit one, which route it was, and
-        // reports the way under it: every route on that edge and the
-        // way facts the graph keeps uniform along an edge. The popup
-        // leads with the lane that was actually tapped, and anchors at
-        // the tap itself (within TRAIL_TAP_BUFFER_PX of the lane).
+        // reports the way under it: every route on that edge, the way
+        // facts the graph keeps uniform along an edge, and the nearest
+        // point on the lane, which anchors the popup ON the lane as the
+        // native hit-test does. The popup leads with the tapped lane.
         let hit;
         if (usingLanePlugin()) {
             if (!laneLayer) return;
@@ -11407,7 +11407,7 @@ function setupInteractions() {
                 routeIds: [laneHit.route,
                     ...(laneHit.routes || []).filter((id) => id !== laneHit.route)],
                 trailName: props.trail_name || "",
-                anchor: [e.lngLat.lng, e.lngLat.lat],
+                anchor: laneHit.lngLat || [e.lngLat.lng, e.lngLat.lat],
                 imba: props.imba_difficulty || "",
                 oneway: props.oneway || "",
             };
