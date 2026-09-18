@@ -6541,8 +6541,7 @@ function onLaneBuild() {
 // on every graph swap, so ownership follows route toggles as it does
 // there. Way facts (oneway, trail_name, imba_difficulty) arrive by
 // their own names through uniformProperties.
-function laneFeatureCollection(options) {
-    const fc = laneLayer.laneFeatures(options);
+function stampLaneFeatures(fc) {
     for (const f of fc.features) {
         const p = f.properties;
         p.route_id = p.route;
@@ -6553,6 +6552,16 @@ function laneFeatureCollection(options) {
             && p.route === routes.reduce((a, b) => (b < a ? b : a));
     }
     return fc;
+}
+
+function laneFeatureCollection(options) {
+    return stampLaneFeatures(laneLayer.laneFeatures(options));
+}
+
+// Same collection from the plugin's worker. Without a worker it
+// resolves with what laneFeatures returns, so callers need no branch.
+function laneFeatureCollectionAsync(options) {
+    return laneLayer.laneFeaturesAsync(options).then(stampLaneFeatures);
 }
 
 // Lanes for the symbol layers. Lane positions are per zoom and the
@@ -6578,20 +6587,36 @@ function refreshLaneFeatures() {
 // inherent to geometry laid out for one zoom, and the plugin's
 // in-layer highlight (LaneLayer.setHighlight) is the way out if it
 // ever matters.
+let laneHighlightToken = 0;
+
 function refreshLaneHighlight() {
     const src = map.getSource(LANE_HIGHLIGHT_SOURCE);
     if (!src || !laneLayer) return;
-    let fc = { type: "FeatureCollection", features: [] };
-    if (highlight && highlight.kind === "route") {
-        fc = laneFeatureCollection({ extent: "full", routes: [highlight.key] });
-    } else if (highlight && highlight.kind === "trail") {
-        // A trail spans routes, so this is the whole graph's layout
-        // (cached per zoom by the plugin) cut down to the trail's lanes.
-        const all = laneFeatureCollection({ extent: "full" });
-        fc = { type: "FeatureCollection", features: all.features.filter(
-            (f) => f.properties.trail_name === highlight.key) };
+    // Laying the whole graph out for one route was the plugin's
+    // longest main-thread task on Steve's Pixel 8 trace: 24 of the 25
+    // tasks carrying more than 8 ms of plugin work, up to 54 ms each,
+    // most of them with a finger on the glass, because a pinch ends at
+    // a new zoom every time and the layout is cached per exact zoom.
+    // It runs in the worker now. Clearing stays synchronous, and the
+    // token drops an answer that a newer highlight has replaced.
+    const token = ++laneHighlightToken;
+    const kind = highlight && highlight.kind;
+    const key = highlight && highlight.key;
+    if (kind !== "route" && kind !== "trail") {
+        src.setData({ type: "FeatureCollection", features: [] });
+        return;
     }
-    src.setData(fc);
+    // A trail spans routes, so that one lays the whole graph out
+    // (cached per zoom by the plugin) and cuts it down to the trail.
+    const wanted = kind === "route"
+        ? laneFeatureCollectionAsync({ extent: "full", routes: [key] })
+        : laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
+            type: "FeatureCollection",
+            features: all.features.filter((f) => f.properties.trail_name === key),
+        }));
+    wanted.then((fc) => {
+        if (token === laneHighlightToken) src.setData(fc);
+    }).catch((e) => console.error("lanes: highlight layout failed", e));
 }
 
 // ============================================================
