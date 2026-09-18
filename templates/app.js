@@ -6495,11 +6495,37 @@ function refreshLaneGraph() {
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
         }
-        map.once("idle", () => {
+        afterLaneBuild(token, next.edges.length, () => {
             refreshLaneFeatures();
             refreshLaneHighlight();
         });
     }).catch((e) => console.error("lanes: ordering failed", e));
+}
+
+// Run fn once the layer holds a build of this graph. The plugin lays
+// lanes out in a worker, so the build a graph swap asks for lands a
+// round trip later, usually after the map has already gone idle: an
+// idle handler read the PREVIOUS layout and left the chevrons and
+// route-name labels on the old lanes until the next pan. getBuildInfo
+// is the cheap per-frame readout; edge count identifies the graph,
+// since a swap that changes what is visible changes it. The deadline
+// keeps a toggle that somehow never builds from leaving the symbol
+// layers empty, and the token drops a swap a newer toggle overtook.
+const LANE_BUILD_DEADLINE_MS = 3000;
+
+function afterLaneBuild(token, edges, fn) {
+    const t0 = performance.now();
+    const tick = () => {
+        if (token !== laneOrderToken) return;
+        const info = laneLayer.getBuildInfo();
+        if ((info && info.stats.edges === edges)
+            || performance.now() - t0 > LANE_BUILD_DEADLINE_MS) {
+            fn();
+            return;
+        }
+        requestAnimationFrame(tick);
+    };
+    tick();
 }
 
 // Lane geometry as GeoJSON for the layers that otherwise read the
