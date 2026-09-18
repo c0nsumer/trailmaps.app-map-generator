@@ -5478,7 +5478,7 @@ async function loadTrails() {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
         });
-        map.on("moveend", refreshLaneFeatures);
+        map.on("moveend", refreshLaneSymbols);
         map.on("zoomend", refreshLaneHighlight);
     }
 
@@ -6476,7 +6476,7 @@ function refreshLaneGraph() {
         // is one of the measurements the plugin evaluation asks for.
         console.info(`lanes: ordered ${next.edges.length} edges, cost ${cost}, `
             + `${Math.round(performance.now() - t0)} ms`);
-        laneRefreshOnBuild = true;
+        laneSwapPending = true;
         if (laneLayer) {
             laneLayer.setGraph(next);
         } else {
@@ -6501,21 +6501,33 @@ function refreshLaneGraph() {
 }
 
 // Lane geometry is laid out in the plugin's worker, so the build a
-// graph swap asks for lands a round trip later, after the map has
-// gone idle: reading the lane features on idle got the PREVIOUS
-// layout and left the chevrons and route-name labels on the old lanes
-// until the next pan. The layer reports each finished build instead,
-// and the first report after a swap is always that swap's own build.
-// Pan rebuilds report too, and they only move lanes the symbol layers
-// already carry, so those stay on moveend: one refresh per gesture
-// rather than one per rebuild.
-let laneRefreshOnBuild = false;
+// move or a graph swap asks for lands a round trip later. Reading the
+// lane features before it arrives gets the PREVIOUS layout, which left
+// the chevrons and route-name labels on the old lanes: after a route
+// toggle until the next pan, and after a gesture whose last rebuild
+// outran moveend, over the strip the pan just exposed.
+//
+// So the symbol layers refresh from whichever of the two lands second.
+// A build during a gesture is picked up by the moveend that follows
+// it; a build after the gesture, which is the case moveend cannot see,
+// refreshes on the spot. That keeps it at one refresh per gesture: a
+// refresh per rebuild would mean a laneFeatures() conversion and a
+// setData re-tile on each of the dozens a pan can trigger.
+//
+// The ribbon reads the whole graph rather than the built area, so it
+// only cares about a graph swap, not about where the map moved.
+let laneSwapPending = false;
+
+function refreshLaneSymbols() {
+    refreshLaneFeatures();
+    if (laneSwapPending) {
+        laneSwapPending = false;
+        refreshLaneHighlight();
+    }
+}
 
 function onLaneBuild() {
-    if (!laneRefreshOnBuild) return;
-    laneRefreshOnBuild = false;
-    refreshLaneFeatures();
-    refreshLaneHighlight();
+    if (!map.isMoving()) refreshLaneSymbols();
 }
 
 // Lane geometry as GeoJSON for the layers that otherwise read the
@@ -6544,8 +6556,9 @@ function laneFeatureCollection(options) {
 }
 
 // Lanes for the symbol layers. Lane positions are per zoom and the
-// layout is culled to the built area, so this refreshes on moveend
-// (which follows every zoom too) and after every graph swap.
+// layout is culled to the built area, so this refreshes after every
+// move (which covers every zoom too), after every graph swap, and
+// after a build that lands once the map has stopped.
 function refreshLaneFeatures() {
     const src = map.getSource(LANE_FEATURES_SOURCE);
     if (!src || !laneLayer) return;
