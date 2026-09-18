@@ -6476,6 +6476,7 @@ function refreshLaneGraph() {
         // is one of the measurements the plugin evaluation asks for.
         console.info(`lanes: ordered ${next.edges.length} edges, cost ${cost}, `
             + `${Math.round(performance.now() - t0)} ms`);
+        laneRefreshOnBuild = true;
         if (laneLayer) {
             laneLayer.setGraph(next);
         } else {
@@ -6492,40 +6493,29 @@ function refreshLaneGraph() {
                 laneColor: CONFIG.colorBy === "trail"
                     ? (edge) => difficultyColor(edge.properties.imba_difficulty)
                     : undefined,
+                onBuild: onLaneBuild,
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
         }
-        afterLaneBuild(token, next.edges.length, () => {
-            refreshLaneFeatures();
-            refreshLaneHighlight();
-        });
     }).catch((e) => console.error("lanes: ordering failed", e));
 }
 
-// Run fn once the layer holds a build of this graph. The plugin lays
-// lanes out in a worker, so the build a graph swap asks for lands a
-// round trip later, usually after the map has already gone idle: an
-// idle handler read the PREVIOUS layout and left the chevrons and
-// route-name labels on the old lanes until the next pan. getBuildInfo
-// is the cheap per-frame readout; edge count identifies the graph,
-// since a swap that changes what is visible changes it. The deadline
-// keeps a toggle that somehow never builds from leaving the symbol
-// layers empty, and the token drops a swap a newer toggle overtook.
-const LANE_BUILD_DEADLINE_MS = 3000;
+// Lane geometry is laid out in the plugin's worker, so the build a
+// graph swap asks for lands a round trip later, after the map has
+// gone idle: reading the lane features on idle got the PREVIOUS
+// layout and left the chevrons and route-name labels on the old lanes
+// until the next pan. The layer reports each finished build instead,
+// and the first report after a swap is always that swap's own build.
+// Pan rebuilds report too, and they only move lanes the symbol layers
+// already carry, so those stay on moveend: one refresh per gesture
+// rather than one per rebuild.
+let laneRefreshOnBuild = false;
 
-function afterLaneBuild(token, edges, fn) {
-    const t0 = performance.now();
-    const tick = () => {
-        if (token !== laneOrderToken) return;
-        const info = laneLayer.getBuildInfo();
-        if ((info && info.stats.edges === edges)
-            || performance.now() - t0 > LANE_BUILD_DEADLINE_MS) {
-            fn();
-            return;
-        }
-        requestAnimationFrame(tick);
-    };
-    tick();
+function onLaneBuild() {
+    if (!laneRefreshOnBuild) return;
+    laneRefreshOnBuild = false;
+    refreshLaneFeatures();
+    refreshLaneHighlight();
 }
 
 // Lane geometry as GeoJSON for the layers that otherwise read the
