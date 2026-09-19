@@ -156,6 +156,11 @@ relations:
 # Hide the Protomaps basemap's oneway direction arrows (roads + paths).
 # suppress_basemap_oneway_arrows: false
 
+# Hide the Protomaps basemap's own line for every OSM way this map draws
+# a route over, so the basemap does not show through dashes or beside a
+# route. Paths this map does not draw are untouched.
+# suppress_basemap_drawn_ways: false
+
 # Compute per-route distance at build time; show it in the Finder + chip.
 # show_route_distance: false
 

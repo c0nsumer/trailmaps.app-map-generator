@@ -3649,6 +3649,7 @@ async function init() {
         suppressBasemapPathLabels();
         suppressBasemapPois();
         suppressBasemapOnewayArrows();
+        suppressBasemapDrawnWays();
         // Apply share-link highlight, if any. Done here (after both
         // trails and route/trail indexes are built) so we can resolve
         // route IDs / trail names against real data. Best-effort,
@@ -11610,6 +11611,100 @@ function promoteBasemapLabels() {
     }
 }
 
+// Protomaps encodes a roads feature's id as 2^45 + the OSM way id, so a
+// filter can name exactly the ways this map draws. Verified against our
+// own way_ids on RAMBA: names agree and the geometries sit within 0.2 px
+// of each other. It is an implementation detail of their build, not a
+// documented contract, so a basemap refresh could stop it matching; it
+// fails open, the basemap lines come back, nothing breaks.
+const PMTILES_WAY_ID_BASE = Math.pow(2, 45);
+
+// The basemap flavor ships SOME layer filters in the legacy syntax and
+// some as expressions, and only an expression can read a feature id, so
+// a legacy one has to be converted before the id test can be added to
+// it. This is MapLibre's own rule for telling them apart.
+function isExpressionFilter(f) {
+    if (f === true || f === false) return true;
+    if (!Array.isArray(f) || !f.length) return false;
+    switch (f[0]) {
+        case "has": return f.length >= 2 && f[1] !== "$id" && f[1] !== "$type";
+        case "in": return f.length >= 3 && (typeof f[1] !== "string" || Array.isArray(f[2]));
+        case "!in": case "!has": case "none": return false;
+        case "==": case "!=": case ">": case ">=": case "<": case "<=":
+            return f.length !== 3 || Array.isArray(f[1]) || Array.isArray(f[2]);
+        case "any": case "all":
+            return f.slice(1).every((x) => typeof x === "boolean" || isExpressionFilter(x));
+        default: return true;
+    }
+}
+
+// Null for anything this does not understand, propagated upward, so a
+// filter with one unknown operator leaves its whole layer alone rather
+// than shipping a half-converted filter MapLibre will reject.
+function legacyFilterToExpression(f) {
+    if (!Array.isArray(f) || !f.length) return null;
+    const [op, ...rest] = f;
+    const key = (k) => (k === "$type" ? ["geometry-type"] : k === "$id" ? ["id"] : ["get", k]);
+    const kids = () => {
+        const out = rest.map(legacyFilterToExpression);
+        return out.some((x) => x === null) ? null : out;
+    };
+    switch (op) {
+        case "all": case "any": {
+            const c = kids();
+            return c && [op, ...c];
+        }
+        case "none": {
+            const c = kids();
+            return c && ["!", ["any", ...c]];
+        }
+        case "has": return ["has", rest[0]];
+        case "!has": return ["!", ["has", rest[0]]];
+        case "in": return ["in", key(rest[0]), ["literal", rest.slice(1)]];
+        case "!in": return ["!", ["in", key(rest[0]), ["literal", rest.slice(1)]]];
+        case "==": case "!=": case "<": case "<=": case ">": case ">=":
+            return [op, key(rest[0]), rest[1]];
+        default:
+            return null;
+    }
+}
+
+// Layer id -> the filter the basemap flavor shipped, so a re-apply after
+// a style rebuild composes with the original rather than with itself.
+const basemapRoadFilters = new Map();
+
+function drawnWayIds() {
+    const ids = [];
+    for (const f of (routesData && routesData.features) || []) {
+        for (const w of f.properties.way_ids || []) ids.push(PMTILES_WAY_ID_BASE + w);
+    }
+    return [...new Set(ids)];
+}
+
+// Hide the basemap's own line for every way this map draws over. The
+// blunt version of this (dropping the whole path kind) would take the
+// little side trails with it, and those are context a rider wants, so
+// this names the ways instead. Applies to every layer over the roads
+// source, which covers casings and name labels as well as the lines,
+// and reaches a route that follows a road as readily as one on a path.
+function suppressBasemapDrawnWays() {
+    if (!CONFIG.suppressBasemapDrawnWays) return;
+    const ids = drawnWayIds();
+    if (!ids.length) return;
+    const notDrawn = ["!", ["in", ["id"], ["literal", ids]]];
+    for (const layer of map.getStyle().layers) {
+        if (layer["source-layer"] !== "roads") continue;
+        if (!basemapRoadFilters.has(layer.id)) {
+            basemapRoadFilters.set(layer.id, map.getFilter(layer.id) || null);
+        }
+        const original = basemapRoadFilters.get(layer.id);
+        const base = original == null ? null
+            : isExpressionFilter(original) ? original : legacyFilterToExpression(original);
+        if (original != null && base == null) continue;   // not convertible
+        map.setFilter(layer.id, base ? ["all", base, notDrawn] : notDrawn);
+    }
+}
+
 function suppressBasemapPathLabels() {
     if (!CONFIG.suppressBasemapPathLabels) return;
     if (map.getLayer("roads_labels_minor")) {
@@ -11732,6 +11827,7 @@ function rebuildBasemapLayers() {
     suppressBasemapPathLabels();
     suppressBasemapPois();
     suppressBasemapOnewayArrows();
+    suppressBasemapDrawnWays();
 
     // Re-register difficulty/chevron icons if lost during style
     // rebuild. The decoration layers themselves come back via the
