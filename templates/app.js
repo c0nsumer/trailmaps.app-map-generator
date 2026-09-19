@@ -6392,9 +6392,9 @@ function laneStyleAt(zoom) {
 // 50% line-opacity is folded into the alpha of the scheme's casing
 // color (the tokens are rgba() strings). Drawn under the fill, a
 // translucent casing shows the basemap through its outer rim, which
-// is the native look. What stays different: the native casing is
-// hidden entirely for single-color dashed routes, and the plugin has
-// no per-route casing switch (plugin gap).
+// is the native look. The native rule that a single-color dashed
+// route draws bare is kept per route through RouteMeta.casing, which
+// laneRouteMeta sets; it is no longer a plugin gap.
 function laneCasingColor() {
     const css = trailCasingColor();
     const m = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/.exec(css);
