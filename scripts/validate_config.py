@@ -125,7 +125,6 @@ KNOWN_KEYS = {
     "suppress_basemap_path_labels": bool,
     "suppress_basemap_pois": bool,
     "suppress_basemap_oneway_arrows": bool,
-    "suppress_basemap_drawn_ways": bool,
     "map_dim_on_highlight": bool,
     "scrim_opacity": (int, float),
     "highlight_glow": bool,
