@@ -6390,7 +6390,7 @@ function laneStyleAt(zoom) {
     };
     const width = at(TRAIL_WIDTH_STOPS.fill);
     const casing = (at(TRAIL_WIDTH_STOPS.casingVisible) - width) / 2;
-    return { spacing: width + 1, width, casing };
+    return { spacing: width + 1, width, casingWidth: casing };
 }
 
 // The plugin has no casing opacity, so the native casing layers'
@@ -6508,7 +6508,7 @@ function refreshLaneGraph() {
             laneLayer = new L.LaneLayer({
                 id: LANE_LAYER_ID,
                 graph: next,
-                style: laneStyleAt,
+                sizes: laneStyleAt,
                 casingColor: laneCasingColor(),
                 laneStyle: CONFIG.colorBy === "trail" ? laneTrailStyle : undefined,
                 onBuild: onLaneBuild,
