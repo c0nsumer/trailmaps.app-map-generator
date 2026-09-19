@@ -4952,10 +4952,15 @@ function sharedArrowColor() {
 
 // imba_difficulty → IMBA color, the JS twin of difficultyColorExpr
 // for the lane plugin's per-way color callback.
+function isRatedDifficulty(value) {
+    // Test the value, never compare it: unrated ways carry an empty
+    // string, and "" >= 0 is true, so a range check reads them as grade 0.
+    return !!IMBA_RATINGS[Number(value)] && String(Number(value)) === String(value);
+}
+
 function difficultyColor(value) {
-    const rating = IMBA_RATINGS[Number(value)];
-    return rating && String(Number(value)) === String(value)
-        ? rating.color : CONFIG.defaultTrailColor;
+    return isRatedDifficulty(value)
+        ? IMBA_RATINGS[Number(value)].color : CONFIG.defaultTrailColor;
 }
 
 // MapLibre match expression: imba_difficulty → IMBA colors
@@ -6402,6 +6407,26 @@ function laneCasingColor() {
     return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
 }
 
+// color_by: trail, per way rather than per route. Natively this is a
+// pair of filtered fill layers on each route: rated ways solid in the
+// IMBA palette (difficultyColorExpr), unrated ways in
+// default_trail_color with its own dash and cap. The plugin asks per
+// (edge, route) instead, and each field it does not return falls back
+// to the route's own, so a rated way on a dashed route keeps that
+// route's dash. Connectors take the arriving edge's look, which is the
+// plugin's rule and keeps a way-level dash from flickering through
+// junctions. Only the first dash/gap pair carries over, as for routes.
+function laneTrailStyle(edge) {
+    const grade = edge.properties.imba_difficulty;
+    if (isRatedDifficulty(grade)) return { color: difficultyColor(grade) };
+    const look = { color: CONFIG.defaultTrailColor };
+    if (CONFIG.defaultTrailDash) {
+        look.dash = [CONFIG.defaultTrailDash[0], CONFIG.defaultTrailDash[1]];
+        look.dashCap = CONFIG.defaultTrailCap || "round";
+    }
+    return look;
+}
+
 // Per-route metadata for buildLineGraph, read from the same
 // CONFIG.routes fields the native layers use. Dash units and caps
 // agree: MapLibre's line-dasharray and the plugin's `dash` are both in
@@ -6485,14 +6510,7 @@ function refreshLaneGraph() {
                 graph: next,
                 style: laneStyleAt,
                 casingColor: laneCasingColor(),
-                // color_by: trail paints every lane over a way in the
-                // way's IMBA difficulty color (difficultyColorExpr for
-                // the native fill); connectors take the arriving edge.
-                // The native default_trail_dash for unrated ways has no
-                // per-way dash in the plugin (dashes are per route).
-                laneColor: CONFIG.colorBy === "trail"
-                    ? (edge) => difficultyColor(edge.properties.imba_difficulty)
-                    : undefined,
+                laneStyle: CONFIG.colorBy === "trail" ? laneTrailStyle : undefined,
                 onBuild: onLaneBuild,
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);

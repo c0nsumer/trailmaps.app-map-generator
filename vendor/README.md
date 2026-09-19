@@ -6,7 +6,7 @@ verbatim copy of an upstream build. The build copies them into a map's
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `4f4f604`
+Source: the maplibre-gl-lanes repository, `main`, commit `cf31109`
 (2026-09-19). Earlier on that branch, commit `0ce9db9` added the
 MapLibre 5.x fallback for the projection data. MapLibre added
 `getProjectionData` to the render arguments in 6.0, and this engine
