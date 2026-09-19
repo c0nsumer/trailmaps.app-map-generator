@@ -6,8 +6,8 @@ verbatim copy of an upstream build. The build copies them into a map's
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `9dd64e8`
-(2026-09-18). Earlier on that branch, commit `0ce9db9` added the
+Source: the maplibre-gl-lanes repository, `main`, commit `bf787e4`
+(2026-09-19). Earlier on that branch, commit `0ce9db9` added the
 MapLibre 5.x fallback for the projection data. MapLibre added
 `getProjectionData` to the render arguments in 6.0, and this engine
 vendors 5.24, where the layer threw on every frame without it.
@@ -21,7 +21,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 117 kB, 42 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 121 kB, 43 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
