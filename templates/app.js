@@ -6513,14 +6513,9 @@ function refreshLaneGraph() {
     const seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
     const next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
     const token = ++laneOrderToken;
-    const t0 = performance.now();
-    L.orderLanesAsync(next, { stabilize: {}, seed }).then((cost) => {
+    L.orderLanesAsync(next, { stabilize: {}, seed }).then(() => {
         if (token !== laneOrderToken) return;
         laneGraph = next;
-        // Kept as a console line on purpose: ordering time on a phone
-        // is one of the measurements the plugin evaluation asks for.
-        console.info(`lanes: ordered ${next.edges.length} edges, cost ${cost}, `
-            + `${Math.round(performance.now() - t0)} ms`);
         laneSwapPending = true;
         if (laneLayer) {
             laneLayer.setGraph(next);
