@@ -6,9 +6,19 @@ verbatim copy of an upstream build. The build copies them into a map's
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `84db91f`
-(2026-09-20), built from a clean checkout of that commit. Four changes
+Source: the maplibre-gl-lanes repository, `main`, commit `7e9365c`
+(2026-09-20), built from a clean checkout of that commit. Five changes
 since the pin before these, `20c3c17`, reach what a map draws.
+
+`7e9365c` keeps a route one lane wide where it forks inside a merged
+junction. Found on MFO at z13.06 near 42.7683, -83.2207: a route that
+reaches a cluster of junctions both on the main bundle and on a spur,
+and leaves as one, drew a lane and a half wide while the short edge
+between the two arrivals was merged (about z13; fine at z12.6 and from
+z13.5). Each arrival had crossed the merged junction on its own
+connector. Layout code only, no renderer change, no option. A handful
+of paths move at low zoom on MFO, RAMBA, BDB and DTE; none on Glacial
+Hills.
 
 `84db91f` adds the layer option `openFolds`, default true, which this
 engine leaves at its default. Where a bundled path folds back on itself
@@ -51,10 +61,10 @@ at the affected junctions (45 of 520 paths on Glacial Hills at z15, 34
 of 1587 on RAMBA at z15.9, none on RAMBA at z18), and route labels and
 chevrons that ride those lanes move with them.
 
-Verified in two steps on full Glacial Hills and RAMBA builds, with the
+Verified step by step on full Glacial Hills, RAMBA and MFO builds, with the
 basemap, hillshade and contours on, in light and dark and in winter, in
 headless Chromium. `03a40a6` against `20c3c17`, and `84db91f` against
-`03a40a6`: outside the lanes' own footprint the frames are identical
+`03a40a6`, and `7e9365c` against `84db91f` on MFO and RAMBA: outside the lanes' own footprint the frames are identical
 apart from route labels and chevrons following the moved lanes, and on
 every view without moved lanes they are identical with the lane layer
 hidden, so nothing leaks into later layers or across tile edges. The
@@ -82,7 +92,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 135 kB, 48 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 137 kB, 48 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
