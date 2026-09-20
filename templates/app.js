@@ -5471,8 +5471,11 @@ async function loadTrails() {
 
     const lanePlugin = usingLanePlugin();
     if (CONFIG.laneRenderer === "plugin" && !lanePlugin) {
-        console.error("lane_renderer: plugin, but vendor/maplibre-gl-lanes.js "
-            + "did not load; drawing the native line layers instead.");
+        console.error("lane_renderer: plugin, but "
+            + (mapHasWebgl2()
+                ? "vendor/maplibre-gl-lanes.js did not load"
+                : "this map has a WebGL1 context and the plugin needs WebGL2")
+            + "; drawing the native line layers instead.");
     }
     if (lanePlugin) {
         map.addSource(LANE_FEATURES_SOURCE, {
@@ -6369,9 +6372,25 @@ const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
 const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
 
+// The plugin's shaders are GLSL ES 3.00. On a WebGL1 context its onAdd
+// logs an error and draws nothing, which is a map with no trails and no
+// message, so such a device gets the native renderer instead, the same
+// fallback a vendor script that failed to load gets. MapLibre 5 asks
+// for WebGL2 first and settles for WebGL1. A canvas that already has a
+// context returns it for a matching type and null for any other, so
+// this reads which one the map got without creating a second context.
+let _mapHasWebgl2 = null;
+function mapHasWebgl2() {
+    if (_mapHasWebgl2 === null && map) {
+        _mapHasWebgl2 = !!map.getCanvas().getContext("webgl2");
+    }
+    return _mapHasWebgl2 !== false;
+}
+
 function usingLanePlugin() {
     return CONFIG.laneRenderer === "plugin"
-        && typeof window.maplibreLanes !== "undefined";
+        && typeof window.maplibreLanes !== "undefined"
+        && mapHasWebgl2();
 }
 
 // Lane geometry per zoom, in px. The fill width follows
