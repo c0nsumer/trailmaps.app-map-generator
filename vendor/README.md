@@ -6,9 +6,28 @@ verbatim copy of an upstream build. The build copies them into a map's
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `03a40a6`
-(2026-09-20), built from a clean checkout of that commit. Two changes
-since the previous pin, `20c3c17`, reach what a map draws.
+Source: the maplibre-gl-lanes repository, `main`, commit `84db91f`
+(2026-09-20), built from a clean checkout of that commit. Four changes
+since the pin before these, `20c3c17`, reach what a map draws.
+
+`84db91f` adds the layer option `openFolds`, default true, which this
+engine leaves at its default. Where a bundled path folds back on itself
+more tightly than the bundle is wide, the two legs are pushed apart and
+the apex becomes a half circle through the original tip, so every lane
+nests round the hairpin. Before it, the inner lanes cut across such a
+hairpin and on some a whole lane vanished through the turn (Glacial
+Hills at z15 to z16, for example near 44.990502, -85.236463). No point
+moves more than half the bundle's width, in pixels, so the effect fades
+as the zoom opens the fold. Stacks of switchbacks, hairpins whose apex
+is a junction, and anything within a lane of a junction are left alone
+by design. `openFolds: false` restores the previous lines exactly.
+
+`174bc3c` draws dots (`dash: [0, gap]`, this engine's "Other Trails"
+look) as one quad per dot. Worked out in the shader along the ribbon
+they came out as wedges and half discs at sharp bends. Positions along
+the route are unchanged. The mesh and the worker response gained a
+field for it, so the script and its inlined worker must come from one
+build, as they always do here.
 
 `03a40a6` blends a translucent casing once per pixel. This engine passes
 a translucent `casingColor` (white at 0.30 in dark, black at 0.50 in
@@ -32,13 +51,16 @@ at the affected junctions (45 of 520 paths on Glacial Hills at z15, 34
 of 1587 on RAMBA at z15.9, none on RAMBA at z18), and route labels and
 chevrons that ride those lanes move with them.
 
-Verified against `20c3c17` on full Glacial Hills and RAMBA builds, with
-the basemap, hillshade and contours on, in light and dark, in headless
-Chromium: outside the lanes' own footprint the frames are identical
-apart from label placement following the moved lanes, and with the lane
-layer hidden they are identical, so nothing leaks into later layers or
-across tile edges. Lane layout time is unchanged. The packaging commits
-between the two pins do not change this file at runtime.
+Verified in two steps on full Glacial Hills and RAMBA builds, with the
+basemap, hillshade and contours on, in light and dark and in winter, in
+headless Chromium. `03a40a6` against `20c3c17`, and `84db91f` against
+`03a40a6`: outside the lanes' own footprint the frames are identical
+apart from route labels and chevrons following the moved lanes, and on
+every view without moved lanes they are identical with the lane layer
+hidden, so nothing leaks into later layers or across tile edges. The
+casing acceptance frame (Glacial Hills z18 at 44.98889, -85.24598) is
+pixel-identical between `03a40a6` and `84db91f`. The packaging commits
+between the pins do not change this file at runtime.
 
 Earlier pins, for the record: `d252af1` settled the plugin's public
 names before 1.0, with no aliases kept, and two of the renames reach
@@ -60,7 +82,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 123 kB, 42 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 135 kB, 48 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
