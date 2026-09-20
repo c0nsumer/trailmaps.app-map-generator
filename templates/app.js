@@ -5487,6 +5487,7 @@ async function loadTrails() {
             data: { type: "FeatureCollection", features: [] },
         });
         map.on("moveend", refreshLaneSymbols);
+        map.on("zoom", onLaneZoom);
         map.on("zoomend", refreshLaneHighlight);
     }
 
@@ -6555,7 +6556,33 @@ function refreshLaneGraph() {
 // only cares about a graph swap, not about where the map moved.
 let laneSwapPending = false;
 
+// A wheel zoom holds moveend back: MapLibre's scroll handler keeps the
+// map "zooming" for a fixed 200 ms after its easing has finished, in
+// case another tick follows. Lane offsets are pixels at one zoom, so
+// for that long, on top of the animation itself, the chevrons and
+// route names sat where the lanes were at the previous zoom, beside
+// their lanes on every shared corridor, and then jumped (Steve's
+// Firefox profile of MFO, 2026-09-20: nothing at all running during
+// those 200 ms). So the symbol source also refreshes as soon as the
+// zoom has stopped changing, without waiting for moveend.
+// laneFeatures() places the latest layout for the zoom on screen, the
+// same rescaling the layer draws with, so it does not need the rebuild
+// for that zoom to have landed; moveend still refreshes afterwards and
+// picks that build up. A pan never arms this: its zoom does not change.
+const LANE_ZOOM_SETTLE_MS = 60;
+let laneZoomSettleTimer = 0;
+let laneSymbolsZoom = null;  // zoom the symbol source was last laid out for
+let laneSymbolsBuild = -1;   // and the plugin build it was read from
+
+function onLaneZoom() {
+    clearTimeout(laneZoomSettleTimer);
+    laneZoomSettleTimer = setTimeout(() => {
+        if (map.getZoom() !== laneSymbolsZoom) refreshLaneFeatures();
+    }, LANE_ZOOM_SETTLE_MS);
+}
+
 function refreshLaneSymbols() {
+    clearTimeout(laneZoomSettleTimer);
     refreshLaneFeatures();
     if (laneSwapPending) {
         laneSwapPending = false;
@@ -6608,6 +6635,16 @@ function laneFeatureCollectionAsync(options) {
 function refreshLaneFeatures() {
     const src = map.getSource(LANE_FEATURES_SOURCE);
     if (!src || !laneLayer) return;
+    // The features are a function of the layout and the zoom alone, so
+    // the moveend that follows a zoom-settle refresh has nothing new to
+    // say unless a build landed in between, and skipping it saves a
+    // conversion, a worker re-tile and a symbol placement per zoom.
+    const info = laneLayer.getBuildInfo();
+    const build = info ? info.build : -1;
+    const zoom = map.getZoom();
+    if (build === laneSymbolsBuild && zoom === laneSymbolsZoom) return;
+    laneSymbolsBuild = build;
+    laneSymbolsZoom = zoom;
     src.setData(laneFeatureCollection());
 }
 
