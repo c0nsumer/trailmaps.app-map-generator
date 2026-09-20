@@ -27,7 +27,13 @@ from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
 from pmtiles_util import extract_minzoom
-from validate_config import DEFAULT_VISIBLE_LAYERS, VALID_DAYS, match_day_token
+from validate_config import (
+    DEFAULT_LANE_RENDERER,
+    DEFAULT_VISIBLE_LAYERS,
+    VALID_DAYS,
+    effective_lane_renderer,
+    match_day_token,
+)
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -213,7 +219,7 @@ CONFIG_SPEC = [
     # at load time). app.js branches on this in loadTrails; enrichment
     # skips the expansion and build.py ships the plugin script under
     # "plugin". See validate_config.VALID_LANE_RENDERERS.
-    ("lane_renderer", "laneRenderer", "native"),
+    ("lane_renderer", "laneRenderer", DEFAULT_LANE_RENDERER),
     ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
@@ -1087,7 +1093,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # maplibre-gl.js and ahead of app.js, like maplibre-contour.
             lanes_tag = (
                 '<script src="vendor/maplibre-gl-lanes.js" defer></script>'
-                if config.get("lane_renderer") == "plugin"
+                if effective_lane_renderer(config) == "plugin"
                 else ""
             )
             content = content.replace("__LANE_RENDERER_SCRIPT__", lanes_tag)

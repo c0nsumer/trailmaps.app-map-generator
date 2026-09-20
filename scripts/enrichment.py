@@ -12,6 +12,7 @@ import os
 import sys
 
 import console
+from validate_config import effective_lane_renderer
 
 
 def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None):
@@ -359,7 +360,7 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # stub micro-features and per-mode host variants would read to the
     # plugin as extra routes sharing extra paths, so the whole tail is
     # skipped. Route stats still run: they want canonical geometry too.
-    lane_plugin = config.get("lane_renderer") == "plugin"
+    lane_plugin = effective_lane_renderer(config) == "plugin"
 
     # ----- Align shared-corridor copies -----
     # Each route's stitched chain traverses shared trail in its own

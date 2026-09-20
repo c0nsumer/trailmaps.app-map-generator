@@ -239,6 +239,18 @@ VALID_COLOR_BY = {"relation", "trail"}
 # The plugin path is under evaluation, so native stays the default and
 # production maps do not change until a config opts in.
 VALID_LANE_RENDERERS = {"native", "plugin"}
+DEFAULT_LANE_RENDERER = "native"
+
+
+def effective_lane_renderer(config):
+    """The renderer a build uses, with the default applied.
+
+    The key is read in four places (vendor copy, enrichment, the
+    injected CONFIG value, the script tag), and a config that omits it
+    must get the same answer in all four, or the build comes out half
+    one renderer and half the other.
+    """
+    return (config or {}).get("lane_renderer", DEFAULT_LANE_RENDERER)
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}

@@ -61,7 +61,7 @@ from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import extract_minzoom
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
-from validate_config import validate_config
+from validate_config import effective_lane_renderer, validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -317,7 +317,7 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
 
     bundled = len(VENDOR_LIBS)
     lanes_dst = os.path.join(vendor_dst, LANES_VENDOR_FILE)
-    if (config or {}).get("lane_renderer") == "plugin":
+    if effective_lane_renderer(config) == "plugin":
         lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
         shutil.copy2(lanes_src, lanes_dst)
         bundled += 1
