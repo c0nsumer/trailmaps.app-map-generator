@@ -83,3 +83,27 @@ if __name__ == "__main__":
     import pytest
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_vendor_scripts_lose_their_source_map_pointer(tmp_path):
+    """A build ships no .map files, so the pointer is a 404 per library
+    in any open inspector. The source copy must stay verbatim."""
+    from build import _copy_vendor_script
+
+    src = tmp_path / "lib.js.abc123"  # how a cached download is named
+    body = b"var a=1;\n//# sourceMappingURL=lib.js.map\n"
+    src.write_bytes(body)
+    dst = tmp_path / "lib.js"
+    _copy_vendor_script(str(src), str(dst))
+    assert dst.read_bytes() == b"var a=1;\n"
+    assert src.read_bytes() == body
+
+    # mid-file mentions and non-scripts are left alone
+    inner = b'var s="//# sourceMappingURL=x.map";\nvar b=2;\n'
+    src.write_bytes(inner)
+    _copy_vendor_script(str(src), str(dst))
+    assert dst.read_bytes() == inner
+    css = tmp_path / "lib.css"
+    src.write_bytes(b"a{}\n/*# sourceMappingURL=lib.css.map */\n")
+    _copy_vendor_script(str(src), str(css))
+    assert css.read_bytes() == src.read_bytes()

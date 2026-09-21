@@ -275,6 +275,35 @@ def _minify_assets(output_dir, targets=None):
 LANES_VENDOR_FILE = "maplibre-gl-lanes.js"
 
 
+_SOURCE_MAP_COMMENT = re.compile(rb"\s*//[#@] ?sourceMappingURL=\S+\s*\Z")
+
+
+def _copy_vendor_script(src, dst):
+    """Copy a vendored file into a build, minus its source map pointer.
+
+    Upstream builds end in `//# sourceMappingURL=<name>.js.map`, and a
+    build ships the script without the map, so an open browser inspector
+    logged a 404 per library on every load (four on a plugin map).
+    Shipping the maps is the wrong trade: they are several MB, only an
+    attached inspector ever asks for one, and the service worker sweep
+    would precache them onto every phone unless taught a new kind of
+    file. Debugging a deployed map is rare; for a profiling session,
+    drop the matching .map beside the script on a test map by hand.
+    The cached and the repo copies stay verbatim; only the build's copy
+    loses the comment.
+    """
+    with open(src, "rb") as f:
+        data = f.read()
+    # dst, not src: a cached download is named <file>.js.<url hash>
+    stripped = _SOURCE_MAP_COMMENT.sub(b"\n", data) if dst.endswith(".js") else data
+    if stripped == data:
+        shutil.copy2(src, dst)
+        return
+    with open(dst, "wb") as f:
+        f.write(stripped)
+    shutil.copystat(src, dst)
+
+
 def download_vendor_libs(output_dir, cache_dir, config=None):
     """Download CDN dependencies to vendor/ for offline use.
 
@@ -314,13 +343,13 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
                 ):
                     os.remove(os.path.join(vendor_cache, stale))
 
-        shutil.copy2(cached, dst)
+        _copy_vendor_script(cached, dst)
 
     bundled = len(VENDOR_LIBS)
     lanes_dst = os.path.join(vendor_dst, LANES_VENDOR_FILE)
     if effective_lane_renderer(config) == "plugin":
         lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
-        shutil.copy2(lanes_src, lanes_dst)
+        _copy_vendor_script(lanes_src, lanes_dst)
         bundled += 1
     elif os.path.exists(lanes_dst):
         # A map switched back to the native renderer: drop the script so
