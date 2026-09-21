@@ -1,7 +1,11 @@
 # Pinned vendor builds
 
 Libraries that `scripts/build.py` cannot fetch by URL yet. Each file is a
-verbatim copy of an upstream build. The build copies them into a map's
+verbatim copy of an upstream build. The copy a build ships loses one
+line, the trailing `//# sourceMappingURL=` comment, because no build
+ships a `.map` and the pointer is otherwise a 404 in any open browser
+inspector. To profile a deployed map against source, put the `.map`
+that was built with the exact script beside it on a test map by hand. The build copies them into a map's
 `vendor/` directory next to the downloaded ones.
 
 ## maplibre-gl-lanes.js
