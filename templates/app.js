@@ -199,44 +199,83 @@ function basemapFlavor(scheme) {
     return s === "dark" ? "dark" : "light";
 }
 
-// Basemap color overrides merged onto the stock Protomaps flavors
-// (adopted 2026-08-07 after the Session D on-device style review;
-// candidates and rejected alternatives are recorded in
-// .claude/plans/style-lab-session-d.md). Light is the community
-// "bio" flavor's vegetation/water/earth: all vegetation unified at
-// one calm sage so the trail network reads as the foreground;
-// muted naturalist water. Dark is our own sage-cast tuning of the
-// stock dark flavor. Only vegetation / water / earth keys and the
-// low-zoom landcover block are overridden: roads, labels, and POIs
-// stay stock, so the shipped light/dark sprite atlases and the
-// suppression helpers keep working unchanged. wood/park/scrub each
-// carry _a (low zoom) and _b (high zoom) variants, and landcover
-// paints the low-zoom world, so both are overridden together or
-// low and mid zooms would disagree about how green the woods are.
+// Basemap style, designed with Steve on devices over 2026-09-21 (the
+// Style Lab rounds; candidates, measurements and every rejected
+// alternative are in .claude/plans/style-lab-basemap.md). It replaces
+// the "bio" overrides of 2026-08-07. The basemap is ground, never
+// figure: bright routes, lane bundles, labels and markers all draw on
+// top of it, so everything here is about staying out of their way
+// while still saying where you are.
+//
+// - Ground: a pale neutral, vegetation a very pale sage, water muted,
+//   urban landuse folded into the ground, buildings nearly gone.
+// - Dark is a DUSK ground, not near-black. On the stock dark ground
+//   (about 11 percent) road, wood and water had no room to differ and
+//   every candidate looked alike; at about 17 percent they do.
+// - Everything built is ONE system: highways, roads, service roads and
+//   paths share one fill and one edge color, and rank is carried by
+//   WIDTH alone. The edge is set by what the thinnest member, the
+//   path, needs to stay readable on open ground under hillshade. In
+//   dusk the edge is a near-black hairline that cannot carry contrast,
+//   so there it is the FILL, lighter than the ground, that does.
+// - Paths are the thin end of that system (see styleBasemapLayers):
+//   man-made, and visibly not one of our routes.
+// Sprites and label colors stay stock in light; dusk lifts the road
+// labels to match its ground.
+const BASEMAP_BUILT_FILL_KEYS = [
+    "highway", "major", "link", "minor_a", "minor_b", "minor_service", "other",
+    "bridges_highway", "bridges_major", "bridges_link", "bridges_minor", "bridges_other",
+];
+const BASEMAP_BUILT_EDGE_KEYS = [
+    "highway_casing_late", "highway_casing_early", "major_casing_late", "major_casing_early",
+    "link_casing", "minor_casing", "minor_service_casing",
+    "bridges_highway_casing", "bridges_major_casing", "bridges_link_casing",
+    "bridges_minor_casing", "bridges_other_casing",
+];
+const BASEMAP_URBAN_KEYS = [
+    "hospital", "industrial", "school", "pedestrian", "zoo", "military", "aerodrome",
+];
+const BASEMAP_BUILT = {
+    light: { fill: "#ffffff", edge: "#b0aea6" },
+    dark: { fill: "#6c6c68", edge: "#121211" },
+};
+const _flavorKeys = (keys, color) => Object.fromEntries(keys.map((k) => [k, color]));
+
 const BASEMAP_FLAVOR_OVERRIDES = {
     light: {
-        background: "#dddddd", earth: "#ededed",
-        wood_a: "#bfc99c", wood_b: "#bfc99c",
-        park_a: "#bfc99c", park_b: "#bfc99c",
-        scrub_a: "#bfc99c", scrub_b: "#bfc99c",
-        water: "#84b7cf",
-        sand: "#ebe7da", beach: "#ebe7da",
+        background: "#d9d9d8", earth: "#f2f2f0",
+        wood_a: "#e0e6d4", wood_b: "#e0e6d4",
+        park_a: "#e0e6d4", park_b: "#e0e6d4",
+        scrub_a: "#e3e7d8", scrub_b: "#e3e7d8",
+        water: "#a8c5d6",
+        sand: "#efede4", beach: "#efede4",
+        ..._flavorKeys(BASEMAP_URBAN_KEYS, "#f2f2f0"),
+        buildings: "#e6e6e4", railway: "#c9cccd",
+        ..._flavorKeys(BASEMAP_BUILT_FILL_KEYS, BASEMAP_BUILT.light.fill),
+        ..._flavorKeys(BASEMAP_BUILT_EDGE_KEYS, BASEMAP_BUILT.light.edge),
         landcover: {
-            forest: "#bfc99c", grassland: "#ccd4ab",
-            farmland: "#d6dcb9", scrub: "#c5cea3",
-            barren: "#e8e3d0", urban_area: "#e4e4e4",
+            forest: "#e0e6d4", grassland: "#e6ead9",
+            farmland: "#eaecdf", scrub: "#e3e7d8",
+            barren: "#efede4", urban_area: "#ececea",
         },
     },
     dark: {
-        background: "#33362f", earth: "#1f1f1c",
-        wood_a: "#24291e", wood_b: "#24291e",
-        park_a: "#24291e", park_b: "#24291e",
-        scrub_a: "#24291e", scrub_b: "#24291e",
-        water: "#2c3a45",
+        background: "#3b3d39", earth: "#2c2d2a",
+        wood_a: "#31362b", wood_b: "#31362b",
+        park_a: "#31362b", park_b: "#31362b",
+        scrub_a: "#2f3329", scrub_b: "#2f3329",
+        water: "#33434f",
+        sand: "#33332f", beach: "#33332f",
+        ..._flavorKeys(BASEMAP_URBAN_KEYS, "#2c2d2a"),
+        buildings: "#262725", railway: "#151514",
+        ..._flavorKeys(BASEMAP_BUILT_FILL_KEYS, BASEMAP_BUILT.dark.fill),
+        ..._flavorKeys(BASEMAP_BUILT_EDGE_KEYS, BASEMAP_BUILT.dark.edge),
+        roads_label_minor: "#8a8a86", roads_label_major: "#9c9c98",
+        roads_label_minor_halo: "#2c2d2a", roads_label_major_halo: "#2c2d2a",
         landcover: {
-            forest: "#24291e", grassland: "#262b20",
-            farmland: "#282d22", scrub: "#252a1f",
-            barren: "#262622", urban_area: "#1c1c1c",
+            forest: "#31362b", grassland: "#32362c",
+            farmland: "#33372d", scrub: "#2f3329",
+            barren: "#30302d", urban_area: "#2a2b28",
         },
     },
 };
@@ -256,6 +295,59 @@ function resolvedNamedFlavor(name) {
     merged.landcover = Object.assign(
         {}, flavor.landcover, overrides.landcover || {});
     return merged;
+}
+
+// Edits to the flavor's layer list that colors alone cannot express.
+// Both style builders (buildStyle and rebuildBasemapLayers) run the
+// list through this BEFORE remembering the stock filters, so the
+// generated-path season filter (applyBasemapDrawnPathFilter) covers
+// the casing layer added here. Without that, a hairline would stay
+// under every drawn route.
+const BASEMAP_PATH_FILL_LAYERS = ["roads_other", "roads_bridges_other", "roads_tunnels_other"];
+const BASEMAP_PATH_CASING_LAYER = "roads_other_casing";
+
+function styleBasemapLayers(layers, scheme) {
+    const built = BASEMAP_BUILT[scheme === "dark" ? "dark" : "light"];
+    const byId = (id) => layers.find((l) => l.id === id);
+
+    const buildings = byId("buildings");
+    if (buildings) buildings.paint["fill-opacity"] = 0.5;
+
+    // Paths and tracks: the thin end of the one built system. Same fill
+    // and edge as the roads, far thinner than the flavor's own path line
+    // (0.5 to 12 px), with an edge a little under the service road's.
+    // The flavor gives plain paths no casing at all, and on this ground
+    // a thin white line needs one: without it paths were white on white
+    // on every lit slope. A way nobody may use (access=private|no) is
+    // drawn back rather than dropped, so it still explains what is on
+    // the ground without inviting anyone onto it.
+    const width = ["interpolate", ["exponential", 1.6], ["zoom"], 13, 0.5, 16, 1.3, 20, 4.5];
+    const restricted = ["match", ["get", "access"], ["private", "no"], 0.4, 1];
+    const other = byId("roads_other");
+    if (other) {
+        layers.splice(layers.indexOf(other), 0, {
+            id: BASEMAP_PATH_CASING_LAYER,
+            type: "line",
+            source: other.source,
+            "source-layer": "roads",
+            filter: other.filter,
+            paint: {
+                "line-color": built.edge,
+                "line-gap-width": width,
+                "line-opacity": restricted,
+                "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.5, 16, 0.7, 20, 1],
+            },
+        });
+    }
+    for (const id of BASEMAP_PATH_FILL_LAYERS) {
+        const l = byId(id);
+        if (!l) continue;
+        l.paint["line-color"] = built.fill;
+        l.paint["line-opacity"] = restricted;
+        l.paint["line-width"] = width;
+        delete l.paint["line-dasharray"];
+    }
+    return layers;
 }
 
 // Zoom stops for trail line widths, by layer role. Centralized so the
@@ -4573,7 +4665,8 @@ function buildStyle() {
     // toggles at runtime go through applyColorScheme →
     // rebuildBasemapLayers, which re-derives the flavor the same way.
     const flavor = basemapFlavor();
-    const basemapLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
+    const basemapLayers = styleBasemapLayers(
+        basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" }), flavor);
     rememberBasemapStockFilters(basemapLayers);
 
     return {
@@ -4645,6 +4738,35 @@ function buildCustomStyle(layer, base) {
 // ============================================================
 // Terrain / Hillshade (tones follow the per-scheme paint tokens)
 // ============================================================
+// Where terrain sits in the stack. As on a printed topo sheet, the
+// terrain ink goes down first and everything else overprints it: the
+// hillshade and the contour LINES sit just under the basemap's water,
+// so above the ground and its landuse, below water, roads, paths and
+// of course the routes. Lakes stop looking bumpy and stop carrying
+// stray contour lines, and no road, path or route is shaded or crossed
+// by contour ink. Contour LABELS are symbols and stay up with the
+// other labels. Until 2026-09 both sat under the first symbol layer,
+// over water and every road. A custom raster base layer has no water
+// layer; terrain then goes under the first symbol layer as before,
+// which is above the raster.
+function firstSymbolLayerId() {
+    const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
+    return firstSymbol ? firstSymbol.id : undefined;
+}
+
+function terrainBeforeLayer() {
+    return map.getLayer("water") ? "water" : firstSymbolLayerId();
+}
+
+// A basemap rebuild re-appends every overlay layer after the whole
+// basemap, terrain included, so it has to be put back down afterwards.
+// Hillshade first, then the contours on top of it.
+function placeTerrainLayers() {
+    if (!map.getLayer("water")) return;
+    for (const id of ["hillshade", "contour-lines"]) {
+        if (map.getLayer(id)) map.moveLayer(id, "water");
+    }
+}
 // Resolves once terrain has settled for the opening viewport, hillshade
 // tiles loaded, or none needed (out of coverage / config gate). Stays
 // null when this map has no terrain. Set by addTerrainLayers(), consumed
@@ -4688,14 +4810,7 @@ async function addTerrainLayers() {
         encoding: "terrarium",
     });
 
-    let beforeLayer = null;
-    const layers = map.getStyle().layers;
-    for (const layer of layers) {
-        if (layer.type === "symbol") {
-            beforeLayer = layer.id;
-            break;
-        }
-    }
+    const beforeLayer = terrainBeforeLayer();
 
     // Initial paint comes from the current scheme's tokens so dark-
     // mode visitors don't see a flash of light-mode hillshade before
@@ -4918,7 +5033,9 @@ async function addContourLayers(beforeLayer) {
                 "text-halo-color": t.contourLabelHalo,
                 "text-halo-width": 1.2,
             },
-        }, beforeLayer);
+        // Labels are symbols: under the water and road fills they would
+        // simply be painted over. They go with the other labels.
+        }, firstSymbolLayerId());
     } catch (e) {
         // Contours are enhancement, never load-bearing; a failure
         // here must not take the map down with it.
@@ -11697,15 +11814,25 @@ function promoteBasemapLabels() {
         .filter((l) => l.source === "basemap" && l.type === "symbol")
         .map((l) => l.id);
 
-    // Lane plugin: the lane layer is a custom layer (absent from
-    // getStyle) that inserts just before dim-tint, so anchoring on
-    // dim-tint leaves the labels under the lanes, the native slot.
+    // The labels go just under the routes: above every basemap fill
+    // and line, and under the lanes, the slot they have under the
+    // native renderer too. Lane plugin: the lane layer is a custom
+    // layer, absent from getStyle, so it is asked for by id. Before it
+    // exists (first load, promoted before the lanes are ordered) the
+    // anchor is dim-tint, and the lane layer then inserts itself just
+    // before dim-tint, above the labels, so both paths end the same
+    // way. Anchoring on dim-tint AFTER the lane layer existed used to
+    // put the labels over the lanes following any basemap rebuild.
+    // The hillshade is no anchor any more: it sits under the water now
+    // (terrainBeforeLayer), and anchoring on it buried every label
+    // under the water and road fills.
     const firstTrailLayer = style.layers.find(
         (l) => l.id.startsWith("trail-casing-")
             || (usingLanePlugin() && (l.id === "dim-tint" || l.id === "route-highlight-outline"))
-            || l.id === "hillshade"
     );
-    const beforeId = firstTrailLayer ? firstTrailLayer.id : undefined;
+    const beforeId = (usingLanePlugin() && map.getLayer(LANE_LAYER_ID))
+        ? LANE_LAYER_ID
+        : (firstTrailLayer ? firstTrailLayer.id : undefined);
 
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
@@ -11733,6 +11860,7 @@ function suppressBasemapPathLabels() {
 const BASEMAP_PATH_LINE_LAYERS = [
     "roads_tunnels_other_casing", "roads_tunnels_other", "roads_other",
     "roads_bridges_other_casing", "roads_bridges_other",
+    BASEMAP_PATH_CASING_LAYER,  // ours, added by styleBasemapLayers
 ];
 let basemapStockFilters = new Map();  // layer id -> the flavor's own filter
 
@@ -11852,7 +11980,8 @@ function rebuildBasemapLayers() {
         // Same flavor logic as buildStyle, picks dark/light
         // Protomaps tiles to match the current color scheme.
         const flavor = basemapFlavor();
-        baseLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
+        baseLayers = styleBasemapLayers(
+            basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" }), flavor);
         rememberBasemapStockFilters(baseLayers);
         spritePath = `${base}sprites/v4/${flavor}`;
 
@@ -11875,6 +12004,8 @@ function rebuildBasemapLayers() {
         };
         map.setStyle(newStyle, { diff: true });
     }
+
+    placeTerrainLayers();
 
     // Re-promote basemap labels above trail layers after style rebuild
     promoteBasemapLabels();
