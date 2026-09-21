@@ -10,9 +10,22 @@ that was built with the exact script beside it on a test map by hand. The build 
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `3135599`
-(2026-09-20), built from a clean checkout of that commit. Six changes
+Source: the maplibre-gl-lanes repository, `main`, commit `e1862c5`
+(2026-09-21), built from a clean checkout of that commit. Seven changes
 since the pin before these, `20c3c17`, reach what a map draws.
+
+`4461538` (the runtime change in `e1862c5`, whose own commit is docs)
+builds a route's crossing of a merged junction where the route forks
+beside the merged edge. Found at RAMBA's trailhead, 46.49226,
+-87.63992, from about z14 to z15.5: Snow Bike Trail dropped out of the
+bundle and reappeared further on. A crossing of an edge too short to
+draw was only built from the end where the graph records the route as
+entering it, and at such a fork it records the route as leaving at both
+ends. Layout code only. Connectors appear where they were missing, on
+almost every network at low zoom (at z13 the unjoined crossings went
+from 15 of 45 to none on Burchfield, 8 of 29 on BDB, 4 of 34 on River
+Bends, 3 of 130 on RAMBA), a few junctions re-cut, and labels riding
+those lanes shift with them. From z16 up almost nothing changes.
 
 `3135599` draws the connector that was missing where two edges join the
 same two junctions and a route turns from one onto the other at both.
@@ -106,7 +119,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 137 kB, 49 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 138 kB, 49 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
