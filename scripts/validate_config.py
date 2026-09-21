@@ -234,12 +234,14 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
-# "native" is the build-time subway-style expansion drawn with MapLibre
-# line layers; "plugin" draws lanes at load time with maplibre-gl-lanes.
-# The plugin path is under evaluation, so native stays the default and
-# production maps do not change until a config opts in.
+# "plugin" draws shared-corridor lanes at load time with
+# maplibre-gl-lanes; "native" is the older build-time subway-style
+# expansion drawn with MapLibre line layers. The plugin has been the
+# default since 2026-09-20, after a device pass over every production
+# map. Native stays selectable for one deploy cycle so that backing a
+# map out is a config edit (lane_renderer: native), and is then removed.
 VALID_LANE_RENDERERS = {"native", "plugin"}
-DEFAULT_LANE_RENDERER = "native"
+DEFAULT_LANE_RENDERER = "plugin"
 
 
 def effective_lane_renderer(config):

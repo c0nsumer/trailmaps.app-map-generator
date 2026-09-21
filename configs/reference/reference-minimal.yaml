@@ -54,7 +54,7 @@ relations:
 # relation_names: {}
 # dashed_relations: {}
 # color_by: relation
-# lane_renderer: native
+# lane_renderer: plugin
 # default_trail_color: "#808080"
 
 # --- Direction schedules ---

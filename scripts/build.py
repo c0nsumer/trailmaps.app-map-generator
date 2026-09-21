@@ -268,9 +268,9 @@ def _minify_assets(output_dir, targets=None):
 
 
 # Pinned by copy under vendor/ (see vendor/README.md) because the plugin
-# has no published release to point a URL at yet. Shipped only to maps
-# that set lane_renderer: plugin, so no other map downloads or executes
-# the 50 KB.
+# has no published release to point a URL at yet. Shipped to every map
+# except one that sets lane_renderer: native, which neither downloads
+# nor executes it.
 LANES_VENDOR_FILE = "maplibre-gl-lanes.js"
 
 

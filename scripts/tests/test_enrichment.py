@@ -10,6 +10,8 @@ Or as a script:
 import os
 import sys
 
+import pytest
+
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -93,7 +95,7 @@ if __name__ == "__main__":
 
 
 # ---------------------------------------------------------------------------
-# lane_renderer: plugin keeps the canonical features
+# lane_renderer: plugin (the default) keeps the canonical features
 # ---------------------------------------------------------------------------
 
 _A = [-83.44, 42.67]
@@ -144,15 +146,16 @@ def _shared_corridor_fc():
 
 def test_native_renderer_expands_shared_corridor():
     g = _shared_corridor_fc()
-    _enrich_trails_geojson({}, g, ".")
+    _enrich_trails_geojson({"lane_renderer": "native"}, g, ".")
     assert "routeOrders" in g["metadata"]
     two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
     assert two[0]["geometry"]["coordinates"][0] == _A, "copy realigned to the canonical order"
 
 
-def test_plugin_renderer_keeps_canonical_features():
+@pytest.mark.parametrize("config", [{}, {"lane_renderer": "plugin"}])
+def test_plugin_renderer_keeps_canonical_features(config):
     g = _shared_corridor_fc()
-    _enrich_trails_geojson({"lane_renderer": "plugin"}, g, ".")
+    _enrich_trails_geojson(config, g, ".")
     props = [f["properties"] for f in g["features"]]
     assert len(props) == 3
     assert not any(p.get("isStub") or p.get("mode") or p.get("_subwayHostVariant") for p in props)

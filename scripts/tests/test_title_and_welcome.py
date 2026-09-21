@@ -164,14 +164,18 @@ def test_welcome_stays_none_when_absent_or_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_lane_plugin_script_only_when_opted_in(tmp_path):
-    copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
+def test_lane_plugin_script_unless_opted_out(tmp_path):
+    # No key and an explicit "plugin" must build the same thing.
+    for config in (dict(BASE), {**BASE, "lane_renderer": "plugin"}):
+        copy_templates(config, str(tmp_path), dict(TRAILS))
+        html = (tmp_path / "index.html").read_text(encoding="utf-8")
+        assert '<script src="vendor/maplibre-gl-lanes.js" defer></script>' in html
+        assert "__LANE_RENDERER_SCRIPT__" not in html
+        assert _config_obj(config)["laneRenderer"] == "plugin"
+
+    native = {**BASE, "lane_renderer": "native"}
+    copy_templates(native, str(tmp_path), dict(TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "maplibre-gl-lanes.js" not in html
     assert "__LANE_RENDERER_SCRIPT__" not in html
-    assert _config_obj(dict(BASE))["laneRenderer"] == "native"
-
-    copy_templates({**BASE, "lane_renderer": "plugin"}, str(tmp_path), dict(TRAILS))
-    html = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert '<script src="vendor/maplibre-gl-lanes.js" defer></script>' in html
-    assert _config_obj({**BASE, "lane_renderer": "plugin"})["laneRenderer"] == "plugin"
+    assert _config_obj(native)["laneRenderer"] == "native"

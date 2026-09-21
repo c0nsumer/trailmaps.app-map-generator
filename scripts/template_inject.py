@@ -214,11 +214,11 @@ CONFIG_SPEC = [
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark", "invertLogoDark", True),
     ("color_by", "colorBy", "relation"),
-    # Which code draws shared-corridor lanes: "native" (build-time
-    # expansion + MapLibre line layers) or "plugin" (maplibre-gl-lanes
-    # at load time). app.js branches on this in loadTrails; enrichment
-    # skips the expansion and build.py ships the plugin script under
-    # "plugin". See validate_config.VALID_LANE_RENDERERS.
+    # Which code draws shared-corridor lanes: "plugin" (maplibre-gl-lanes
+    # at load time, the default) or "native" (build-time expansion +
+    # MapLibre line layers). app.js branches on this in loadTrails;
+    # enrichment skips the expansion and build.py ships the plugin
+    # script under "plugin". See validate_config.VALID_LANE_RENDERERS.
     ("lane_renderer", "laneRenderer", DEFAULT_LANE_RENDERER),
     ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
@@ -1086,10 +1086,10 @@ def copy_templates(config, output_dir, trails_geojson):
             # when the icons block (which carries all three tags) was
             # stripped for icon-less maps.
             content = content.replace("__THEME_COLOR__", _tc_light)
-            # The lane plugin script is shipped and loaded only for maps
-            # that opt in (build.download_vendor_libs copies it under the
-            # same condition); every other map keeps its byte-identical
-            # script set. `defer` keeps it in document order after
+            # The lane plugin script is shipped and loaded unless a map
+            # opts out with lane_renderer: native
+            # (build.download_vendor_libs copies it under the same
+            # condition). `defer` keeps it in document order after
             # maplibre-gl.js and ahead of app.js, like maplibre-contour.
             lanes_tag = (
                 '<script src="vendor/maplibre-gl-lanes.js" defer></script>'
