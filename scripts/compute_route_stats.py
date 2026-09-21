@@ -820,11 +820,13 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     ``elevation_loss_m`` (when available) into ``metadata.routes[<id>]``.
     Returns True if anything was attached (caller writes back to disk).
 
-    MUST run on canonical (pre-subway-expansion) geometry. The
-    multi-mode subway pass replaces each truncated host feature with
-    one full-length variant per active mode, all carrying the same
-    ``route_id`` - computing on that output counts host geometry once
-    per mode (a 4-mode map inflated one route ~4x). Guarded below.
+    MUST run on canonical geometry. Until 2026-09 the build expanded
+    shared corridors for the native lane renderer, replacing each host
+    feature with one full-length variant per mode, all carrying the same
+    ``route_id``; computing on that output counted host geometry once
+    per mode (a 4-mode map inflated one route ~4x). Nothing writes such
+    a file any more, but one left in a build directory by an older
+    engine still must not be measured. Guarded below.
     """
     want_distance = bool(config.get("show_route_distance"))
     want_elevation = bool(config.get("show_route_elevation"))

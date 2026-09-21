@@ -111,10 +111,10 @@
          has terrain (addContourLayers gates on the terrain source
          and degrades to no contours if this script is missing). -->
     <script src="vendor/maplibre-contour.js" defer></script>
-    <!-- maplibre-gl-lanes (50 KB), present only when the map sets
-         lane_renderer: plugin; the build substitutes the tag or
-         removes the placeholder. -->
-    __LANE_RENDERER_SCRIPT__
+    <!-- maplibre-gl-lanes (50 KB): draws every route. Without it the
+         page says it cannot start (app.js init) instead of showing a
+         basemap with no trails. -->
+    <script src="vendor/maplibre-gl-lanes.js" defer></script>
 
     <!-- Start the trails.geojson download now, overlapping it with the
          vendor JS download/parse instead of waiting for app.js to run

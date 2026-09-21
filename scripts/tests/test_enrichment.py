@@ -137,25 +137,16 @@ def _shared_corridor_fc():
                 "1": {"name": "One", "colour": "red", "ref": "", "seasonal": ""},
                 "2": {"name": "Two", "colour": "blue", "ref": "", "seasonal": ""},
             },
-            # What build.py seeds from a previous native build's output.
-            "routeOrders": {"summer": ["1", "2"]},
-            "corridorBaselines": {"summer": {"1|2": 0}},
         },
     }
 
 
-def test_native_renderer_expands_shared_corridor():
+def test_enrichment_keeps_canonical_features():
+    # The browser lays out the lanes from the canonical features, so
+    # enrichment must not add, realign or reverse any: a route that
+    # travels a shared way the other way keeps its own vertex order.
     g = _shared_corridor_fc()
-    _enrich_trails_geojson({"lane_renderer": "native"}, g, ".")
-    assert "routeOrders" in g["metadata"]
-    two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
-    assert two[0]["geometry"]["coordinates"][0] == _A, "copy realigned to the canonical order"
-
-
-@pytest.mark.parametrize("config", [{}, {"lane_renderer": "plugin"}])
-def test_plugin_renderer_keeps_canonical_features(config):
-    g = _shared_corridor_fc()
-    _enrich_trails_geojson(config, g, ".")
+    _enrich_trails_geojson({}, g, ".")
     props = [f["properties"] for f in g["features"]]
     assert len(props) == 3
     assert not any(p.get("isStub") or p.get("mode") or p.get("_subwayHostVariant") for p in props)

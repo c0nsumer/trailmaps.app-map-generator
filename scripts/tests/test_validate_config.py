@@ -332,27 +332,14 @@ if __name__ == "__main__":
     print(f"\nAll {len(tests)} tests passed.")
 
 
-def test_lane_renderer_accepts_native_and_plugin():
-    assert not any("lane_renderer" in e for e in _errors(lane_renderer="native"))
-    assert not any("lane_renderer" in e for e in _errors(lane_renderer="plugin"))
-
-
-def test_lane_renderer_rejects_unknown_value():
-    assert any("lane_renderer" in e for e in _errors(lane_renderer="subway"))
-
-
-def test_effective_lane_renderer_applies_the_one_default():
-    # Every build site reads this helper, so a config without the key
-    # cannot come out half one renderer and half the other.
-    import template_inject
-    from validate_config import DEFAULT_LANE_RENDERER, effective_lane_renderer
-
-    assert effective_lane_renderer({}) == DEFAULT_LANE_RENDERER
-    assert effective_lane_renderer(None) == DEFAULT_LANE_RENDERER
-    assert effective_lane_renderer({"lane_renderer": "plugin"}) == "plugin"
-    assert effective_lane_renderer({"lane_renderer": "native"}) == "native"
-    spec = {yaml_key: default for yaml_key, _, default in template_inject.CONFIG_SPEC}
-    assert spec["lane_renderer"] == DEFAULT_LANE_RENDERER
+def test_lane_renderer_is_a_retired_key_with_its_own_message():
+    # Either former value: the key is gone, and the curator is told to
+    # delete the line, once, not also "unknown top-level key".
+    for value in ("native", "plugin"):
+        errors = [e for e in _errors(lane_renderer=value) if "lane_renderer" in e]
+        assert len(errors) == 1
+        assert "removed" in errors[0]
+        assert "unknown top-level key" not in errors[0]
 
 
 # --- event_mode.pois[].directions ------------------------------------------

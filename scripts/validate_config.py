@@ -91,7 +91,6 @@ KNOWN_KEYS = {
     "default_labels": str,
     "forced_labels": str,
     "color_by": str,
-    "lane_renderer": str,
     "default_trail_color": (str, dict),
     "marker_color": str,
     "marker_text_color": str,
@@ -236,25 +235,6 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
-# "plugin" draws shared-corridor lanes at load time with
-# maplibre-gl-lanes; "native" is the older build-time subway-style
-# expansion drawn with MapLibre line layers. The plugin has been the
-# default since 2026-09-20, after a device pass over every production
-# map. Native stays selectable for one deploy cycle so that backing a
-# map out is a config edit (lane_renderer: native), and is then removed.
-VALID_LANE_RENDERERS = {"native", "plugin"}
-DEFAULT_LANE_RENDERER = "plugin"
-
-
-def effective_lane_renderer(config):
-    """The renderer a build uses, with the default applied.
-
-    The key is read in four places (vendor copy, enrichment, the
-    injected CONFIG value, the script tag), and a config that omits it
-    must get the same answer in all four, or the build comes out half
-    one renderer and half the other.
-    """
-    return (config or {}).get("lane_renderer", DEFAULT_LANE_RENDERER)
 # "generated" replaces the Protomaps basemap's path lines with ones
 # generated here, which know what this map draws (basemap_paths.py) and
 # need tippecanoe. "protomaps" is the plain extract, exactly as before
@@ -382,6 +362,8 @@ def _is_color(value):
 _LEGACY_KEYS = {
     "root_relation_id",
     "extra_relations",
+    # The native lane renderer and its selector went in 2026-09.
+    "lane_renderer",
     # Renamed in the direction_schedule rework (May 2026). Caught
     # with pointed migration messages in _validate_weekdays.
     "default_direction_schedule",
@@ -467,12 +449,6 @@ def _validate_enums(report, config):
         report.err(
             "basemap_source",
             f"must be one of {sorted(VALID_BASEMAP_SOURCES)}, got {config['basemap_source']!r}",
-        )
-
-    if "lane_renderer" in config and config["lane_renderer"] not in VALID_LANE_RENDERERS:
-        report.err(
-            "lane_renderer",
-            f"must be one of {sorted(VALID_LANE_RENDERERS)}, got {config['lane_renderer']!r}",
         )
 
     if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:
@@ -1870,6 +1846,13 @@ def _validate_legacy_keys(report, config):
             "merged into `relations:`. Move every entry into "
             "the `relations:` list (alongside the former "
             "`root_relation_id` value).",
+        )
+    if "lane_renderer" in config:
+        report.err(
+            "lane_renderer",
+            "removed. Every map draws its routes with maplibre-gl-lanes; "
+            "the build-time renderer that `native` selected is gone. "
+            "Delete the line.",
         )
 
 

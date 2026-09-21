@@ -217,7 +217,7 @@ the spot on openstreetmap.org. Ordinary branch junctions share a node exactly an
 are excluded, so the check stays quiet on healthy data.
 
 The audit reads the pre-enrichment snapshot, so custom routes (not OSM's to
-fix) and the subway-style parallel-route expansion never reach it.
+fix) never reach it.
 
 Flags can be combined: `--refresh-trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching

@@ -8,6 +8,7 @@ issues](#known-issues).
 
 - [Build fails with "OSM relation not found" or "0 elements"](#build-fails-with-osm-relation-not-found-or-0-elements)
 - [Map shows but trails are missing or incomplete](#map-shows-but-trails-are-missing-or-incomplete)
+- [The page says the map has not started](#the-page-says-the-map-has-not-started)
 - [Bbox or pan_padding changes don't update the basemap](#bbox-or-pan_padding-changes-dont-update-the-basemap)
 - [PMTiles won't load offline](#pmtiles-wont-load-offline)
 - [Overpass keeps timing out](#overpass-keeps-timing-out)
@@ -54,6 +55,35 @@ non-exclusive Summer / Winter / Emergency buckets (see
   `summer_relations` and tag them as `seasonal=winter` in OSM.
   Alternatively, just put them in `summer_relations` to make them
   year-round.
+
+## The page says the map has not started
+
+A map has two messages for a page that shows no map. Both appear in the
+middle of the page, under the map's own logo.
+
+**"This map has not started."** This note is part of the page itself.
+`app.js` removes it as the first thing it does. The note appears only
+after 10 seconds, so a slow load does not show it. If you see it,
+`app.js` never ran. The usual causes:
+
+- JavaScript is off in the browser.
+- `app.js` is missing from the deployed directory, or the upload was cut
+  short. Compare the file size on the server with the one in
+  `build/<slug>/`.
+- The browser is too old to parse `app.js`. The file is plain ES2022
+  with no transpile step, so an old browser fails on the whole file.
+- A service worker serves a broken cached copy. Clear the site data for
+  the map, then reload.
+
+**"This map cannot start here."** `app.js` ran, but it could not make a
+map. The browser console names the cause. There are two causes:
+
+- The browser or device does not provide WebGL2. MapLibre GL JS 6 and
+  the lane layer both need it. The message says so. Try a current
+  version of Safari, Chrome or Firefox, or another device.
+- `vendor/maplibre-gl-lanes.js` did not load. That script draws every
+  route, so the map does not start without it. Check that the file is in
+  the deployed `vendor/` directory.
 
 ## Bbox or pan_padding changes don't update the basemap
 

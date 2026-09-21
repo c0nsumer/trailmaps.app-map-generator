@@ -160,22 +160,24 @@ def test_welcome_stays_none_when_absent_or_empty():
 
 
 # ---------------------------------------------------------------------------
-# lane_renderer script tag (template_inject.copy_templates)
+# lane plugin script tag (templates/index.html)
 # ---------------------------------------------------------------------------
 
 
-def test_lane_plugin_script_unless_opted_out(tmp_path):
-    # No key and an explicit "plugin" must build the same thing.
-    for config in (dict(BASE), {**BASE, "lane_renderer": "plugin"}):
-        copy_templates(config, str(tmp_path), dict(TRAILS))
-        html = (tmp_path / "index.html").read_text(encoding="utf-8")
-        assert '<script src="vendor/maplibre-gl-lanes.js" defer></script>' in html
-        assert "__LANE_RENDERER_SCRIPT__" not in html
-        assert _config_obj(config)["laneRenderer"] == "plugin"
-
-    native = {**BASE, "lane_renderer": "native"}
-    copy_templates(native, str(tmp_path), dict(TRAILS))
+def test_every_map_loads_the_lane_plugin_and_carries_the_boot_note(tmp_path):
+    # The plugin is the only thing that draws a route, so its script is
+    # in every page, ahead of app.js (deferred scripts run in document
+    # order, and app.js init refuses to start without the global).
+    copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "maplibre-gl-lanes.js" not in html
+    lanes = html.index('<script src="vendor/maplibre-gl-lanes.js" defer></script>')
+    assert lanes < html.index('<script src="app.js" defer></script>')
     assert "__LANE_RENDERER_SCRIPT__" not in html
-    assert _config_obj(native)["laneRenderer"] == "native"
+    config = _config_obj(dict(BASE))
+    for gone in ("laneRenderer", "routeOrders", "corridorBaselines"):
+        assert gone not in config
+    # The static boot-failure note ships in the page and app.js takes it
+    # down first thing; neither half is any use without the other.
+    assert 'id="boot-fallback"' in html
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    assert app.index('getElementById("boot-fallback")') < app.index("setPoiColorVars")

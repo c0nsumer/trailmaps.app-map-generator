@@ -62,7 +62,7 @@ from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import extract_minzoom
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
-from validate_config import effective_basemap_source, effective_lane_renderer, validate_config
+from validate_config import effective_basemap_source, validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -97,12 +97,11 @@ VENDOR_LIBS = {
 # ---------------------------------------------------------------------------
 # 6 decimal places is ~11 cm at these latitudes - far finer than the
 # underlying OSM geometry's real accuracy or anything visible on screen,
-# yet it strips the trailing float noise (the subway-style parallel-offset
-# math emits up to 15 dp) that both bloats the file and, being high-entropy,
-# resists gzip. Rounding the render output roughly halves the GZIPPED size
-# of trails.geojson - the largest text asset every visitor fetches and
-# JSON-parses on load. Only the expanded render output is rounded;
-# trails.src.geojson keeps full precision so the next build re-expands from
+# yet it strips trailing float noise (custom-route and clipping math emits
+# up to 15 dp) that both bloats the file and, being high-entropy, resists
+# gzip. trails.geojson is the largest text asset every visitor fetches and
+# JSON-parses on load. Only the render output is rounded;
+# trails.src.geojson keeps full precision so the next build enriches from
 # clean geometry.
 COORD_PRECISION = 6
 
@@ -279,9 +278,8 @@ def _minify_assets(output_dir, targets=None):
 
 
 # Pinned by copy under vendor/ (see vendor/README.md) because the plugin
-# has no published release to point a URL at yet. Shipped to every map
-# except one that sets lane_renderer: native, which neither downloads
-# nor executes it.
+# has no published release to point a URL at yet. Shipped to every map:
+# it is what draws the routes.
 LANES_VENDOR_FILE = "maplibre-gl-lanes.js"
 
 
@@ -357,24 +355,16 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
 
     bundled = len(VENDOR_LIBS)
     lanes_dst = os.path.join(vendor_dst, LANES_VENDOR_FILE)
-    if effective_lane_renderer(config) == "plugin":
-        lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
-        _copy_vendor_script(lanes_src, lanes_dst)
-        bundled += 1
-    elif os.path.exists(lanes_dst):
-        # A map switched back to the native renderer: drop the script so
-        # the service worker precache list (a filesystem walk) does not
-        # keep shipping it.
-        os.remove(lanes_dst)
+    lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
+    _copy_vendor_script(lanes_src, lanes_dst)
+    bundled += 1
 
     # The same walk ships anything else left in vendor/ by an earlier
     # build. When a library is renamed or dropped here (maplibre-gl.js,
     # 1 MB, became three .mjs files with MapLibre 6) the old file would
     # otherwise ride along to every phone for as long as the build
     # directory lives. Precompressed siblings go with their file.
-    expected = set(VENDOR_LIBS)
-    if effective_lane_renderer(config) == "plugin":
-        expected.add(LANES_VENDOR_FILE)
+    expected = {*VENDOR_LIBS, LANES_VENDOR_FILE}
     for name in os.listdir(vendor_dst):
         base = name
         for ext in (".br", ".gz", ".zst"):
@@ -1284,34 +1274,14 @@ def main(argv=None):
 
     # Step 1: Fetch trails
     trails_path = os.path.join(output_dir, "trails.geojson")
-    # trails.geojson is the EXPANDED render output (subway-style parallel
-    # routes, per-mode stubs, etc.), regenerated from scratch on every build.
-    # That expansion is NOT reversible, so re-running enrichment on an
-    # already-expanded trails.geojson silently destroys geometry. We therefore
-    # cache the canonical, pre-enrichment fetched geometry separately in
-    # trails.src.geojson and always re-expand FROM it. All reuse / fingerprint
-    # / content-guard logic keys off the base file, never the expanded output.
+    # trails.geojson is the render output: the fetched geometry plus what
+    # enrichment adds (bucket flags, custom routes, stats) and what event
+    # mode strips, rounded for size. It is regenerated on every build from
+    # trails.src.geojson, the fetched geometry exactly as it arrived, so
+    # that YAML-only changes never need a refetch and never compound. All
+    # reuse / fingerprint / content-guard logic keys off the base file,
+    # never the render output.
     trails_src_path = os.path.join(output_dir, "trails.src.geojson")
-
-    # Rebuild-stability seed: the previous build's EXPANDED output is
-    # the only place its shipped routeOrders / corridorBaselines
-    # survive (trails.src.geojson is snapshotted pre-enrichment, before
-    # they exist). Read them now - before a refetch overwrites the file
-    # - and inject them into the fresh base below, so enrichment's
-    # optimizers can reproduce an unchanged topology's ordering
-    # byte-for-byte and move as few routes as possible when topology
-    # does change. First build (or unreadable output): unseeded, as
-    # before.
-    stability_seed = {}
-    if os.path.exists(trails_path):
-        try:
-            with open(trails_path, encoding="utf-8") as f:
-                prev_meta = json.load(f).get("metadata") or {}
-            for key in ("routeOrders", "corridorBaselines"):
-                if prev_meta.get(key):
-                    stability_seed[key] = prev_meta[key]
-        except (OSError, ValueError):
-            pass  # corrupt/partial previous output - build unseeded
 
     auto_refetch_reason = None
     refresh_trails = args.refresh or args.refresh_trails
@@ -1332,9 +1302,9 @@ def main(argv=None):
     def _fetch_and_snapshot():
         nonlocal trails_fetch_ran
         trails_fetch_ran = True
-        # Snapshot the canonical base BEFORE enrichment expands it in place,
-        # so the next build re-expands from clean geometry instead of
-        # re-enriching (and destroying) the expanded output. Copied after
+        # Snapshot the canonical base BEFORE enrichment edits it in place,
+        # so the next build enriches clean geometry again instead of
+        # re-enriching its own output. Copied after
         # fetch_trails succeeds so a partial/aborted fetch leaves no base.
         #
         # Stash the outgoing snapshot first so the refresh can be diffed
@@ -1386,19 +1356,12 @@ def main(argv=None):
 
     overpass_trails_paths = cache_manifest.drain()
 
-    # Seed enrichment's route-order / corridor-baseline optimizers with
-    # the previous build's results (read above, before any refetch).
-    # setdefault: the base never carries these keys, but if that ever
-    # changes the base wins.
-    for key, val in stability_seed.items():
-        trails_geojson.setdefault("metadata", {}).setdefault(key, val)
-
     # Record the data date ("when is this OSM data from") for the About
     # modal and the service-worker cache key, in local time with HH:MM so
     # stale clients update reliably on sub-day refetches. Read from the
     # base's embedded metadata.data_timestamp (the Overpass osm3s snapshot
     # captured at fetch time, or the .osm file's mtime), NOT from the base
-    # file's mtime: the base gets rewritten by any build that re-expands
+    # file's mtime: the base gets rewritten by any build that rebuilds
     # it from cached Overpass responses (fresh checkout, machine move,
     # config-triggered refetch), so its mtime reports the rebuild moment
     # even when no fetch happened and the data is weeks old.
@@ -1499,11 +1462,9 @@ def main(argv=None):
 
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, append any user-defined
-    # custom_routes, and compute per-route distance/elevation stats
-    # (inside enrichment, on canonical geometry BEFORE the subway pass
-    # expands it - see compute_and_attach's docstring). Idempotent -
-    # safe to re-run against a cached trails.geojson that's already
-    # been enriched.
+    # custom_routes, and compute per-route distance/elevation stats.
+    # Idempotent - safe to re-run against a trails.geojson that's
+    # already been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir)
     route_stats_paths = cache_manifest.drain()
 
@@ -1516,11 +1477,11 @@ def main(argv=None):
     # carry the curator's intended `oneway: "yes"`) are present.
     arrows_restricted = _apply_event_mode_to_feature_oneway(config, trails_geojson)
 
-    # Always (re)write the expanded trails.geojson. It is the render output,
+    # Always (re)write trails.geojson. It is the render output,
     # regenerated from the base on every build, so it must reflect this
     # build's enrichment regardless of which passes reported a change. (The
     # reuse fingerprint + content-guard live on trails.src.geojson, written
-    # at fetch time above; the expanded output is never reused as a cache.)
+    # at fetch time above; the render output is never reused as a cache.)
     #
     # Trim coordinate precision on the render output only (see
     # COORD_PRECISION) - roughly halves the gzipped transfer size and speeds
@@ -1647,9 +1608,8 @@ def main(argv=None):
     # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
     # disk, not the in-memory trails_geojson: by this point enrichment has
     # baked in custom routes (not OSM data, so not OSM's to fix) and applied
-    # the subway-style expansion (stub micro-features and full-length host
-    # variants), either of which would badly confuse the unconnected-way
-    # check. One extra JSON parse buys an audit of exactly what OSM said.
+    # rounded the coordinates, either of which would confuse the
+    # unconnected-way check. One extra JSON parse buys an audit of exactly what OSM said.
     report_tagging_quality(_load_json_or_none(trails_src_path), pois_data,
                            config, cache_dir)
 

@@ -1,10 +1,11 @@
 """Trail-GeoJSON enrichment.
 
-Flags features with season / difficulty / route-bucket metadata, attaches
-per-route stats, applies route ordering (route_order) and subway-style
-parallel rendering (parallel_routes), and derives the per-mode route sets.
-Extracted from build.py; the route_order / parallel_routes deps stay as
-lazy imports inside the functions.
+Flags features with season / difficulty / route-bucket metadata, appends
+custom routes, and attaches per-route stats. The features stay canonical:
+one per route per run of way, shared paths sharing vertices, each in its
+route's own travel direction. The browser lays out the parallel lanes
+from exactly that (maplibre-gl-lanes), so nothing here reorders,
+realigns or expands geometry.
 """
 
 import json
@@ -12,7 +13,6 @@ import os
 import sys
 
 import console
-from validate_config import effective_lane_renderer
 
 
 def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None):
@@ -312,193 +312,11 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         routes[cid] = info
         changed = True
 
-    # ----- Subway-style parallel-route smoothing (always on) -----
-    # Runs LAST so custom routes are included in the junction analysis.
-    # Idempotent: strips prior stub features (isStub: true) AND
-    # prior mode-host-variant features (_subwayHostVariant: true) AND
-    # restores any host corridors whose first vertex was truncated by
-    # a previous single-mode subway-style pass. Without these, re-runs
-    # would leave truncations/variants baked in; with them, every
-    # build starts from the canonical fetched geometry.
-    pre_stub_count = len(trails_geojson["features"])
-    trails_geojson["features"] = [
-        f
-        for f in trails_geojson["features"]
-        if not (
-            f.get("properties", {}).get("isStub")
-            or f.get("properties", {}).get("_subwayHostVariant")
-        )
-    ]
-    stripped_stubs = pre_stub_count - len(trails_geojson["features"])
-    if stripped_stubs:
-        changed = True
-    # Restore any prior subway-style truncations so re-runs don't
-    # compound. apply_subway_style (single-mode) stashes the original
-    # first vertex in _subwayOriginalCoord0 when it truncates. Also
-    # clear any leftover _subwayHasVariants flag from a prior
-    # multi-mode pass.
-    for feat in trails_geojson["features"]:
-        geom = feat.get("geometry", {}) or {}
-        if geom.get("type") != "LineString":
-            continue
-        props = feat.get("properties", {}) or {}
-        orig = props.get("_subwayOriginalCoord0")
-        if orig is not None:
-            geom["coordinates"][0] = list(orig)
-            del props["_subwayOriginalCoord0"]
-            changed = True
-        if props.pop("_subwayHasVariants", None) is not None:
-            changed = True
-
-    # ----- Lane renderer switch -----
-    # Under lane_renderer: plugin the browser builds the lane layout
-    # itself (maplibre-gl-lanes) from the canonical features: one per
-    # route per run of way, shared paths sharing vertices, in each
-    # route's own travel direction. The corridor alignment, route
-    # ordering, corridor baselines and subway-style expansion below
-    # exist only to feed MapLibre's line-offset renderer, and their
-    # stub micro-features and per-mode host variants would read to the
-    # plugin as extra routes sharing extra paths, so the whole tail is
-    # skipped. Route stats still run: they want canonical geometry too.
-    lane_plugin = effective_lane_renderer(config) == "plugin"
-
-    # ----- Align shared-corridor copies -----
-    # Each route's stitched chain traverses shared trail in its own
-    # direction, but MapLibre's line-offset is signed by vertex order,
-    # so opposite-direction copies render mirrored lanes and two routes
-    # can collapse onto one visual lane. Rewrite every copy of a shared
-    # corridor to one canonical vertex order here, right after the
-    # truncation restore (copies must be back to full geometry to
-    # match) and before anything downstream consumes the geometry.
-    from parallel_routes import canonicalize_shared_corridors
-
-    aligned, skipped_oneway = (
-        (0, 0) if lane_plugin else canonicalize_shared_corridors(trails_geojson["features"])
-    )
-    if aligned:
-        console.info(
-            f"Corridor alignment: rewrote {aligned} shared-corridor "
-            f"feature(s) to the canonical direction"
-        )
-        changed = True
-    if skipped_oneway:
-        console.info(
-            f"Corridor alignment: left {skipped_oneway} oneway corridor "
-            f"group(s) unaligned to preserve arrow direction"
-        )
-
     # ----- Per-route distance / elevation stats -----
-    # Computed HERE - after custom routes are appended and any prior
-    # expansion has been stripped/restored above, but BEFORE the subway
-    # pass below - so stats always run on canonical geometry. The
-    # multi-mode subway pass REPLACES each truncated host feature with
-    # one full-length variant per active mode, every variant carrying
-    # the same route_id, so computing stats on the expanded output
-    # counted host geometry once per mode (RAMBA's Ranger Loop reported
-    # 3639 m for a 2804 m route; a 4-mode map inflated one route ~4x).
-    # compute_and_attach guards this invariant and refuses to run on
-    # expanded geometry.
+    # After the custom routes are appended, so they are measured too.
     from compute_route_stats import compute_and_attach
 
     if compute_and_attach(trails_geojson, config, cache_dir):
         changed = True
 
-    if lane_plugin:
-        # build.py seeds these from the previous build's output for
-        # rebuild stability; a plugin build has nothing to seed and must
-        # not ship stale native-renderer tables in CONFIG.
-        meta = trails_geojson.setdefault("metadata", {})
-        if meta.pop("routeOrders", None) is not None:
-            changed = True
-        if meta.pop("corridorBaselines", None) is not None:
-            changed = True
-        console.info("Lane renderer: plugin (subway-style expansion skipped)")
-        return changed
-
-    # ---- Compute route ordering per visible mode ----------------
-    # The MLNCM (Metro-Line Node Crossing Minimization) optimizer in
-    # route_order.py finds a global route ordering that minimizes the
-    # number of corridor-junction sign flips. Each visible mode
-    # (summer / winter / + emergency) gets its own routeOrder, since
-    # the effective adjacency graph differs per mode.
-    from corridor_baselines import compute_corridor_baselines
-    from parallel_routes import apply_subway_style, apply_subway_style_modes
-    from route_order import compute_route_orders
-
-    routes_metadata = (trails_geojson.get("metadata") or {}).get("routes") or {}
-    # routeOrders / corridorBaselines are injected by build.py from the
-    # PREVIOUS build's expanded output (the canonical base never carries
-    # them - it's snapshotted pre-enrichment). They seed the optimizers
-    # below for rebuild stability and are overwritten (or popped) before
-    # this build's output is written.
-    previous_orders = (trails_geojson.get("metadata") or {}).get("routeOrders")
-    previous_baselines = (trails_geojson.get("metadata") or {}).get("corridorBaselines")
-
-    route_orders, route_order_stats = compute_route_orders(
-        routes_metadata,
-        trails_geojson["features"],
-        previous_orders=previous_orders,
-        verbose=False,
-    )
-
-    if route_orders:
-        # Stash for runtime injection into CONFIG.routeOrders.
-        trails_geojson.setdefault("metadata", {})["routeOrders"] = route_orders
-        for mode_key, order in sorted(route_orders.items()):
-            flips, seps = route_order_stats[mode_key]
-            console.info(
-                f"Route order [{mode_key}]: "
-                f"{flips} sign flip(s), {seps} separation(s) "
-                f"(routes: {len(order)})"
-            )
-        # Stable-lane corridor baselines (per mode). Replaces per-corridor
-        # centering with a minimal-movement offset so routes hold their
-        # lane instead of "breathing" sideways when neighbors join/leave.
-        # Computed on the same canonical (pre-stub) features and route
-        # order as above; consumed by both stub baking (below) and the
-        # runtime offset math (CONFIG.corridorBaselines).
-        baselines, baseline_stats = compute_corridor_baselines(
-            routes_metadata,
-            trails_geojson["features"],
-            route_orders,
-            previous_baselines=previous_baselines,
-        )
-        trails_geojson.setdefault("metadata", {})["corridorBaselines"] = baselines
-        for mode_key in sorted(baselines):
-            mv, dr, tr = baseline_stats[mode_key]
-            console.info(
-                f"Corridor baselines [{mode_key}]: "
-                f"{tr} real transition(s), {mv:.1f} lane(s) movement, "
-                f"{dr:.2f} max drift"
-            )
-        # Mode-aware subway-style: emits per-mode stubs + variants.
-        modes = {k: frozenset(v) for k, v in _route_modes_from_orders(routes_metadata).items()}
-        added = apply_subway_style_modes(trails_geojson, route_orders, modes, baselines)
-        if added:
-            console.info(
-                f"Subway style: emitted {added} mode-tagged feature(s) across {len(modes)} mode(s)"
-            )
-            changed = True
-    else:
-        # No modes detected - fall back to legacy single-mode behavior.
-        trails_geojson.setdefault("metadata", {}).pop("routeOrders", None)
-        trails_geojson.setdefault("metadata", {}).pop("corridorBaselines", None)
-        added = apply_subway_style(trails_geojson)
-        if added:
-            console.info(f"Subway style: emitted {added} junction transition micro-feature(s)")
-            changed = True
-
     return changed
-
-
-def _route_modes_from_orders(routes_metadata):
-    """Return mode_key → frozenset of route IDs, matching the modes
-    that route_order.enumerate_modes would produce.
-
-    Small helper so the corridor-baseline pass computes modes the
-    same way as route_order.compute_route_orders does internally -
-    they need to agree on which mode keys are active.
-    """
-    from route_order import enumerate_modes
-
-    return enumerate_modes(routes_metadata)

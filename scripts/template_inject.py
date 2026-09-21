@@ -29,10 +29,8 @@ from logo import logo_output_filename, process_logo
 from pmtiles_util import extract_minzoom
 from validate_config import (
     DEFAULT_BASEMAP_SOURCE,
-    DEFAULT_LANE_RENDERER,
     DEFAULT_VISIBLE_LAYERS,
     VALID_DAYS,
-    effective_lane_renderer,
     match_day_token,
 )
 
@@ -215,12 +213,6 @@ CONFIG_SPEC = [
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark", "invertLogoDark", True),
     ("color_by", "colorBy", "relation"),
-    # Which code draws shared-corridor lanes: "plugin" (maplibre-gl-lanes
-    # at load time, the default) or "native" (build-time expansion +
-    # MapLibre line layers). app.js branches on this in loadTrails;
-    # enrichment skips the expansion and build.py ships the plugin
-    # script under "plugin". See validate_config.VALID_LANE_RENDERERS.
-    ("lane_renderer", "laneRenderer", DEFAULT_LANE_RENDERER),
     # "generated" basemaps carry flagged path stretches that app.js
     # hides by season (applyBasemapDrawnPathFilter); see basemap_paths.py.
     ("basemap_source", "basemapSource", DEFAULT_BASEMAP_SOURCE),
@@ -742,25 +734,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["hasOnewayTrails"] = has_oneway
     config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["difficultyRatings"] = sorted(ratings)
-    # Per-mode route orderings from MLNCM optimization (see
-    # route_order.compute_route_orders). Runtime app.js looks up the
-    # active mode's order in computeOffsetsAndFilter / computeLabelData
-    # to keep within-corridor offsets side-stable across adjacent
-    # corridors. Missing → app.js falls back to natural-sort
-    # (legacy behavior).
-    config_obj["routeOrders"] = (
-        (trails_geojson.get("metadata") or {}).get("routeOrders") or {} if trails_geojson else {}
-    )
-    # Stable-lane corridor baselines per mode: {mode: {corridor_key:
-    # baseline}}. computeOffsetsAndFilter / computeLabelData add the
-    # baseline to a route's in-corridor position so routes hold a lane
-    # instead of re-centering ("breathing") when neighbors join/leave.
-    # Missing → app.js falls back to the legacy centered offset.
-    config_obj["corridorBaselines"] = (
-        (trails_geojson.get("metadata") or {}).get("corridorBaselines") or {}
-        if trails_geojson
-        else {}
-    )
     config_obj["about"] = config.get("about") or None
     # Welcome/Help modal config. Three forms accepted: omitted (None →
     # framework default), false (first-visit auto-open suppressed), or
@@ -1090,18 +1063,6 @@ def copy_templates(config, output_dir, trails_geojson):
             # when the icons block (which carries all three tags) was
             # stripped for icon-less maps.
             content = content.replace("__THEME_COLOR__", _tc_light)
-            # The lane plugin script is shipped and loaded unless a map
-            # opts out with lane_renderer: native
-            # (build.download_vendor_libs copies it under the same
-            # condition). `defer` keeps it in document order after
-            # maplibre-gl.js and ahead of app.js, like maplibre-contour.
-            lanes_tag = (
-                '<script src="vendor/maplibre-gl-lanes.js" defer></script>'
-                if effective_lane_renderer(config) == "plugin"
-                else ""
-            )
-            content = content.replace("__LANE_RENDERER_SCRIPT__", lanes_tag)
-
             # Inject or remove brand image. Logo source falls back to
             # icon: when logo: is omitted; raster sources are normalized
             # to `logo.webp` in copy_assets() while SVG sources are

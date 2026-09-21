@@ -150,8 +150,8 @@ The file is 138 kB, 50 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
-Shipped with every map except one that sets `lane_renderer: native`
-(the plugin is the default renderer). To update, rebuild
+Shipped with every map: it is what draws the routes, and a page
+without it says that it cannot start. To update, rebuild
 upstream, copy `dist/maplibre-gl-lanes.js` over this file, and note the
 commit here. Switch to a URL in `VENDOR_LIBS` once the plugin publishes a
 release.

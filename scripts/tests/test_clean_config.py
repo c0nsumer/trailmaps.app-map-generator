@@ -199,6 +199,17 @@ def test_unplaced_comment_lands_in_carry_over_section(tmp_path):
     assert lines.index("# TODO check this later") > lines.index(header)
 
 
+def test_a_retired_keys_commented_default_is_dropped_not_carried(tmp_path):
+    # `# lane_renderer: plugin` came from an older template. The key is
+    # gone, so the line is residue, not a note to review.
+    summary, text = _run(
+        tmp_path,
+        "name: X\nslug: x\n\n# lane_renderer: plugin\n\nrelations: [1]\n",
+    )
+    assert summary["unplaced_comments"] == 0
+    assert "lane_renderer" not in text
+
+
 def test_assert_same_data_removes_output_and_exits(tmp_path):
     a = tmp_path / "a.yaml"
     b = tmp_path / "b.yaml"

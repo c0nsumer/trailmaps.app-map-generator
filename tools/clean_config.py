@@ -64,9 +64,15 @@ import yaml
 # generation when false.`).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
-from validate_config import KNOWN_KEYS  # noqa: E402
+from validate_config import _LEGACY_KEYS, KNOWN_KEYS  # noqa: E402
 
 KEY_NAMES = set(KNOWN_KEYS.keys())
+# Keys the engine no longer has. A one-line commented default of one
+# (`# lane_renderer: plugin`) is residue of an older template: the
+# template that put it there no longer carries it, so nothing would
+# recognize it as boilerplate, and it would land in the carry-over
+# section of every config it was ever copied into.
+RETIRED_KEY_NAMES = set(_LEGACY_KEYS)
 
 # Matches `key:` or `# key:` at column 0. Captures the key name; we
 # then check it against KEY_NAMES to filter out prose comments.
@@ -259,6 +265,16 @@ def _index_production(prod_lines, is_boilerplate):
     i = 0
     while i < n:
         m = None if consumed[i] else STASH_KEY_RE.match(prod_lines[i])
+        if (
+            m
+            and m.group(1) in RETIRED_KEY_NAMES
+            and find_block_end_prod(prod_lines, i) == i + 1
+        ):
+            # One line only: a commented retired key with a block under
+            # it is something a curator wrote, and stays for review.
+            consumed[i] = True
+            i += 1
+            continue
         if m and m.group(1) in KEY_NAMES and m.group(1) not in set_blocks:
             end = find_block_end_prod(prod_lines, i)
             block = prod_lines[i:end]

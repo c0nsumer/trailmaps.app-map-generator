@@ -1,13 +1,9 @@
 """Shared geodesy + geometry-key primitives for the build pipeline.
 
 Single source of truth for the Earth-radius constant, the
-great-circle distance formula, and the two hashable-key helpers the
-lane-assignment pipeline sorts by (natural_key, coord_key).
-Previously duplicated across fetch_pois.py / compute_route_stats.py
-(haversine) and route_order.py / parallel_routes.py /
-corridor_baselines.py (keys); consolidating here means one place to
-tune - and, for the keys, one exact output for every consumer, which
-matters because lane order depends on it.
+great-circle distance formula, and the numeric-aware sort key
+(natural_key). Previously duplicated across fetch_pois.py /
+compute_route_stats.py; consolidating here means one place to tune.
 
 The runtime (templates/app.js) carries its own haversine because
 JavaScript and Python don't share modules. It uses the WGS84
@@ -118,19 +114,9 @@ def natural_key(s):
       ``"123"`` < ``"foo"``             (digit runs sort before strings)
       ``"foo123"`` < ``"foo456"``       (numeric order within prefix-grouped digits)
 
-    Every lane-assignment consumer (route_order, parallel_routes,
-    corridor_baselines) MUST use this exact implementation: lane order
-    depends on the key's output, so two drifting copies would assign
-    the same route different lanes in different passes.
+    The reports that list routes (tagging_report, osm_diff) sort by it,
+    so ids read in the order a person expects.
     """
     s = str(s)
     parts = re.split(r"(\d+)", s)
     return tuple((0, int(p)) if p.isdigit() else (1, p) for p in parts if p)
-
-
-def coord_key(coord, precision=7):
-    """Hashable key for a [lon, lat] coordinate. Round to ~1 cm to
-    absorb float-equality wobble at junction nodes. Shared by every
-    adjacency/transition detector so they agree on what "the same
-    node" means."""
-    return (round(coord[0], precision), round(coord[1], precision))
