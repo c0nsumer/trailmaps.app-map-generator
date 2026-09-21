@@ -28,17 +28,18 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections import Counter
 
 import console
 import overpass
 from pmtiles_util import find_pmtiles_cli
-from shapely.geometry import LineString, MultiLineString, box
+from shapely.geometry import LineString, MultiLineString, Point, Polygon, box
 from shapely.ops import linemerge, unary_union
 from shapely.strtree import STRtree
 
 # Bump when the generated features change shape for the same input, so
 # existing basemaps regenerate.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # highway values Protomaps files under kind=path, with the min_zoom it
 # gives each (read off live Protomaps extracts, 2026-09-20). A feature
@@ -272,6 +273,39 @@ class _Plane:
         return [(x / self.kx, y / self.ky) for x, y in coords]
 
 
+def _flat_ended(part, terminals):
+    """`part` (meters) buffered by the tolerance, flat at the route's own ends.
+
+    A buffer's round cap reaches the tolerance PAST the end of the line.
+    Where a route stops partway along a longer way, or is clipped at the
+    map's edge, that hid the first 2 m of the path beyond it: at z18 a
+    9 px hole between the lane and the white line carrying on. Only an
+    end no other part of the same bucket shares is cut flat; a joint
+    between two parts keeps its round caps, which is what closes the
+    wedge on the outside of a bend there.
+    """
+    poly = LineString(part).buffer(DRAWN_TOLERANCE_M)
+    reach = DRAWN_TOLERANCE_M * 1.01
+    for end, before in ((part[0], part[1]), (part[-1], part[-2])):
+        if _end_key(end) not in terminals:
+            continue
+        dx, dy = end[0] - before[0], end[1] - before[1]
+        norm = math.hypot(dx, dy)
+        if not norm:
+            continue
+        dx, dy = dx / norm * reach, dy / norm * reach
+        beyond = Polygon([
+            (end[0] - dy, end[1] + dx), (end[0] - dy + dx, end[1] + dx + dy),
+            (end[0] + dy + dx, end[1] - dx + dy), (end[0] + dy, end[1] - dx),
+        ])
+        poly = poly.difference(beyond.intersection(Point(end).buffer(reach)))
+    return poly
+
+
+def _end_key(point):
+    return (round(point[0], 2), round(point[1], 2))
+
+
 def drawn_covers(trails_geojson, plane):
     """Per bucket flag, the area within DRAWN_TOLERANCE_M of what it draws.
 
@@ -296,8 +330,16 @@ def drawn_covers(trails_geojson, plane):
                 continue
             for part in parts:
                 if len(part) >= 2:
-                    by_flag[flag].append(LineString(plane.to_m(part)).buffer(DRAWN_TOLERANCE_M))
-    return {flag: (STRtree(polys), polys) for flag, polys in by_flag.items() if polys}
+                    by_flag[flag].append(plane.to_m(part))
+    covers = {}
+    for flag, parts in by_flag.items():
+        if not parts:
+            continue
+        ends = Counter(_end_key(p) for part in parts for p in (part[0], part[-1]))
+        terminals = {key for key, n in ends.items() if n == 1}
+        polys = [_flat_ended(part, terminals) for part in parts]
+        covers[flag] = (STRtree(polys), polys)
+    return covers
 
 
 def split_by_drawn(line, covers):

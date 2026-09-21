@@ -125,6 +125,43 @@ def test_a_drawn_stretch_is_flagged_and_the_rest_is_not():
     assert stats["drawn_m"] == pytest.approx(66, abs=4)
 
 
+def _pieces(features, flagged, zoom=15):
+    """The emitted line parts (meters) that do or do not carry tm_s."""
+    plane = bp._Plane(LAT)
+    return [
+        bp.LineString(plane.to_m(part))
+        for f in features
+        if f["tippecanoe"]["minzoom"] == zoom and ("tm_s" in f["properties"]) == flagged
+        for part in f["geometry"]["coordinates"]
+    ]
+
+
+def test_the_path_carries_on_from_exactly_where_a_route_stops():
+    # A round buffer cap hid the 2 m of path past a route's end, which
+    # showed as a hole between a clipped route and the line beyond it.
+    ways = {1: ({"highway": "path"}, [tuple(c) for c in _line((0, 0), (0, 10))])}
+    trails = _trails([_route_feature(5, _line((0, 0), (0, 6)))], {"5": SUMMER})
+    features, _ = bp.build_features(ways, trails, BOUNDS, 9, 15)
+    route_end = bp.Point(bp._Plane(LAT).to_m(_line((0, 6)))[0])
+    (rest,) = _pieces(features, flagged=False)
+    assert rest.distance(route_end) < 0.1
+    (drawn,) = _pieces(features, flagged=True)
+    assert drawn.length == pytest.approx(route_end.distance(bp.Point(drawn.coords[0])), abs=0.1)
+
+
+def test_a_joint_between_two_parts_of_a_route_stays_covered():
+    # Flat ends are for a route's OWN ends. Where two features of it meet
+    # on a bend, the round caps are what cover the outside of the corner.
+    bend = [(0, 0), (0, 5), (4, 8)]
+    ways = {1: ({"highway": "path"}, [tuple(c) for c in _line(*bend)])}
+    trails = _trails(
+        [_route_feature(5, _line(*bend[:2])), _route_feature(5, _line(*bend[1:]))], {"5": SUMMER}
+    )
+    features, _ = bp.build_features(ways, trails, BOUNDS, 9, 15)
+    assert _pieces(features, flagged=False) == []
+    assert len(_pieces(features, flagged=True)) == 1
+
+
 def test_buckets_flag_independently():
     ways = {1: ({"highway": "path"}, [tuple(c) for c in _line((0, 0), (0, 10))])}
     trails = _trails(
@@ -133,8 +170,9 @@ def test_buckets_flag_independently():
     )
     lengths = _flag_lengths(bp.build_features(ways, trails, BOUNDS, 9, 15)[0])
     assert set(lengths) == {("tm_s",), ("tm_s", "tm_w"), ("tm_w",)}
-    # steps 4 to 6 are drawn by both, plus the tolerance at each end
-    assert lengths[("tm_s", "tm_w")] == pytest.approx(22 + 2 * bp.DRAWN_TOLERANCE_M, abs=3)
+    # steps 4 to 6 are drawn by both, and no further: a cover is flat at
+    # the end of the route it follows
+    assert lengths[("tm_s", "tm_w")] == pytest.approx(22, abs=0.5)
 
 
 def test_a_crossing_or_a_junction_touch_is_not_a_drawn_stretch():
