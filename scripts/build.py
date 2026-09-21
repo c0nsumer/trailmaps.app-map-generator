@@ -979,7 +979,10 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     else:
         bm_zoom = config.get("basemap_maxzoom", 15)
         console.info(
-            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}")
+            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}"
+            + (", path lines generated (basemap_source: generated)"
+               if effective_basemap_source(config) == "generated"
+               else " (basemap_source: protomaps)"))
     if args.no_terrain or not config.get("show_terrain", True):
         reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
