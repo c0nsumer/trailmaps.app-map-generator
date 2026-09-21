@@ -269,3 +269,54 @@ def test_join_replaces_paths_and_keeps_everything_else(tmp_path):
         [find_pmtiles_cli(), "show", str(out)], capture_output=True, text=True
     ).stdout
     assert str(tmp_path) not in meta, "no local path leaks into the archive metadata"
+
+
+@pytest.mark.skipif(
+    not all(bp.find_tools()) or not find_pmtiles_cli(),
+    reason="needs tippecanoe, tile-join and the pmtiles CLI",
+)
+def test_a_truncated_archive_is_refused_and_nothing_is_replaced(tmp_path, monkeypatch):
+    src = tmp_path / "src.geojson"
+    feat = {
+        "type": "Feature",
+        "properties": {"kind": "minor_road"},
+        "tippecanoe": {"layer": "roads"},
+        "geometry": {"type": "LineString", "coordinates": _line((-5, -5), (5, 5))},
+    }
+    src.write_text(json.dumps({"type": "FeatureCollection", "features": [feat]}))
+    subprocess.run(
+        [bp.find_tools()[0], "-q", "-f", "-o", "extract.pmtiles", "-Z12", "-z15", "src.geojson"],
+        check=True,
+        cwd=tmp_path,
+    )
+    extract = tmp_path / "extract.pmtiles"
+    assert bp.archive_ok(str(extract))
+
+    # What a full disk leaves: the whole header over a body cut short.
+    cut = tmp_path / "cut.pmtiles"
+    cut.write_bytes(extract.read_bytes()[: extract.stat().st_size // 2])
+    assert not bp.archive_ok(str(cut))
+    assert not bp.archive_ok(str(tmp_path / "missing.pmtiles"))
+
+    # tile-join reporting success over such a file must not reach the map.
+    out = tmp_path / "basemap.pmtiles"
+    out.write_bytes(b"the previous good basemap")
+    real_copy = bp.shutil.copy2
+
+    def truncating_copy(src_path, dst_path, *a, **k):
+        real_copy(src_path, dst_path, *a, **k)
+        if str(dst_path).endswith(".tmp"):
+            data = open(dst_path, "rb").read()
+            open(dst_path, "wb").write(data[: len(data) // 2])
+        return dst_path
+
+    monkeypatch.setattr(bp.shutil, "copy2", truncating_copy)
+    ways = {1: ({"highway": "path"}, [tuple(c) for c in _line((0, 0), (0, 10))])}
+    features, _ = bp.build_features(ways, _trails([], {}), BOUNDS, 12, 15)
+    work = tmp_path / "work"
+    with pytest.raises(bp.BasemapPathsError) as e:
+        bp.tile_and_join(features, str(extract), str(out), BOUNDS, 12, 15, work_root=str(work))
+    assert "pmtiles verify" in str(e.value)
+    assert out.read_bytes() == b"the previous good basemap"
+    assert not (tmp_path / "basemap.pmtiles.tmp").exists()
+    assert work.is_dir() and not list(work.iterdir()), "work dir is under work_root and cleaned up"

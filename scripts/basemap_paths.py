@@ -415,22 +415,50 @@ def build_features(ways, trails_geojson, bounds, minzoom, maxzoom, merge=True):
 
 
 def _run(cmd, cwd):
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    # TMPDIR too: tippecanoe and tile-join keep their own scratch files
+    # wherever it points, and that must be the work directory's disk,
+    # not /tmp (see tile_and_join).
+    proc = subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, env={**os.environ, "TMPDIR": cwd}
+    )
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-5:]
         raise BasemapPathsError(f"{os.path.basename(cmd[0])} failed: " + " | ".join(tail))
 
 
-def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom):
+def archive_ok(path):
+    """True when `pmtiles verify` accepts the archive at `path`.
+
+    tile-join exits 0 after running out of disk, leaving a complete
+    header over a body that stops short (drvg and riverbends,
+    2026-09-21, 1.0 of 7.2 MB and 3.3 of 4.7 MB). Nothing downstream
+    notices until a tile past the cut is read, which for a rider is a
+    basemap that goes blank partway across the map. The check reads the
+    directories, not the tiles: 14 ms on a 20 MB archive.
+    """
+    cli = find_pmtiles_cli()
+    if not cli or not os.path.exists(path):
+        return False
+    return subprocess.run([cli, "verify", path], capture_output=True).returncode == 0
+
+
+def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom, work_root=None):
     """Fold `features` into a copy of the Protomaps extract at `output_path`.
 
     Runs in a temp directory with bare file names, because tippecanoe
     and tile-join write their command lines into the archive metadata
     and would otherwise publish this machine's paths in every map.
+
+    `work_root` is where that directory is made, and build.py points it
+    into the cache dir. The system temp dir is the wrong place: on many
+    Linux boxes /tmp is a RAM disk of a few GB shared with everything
+    else, and this step writes several copies of a basemap there.
     """
     tippecanoe, tile_join = require_tools()
     paths_min = max(minzoom, PATHS_MIN_TILE_ZOOM)
-    with tempfile.TemporaryDirectory(prefix="basemap-paths-") as tmp:
+    if work_root:
+        os.makedirs(work_root, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="basemap-paths-", dir=work_root) as tmp:
         with open(os.path.join(tmp, "paths.geojson"), "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": features}, f)
         shutil.copy2(extract_path, os.path.join(tmp, "protomaps.pmtiles"))
@@ -506,6 +534,15 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom)
         )
         staged = output_path + ".tmp"
         shutil.copy2(os.path.join(tmp, "joined.pmtiles"), staged)
+        # Verified where it will be served from, after the last copy,
+        # and only then moved into place.
+        if not archive_ok(staged):
+            os.remove(staged)
+            raise BasemapPathsError(
+                "the generated basemap failed `pmtiles verify` (a truncated write, "
+                f"usually a full disk under {work_root or tempfile.gettempdir()}); "
+                "nothing was replaced. Free some space and build again."
+            )
         os.replace(staged, output_path)
 
 
@@ -577,7 +614,15 @@ def generate(
         local = len(from_file)
         ways = merge_sources(ways, from_file)
     features, stats = build_features(ways, trails_geojson, bounds, minzoom, maxzoom)
-    tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom)
+    tile_and_join(
+        features,
+        extract_path,
+        output_path,
+        bounds,
+        minzoom,
+        maxzoom,
+        work_root=os.path.join(cache_dir, "basemap", "work"),
+    )
     source = f"{fetched} ways from Overpass" + (
         f", {local} from {os.path.basename(osm_file_path)}" if local else ""
     )

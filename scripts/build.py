@@ -1663,7 +1663,11 @@ def main(argv=None):
         expected_sig = basemap_paths.input_signature(
             basemap_sig, trails_geojson, ways_cache, config.get("osm_file"))
         paths_stale = (not os.path.exists(basemap_path) or existing_sig != expected_sig
-                       or not os.path.exists(ways_cache))
+                       or not os.path.exists(ways_cache)
+                       # a signature vouches for the inputs, not for the
+                       # bytes: an archive cut short by a full disk was
+                       # signed like any other (2026-09-21)
+                       or not basemap_paths.archive_ok(basemap_path))
         if args.refresh or extract_stale or refresh_paths or paths_stale:
             if not args.refresh and extract_stale and extract_reason:
                 console.step(f"Basemap: re-extracting ({extract_reason})")
