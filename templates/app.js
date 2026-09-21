@@ -305,6 +305,7 @@ function resolvedNamedFlavor(name) {
 // under every drawn route.
 const BASEMAP_PATH_FILL_LAYERS = ["roads_other", "roads_bridges_other", "roads_tunnels_other"];
 const BASEMAP_PATH_CASING_LAYER = "roads_other_casing";
+const BASEMAP_RESTRICTED_MARKS_LAYER = "roads_other_restricted";
 
 function styleBasemapLayers(layers, scheme) {
     const built = BASEMAP_BUILT[scheme === "dark" ? "dark" : "light"];
@@ -325,11 +326,8 @@ function styleBasemapLayers(layers, scheme) {
     // (0.5 to 12 px), with an edge a little under the service road's.
     // The flavor gives plain paths no casing at all, and on this ground
     // a thin white line needs one: without it paths were white on white
-    // on every lit slope. A way nobody may use (access=private|no) is
-    // drawn back rather than dropped, so it still explains what is on
-    // the ground without inviting anyone onto it.
+    // on every lit slope.
     const width = ["interpolate", ["exponential", 1.6], ["zoom"], 13, 0.5, 16, 1.3, 20, 4.5];
-    const restricted = ["match", ["get", "access"], ["private", "no"], 0.4, 1];
     const other = byId("roads_other");
     if (other) {
         layers.splice(layers.indexOf(other), 0, {
@@ -341,7 +339,6 @@ function styleBasemapLayers(layers, scheme) {
             paint: {
                 "line-color": built.edge,
                 "line-gap-width": width,
-                "line-opacity": restricted,
                 "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.5, 16, 0.7, 20, 1],
             },
         });
@@ -350,9 +347,42 @@ function styleBasemapLayers(layers, scheme) {
         const l = byId(id);
         if (!l) continue;
         l.paint["line-color"] = built.fill;
-        l.paint["line-opacity"] = restricted;
         l.paint["line-width"] = width;
         delete l.paint["line-dasharray"];
+    }
+
+    // A way nobody may use (access=private|no) keeps the full path line
+    // and carries small Xs along it. It must stay easy to find, because
+    // in an emergency getting out trumps an access restriction, but the
+    // map must not invite anyone onto it. A fainter line was tried and
+    // only made the way harder to find; Xs with no line under them read
+    // as noise (Steve, Style Lab rounds 9 and 10). Upright Xs: rotated
+    // with the line, an X on a diagonal stretch reads as a plus sign.
+    if (other) {
+        const dark = scheme === "dark";
+        layers.splice(layers.indexOf(other) + 1, 0, {
+            id: BASEMAP_RESTRICTED_MARKS_LAYER,
+            type: "symbol",
+            source: other.source,
+            "source-layer": "roads",
+            filter: ["all", other.filter, ["in", "access", "private", "no"]],
+            layout: {
+                "symbol-placement": "line",
+                "symbol-spacing": ["interpolate", ["linear"], ["zoom"], 14, 14, 17, 20, 20, 30],
+                "text-field": "\u00d7",
+                "text-font": ["Noto Sans Regular"],
+                "text-size": ["interpolate", ["linear"], ["zoom"], 14, 9, 17, 12, 20, 16],
+                "text-allow-overlap": true,
+                "text-ignore-placement": true,
+                "text-rotation-alignment": "viewport",
+                "text-padding": 0,
+            },
+            paint: {
+                "text-color": dark ? "#9d9d98" : "#87847c",
+                "text-halo-color": dark ? "#2c2d2a" : "#f2f2f0",
+                "text-halo-width": 0.8,
+            },
+        });
     }
     return layers;
 }
@@ -11868,6 +11898,9 @@ const BASEMAP_PATH_LINE_LAYERS = [
     "roads_tunnels_other_casing", "roads_tunnels_other", "roads_other",
     "roads_bridges_other_casing", "roads_bridges_other",
     BASEMAP_PATH_CASING_LAYER,  // ours, added by styleBasemapLayers
+    // Ours too. A symbol layer, but it marks path lines, so a route
+    // drawn over a restricted way has to hide its Xs with the line.
+    BASEMAP_RESTRICTED_MARKS_LAYER,
 ];
 let basemapStockFilters = new Map();  // layer id -> the flavor's own filter
 
