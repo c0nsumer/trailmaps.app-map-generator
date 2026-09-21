@@ -71,6 +71,7 @@ def test_save_load_roundtrip(tmp_path):
     assert rel == {
         "overpass_trails": [OP_A],
         "overpass_pois": [],
+        "overpass_basemap": [],
         "route_stats": [RS_A],
         "derive_accent": [],
     }

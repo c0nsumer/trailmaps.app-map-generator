@@ -65,6 +65,7 @@ KNOWN_KEYS = {
     "min_zoom": (int, float),
     "max_zoom": (int, float),
     "basemap_maxzoom": (int, float),
+    "basemap_source": str,
     "terrain_maxzoom": (int, float),
     # Data sources. `relations` is the unified source list: every entry
     # may be a leaf route relation OR a super-relation (auto-expanded
@@ -198,6 +199,7 @@ BUILD_ONLY_KEYS = {
     # Build-time bbox / tile-extract knobs
     "pan_padding",  # consumed by expand_bbox_for_pan; runtime sees pan_bbox
     "basemap_maxzoom",  # consumed by fetch_basemap.py
+    "basemap_source",  # consumed by build.py (basemap_paths.py)
     "terrain_maxzoom",  # consumed by fetch_terrain.py
     # User-supplied points consumed by fetch_pois.py and baked into
     # pois.geojson; the runtime reads pois.geojson, not CONFIG.parking /
@@ -253,6 +255,21 @@ def effective_lane_renderer(config):
     one renderer and half the other.
     """
     return (config or {}).get("lane_renderer", DEFAULT_LANE_RENDERER)
+# "generated" replaces the Protomaps basemap's path lines with ones
+# generated here, which know what this map draws (basemap_paths.py) and
+# need tippecanoe. "protomaps" is the plain extract, exactly as before
+# 2026-09: no extra tools, no Overpass query for the basemap. It is a
+# permanent choice, not a fallback: for installs without tippecanoe, for
+# very large areas, and as the baseline when comparing renderings.
+VALID_BASEMAP_SOURCES = {"generated", "protomaps"}
+DEFAULT_BASEMAP_SOURCE = "generated"
+
+
+def effective_basemap_source(config):
+    """The basemap source a build uses, with the default applied."""
+    return (config or {}).get("basemap_source", DEFAULT_BASEMAP_SOURCE)
+
+
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
@@ -444,6 +461,12 @@ def _validate_enums(report, config):
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
+        )
+
+    if "basemap_source" in config and config["basemap_source"] not in VALID_BASEMAP_SOURCES:
+        report.err(
+            "basemap_source",
+            f"must be one of {sorted(VALID_BASEMAP_SOURCES)}, got {config['basemap_source']!r}",
         )
 
     if "lane_renderer" in config and config["lane_renderer"] not in VALID_LANE_RENDERERS:

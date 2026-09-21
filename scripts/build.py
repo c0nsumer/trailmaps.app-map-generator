@@ -34,6 +34,7 @@ import yaml
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPTS_DIR)
 
+import basemap_paths
 import cache_manifest
 import console
 from cache_signatures import (
@@ -61,7 +62,7 @@ from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import extract_minzoom
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
-from validate_config import effective_lane_renderer, validate_config
+from validate_config import effective_basemap_source, effective_lane_renderer, validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -1620,8 +1621,81 @@ def main(argv=None):
     post_messages = []  # printed AFTER all parallel tasks complete
 
     # ---- Basemap planning ----
+    generated = effective_basemap_source(config) == "generated"
     if args.no_basemap:
         post_messages.append("Basemap: Skipped (--no-basemap)")
+    elif generated:
+        # basemap.pmtiles is the Protomaps extract with its path lines
+        # replaced by generated ones (basemap_paths.py). The plain
+        # extract is kept in the cache dir, outside output_dir where the
+        # service worker sweep would ship it, so a trail change re-runs
+        # the join without extracting again.
+        try:
+            basemap_paths.require_tools()
+        except basemap_paths.BasemapPathsError as e:
+            console.error(str(e))
+            sys.exit(1)
+        extract_path = os.path.join(cache_dir, "basemap", f"{config['slug']}-protomaps.pmtiles")
+        os.makedirs(os.path.dirname(extract_path), exist_ok=True)
+        # The extract's bounds, padded the way fetch_basemap pads them.
+        paths_bounds = (basemap_bbox[0] - 0.02, basemap_bbox[1] - 0.02,
+                        basemap_bbox[2] + 0.02, basemap_bbox[3] + 0.02)
+        ways_cache = basemap_paths.overpass_cache_path(
+            basemap_paths.tile_cover_bounds(paths_bounds), cache_dir)
+        # Claimed on every build, not only when the query runs, or the
+        # cache prune would drop it after the first build that reuses it.
+        cache_manifest.record(ways_cache)
+
+        existing_sig = _load_signature(basemap_path)
+        if (not os.path.exists(extract_path) and os.path.exists(basemap_path)
+                and existing_sig == basemap_sig):
+            # A build from before generated basemaps left its plain
+            # extract here under a plain signature; adopt it rather than
+            # downloading the same tiles again.
+            shutil.copy2(basemap_path, extract_path)
+            _save_signature(extract_path, basemap_sig)
+        extract_stale, extract_reason = _pmtiles_needs_regen(
+            extract_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
+        refresh_paths = args.refresh or args.refresh_trails
+        expected_sig = basemap_paths.input_signature(
+            basemap_sig, trails_geojson, ways_cache, config.get("osm_file"))
+        paths_stale = (not os.path.exists(basemap_path) or existing_sig != expected_sig
+                       or not os.path.exists(ways_cache))
+        if args.refresh or extract_stale or refresh_paths or paths_stale:
+            if not args.refresh and extract_stale and extract_reason:
+                console.step(f"Basemap: re-extracting ({extract_reason})")
+            elif not refresh_paths and paths_stale:
+                console.step("Basemap: regenerating paths (trails, area or path data changed)")
+
+            def _do_basemap():
+                # Old sidecar first: it vouched for the previous file and
+                # must not survive to vouch for an interrupted regen.
+                _clear_signature(basemap_path)
+                if args.refresh or extract_stale:
+                    _clear_signature(extract_path)
+                    fetch_basemap(config, extract_path)
+                    _save_signature(extract_path, basemap_sig)
+                try:
+                    # Whatever refreshes the trails refreshes the path
+                    # data with them: a way split in OSM between two
+                    # fetches would otherwise show through under its
+                    # new id.
+                    basemap_paths.generate(
+                        config, trails_geojson, extract_path, basemap_path, cache_dir,
+                        paths_bounds, tiles_minzoom, basemap_maxzoom,
+                        refresh=refresh_paths, osm_file_path=config.get("osm_file"))
+                except basemap_paths.BasemapPathsError as e:
+                    console.error(str(e))
+                    sys.exit(1)
+                # After generating: a refresh rewrites the path data,
+                # and the signature must name what was actually used.
+                _save_signature(basemap_path, basemap_paths.input_signature(
+                    basemap_sig, trails_geojson, ways_cache, config.get("osm_file")))
+
+            fetch_tasks.append(("basemap", _do_basemap))
+        else:
+            size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
+            post_messages.append(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
     else:
         needs_regen, reason = _pmtiles_needs_regen(
             basemap_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
@@ -1688,6 +1762,12 @@ def main(argv=None):
         else:
             size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
             post_messages.append(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+
+    # Drained here, before the fetches run: the path data's cache path
+    # is recorded during planning, and overpass.query records the same
+    # path again when generation runs, which the next drain would then
+    # hand to whatever category comes after.
+    overpass_basemap_paths = cache_manifest.drain()
 
     # ---- Parallel execution ----
     if len(fetch_tasks) >= 2:
@@ -1818,6 +1898,7 @@ def main(argv=None):
     cats = {
         "overpass_trails": overpass_trails_paths,
         "overpass_pois": overpass_pois_paths,
+        "overpass_basemap": overpass_basemap_paths,
         "route_stats": route_stats_paths,
         "derive_accent": derive_accent_paths,
     }
@@ -1828,6 +1909,13 @@ def main(argv=None):
         # deleted. Carry the previous claims forward verbatim.
         cats["overpass_trails"] = [
             os.path.join(cache_dir, p) for p in old_cats.get("overpass_trails", [])
+        ]
+    if args.no_basemap and old_cats:
+        # Same reasoning for the basemap's path data: a --no-basemap
+        # build planned nothing, and must not orphan what the last full
+        # build fetched.
+        cats["overpass_basemap"] = [
+            os.path.join(cache_dir, p) for p in old_cats.get("overpass_basemap", [])
         ]
     new_cats = cache_manifest.save(cache_dir, config["slug"], cats)
     if old_cats is not None and new_cats is not None:

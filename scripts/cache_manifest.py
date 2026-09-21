@@ -45,7 +45,13 @@ _PRUNABLE = (
     re.compile(r"derive_accent/[0-9a-f]{16}\.json"),
 )
 
-CATEGORIES = ("overpass_trails", "overpass_pois", "route_stats", "derive_accent")
+CATEGORIES = (
+    "overpass_trails",
+    "overpass_pois",
+    "overpass_basemap",
+    "route_stats",
+    "derive_accent",
+)
 
 # Module-level collector. Every cache-path computation site records
 # into it and build.py drains it at stage boundaries; all recorders run
