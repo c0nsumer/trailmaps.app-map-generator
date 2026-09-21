@@ -239,6 +239,14 @@ const BASEMAP_BUILT = {
     light: { fill: "#ffffff", edge: "#b0aea6" },
     dark: { fill: "#6c6c68", edge: "#121211" },
 };
+// Railways: a grey from the same family as the built system, one step
+// further from the ground so a lone thin line still shows over the
+// hillshade. `service` (sidings, spurs, yards) is the line color 40% of
+// the way to the ground.
+const BASEMAP_RAIL = {
+    light: { line: "#8f8d85", service: "#b7b5b0", text: "#7a776f" },
+    dark: { line: "#85847f", service: "#61615d", text: "#9c9c98" },
+};
 const _flavorKeys = (keys, color) => Object.fromEntries(keys.map((k) => [k, color]));
 
 const BASEMAP_FLAVOR_OVERRIDES = {
@@ -250,7 +258,7 @@ const BASEMAP_FLAVOR_OVERRIDES = {
         water: "#a8c5d6",
         sand: "#efede4", beach: "#efede4",
         ..._flavorKeys(BASEMAP_URBAN_KEYS, "#f2f2f0"),
-        buildings: "#e6e6e4", railway: "#c9cccd",
+        buildings: "#e6e6e4", railway: BASEMAP_RAIL.light.line,
         ..._flavorKeys(BASEMAP_BUILT_FILL_KEYS, BASEMAP_BUILT.light.fill),
         ..._flavorKeys(BASEMAP_BUILT_EDGE_KEYS, BASEMAP_BUILT.light.edge),
         landcover: {
@@ -267,7 +275,7 @@ const BASEMAP_FLAVOR_OVERRIDES = {
         water: "#33434f",
         sand: "#33332f", beach: "#33332f",
         ..._flavorKeys(BASEMAP_URBAN_KEYS, "#2c2d2a"),
-        buildings: "#262725", railway: "#151514",
+        buildings: "#262725", railway: BASEMAP_RAIL.dark.line,
         ..._flavorKeys(BASEMAP_BUILT_FILL_KEYS, BASEMAP_BUILT.dark.fill),
         ..._flavorKeys(BASEMAP_BUILT_EDGE_KEYS, BASEMAP_BUILT.dark.edge),
         roads_label_minor: "#8a8a86", roads_label_major: "#9c9c98",
@@ -349,6 +357,53 @@ function styleBasemapLayers(layers, scheme) {
         l.paint["line-color"] = built.fill;
         l.paint["line-width"] = width;
         delete l.paint["line-dasharray"];
+    }
+
+    // Railways. The flavor draws only faint cross hatches (50% opacity,
+    // no line under them) and labels nothing, which left the ore lines
+    // around RAMBA close to invisible in both themes. Drawn the way the
+    // main OSM style does instead: a grey line with ground-colored
+    // dashes inside it, and sidings, spurs and yards (the `service`
+    // property) lighter and narrower so a yard reads as a fan of quiet
+    // tracks beside the main line. Steve, Style Lab round 11; cross
+    // ticks were the other candidate and meshed together in a yard.
+    const rail = byId("roads_rail");
+    if (rail) {
+        const dark = scheme === "dark";
+        const c = BASEMAP_RAIL[dark ? "dark" : "light"];
+        const ground = BASEMAP_FLAVOR_OVERRIDES[dark ? "dark" : "light"].earth;
+        const byService = (main, service) => ["interpolate", ["exponential", 1.6], ["zoom"],
+            ...[10, 14, 17, 20].flatMap((z, i) => [z, ["case", ["has", "service"], service[i], main[i]]])];
+        delete rail.paint["line-dasharray"];
+        rail.paint["line-color"] = ["case", ["has", "service"], c.service, c.line];
+        rail.paint["line-opacity"] = ["case", ["has", "is_tunnel"], 0.45, 1];
+        rail.paint["line-width"] = byService([1.2, 2.6, 3.6, 6], [0.8, 1.4, 2, 3.4]);
+        const dashes = (id, minzoom, service, width) => ({
+            id, type: "line", source: rail.source, "source-layer": "roads", minzoom,
+            filter: ["all", ["==", "kind", "rail"], [service ? "has" : "!has", "service"], ["!has", "is_tunnel"]],
+            paint: { "line-color": ground, "line-dasharray": [5, 5], "line-width": width },
+        });
+        layers.splice(layers.indexOf(rail) + 1, 0,
+            dashes("roads_rail_dashes_service", 14, true,
+                ["interpolate", ["exponential", 1.6], ["zoom"], 14, 0.6, 17, 0.9, 20, 1.6]),
+            dashes("roads_rail_dashes", 12, false,
+                ["interpolate", ["exponential", 1.6], ["zoom"], 10, 0.5, 14, 1.2, 17, 1.7, 20, 3]),
+            {
+                id: "roads_labels_rail", type: "symbol", source: rail.source, "source-layer": "roads",
+                minzoom: 12,
+                filter: ["all", ["==", "kind", "rail"], ["has", "name"], ["!has", "service"]],
+                layout: {
+                    "symbol-placement": "line",
+                    "symbol-spacing": 350,
+                    "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+                    "text-font": ["Noto Sans Regular"],
+                    "text-size": 11,
+                    "text-letter-spacing": 0.05,
+                    "text-max-angle": 35,
+                    "text-offset": [0, -0.9],
+                },
+                paint: { "text-color": c.text, "text-halo-color": ground, "text-halo-width": 1.2 },
+            });
     }
 
     // A way nobody may use (access=private|no) keeps the full path line
