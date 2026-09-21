@@ -124,6 +124,8 @@ event_mode:
     - name: <string>               # required; shown in popup
       coordinates: [<lon>, <lat>]  # required
       # description: <string>      # optional; shown below name in popup
+      # directions: <bool>         # optional; "Get Directions" link in
+                                   # the popup (default false)
 
   poi_color: <css color>           # optional; chip color for event
                                    # POIs (default: deep red #D32F2F).
@@ -305,6 +307,9 @@ event_mode:
     - name: "Support Vehicle"
       coordinates: [-83.125, 42.458]
       description: "First aid + sag wagon."
+    - name: "Event Parking"
+      coordinates: [-83.121, 42.455]
+      directions: true              # riders drive here
   poi_color: "#D32F2F"            # optional; defaults to this red
 ```
 
@@ -316,6 +321,12 @@ Each entry needs:
 - **`description`** (optional): one-line context shown below the name in the
   popup. Trusted as plain text (no HTML escaping applied; same convention as
   parking / trailhead popups).
+- **`directions`** (optional, default `false`): when `true`, the popup gains
+  the same "Get Directions" link that parking and trailhead popups have. The
+  link opens Apple Maps in Safari and Google Maps elsewhere, with the POI as
+  the destination. Leave it off for places a rider reaches on the course, such
+  as the start, the finish and the aid stations. Those stay plain flags. Turn
+  it on for a place riders drive to, such as event parking.
 
 Event POIs differ from regular POIs in four ways:
 

@@ -368,6 +368,9 @@ def build_pois_geojson(
                     "poi_type": "event",
                     "name": ep.get("name", "Event"),
                     "description": ep.get("description", ""),
+                    # Whether the popup offers "Get Directions". Off
+                    # unless the curator asks: see validate_config.
+                    "directions": ep.get("directions") is True,
                 },
             }
         )

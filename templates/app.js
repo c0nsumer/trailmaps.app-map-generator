@@ -9168,7 +9168,7 @@ function addEventPoiMarkers(addToMap) {
                 + '</svg>'
                 + `<span class="event-poi-marker-label">${escapeHtml(props.name)}</span>`;
         },
-        popupHtmlFn: (p) => {
+        popupHtmlFn: (p, coords) => {
             // Description appears below the name when present;
             // suppressed cleanly otherwise. Both fields escaped
             // even though they're curator-supplied (defense in
@@ -9178,6 +9178,10 @@ function addEventPoiMarkers(addToMap) {
             if (p.description) {
                 h += `<div class="popup-description">${escapeHtml(p.description)}</div>`;
             }
+            // Opt-in per POI (event_mode.pois[].directions). Event
+            // parking is somewhere to drive to; a start line or an aid
+            // station is a plain flag, reached on the course.
+            if (p.directions === true) h += directionsLink(coords);
             return h;
         },
         popupMaxWidth: "240px",
