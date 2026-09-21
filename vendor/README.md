@@ -10,9 +10,14 @@ that was built with the exact script beside it on a test map by hand. The build 
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `e1862c5`
-(2026-09-21), built from a clean checkout of that commit. Seven changes
+Source: the maplibre-gl-lanes repository, `main`, commit `d84dba7`
+(2026-09-21), built from a clean checkout of that commit. Eight changes
 since the pin before these, `20c3c17`, reach what a map draws.
+
+`d84dba7` makes a forked route's slide across a merged junction ease in
+continuously, where it switched between two shapes at a slope threshold.
+Layout code only. A few connectors move 2 to 6 px at low zoom (RAMBA
+z14.5, BDB z15.5, MFO z15), with no visible difference.
 
 `4461538` (the runtime change in `e1862c5`, whose own commit is docs)
 builds a route's crossing of a merged junction where the route forks
@@ -110,6 +115,10 @@ data: MapLibre added `getProjectionData` to the render arguments in 6.0,
 and this engine vendors 5.24, where the layer threw on every frame
 without it.
 
+The plugin's 1.0.0 is planned as one squashed root commit on GitHub, so
+the hashes in this file will resolve in the author's local history and
+not publicly. Once 1.0.0 is out, vendor by version instead.
+
 The plugin rewrote its history on 2026-09-18, before going public, to
 purge a file from every commit. The content is unchanged, but every
 commit has a new hash. The hashes this file named before that date no
@@ -119,7 +128,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 138 kB, 49 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 138 kB, 50 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
