@@ -106,7 +106,10 @@ def _flag_lengths(features, zoom=15):
         if f["tippecanoe"]["minzoom"] != zoom:
             continue
         flags = tuple(k for k in ("tm_s", "tm_w", "tm_e") if k in f["properties"])
-        length = bp.LineString(plane.to_m(f["geometry"]["coordinates"])).length
+        assert f["geometry"]["type"] == "MultiLineString"
+        length = sum(
+            bp.LineString(plane.to_m(part)).length for part in f["geometry"]["coordinates"]
+        )
         out[flags] = out.get(flags, 0) + length
     return out
 
@@ -320,3 +323,20 @@ def test_a_truncated_archive_is_refused_and_nothing_is_replaced(tmp_path, monkey
     assert out.read_bytes() == b"the previous good basemap"
     assert not (tmp_path / "basemap.pmtiles.tmp").exists()
     assert work.is_dir() and not list(work.iterdir()), "work dir is under work_root and cleaned up"
+
+
+def test_one_feature_per_attribute_group_and_no_ids():
+    # Protomaps packs roads this way, and it is most of the size: a
+    # feature per trail made a basemap 9 percent larger than the plain
+    # extract, a feature per group under 2.
+    ways = {
+        i: ({"highway": "path"}, [tuple(c) for c in _line((i * 3, 0), (i * 3, 5))])
+        for i in range(1, 6)
+    }
+    ways[9] = ({"highway": "path", "name": "Named"}, [tuple(c) for c in _line((30, 0), (30, 5))])
+    features, stats = bp.build_features(ways, _trails([], {}), BOUNDS, 9, 15)
+    at15 = [f for f in features if f["tippecanoe"]["minzoom"] == 15]
+    assert len(at15) == 2, "five unnamed paths share one feature; the named one has its own"
+    assert sorted(len(f["geometry"]["coordinates"]) for f in at15) == [1, 5]
+    assert all("id" not in f for f in features)
+    assert stats["lines"] > stats["pieces"]

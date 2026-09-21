@@ -38,7 +38,7 @@ from shapely.strtree import STRtree
 
 # Bump when the generated features change shape for the same input, so
 # existing basemaps regenerate.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # highway values Protomaps files under kind=path, with the min_zoom it
 # gives each (read off live Protomaps extracts, 2026-09-20). A feature
@@ -353,8 +353,8 @@ def build_features(ways, trails_geojson, bounds, minzoom, maxzoom, merge=True):
         return box(fw * plane.kx, fs * plane.ky, fe * plane.kx, fn * plane.ky)
 
     outer = frame_at(first_zoom)
-    stats = {"ways": len(ways), "drawn_m": 0.0, "pieces": 0}
-    pieces = []  # (way_id, props, LineString in meters)
+    stats = {"ways": len(ways), "drawn_m": 0.0, "pieces": 0, "lines": 0}
+    pieces = []  # (props, LineString in meters)
     for way_id in sorted(ways):
         tags, coords = ways[way_id]
         for part in _lines(LineString(plane.to_m(coords)).intersection(outer)):
@@ -364,13 +364,13 @@ def build_features(ways, trails_geojson, bounds, minzoom, maxzoom, merge=True):
                     props[flag] = 1
                 if flags:
                     stats["drawn_m"] += piece.length
-                pieces.append((way_id, props, piece))
+                pieces.append((props, piece))
 
     features = []
     for z in range(first_zoom, maxzoom + 1):
         frame = frame_at(z)
         groups = {}
-        for way_id, props, piece in pieces:
+        for props, piece in pieces:
             # maxzoom tiles also serve every zoom above them
             if props["min_zoom"] - 1 > z and z < maxzoom:
                 continue
@@ -378,33 +378,33 @@ def build_features(ways, trails_geojson, bounds, minzoom, maxzoom, merge=True):
             if z < NAME_TILE_ZOOM:
                 shown = {k: v for k, v in props.items() if k not in ("name", "ref")}
             for g in _lines(piece.intersection(frame)):
-                groups.setdefault(json.dumps(shown, sort_keys=True), []).append((way_id, g))
+                groups.setdefault(json.dumps(shown, sort_keys=True), []).append(g)
         for key in sorted(groups):
-            members = groups[key]
-            end_owner = {}
-            for way_id, g in members:
-                end_owner.setdefault(g.coords[0], way_id)
-                end_owner.setdefault(g.coords[-1], way_id)
-            lines = [g for _, g in members]
+            lines = groups[key]
             # Exclusion has already happened, so merging cannot hide it;
             # line labels need the run, not the fragments.
             merged = _lines(linemerge(lines)) if merge and len(lines) > 1 else lines
-            for g in merged:
-                owner = end_owner.get(g.coords[0]) or end_owner.get(g.coords[-1]) or members[0][0]
-                features.append(
-                    {
-                        "type": "Feature",
-                        "id": abs(owner),
-                        "properties": json.loads(key),
-                        "tippecanoe": {"layer": "roads", "minzoom": z, "maxzoom": z},
-                        "geometry": {
-                            "type": "LineString",
-                            "coordinates": [
-                                [round(x, 7), round(y, 7)] for x, y in plane.to_deg(g.coords)
-                            ],
-                        },
-                    }
-                )
+            # One multi-line feature per attribute group, which is how
+            # Protomaps packs its own roads: a tile then carries the
+            # group's tags once, not once per trail. A feature per line
+            # made River Bends' basemap 9.3 percent larger than the
+            # plain extract; this makes it 1.9. No feature id either:
+            # nothing reads one, and it is bytes per feature per tile.
+            features.append(
+                {
+                    "type": "Feature",
+                    "properties": json.loads(key),
+                    "tippecanoe": {"layer": "roads", "minzoom": z, "maxzoom": z},
+                    "geometry": {
+                        "type": "MultiLineString",
+                        "coordinates": [
+                            [[round(x, 7), round(y, 7)] for x, y in plane.to_deg(g.coords)]
+                            for g in merged
+                        ],
+                    },
+                }
+            )
+            stats["lines"] += len(merged)
     stats["pieces"] = len(features)
     return features, stats
 
@@ -627,7 +627,7 @@ def generate(
         f", {local} from {os.path.basename(osm_file_path)}" if local else ""
     )
     console.info(
-        f"Basemap paths: {source}; {stats['pieces']} features, "
+        f"Basemap paths: {source}; {stats['lines']} lines in {stats['pieces']} features, "
         f"{stats['drawn_m'] / 1000:.1f} km flagged as drawn by this map"
     )
     return stats
