@@ -28,6 +28,14 @@ hosting the output, see [`deployment.md`](deployment.md).
   reproducible builds; see the file header for upgrade notes.
 - [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI:
   `go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest`.
+- [`tippecanoe`](https://github.com/felt/tippecanoe), which also
+  provides `tile-join`. The build needs both for the default
+  `basemap_source: generated`.
+  - Debian and Ubuntu: `apt install tippecanoe`
+  - macOS: `brew install tippecanoe`
+  - If they are not installed, the build stops with an error. To build
+    without them, set `basemap_source: protomaps` in the config. See
+    [Configuration](configuration.md).
 - Self-hosted [Protomaps basemap assets](https://github.com/protomaps/basemaps-assets/releases)
   (fonts + sprites) extracted into `assets/`.
 - Optional: [`potrace`](http://potrace.sourceforge.net/) for Safari

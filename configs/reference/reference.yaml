@@ -100,6 +100,11 @@ relations:
 # Max zoom for basemap tile extraction.
 # basemap_maxzoom: 15
 
+# Where the basemap's path lines come from: "generated" (replaced by lines
+# that hide under the routes this map draws; needs tippecanoe) or
+# "protomaps" (the plain extract). See docs/configuration.md.
+# basemap_source: generated
+
 # Max zoom for terrain tile extraction.
 # terrain_maxzoom: 12
 

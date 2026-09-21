@@ -27,6 +27,7 @@ relations:
 # min_zoom: 10
 # max_zoom: 18
 # basemap_maxzoom: 15
+# basemap_source: generated
 # terrain_maxzoom: 12
 
 # --- Build-time data gates ---

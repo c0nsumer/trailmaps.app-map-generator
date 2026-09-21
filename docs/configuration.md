@@ -167,6 +167,7 @@ schema and rules.
 | `min_zoom` | No | `10` | Minimum zoom level. |
 | `max_zoom` | No | `18` | Maximum zoom level. |
 | `basemap_maxzoom` | No | `15` | Max zoom for basemap tile extraction. |
+| `basemap_source` | No | `"generated"` | Where the basemap's path lines come from. The Protomaps basemap draws every path in the area as a pale line. That includes the paths this map draws as routes, where the line shows beside the lanes and through dashed routes. With `"generated"`, the build replaces those path lines with ones it generates from OpenStreetMap. A stretch that a route draws is hidden while that route is on. A stretch drawn only by a winter or emergency route is still a plain path when that mode is off. Every other basemap feature stays exactly as Protomaps made it. `"generated"` needs `tippecanoe` and `tile-join`, and it makes one Overpass query for the area. That query is cached like the trail data and refreshes with `--refresh` or `--refresh-trails`. For a map built from a local `.osm` file, a way that the file contains is taken from the file, so the basemap agrees with the routes where the file has been edited. `"protomaps"` keeps the plain Protomaps extract and needs neither tool. Use it for an install without tippecanoe, or for a very large area. |
 | `terrain_maxzoom` | No | `12` | Max zoom for terrain tile extraction. |
 
 #### Pan area: `bbox` vs. `pan_bbox`
