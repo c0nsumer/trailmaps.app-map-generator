@@ -239,13 +239,13 @@ const BASEMAP_BUILT = {
     light: { fill: "#ffffff", edge: "#b0aea6" },
     dark: { fill: "#6c6c68", edge: "#121211" },
 };
-// Railways: a grey from the same family as the built system, one step
-// further from the ground so a lone thin line still shows over the
-// hillshade. `service` (sidings, spurs, yards) is the line color 40% of
-// the way to the ground.
+// Railways take the built system's own visible grey: the road edge on
+// light, the road fill on dark (Steve, Style Lab round 11; a step
+// stronger was the other candidate). `service` (sidings, spurs, yards)
+// is that color 40% of the way to the ground.
 const BASEMAP_RAIL = {
-    light: { line: "#8f8d85", service: "#b7b5b0", text: "#7a776f" },
-    dark: { line: "#85847f", service: "#61615d", text: "#9c9c98" },
+    light: { line: "#b0aea6", service: "#cac9c4", text: "#8a877f" },
+    dark: { line: "#6c6c68", service: "#52534f", text: "#8a8a86" },
 };
 const _flavorKeys = (keys, color) => Object.fromEntries(keys.map((k) => [k, color]));
 
