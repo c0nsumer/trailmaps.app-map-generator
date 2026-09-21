@@ -3650,6 +3650,7 @@ async function init() {
         suppressBasemapPathLabels();
         suppressBasemapPois();
         suppressBasemapOnewayArrows();
+        applyBasemapDrawnPathFilter();
         // Apply share-link highlight, if any. Done here (after both
         // trails and route/trail indexes are built) so we can resolve
         // route IDs / trail names against real data. Best-effort,
@@ -4535,6 +4536,7 @@ function buildStyle() {
     // rebuildBasemapLayers, which re-derives the flavor the same way.
     const flavor = basemapFlavor();
     const basemapLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
+    rememberBasemapStockFilters(basemapLayers);
 
     return {
         version: 8,
@@ -6968,6 +6970,7 @@ function applyVisibilityChange(immediate = false) {
 // applyVisibilityChange returns, not a frame later.
 function _refreshVisibilityDependents() {
     updateTrailDisplay();
+    applyBasemapDrawnPathFilter();
     updateMarkerProximity();
     rebuildFinderList();
     rebuildRoutePanel();
@@ -11663,6 +11666,52 @@ function suppressBasemapPathLabels() {
     }
 }
 
+// Generated basemaps (basemap_source: generated) keep the stretches
+// this map draws in the path tiles, flagged tm_s / tm_w / tm_e for the
+// visibility buckets that draw them, rather than dropping them at build
+// time: a winter-only trail has to stay a path on the summer map. So a
+// flagged stretch is hidden only while a bucket that draws it is on,
+// which is the same rule rebuildVisibleRoutesSet applies to the routes.
+// Appended to the stock filters, not swapped in for them, so the
+// flavor's own rules (tunnel, bridge, pier) keep working. On a plain
+// Protomaps basemap no feature carries a flag and the clauses pass
+// everything, so a --no-basemap build that reuses an older archive is
+// unaffected.
+const BASEMAP_PATH_LINE_LAYERS = [
+    "roads_tunnels_other_casing", "roads_tunnels_other", "roads_other",
+    "roads_bridges_other_casing", "roads_bridges_other",
+];
+let basemapStockFilters = new Map();  // layer id -> the flavor's own filter
+
+function rememberBasemapStockFilters(layers) {
+    basemapStockFilters = new Map();
+    const ids = [...BASEMAP_PATH_LINE_LAYERS, "roads_labels_minor", "roads_oneway"];
+    for (const l of layers) {
+        if (ids.includes(l.id)) basemapStockFilters.set(l.id, l.filter);
+    }
+}
+
+function applyBasemapDrawnPathFilter() {
+    if (CONFIG.basemapSource !== "generated" || isCustomLayer()) return;
+    const flags = [seasonMode === "winter" ? "tm_w" : "tm_s"];
+    if (emergencyOn) flags.push("tm_e");
+    // The line layers and the minor-road labels use the legacy filter
+    // syntax; roads_oneway is an expression, and the two cannot be
+    // mixed inside one "all".
+    const legacy = flags.map((f) => ["!has", f]);
+    const expr = flags.map((f) => ["!", ["has", f]]);
+    const set = (id, clauses) => {
+        if (!map.getLayer(id) || !basemapStockFilters.has(id)) return;
+        const stock = basemapStockFilters.get(id);
+        map.setFilter(id, stock ? ["all", stock, ...clauses] : ["all", ...clauses]);
+    };
+    for (const id of BASEMAP_PATH_LINE_LAYERS) set(id, legacy);
+    // suppressBasemapPathLabels replaces this layer's filter with one
+    // that excludes every path; leave that alone.
+    if (!CONFIG.suppressBasemapPathLabels) set("roads_labels_minor", legacy);
+    set("roads_oneway", expr);
+}
+
 function suppressBasemapPois() {
     if (!CONFIG.suppressBasemapPois) return;
     // Two basemap layers fall under this flag, both are "decorative
@@ -11751,6 +11800,7 @@ function rebuildBasemapLayers() {
         // Protomaps tiles to match the current color scheme.
         const flavor = basemapFlavor();
         baseLayers = basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" });
+        rememberBasemapStockFilters(baseLayers);
         spritePath = `${base}sprites/v4/${flavor}`;
 
         // Rebuild the basemap source too, mirroring the custom branch
@@ -11778,6 +11828,7 @@ function rebuildBasemapLayers() {
     suppressBasemapPathLabels();
     suppressBasemapPois();
     suppressBasemapOnewayArrows();
+    applyBasemapDrawnPathFilter();
 
     // Re-register difficulty/chevron icons if lost during style
     // rebuild. The decoration layers themselves come back via the
