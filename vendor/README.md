@@ -10,9 +10,26 @@ that was built with the exact script beside it on a test map by hand. The build 
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `d84dba7`
-(2026-09-21), built from a clean checkout of that commit. Eight changes
-since the pin before these, `20c3c17`, reach what a map draws.
+Source: the maplibre-gl-lanes repository, `main`, commit `ad8c770`
+(2026-09-21), built from a clean export of that commit. The repository
+is local only for now, and after its 1.0 squash this SHA resolves only
+under `pre-1.0-history`. Nine changes since the pin before these,
+`20c3c17`, reach what a map draws.
+
+`ad8c770` lets a solo lane ease back onto its path. The stable lanes
+pass shifts an edge by up to half a lane so a route does not jog
+sideways where a bundle gains or loses a route, and a lane that left a
+bundle then held that shift to the far end of its edge: half a lane off
+the way it follows, which showed against the basemap path under it and
+at a clipped route's arrowhead (RAMBA, both ends of the Iron Ore
+Heritage Trail). A solo lane now holds the shift for one lane pitch
+beside the junction, eases to zero over 12, and ends exactly on the way
+at a dead or clipped end. Bundles are unchanged. Layout code only. The
+plugin's own comparison on RAMBA, MFO and the example at zooms 11 to
+19: nothing else moves apart from six connectors under 0.6 px and one
+of 1.7 px on MFO at z12. Left alone: a last edge that is both shifted
+and merged into a junction still ends half a lane off, which on RAMBA
+needs a zoom below 10.
 
 `d84dba7` makes a forked route's slide across a merged junction ease in
 continuously, where it switched between two shapes at a slope threshold.
