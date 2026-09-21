@@ -353,3 +353,34 @@ def test_effective_lane_renderer_applies_the_one_default():
     assert effective_lane_renderer({"lane_renderer": "native"}) == "native"
     spec = {yaml_key: default for yaml_key, _, default in template_inject.CONFIG_SPEC}
     assert spec["lane_renderer"] == DEFAULT_LANE_RENDERER
+
+
+# --- event_mode.pois[].directions ------------------------------------------
+
+
+def _event_poi_errors(**poi):
+    entry = {"name": "Event Parking", "coordinates": [-83.1, 42.4], **poi}
+    return _errors(event_mode={"featured": [12345678], "pois": [entry]})
+
+
+def test_event_poi_directions_is_optional_and_boolean():
+    assert not any("pois" in e for e in _event_poi_errors())
+    assert not any("pois" in e for e in _event_poi_errors(directions=True))
+    assert not any("pois" in e for e in _event_poi_errors(directions=False))
+    assert any("directions" in e for e in _event_poi_errors(directions="yes"))
+    assert any("directions" in e for e in _event_poi_errors(directions=1))
+
+
+def test_event_poi_directions_defaults_off_in_the_poi_data():
+    # The popup offers "Get Directions" only where the curator asked:
+    # event parking is driven to, a start line is a plain flag.
+    from fetch_pois import build_pois_geojson
+
+    pois = [
+        {"name": "Start / Finish", "coordinates": [-83.1, 42.4]},
+        {"name": "Event Parking", "coordinates": [-83.2, 42.5], "directions": True},
+        {"name": "Aid 1", "coordinates": [-83.3, 42.6], "directions": False},
+    ]
+    fc = build_pois_geojson({"elements": []}, [], [], config_event_pois=pois)
+    got = {f["properties"]["name"]: f["properties"]["directions"] for f in fc["features"]}
+    assert got == {"Start / Finish": False, "Event Parking": True, "Aid 1": False}

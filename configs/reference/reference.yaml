@@ -41,7 +41,7 @@ relations:
 #   routes: []                       # inline featured routes (custom_routes entry shape)
 #   featured: []                     # feature existing custom_routes ids / OSM relation ids
 #   direction_arrows: false          # always-on arrows along inline routes
-#   pois: []                         # always-on event POIs ({name, coordinates, description})
+#   pois: []                         # always-on event POIs ({name, coordinates, description, directions})
 #   gpx:                             # downloadable GPX files (FAB + download sheet)
 #     routes:
 #     - name: Long Course            # display label in the download sheet

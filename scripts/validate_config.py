@@ -1630,7 +1630,7 @@ def _validate_event_mode(report, config):
     if da is not None and not isinstance(da, bool):
         report.err("event_mode.direction_arrows", f"expected bool, got {type(da).__name__}")
 
-    # pois: optional list of {name, coordinates, description?} entries.
+    # pois: optional list of {name, coordinates, description?, directions?} entries.
     # Always-on at runtime (no rider toggle). Used for event-specific
     # locations: start / finish, aid stations, support areas, etc.
     pois = em.get("pois")
@@ -1658,8 +1658,20 @@ def _validate_event_mode(report, config):
                         f"{where}.description",
                         f"must be string, got {type(entry['description']).__name__}",
                     )
+                # directions: optional bool, default false. Opt-in per
+                # POI because most race fixtures are places a rider
+                # reaches on the course (start / finish, aid stations),
+                # where a "Get Directions" link into a driving app is
+                # noise; event parking is the case that wants it.
+                if "directions" in entry and not isinstance(entry["directions"], bool):
+                    report.err(
+                        f"{where}.directions",
+                        f"must be true or false, got {entry['directions']!r}",
+                    )
                 # Reject unknown keys in entry.
-                _reject_unknown_keys(report, where, entry, {"name", "coordinates", "description"})
+                _reject_unknown_keys(
+                    report, where, entry, {"name", "coordinates", "description", "directions"}
+                )
 
     # poi_color: optional CSS color (hex or named). Default: deep red.
     pc = em.get("poi_color")
