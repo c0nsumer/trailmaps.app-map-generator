@@ -67,8 +67,18 @@ from validate_config import effective_basemap_source, effective_lane_renderer, v
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
 VENDOR_LIBS = {
-    "maplibre-gl.css": "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css",
-    "maplibre-gl.js": "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+    # MapLibre GL JS 6 is ESM only: an entry module, a chunk it shares
+    # with its worker, and the worker, which the entry starts as a module
+    # worker from a URL beside itself. All three must sit in vendor/
+    # under their upstream names, because they import each other by
+    # those names. index.html loads the entry with a module script that
+    # sets window.maplibregl for the classic scripts after it. A file
+    # missing here still works online and fails offline, since the
+    # service worker precache is a walk of the build directory.
+    "maplibre-gl.css": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css",
+    "maplibre-gl.mjs": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs",
+    "maplibre-gl-shared.mjs": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl-shared.mjs",
+    "maplibre-gl-worker.mjs": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl-worker.mjs",
     "pmtiles.js": "https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js",
     "basemaps.js": "https://unpkg.com/@protomaps/basemaps@5.7.2/dist/basemaps.js",
     # Client-side contour isolines from the terrain raster-dem
@@ -295,7 +305,7 @@ def _copy_vendor_script(src, dst):
     with open(src, "rb") as f:
         data = f.read()
     # dst, not src: a cached download is named <file>.js.<url hash>
-    stripped = _SOURCE_MAP_COMMENT.sub(b"\n", data) if dst.endswith(".js") else data
+    stripped = _SOURCE_MAP_COMMENT.sub(b"\n", data) if dst.endswith((".js", ".mjs")) else data
     if stripped == data:
         shutil.copy2(src, dst)
         return
@@ -356,6 +366,24 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
         # the service worker precache list (a filesystem walk) does not
         # keep shipping it.
         os.remove(lanes_dst)
+
+    # The same walk ships anything else left in vendor/ by an earlier
+    # build. When a library is renamed or dropped here (maplibre-gl.js,
+    # 1 MB, became three .mjs files with MapLibre 6) the old file would
+    # otherwise ride along to every phone for as long as the build
+    # directory lives. Precompressed siblings go with their file.
+    expected = set(VENDOR_LIBS)
+    if effective_lane_renderer(config) == "plugin":
+        expected.add(LANES_VENDOR_FILE)
+    for name in os.listdir(vendor_dst):
+        base = name
+        for ext in (".br", ".gz", ".zst"):
+            if base.endswith(ext):
+                base = base[: -len(ext)]
+        path = os.path.join(vendor_dst, name)
+        if base not in expected and os.path.isfile(path):
+            os.remove(path)
+            console.info(f"Removed stale vendor/{name}")
 
     if downloaded:
         console.info(f"Downloaded {downloaded} vendor libraries")
@@ -594,6 +622,7 @@ PRECOMPRESS_EXTENSIONS = (
     ".geojson",
     ".json",
     ".js",
+    ".mjs",
     ".css",
     ".svg",
     ".webmanifest",

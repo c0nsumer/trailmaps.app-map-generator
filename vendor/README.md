@@ -112,8 +112,9 @@ engine the constructor runs inside the ordering promise, so such an
 error surfaces as "lanes: ordering failed" followed by the plugin's own
 message. `0ce9db9` added the MapLibre 5.x fallback for the projection
 data: MapLibre added `getProjectionData` to the render arguments in 6.0,
-and this engine vendors 5.24, where the layer threw on every frame
-without it.
+and this engine vendored 5.24 at the time, where the layer threw on every
+frame without it. The engine is on MapLibre 6 now, the path the plugin was
+written for.
 
 The plugin's 1.0.0 is planned as one squashed root commit on GitHub, so
 the hashes in this file will resolve in the author's local history and

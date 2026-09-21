@@ -95,7 +95,15 @@
          filesystem walk in build.py, not by parsing this template),
          so PWA offline behavior is unchanged. -->
     <link rel="stylesheet" href="vendor/maplibre-gl.css">
-    <script src="vendor/maplibre-gl.js" defer></script>
+    <!-- MapLibre GL JS 6 is ESM only. This module script puts it on
+         window.maplibregl for the classic scripts below, which still
+         expect that global. Module scripts and defer scripts run in
+         document order once parsing ends, so it is set before
+         pmtiles.js, maplibre-contour.js or app.js run. -->
+    <script type="module">
+        import * as maplibre from "./vendor/maplibre-gl.mjs";
+        window.maplibregl = maplibre;
+    </script>
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
     <!-- Isolines from the shipped terrain raster-dem; loaded

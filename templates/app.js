@@ -2874,6 +2874,32 @@ async function checkPMTilesRangeSupport() {
     }
 }
 
+// The page when no map can be made (see the catch around the Map
+// constructor in init). Plain DOM and the sheet tokens, so it follows
+// the color scheme and depends on nothing that might also have failed.
+function showMapUnavailable(err) {
+    console.error("Map could not start:", err);
+    if (window.__hideMapLoading) window.__hideMapLoading();
+    const box = document.createElement("div");
+    box.setAttribute("role", "alert");
+    box.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);"
+        + "max-width:min(28rem,calc(100vw - 32px));padding:20px 22px;border-radius:12px;"
+        + "background:var(--sheet-bg);color:var(--sheet-text);font:inherit;line-height:1.45;"
+        + "box-shadow:0 4px 24px rgba(0,0,0,0.25);z-index:10";
+    const gpu = err && /GPU|WebGL/i.test(`${err.name} ${err.message}`);
+    const title = document.createElement("div");
+    title.style.cssText = "font-weight:600;margin-bottom:6px";
+    title.textContent = "This map cannot start here.";
+    const body = document.createElement("div");
+    body.style.color = "var(--sheet-text-muted)";
+    body.textContent = gpu
+        ? "It needs WebGL2, which this browser or device does not provide. "
+            + "Try a current version of Safari, Chrome or Firefox, or another device."
+        : "Something went wrong while the map was starting. Try reloading the page.";
+    box.append(title, body);
+    document.body.appendChild(box);
+}
+
 async function init() {
     // Publish the shared scrim density to CSS so the overlay backdrops
     // (--overlay-scrim) match the in-map highlight wash (dim-tint) exactly
@@ -3119,7 +3145,18 @@ async function init() {
         };
     }
 
-    map = new maplibregl.Map(mapOptions);
+    try {
+        map = new maplibregl.Map(mapOptions);
+    } catch (e) {
+        // MapLibre GL JS 6 needs WebGL2 and throws
+        // GPUInitializationError when the browser cannot give it one.
+        // Nothing after this point can run without a map, and an
+        // uncaught throw here left a page with a logo and nothing else.
+        // Say why instead. Before MapLibre 6 such a device got the
+        // native lane renderer on WebGL1; there is no WebGL1 path now.
+        showMapUnavailable(e);
+        return;
+    }
 
     // Disable two-finger twist rotation on touch devices.
     map.touchZoomRotate.disableRotation();
@@ -3212,7 +3249,8 @@ async function init() {
     // nonstandard; Google/Apple Maps and ride recorders never change
     // zoom on a re-center. Replaced 2026-08-07 (Session D follow-on)
     // by overriding the control's _updateCamera (an instance-assigned
-    // arrow function in MapLibre 5.24; re-verify on vendor upgrades)
+    // arrow function in MapLibre 5.24 and still in 6.10, checked
+    // 2026-09-21; re-verify on vendor upgrades)
     // with center-only moves:
     //   - Every locate move eases to the fix AT THE CURRENT ZOOM.
     //   - The single exception: the activation move (tracking just
@@ -3289,8 +3327,8 @@ async function init() {
     // Camera-writer override: every locate move keeps the rider's
     // zoom (see the state-machine docblock above for the full
     // rationale and the stock behavior this replaces). _updateCamera
-    // is an instance-assigned arrow function in MapLibre 5.24, so
-    // plain assignment replaces it; re-verify that shape on vendor
+    // is an instance-assigned arrow function in MapLibre 5.24 and
+    // 6.10, so plain assignment replaces it; re-verify that shape on vendor
     // upgrades (unlike the getter-only basemaps exports, this one
     // takes the assignment silently EITHER way, so a breaking vendor
     // change would show up as the stock zoom-yank returning, covered
@@ -6388,8 +6426,11 @@ const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
 // The plugin's shaders are GLSL ES 3.00. On a WebGL1 context its onAdd
 // logs an error and draws nothing, which is a map with no trails and no
 // message, so such a device gets the native renderer instead, the same
-// fallback a vendor script that failed to load gets. MapLibre 5 asks
-// for WebGL2 first and settles for WebGL1. A canvas that already has a
+// fallback a vendor script that failed to load gets. That was MapLibre
+// 5, which asked for WebGL2 and settled for WebGL1. MapLibre 6 needs
+// WebGL2 itself and throws without it (see showMapUnavailable), so
+// under 6 this check always passes and goes when the native renderer
+// does. A canvas that already has a
 // context returns it for a matching type and null for any other, so
 // this reads which one the map got without creating a second context.
 let _mapHasWebgl2 = null;
