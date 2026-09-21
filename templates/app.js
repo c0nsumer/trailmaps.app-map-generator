@@ -5466,13 +5466,21 @@ async function loadTrails() {
         data: computeOffsetsAndFilter(),
     });
 
-    // Add label source (with geometrically offset coordinates)
-    map.addSource("trails-labels", {
-        type: "geojson",
-        data: computeLabelData(),
-    });
-
     const lanePlugin = usingLanePlugin();
+
+    // Label source (shared ways, geometrically offset per route). Only
+    // the native renderer's route-name layers read it; under the lane
+    // plugin they read the lane features instead. It used to be built
+    // either way, so a plugin map computed it at boot and again on
+    // every season or emergency toggle for no reader. updateTrailDisplay
+    // refreshes it only if it exists, so leaving it out is the whole fix.
+    if (!lanePlugin) {
+        map.addSource("trails-labels", {
+            type: "geojson",
+            data: computeLabelData(),
+        });
+    }
+
     if (CONFIG.laneRenderer === "plugin" && !lanePlugin) {
         console.error("lane_renderer: plugin, but "
             + (mapHasWebgl2()
