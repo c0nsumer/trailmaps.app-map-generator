@@ -6,9 +6,19 @@ verbatim copy of an upstream build. The build copies them into a map's
 
 ## maplibre-gl-lanes.js
 
-Source: the maplibre-gl-lanes repository, `main`, commit `7e9365c`
-(2026-09-20), built from a clean checkout of that commit. Five changes
+Source: the maplibre-gl-lanes repository, `main`, commit `3135599`
+(2026-09-20), built from a clean checkout of that commit. Six changes
 since the pin before these, `20c3c17`, reach what a map draws.
+
+`3135599` draws the connector that was missing where two edges join the
+same two junctions and a route turns from one onto the other at both.
+Found on River Bends at 42.646821, -83.062909: a 56 m link's lane
+stopped a junction's length short of the through path, with a round
+cap, at every zoom. Connectors were cached without saying which
+junction, so the second turn reused the first one's. Layout code only.
+It adds connectors and changes nothing else: one more on River Bends,
+two on RAMBA's Other Trails, one on Burchfield; none on MFO or Glacial
+Hills.
 
 `7e9365c` keeps a route one lane wide where it forks inside a merged
 junction. Found on MFO at z13.06 near 42.7683, -83.2207: a route that
@@ -92,7 +102,7 @@ Built with `corepack pnpm build`, which writes `dist/maplibre-gl-lanes.js`,
 the classic-script build with the global `maplibreLanes` and the workers
 inlined. License: MIT.
 
-The file is 137 kB, 48 kB gzipped. It grew from 73 kB at `28f3cd3`, when
+The file is 137 kB, 49 kB gzipped. It grew from 73 kB at `28f3cd3`, when
 lane layout and tessellation moved off the render thread: the inlined
 worker source now carries them as well as the lane orderer.
 
