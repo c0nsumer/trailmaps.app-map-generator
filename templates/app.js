@@ -2019,11 +2019,6 @@ function buildChevronFilter(rev) {
         ["==", ["get", "chevron_owner"], true],
         ["match", ["get", "oneway"], ["yes", "reversible"], true, false],
     ];
-    // Lane plugin: lane features run in the route's direction of
-    // travel where it is known (direction 1); the glyph must not be
-    // placed on a piece the plugin left in graph order (direction 0,
-    // a route running both ways over the edge).
-    if (usingLanePlugin()) f.push(["==", ["get", "direction"], 1]);
     const ids = [...reverseRoutesToday];
     // A feature is reversed-today when its own route or any sharing
     // route is in today's reverse set (shared_routes may be absent on
@@ -2063,10 +2058,16 @@ function addChevronLayers() {
         map.addLayer({
             id,
             type: "symbol",
-            // Lane plugin: chevrons ride the lane features (built
-            // extent, refreshed on moveend like the labels) so they
-            // sit on the lanes instead of at the legacy offsets.
-            source: usingLanePlugin() ? LANE_FEATURES_SOURCE : "trails",
+            // Always the trail's own line, under the lane plugin too,
+            // where that line is the center of the bundle. One-way is
+            // a fact about the trail, not about a route, so one row of
+            // glyphs down the middle says what is true, and a
+            // centerline is the same at every zoom. Riding one lane
+            // instead (tried first under the plugin) put the glyphs on
+            // geometry laid out in pixels for one zoom: through a wheel
+            // zoom they slid a lane or two off the bundle on every
+            // shared corridor and jumped back once JS re-tiled them.
+            source: "trails",
             filter: buildChevronFilter(rev),
             layout: {
                 "symbol-placement": "line",
@@ -6361,8 +6362,9 @@ function offsetLineGeometry(coords, offsetPx) {
 // centered legacy offsets because a plugin build ships no
 // routeOrders / corridorBaselines. Where that machinery needs lane
 // geometry or way facts (route-name labels, both highlight ribbons,
-// chevrons, the tap popup) it is pointed at the lane features and
-// queryLane instead. Remaining differences are recorded in
+// the tap popup) it is pointed at the lane features and queryLane
+// instead. One-way chevrons stay on the "trails" line, the bundle's
+// center, on purpose (see addChevronLayers). Remaining differences are recorded in
 // .claude/plans/lanes-sole-renderer.md rather than papered over here,
 // so the plugin grows the right feature.
 let laneLayer = null;        // LaneLayer, once the first ordering resolves
@@ -6592,14 +6594,9 @@ function onLaneBuild() {
 // Lane geometry as GeoJSON for the layers that otherwise read the
 // offset "trails" source, re-keyed to the property names those layers
 // filter on. The plugin's `routes` (every route on the piece's edge)
-// is the native source's shared_routes, and the chevron filters'
-// chevron_owner is stamped from it: exactly one lane per edge (the
-// lowest route id, so the choice is stable from one edge to the next
-// along a corridor), the same one-row-per-physical-way rule
-// computeOffsetsAndFilter applies for the native layers. Regenerated
-// on every graph swap, so ownership follows route toggles as it does
-// there. Way facts (oneway, trail_name, imba_difficulty) arrive by
-// their own names through uniformProperties.
+// is the native source's shared_routes. Way facts (oneway, trail_name,
+// imba_difficulty) arrive by their own names through
+// uniformProperties.
 function stampLaneFeatures(fc) {
     for (const f of fc.features) {
         const p = f.properties;
@@ -6607,8 +6604,6 @@ function stampLaneFeatures(fc) {
         p.route_name = p.name;
         const routes = p.routes || [p.route];
         p.shared_routes = routes;
-        p.chevron_owner = p.kind === "lane"
-            && p.route === routes.reduce((a, b) => (b < a ? b : a));
     }
     return fc;
 }
