@@ -3055,6 +3055,35 @@ body::after {
 }
 
 /* ----- Initial-load progress bar ----------------------------------- */
+/* ----- Boot-failure note (index.html #boot-fallback) ----------------
+ * Static, and revealed by CSS alone: the cases it exists for are the
+ * ones where no script runs. visibility, not opacity, so a screen reader
+ * does not read it during a normal load. The 10 s delay is the one thing
+ * here that can hurt the common path: app.js is about 150 KB compressed,
+ * several seconds on weak cellular, and a shorter delay would show a
+ * healthy rider a failure message. The reduced-motion rule above shortens
+ * durations, not delays, so it leaves this alone. Sheet tokens only, so
+ * it follows the color scheme with no script. */
+#boot-fallback {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    max-width: min(28rem, calc(100vw - 32px));
+    padding: 20px 22px;
+    border-radius: 12px;
+    background: var(--sheet-bg);
+    color: var(--sheet-text);
+    line-height: 1.45;
+    box-shadow: 0 4px 24px var(--sheet-shadow);
+    visibility: hidden;
+    animation: boot-fallback-reveal 0s linear 10s forwards;
+}
+#boot-fallback strong { display: block; margin-bottom: 6px; font-weight: 600; }
+#boot-fallback span { color: var(--sheet-text-muted); }
+@keyframes boot-fallback-reveal { to { visibility: visible; } }
+
 /* Thin indeterminate bar pinned to the top edge, shown during the first
  * map load and hidden once the opening viewport has painted (map 'idle').
  * Reveal is delayed ~400ms by index.html's inline script so fast/cached

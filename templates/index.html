@@ -146,6 +146,18 @@
 <body>
     <div id="map"></div>
 
+    <!-- Boot-failure note. Static markup, so it is there with JavaScript
+         off, with app.js missing, truncated or unparseable on an old
+         browser, and with a broken cache. app.js removes it as its first
+         act and nothing else ever hides it, so there is no error
+         detection to get wrong. style.css holds it back for 10 s so a
+         slow but healthy load on trailhead cellular never flashes it.
+         A sibling of #map, not a child: MapLibre owns that container. -->
+    <div id="boot-fallback" role="alert">
+        <strong>This map has not started.</strong>
+        <span>It needs JavaScript. If JavaScript is on, reload the page, or try a current version of Safari, Chrome or Firefox.</span>
+    </div>
+
     <!-- Initial-load progress bar. A thin indeterminate strip shown while
          the opening map view streams in (notably terrain.pmtiles on large
          maps like bigm/ramba) and hidden by app.js once the viewport has
