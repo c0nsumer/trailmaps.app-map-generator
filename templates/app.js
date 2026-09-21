@@ -313,6 +313,13 @@ function styleBasemapLayers(layers, scheme) {
     const buildings = byId("buildings");
     if (buildings) buildings.paint["fill-opacity"] = 0.5;
 
+    // County, township, and city limits (kind_detail is the OSM
+    // admin_level; 4 is a state) say nothing to a rider, and in survey
+    // grid country they cross the map as long straight hairlines that
+    // read as a rendering fault over the hillshade.
+    const boundaries = byId("boundaries");
+    if (boundaries) boundaries.filter = ["all", boundaries.filter, ["<=", "kind_detail", 4]];
+
     // Paths and tracks: the thin end of the one built system. Same fill
     // and edge as the roads, far thinner than the flavor's own path line
     // (0.5 to 12 px), with an edge a little under the service road's.
