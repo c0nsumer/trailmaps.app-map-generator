@@ -332,6 +332,11 @@ if __name__ == "__main__":
     print(f"\nAll {len(tests)} tests passed.")
 
 
+def test_route_key_is_a_boolean():
+    assert not any("route_key" in e for e in _errors(route_key=False))
+    assert any("route_key" in e for e in _errors(route_key="no"))
+
+
 def test_lane_renderer_is_a_retired_key_with_its_own_message():
     # Either former value: the key is gone, and the curator is told to
     # delete the line, once, not also "unknown top-level key".

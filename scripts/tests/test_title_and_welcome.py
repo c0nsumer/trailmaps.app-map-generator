@@ -164,6 +164,11 @@ def test_welcome_stays_none_when_absent_or_empty():
 # ---------------------------------------------------------------------------
 
 
+def test_route_key_defaults_on_and_false_reaches_the_page():
+    assert _config_obj(dict(BASE))["routeKey"] is True
+    assert _config_obj({**BASE, "route_key": False})["routeKey"] is False
+
+
 def test_every_map_loads_the_lane_plugin_and_carries_the_boot_note(tmp_path):
     # The plugin is the only thing that draws a route, so its script is
     # in every page, ahead of app.js (deferred scripts run in document

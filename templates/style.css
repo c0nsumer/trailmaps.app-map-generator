@@ -4155,6 +4155,35 @@ body.modal-open .gpx-overlay.is-open {
 .route-panel.is-collapsed .route-panel-card { display: none; }
 .route-panel:not(.is-collapsed) .route-panel-chip { display: none; }
 
+/* route_key: false (app.js rebuildRoutePanel sets .no-key). The panel
+ * is its Search button alone, styled as one more round FAB: the card
+ * loses its chrome and its rows, the chip never shows, and the button
+ * takes the .fab geometry and tokens so the corner reads as the same
+ * species of control as the top-right stack. */
+.route-panel.no-key .route-panel-chip,
+.route-panel.no-key .route-panel-header,
+.route-panel.no-key .route-panel-list { display: none; }
+.route-panel.no-key .route-panel-card {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    max-width: none;
+}
+.route-panel.no-key .route-panel-search {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    padding: 0;
+    border-radius: 24px;
+    background: var(--sheet-bg);
+    border: 1px solid var(--fab-edge);
+    box-shadow: var(--fab-halo), var(--elev-raised);
+}
+.route-panel.no-key .route-panel-search > span:not(.fab-label) { display: none; }
+.route-panel.no-key .route-panel-search > svg { width: 22px; height: 22px; }
+
 /* Collapsed chip - a round icon-only button sharing the .fab class
  * (see index.html), so the docked panel matches the top-right stack
  * exactly: same size, chrome, and color-scheme behavior, with no

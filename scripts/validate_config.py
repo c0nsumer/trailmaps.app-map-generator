@@ -91,6 +91,7 @@ KNOWN_KEYS = {
     "default_labels": str,
     "forced_labels": str,
     "color_by": str,
+    "route_key": bool,
     "default_trail_color": (str, dict),
     "marker_color": str,
     "marker_text_color": str,

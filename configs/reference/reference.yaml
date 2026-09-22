@@ -187,6 +187,11 @@ relations:
 # Trail line coloring: "relation" (route color) or "trail" (per-way IMBA palette).
 # color_by: relation
 
+# Route key (the bottom-right routes panel). false replaces it with a
+# Search button alone: for a trail system whose relations are the trails
+# themselves, a key listing every one is a wall. See docs/configuration.md.
+# route_key: true
+
 # Fallback trail color, or an object with color / pattern / cap for dashed
 # uncolored trails.
 # default_trail_color: "#808080"

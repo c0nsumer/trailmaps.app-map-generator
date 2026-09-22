@@ -55,6 +55,7 @@ relations:
 # relation_names: {}
 # dashed_relations: {}
 # color_by: relation
+# route_key: true
 # default_trail_color: "#808080"
 
 # --- Direction schedules ---

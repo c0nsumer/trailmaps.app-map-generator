@@ -3830,6 +3830,7 @@ async function init() {
     map.once("style.load", async () => {
         await loadTrails();
         await loadPOIs();
+        computeRouteGradeColors();
         buildRouteIndex();
         buildTrailIndex();
         buildPoiIndex();
@@ -5118,15 +5119,63 @@ async function addContourLayers(beforeLayer) {
 
 // Resolve the color a route appears as on the map, in priority order:
 //   1. dashed_relations[id].colors[0], explicit dash colors beat anything
-//   2. routeInfo.colour, from OSM `colour` tag or relation_colors override
-//   3. CONFIG.defaultTrailColor
+//   2. under color_by: trail, the IMBA color of the grade most of the
+//      route's length carries (routeGradeColors), since that is what
+//      the map draws; a route's own colour is not on the map there
+//   3. routeInfo.colour, from OSM `colour` tag or relation_colors override
+//   4. CONFIG.defaultTrailColor
 function effectiveRouteColor(routeInfo) {
     if (!routeInfo) return CONFIG.defaultTrailColor;
     if (Array.isArray(routeInfo.dashColors) && routeInfo.dashColors.length > 0) {
         return routeInfo.dashColors[0];
     }
+    if (routeGradeColors && routeGradeColors.has(routeInfo)) {
+        return routeGradeColors.get(routeInfo);
+    }
     if (routeInfo.colour) return routeInfo.colour;
     return CONFIG.defaultTrailColor;
+}
+
+// color_by: trail. CONFIG.routes entry -> the IMBA color of the grade
+// that most of the route's length carries, so a key row, a finder
+// row, the highlight chip and a popup's route rows show what the map
+// draws instead of the default grey every uncolored route got. On a
+// map like Copper Harbor each relation is one trail with one grade,
+// so this is exactly the trail's color; a route that mixes grades
+// shows its dominant one (the highlight ribbon itself is colored per
+// way, see routeHighlightStrokeColor). Built once the trail data is
+// loaded; null under color_by: relation so effectiveRouteColor keeps
+// its old answers there.
+let routeGradeColors = null;
+function computeRouteGradeColors() {
+    routeGradeColors = null;
+    if (CONFIG.colorBy !== "trail" || !routesData) return;
+    const lengths = new Map();  // route id -> { grade -> length }
+    for (const f of routesData.features) {
+        const p = f.properties;
+        const g = f.geometry;
+        if (!g || g.type !== "LineString") continue;
+        const grade = isRatedDifficulty(p.imba_difficulty) ? String(Number(p.imba_difficulty)) : "";
+        let len = 0;
+        const c = g.coordinates;
+        for (let i = 1; i < c.length; i++) {
+            const dx = (c[i][0] - c[i - 1][0]) * Math.cos(c[i][1] * Math.PI / 180);
+            len += Math.hypot(dx, c[i][1] - c[i - 1][1]);
+        }
+        let byGrade = lengths.get(String(p.route_id));
+        if (!byGrade) lengths.set(String(p.route_id), (byGrade = new Map()));
+        byGrade.set(grade, (byGrade.get(grade) || 0) + len);
+    }
+    routeGradeColors = new Map();
+    for (const [id, info] of Object.entries(CONFIG.routes)) {
+        const byGrade = lengths.get(String(id));
+        if (!byGrade) continue;
+        let best = "", bestLen = -1;
+        for (const [grade, len] of byGrade) {
+            if (len > bestLen) { best = grade; bestLen = len; }
+        }
+        routeGradeColors.set(info, difficultyColor(best));
+    }
 }
 
 // Trail casing (outline halo) color. A casing's job is to separate the
@@ -7145,7 +7194,30 @@ function routeHighlightOutlineColor(info) {
         const t = mapPaintTokens();
         return t.highlightOutline;
     }
+    if (routeGradeColors) return gradeMatchExpr(highlightOutlineForColor);
     return highlightOutlineForColor(effectiveRouteColor(info));
+}
+
+// Stroke of a highlighted ROUTE. Its own color, except under color_by:
+// trail, where the map draws each way in its grade's color and a
+// route-wide color would repaint a black diamond light grey the moment
+// it was selected (Copper Harbor). There the ribbon takes the grade
+// color per way, and the outline its luminance match per way, so the
+// selection is the unselected look, thicker, with the silhouette.
+function routeHighlightStrokeColor(info) {
+    if (routeGradeColors && !isDashed(info)) return gradeMatchExpr(difficultyColor);
+    return effectiveRouteColor(info);
+}
+
+// ["match", imba_difficulty, ...] with `pick(grade)` as each branch and
+// pick("") (the unrated color) as the fallback. Lane pieces carry the
+// way's imba_difficulty (uniformProperties), so this works on the
+// highlight source.
+function gradeMatchExpr(pick) {
+    const expr = ["match", ["get", "imba_difficulty"]];
+    IMBA_RATINGS.forEach((_, i) => expr.push(String(i), pick(String(i))));
+    expr.push(pick(""));
+    return expr;
 }
 
 function highlightRoute(routeId) {
@@ -7168,7 +7240,7 @@ function highlightRoute(routeId) {
     // unhighlighted fill width, and the spotlight dim receding
     // every other layer. Together they unmistakably signal "this
     // route is selected" without recoloring the route itself.
-    const color = effectiveRouteColor(info);
+    const color = routeHighlightStrokeColor(info);
     const routeFilter = ["==", ["get", "route_id"], routeId];
     // Set paint BEFORE flipping the filter. setFilter activates the
     // layer (or switches it to a new route's geometry); whatever
@@ -8152,6 +8224,22 @@ function rebuildRoutePanel() {
     const list = document.getElementById("route-panel-list");
     if (!wrap || !list) return;
 
+    // route_key: false. The panel is its Search button and nothing
+    // else (the .no-key form in style.css): no rows to build, no chip,
+    // no card to size. For a trail system whose relations are the
+    // trails themselves, a key listing every one is a wall; the finder
+    // still lists them all.
+    if (CONFIG.routeKey === false) {
+        wrap.classList.add("no-key");
+        wrap.classList.remove("hidden", "is-collapsed");
+        // .fab for the focus ring and pressed state the other round
+        // buttons have; the geometry comes from the .no-key rules.
+        const search = document.getElementById("route-panel-search");
+        if (search) search.classList.add("fab");
+        list.textContent = "";
+        return;
+    }
+
     // The panel is the map's key, always shown. The `hidden` class in
     // the markup only suppresses an empty card during the boot data
     // load; clear it now that we have real rows (or an honest empty
@@ -8240,6 +8328,10 @@ function initRoutePanel() {
     const chip = document.getElementById("route-panel-chip");
     const collapseBtn = document.getElementById("route-panel-collapse");
     if (!wrap || !chip || !collapseBtn) return;
+    // No key, nothing to expand or collapse (rebuildRoutePanel set the
+    // .no-key form); a stored preference from a key this map used to
+    // have must not pull the chip back.
+    if (CONFIG.routeKey === false) return;
 
     const applyCollapsed = (collapsed) => {
         wrap.classList.toggle("is-collapsed", collapsed);
@@ -9134,15 +9226,18 @@ function setupFabLabels() {
     const panelChip = document.getElementById("route-panel-chip");
     const panelUsable = panel && panelChip
         && !panel.classList.contains("hidden");
+    // With no key (route_key: false) the panel is a Search FAB, and it
+    // is named like the other FABs; the chip never appears.
+    const noKey = panelUsable && panel.classList.contains("no-key");
     const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
-        label.textContent = "Route key";
+        label.textContent = noKey ? "Search" : "Route key";
         label.setAttribute("aria-hidden", "true");
-        panelChip.appendChild(label);
+        (noKey ? document.getElementById("route-panel-search") : panelChip).appendChild(label);
         mounted.push({ btn: panel, label });
     };
-    if (panelUsable && panel.classList.contains("is-collapsed")) {
+    if (panelUsable && (noKey || panel.classList.contains("is-collapsed"))) {
         mountPanelLabel();
     }
 

@@ -213,6 +213,11 @@ CONFIG_SPEC = [
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark", "invertLogoDark", True),
     ("color_by", "colorBy", "relation"),
+    # false: the bottom-right panel is a Search button alone, no key
+    # card and no chip. For a trail system whose relations are the
+    # trails themselves (Copper Harbor: 75 of them), a key that lists
+    # every one is a wall, while search still finds any of them.
+    ("route_key", "routeKey", True),
     # "generated" basemaps carry flagged path stretches that app.js
     # hides by season (applyBasemapDrawnPathFilter); see basemap_paths.py.
     ("basemap_source", "basemapSource", DEFAULT_BASEMAP_SOURCE),
