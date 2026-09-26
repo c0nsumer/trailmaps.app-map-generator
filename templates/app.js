@@ -258,6 +258,55 @@ const BASEMAP_RAIL = {
     light: { line: "#b0aea6", service: "#cac9c4", text: "#8a877f" },
     dark: { line: "#6c6c68", service: "#52534f", text: "#8a8a86" },
 };
+// Wetlands (landuse kind "wetland"; Protomaps keeps no swamp/marsh/bog
+// subtype). Wet ground matters to a rider, and the flavor draws no layer
+// for that kind, so it used to render as plain ground. A tint between
+// the scheme's park green and water blue, plus the topo marsh sign
+// (small tufts over a dash) from z12. The marks are small, light, and
+// spaced well apart: at full topo size and density they read as
+// wallpaper over the map (Steve, Style Lab rounds 12 and 13). On dark
+// the mark is dimmer than the water, not brighter, for the same reason.
+const BASEMAP_WETLAND = {
+    light: { tint: "#cbdcd8", mark: "#93b6ca", pattern: "wetland-marks-light" },
+    dark: { tint: "#324240", mark: "#5b7a8b", pattern: "wetland-marks-dark" },
+};
+
+// One pattern cell holds two tufts on staggered rows so the repeat
+// reads as scattered marks rather than a grid. Registered from the
+// map's styleimagemissing handler: the basemap references the pattern
+// from the first style, before anything else could add it, and adding
+// it inside that handler also keeps MapLibre from warning about it.
+// Like every fill pattern, the marks grow with the map through a zoom
+// level and return to size at the next one (the pattern is fixed to
+// the tile, not the screen); that is MapLibre's behavior and was seen
+// and accepted in the lab.
+function registerWetlandPattern(id) {
+    const scheme = Object.values(BASEMAP_WETLAND).find((s) => s.pattern === id);
+    if (!scheme || map.hasImage(id)) return;
+    const ratio = 2, w = 64, h = 42;
+    const canvas = document.createElement("canvas");
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(ratio, ratio);
+    ctx.strokeStyle = scheme.mark;
+    ctx.lineWidth = 0.8;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    for (const [x, y] of [[14, 14], [46, 35]]) {
+        ctx.moveTo(x - 3.5, y); ctx.lineTo(x + 3.5, y);
+        ctx.moveTo(x, y - 0.4); ctx.lineTo(x, y - 3.4);
+        ctx.moveTo(x - 1.1, y - 0.4); ctx.lineTo(x - 2.5, y - 2.6);
+        ctx.moveTo(x + 1.1, y - 0.4); ctx.lineTo(x + 2.5, y - 2.6);
+    }
+    ctx.stroke();
+    map.addImage(id, {
+        width: w * ratio,
+        height: h * ratio,
+        data: ctx.getImageData(0, 0, w * ratio, h * ratio).data,
+    }, { pixelRatio: ratio });
+}
+
 const _flavorKeys = (keys, color) => Object.fromEntries(keys.map((k) => [k, color]));
 
 const BASEMAP_FLAVOR_OVERRIDES = {
@@ -415,6 +464,31 @@ function styleBasemapLayers(layers, scheme) {
                 },
                 paint: { "text-color": c.text, "text-halo-color": ground, "text-halo-width": 1.2 },
             });
+    }
+
+    // Wetlands go after the landuse fills and just before water, so
+    // hillshade, contours, water, and roads all draw over them.
+    const water = byId("water");
+    const park = byId("landuse_park");
+    if (water && park) {
+        const wet = BASEMAP_WETLAND[scheme === "dark" ? "dark" : "light"];
+        const base = { source: park.source, "source-layer": "landuse", filter: ["==", "kind", "wetland"] };
+        layers.splice(layers.indexOf(water), 0, {
+            ...base,
+            id: "landuse_wetland",
+            type: "fill",
+            // same fade-in as the park fill under it
+            paint: { "fill-color": wet.tint, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 11, 1] },
+        }, {
+            ...base,
+            id: "landuse_wetland_marks",
+            type: "fill",
+            minzoom: 11.5,
+            paint: {
+                "fill-pattern": wet.pattern,
+                "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11.5, 0, 12.5, 0.7],
+            },
+        });
     }
 
     // A way nobody may use (access=private|no) keeps the full path line
@@ -3322,6 +3396,8 @@ async function init() {
         showMapUnavailable(e);
         return;
     }
+
+    map.on("styleimagemissing", (e) => registerWetlandPattern(e.id));
 
     // Disable two-finger twist rotation on touch devices.
     map.touchZoomRotate.disableRotation();
