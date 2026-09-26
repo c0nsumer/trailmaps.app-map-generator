@@ -3921,7 +3921,7 @@ async function init() {
         // collapsed, so the collapsed class must be settled first.
         initRoutePanel();
         // First-visit-per-map FAB-label discoverability cue. Mounts
-        // labels under each FAB, dismisses on tap or 5 s timeout.
+        // labels under each FAB, dismisses on tap or 15 s timeout.
         // Self-suppresses on subsequent visits via LS flag. Must
         // run after setupFloatingChrome so the FABs' main click
         // handlers are wired (our dismiss listener piggybacks).
@@ -9250,8 +9250,9 @@ function addFeatureMarkers(addToMap) {
 //
 // Mounts a small pill label to the left of each FAB ("Locate",
 // "Reset view", "Options", "Search") on first visit, dismisses on
-// any FAB tap OR a 15 s auto-timeout, then sets an LS flag so
-// returning riders never see the labels again.
+// any FAB tap OR a 15 s auto-timeout (counted from when the opening
+// view has painted), then sets an LS flag so returning riders never
+// see the labels again.
 //
 // Coordination with the welcome modal: if welcome is currently up,
 // wait for it to dismiss before revealing the labels. Otherwise the
@@ -9400,7 +9401,17 @@ function setupFabLabels() {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 document.body.classList.add("fabs-labeled");
-                timeoutId = setTimeout(dismiss, 15000);
+                // The countdown starts once the opening view has
+                // painted: on a slow load the labels used to run out
+                // while the rider was still watching the map draw.
+                // Capped at 30 s like the loading bar's safety net, so
+                // a load that never settles can't pin them up.
+                Promise.race([
+                    _mapSettled,
+                    new Promise((resolve) => setTimeout(resolve, 30000)),
+                ]).then(() => {
+                    if (!dismissed) timeoutId = setTimeout(dismiss, 15000);
+                });
             });
         });
     }
