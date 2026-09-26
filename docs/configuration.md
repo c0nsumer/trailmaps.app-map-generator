@@ -41,6 +41,7 @@ Both files stay in identical key order, so you can diff them at any time. Use
 - [Route buckets](#route-buckets)
 - [Custom routes (full guide)](#custom-routes-full-guide)
 - [Routes panel](#routes-panel)
+- [Units](#units)
 - [Trail finder](#trail-finder)
 - [Trail difficulty](#trail-difficulty)
 - [Direction arrows](#direction-arrows)
@@ -210,14 +211,14 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The Toilets toggle auto-hides when none were found. |
 | `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Drinking Water toggle auto-hides when none were found. |
 | `show_bicycle_repair_stations` | No | `true` | When false, skips the Overpass query for `amenity=bicycle_repair_station` nodes. The Bicycle Repair toggle auto-hides when none were found. |
-| `show_terrain` | No | `true` | When false, terrain tiles are not fetched, and the hillshade and contour-line layers are omitted. Contour lines are computed in the browser from the same terrain tiles as the hillshade, labeled in feet. |
+| `show_terrain` | No | `true` | When false, terrain tiles are not fetched, and the hillshade and contour-line layers are omitted. Contour lines are computed in the browser from the same terrain tiles as the hillshade. They are labeled in the rider's [units](#units). |
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (custom base layers unaffected). |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
-| `show_route_distance` | No | `false` | When true, computes per-route distance at build time and shows it in the Finder rows and highlight chip. Units follow `distance_units`. |
+| `show_route_distance` | No | `false` | When true, computes per-route distance at build time and shows it in the Finder rows and highlight chip. It is shown in the rider's [units](#units). |
 | `show_route_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
@@ -254,7 +255,6 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `scrim_opacity` | No | `0.40` | Opacity (0-1) of the dark scrim. The scrim is used both for the in-map spotlight wash while a route / trail is highlighted (only when `map_dim_on_highlight` is `true`) **and** for the Search / Options / About menu backdrops. One value, so the wash and the menus share a consistent density as the rider moves between them. Lower keeps more of the map legible; higher is a stronger dim. |
 | `highlight_glow` | No | `true` | Draw a soft amber selection glow beneath the highlighted ribbon. The selected route or trail, dark ones included, then reads as "selected" at a glance. Set `false` for the plain outline + stroke ribbon with no glow. |
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honor any hash on page load. This enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
-| `distance_units` | No | `"mi"` | Units for **all** distance and elevation values. `"mi"`: miles for distance, feet for elevation gain. `"km"`: kilometers for distance, meters for elevation gain. Affects render-time formatting only. |
 | `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view plus any active highlight as a deep-link URL. A highlight can be a route, a trail, or a place selected from the Finder: a single POI, a name group, or a whole POI category. The link is offered via the native share sheet (mobile) or clipboard (desktop). Opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
 
 The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
@@ -497,8 +497,8 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
   toggles exactly like the finder; event maps list featured routes only.
 - **Tapping a row** highlights that route (tap again to clear), the same
   behavior as a finder route row.
-- **Row stats** follow `show_route_distance` / `show_route_elevation` and
-  `distance_units`.
+- **Row stats** follow `show_route_distance` / `show_route_elevation`, and
+  are shown in the rider's [units](#units).
 - **Boot state.** The panel opens either as the key card or as a compact round
   list-icon chip. The choice depends on how many rows there are and whether
   the card would swamp the viewport: roughly, it starts expanded when the card
@@ -506,6 +506,30 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
   expand / collapse choice then persists per-map (`mtb.routePanelExpanded`)
   and beats that default. When the panel boots collapsed, a first-visit
   **Route key** label points the chip out (the expanded card explains itself).
+
+## Units
+
+Units are the rider's choice, not a config setting. The Options **Units** row
+switches between miles and kilometers. The choice covers everything the app
+computes: route distance and elevation, the map scale, the off-screen distance
+to the rider's location, and contour labels. Miles pairs with feet for short
+distances, elevation, and contours. Kilometers pairs with meters.
+
+Names in the trail data are never converted. A guidepost named "Mile 5.0"
+keeps that name under either setting.
+
+Until a rider picks, the device's region decides. Regions that use miles day
+to day (the US, Liberia, and Myanmar) get miles. Every other region gets
+kilometers, including the UK. A web page can only see the browser's language
+tag, such as `en-US`, not the phone's measurement-system setting. The Options
+row covers riders whose tag doesn't match what they use.
+
+The choice is stored once per origin (`mtb.units`), not per map. A rider who
+picks kilometers on one map sees kilometers on every map served from the same
+site. See [Privacy](#privacy).
+
+The former `distance_units` config key is removed. The build rejects a config
+that still sets it, with a message to delete the line.
 
 ## Trail finder
 
@@ -1164,7 +1188,8 @@ a visitor does is reported anywhere.
 
 The app stores a small set of UI preferences in the browser's `localStorage`.
 Each key is prefixed with the map's `slug` so several maps on one origin stay
-independent (for example, `<slug>.mtb.colorScheme`):
+independent (for example, `<slug>.mtb.colorScheme`). The one exception is
+`mtb.units`. It has no prefix, so every map on the origin shares it:
 
 | Key | Value |
 |---|---|
@@ -1175,6 +1200,7 @@ independent (for example, `<slug>.mtb.colorScheme`):
 | `mtb.difficulty` | Boolean: IMBA difficulty symbols on or off |
 | `mtb.directionArrows` | Boolean: direction arrows on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
+| `mtb.units` | `"mi"` or `"km"`. No slug prefix; shared by every map on the origin |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
 | `mtb.routePanelExpanded` | Boolean: the routes panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |

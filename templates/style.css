@@ -1576,13 +1576,16 @@ body::after {
  * moon glyph; dark scheme: dark chip with light sun-moon glyph.
  * The mdi:theme-light-dark icon already reads as a "theme switcher"
  * in both schemes, so no per-scheme glyph swap needed (unlike the
- * Season chip's sun ⇌ snowflake). */
-.appearance-swatch {
+ * Season chip's sun ⇌ snowflake). Units shares the recipe: both are
+ * viewing preferences rather than layers. */
+.appearance-swatch,
+.units-swatch {
     background: var(--input-bg);
     color: var(--sheet-text);
 }
 
-[data-color-scheme="dark"] .appearance-swatch {
+[data-color-scheme="dark"] .appearance-swatch,
+[data-color-scheme="dark"] .units-swatch {
     background: var(--input-bg);
     color: #f0f0f0;
 }

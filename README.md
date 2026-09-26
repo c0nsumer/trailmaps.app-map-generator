@@ -30,8 +30,8 @@ Oaks Map as of 2026-Jul-05*
   the routes panel (bottom-right):
   - Locate: show the user's position from the device GNSS sensors.
   - Reset View: return to the map's initial framing.
-  - Options: toggle labels, color scheme, season, and POI layers; install the
-    PWA; open About.
+  - Options: toggle labels, color scheme, units, season, and POI layers;
+    install the PWA; open About.
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
     routes, trails, and POIs on the map.
@@ -203,6 +203,11 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
 - `mtb.routePanelExpanded`: boolean (routes panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
+
+One key has no slug prefix, because units are the visitor's preference and
+not a property of one map. Every map on the same origin shares it:
+
+- `mtb.units`: "mi" or "km"
 
 Nothing else is stored. No identifiers, no geolocation traces, no analytics
 payloads.

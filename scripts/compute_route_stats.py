@@ -19,7 +19,7 @@ Two stats, both gated by config:
 Output: writes per-route stats into trails_geojson["metadata"]["routes"]
 [<id>] as ``distance_m``, ``elevation_gain_m``, and ``elevation_loss_m``
 (integers, meters). The runtime reads those values and formats them
-per CONFIG.distanceUnits.
+in the viewer's chosen units.
 
 Caching:
   Elevation queries are cached in ``cache/route_stats/`` keyed by a

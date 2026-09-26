@@ -731,7 +731,8 @@ function watchSystemColorScheme() {
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
 // mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
-// mtb.welcomed, mtb.fabsLabeled.
+// mtb.welcomed, mtb.fabsLabeled. One key is shared across maps and
+// carries no prefix: mtb.units (see LS_ORIGIN).
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
 // emits CONFIG.defaultVisible as a list of layer names that should
@@ -758,19 +759,53 @@ function isForcedVisible(name) {
 }
 
 const LS_PREFIX = (CONFIG && CONFIG.slug ? CONFIG.slug + "." : "");
-const LS = {
-    get(key, fallback) {
-        try {
-            const v = window.localStorage.getItem(LS_PREFIX + key);
-            if (v === null) return fallback;
-            return JSON.parse(v);
-        } catch (_) { return fallback; }
-    },
-    set(key, value) {
-        try { window.localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)); }
-        catch (_) { /* private mode / quota */ }
-    },
-};
+function lsStore(prefix) {
+    return {
+        get(key, fallback) {
+            try {
+                const v = window.localStorage.getItem(prefix + key);
+                if (v === null) return fallback;
+                return JSON.parse(v);
+            } catch (_) { return fallback; }
+        },
+        set(key, value) {
+            try { window.localStorage.setItem(prefix + key, JSON.stringify(value)); }
+            catch (_) { /* private mode / quota */ }
+        },
+    };
+}
+const LS = lsStore(LS_PREFIX);
+// Unprefixed, for the rare preference that belongs to the rider rather
+// than to one map (mtb.units): set it on any map and every map on the
+// origin follows.
+const LS_ORIGIN = lsStore("");
+
+// Miles/feet or kilometers/meters for everything the app computes and
+// displays: route stats, the scale, the off-screen distance, contour
+// labels. Names in the OSM data ("Mile 5.0") are never converted. The
+// rider's Options choice wins; until they make one, the device's region
+// decides, which is what native map apps do with the OS setting. A web
+// page only sees the language tag, not the OS measurement setting, so
+// the Options row covers riders whose tag says the wrong thing.
+//
+// The UK is deliberately metric: its road signs are in miles, but OS
+// maps and trail centers work in meters and kilometers.
+const IMPERIAL_REGIONS = new Set(["US", "LR", "MM"]);
+
+function regionUnits() {
+    try {
+        const tag = (navigator.languages && navigator.languages[0]) || navigator.language;
+        // maximize() fills in the likely region: a bare "en" is en-US.
+        return IMPERIAL_REGIONS.has(new Intl.Locale(tag).maximize().region) ? "mi" : "km";
+    } catch (_) {
+        return "km";
+    }
+}
+
+let distanceUnits = (() => {
+    const stored = LS_ORIGIN.get("mtb.units", null);
+    return stored === "mi" || stored === "km" ? stored : regionUnits();
+})();
 
 // Sort comparator for route ids, handles numeric OSM ids and string
 // custom ids consistently. With {numeric:true}, "2" sorts before "10",
@@ -5117,6 +5152,74 @@ function _installContourDemFetch() {
     };
 }
 
+let _contourDemSource = null;
+
+// [minor, major] interval per zoom in the rider's units; majors draw
+// thicker and carry labels. Contour tiles are generated with these
+// baked in, so a units change rebuilds the source (applyContourUnits),
+// not just the labels. The z13 step is one overzoom level past the z12
+// terrain data, still honest; anything finer than about 6 m (20 ft)
+// renders interpolation noise as confident lines, so metric stops at
+// 10 m. The metric ladder is the European topo convention (10/50 at
+// 1:25k, 20/100 at 1:50k), at roughly the imperial ladder's density.
+const CONTOUR_THRESHOLDS = {
+    mi: {
+        9: [200, 1000], 10: [200, 1000], 11: [100, 500],
+        12: [50, 200], 13: [20, 100],
+        14: [20, 100], 15: [20, 100],
+    },
+    km: {
+        9: [50, 250], 10: [50, 250], 11: [25, 100],
+        12: [20, 100], 13: [10, 50],
+        14: [10, 50], 15: [10, 50],
+    },
+};
+
+function contourTilesUrl() {
+    return _contourDemSource.contourProtocolUrl({
+        multiplier: distanceUnits === "km" ? 1 : 3.28084,
+        thresholds: CONTOUR_THRESHOLDS[distanceUnits],
+        contourLayer: "contours",
+        elevationKey: "ele",
+        levelKey: "level",
+        extent: 4096,
+        buffer: 1,
+    });
+}
+
+function contourLabelField() {
+    return ["concat", ["to-string", ["get", "ele"]], distanceUnits === "km" ? " m" : " ft"];
+}
+
+// Rebuilds the source rather than calling setTiles(): on MapLibre 6.10
+// setTiles() fired its reload but never asked the contour protocol for
+// new tiles, so the old unit's lines stayed (probed 2026-09-26). The
+// layers go back at their old positions with their current paint, which
+// keeps whatever applyMapPaintForScheme last set.
+function applyContourUnits() {
+    if (!map || !map.getSource("contours") || !_contourDemSource) return;
+    const layers = map.getStyle().layers;
+    const ids = layers.map((l) => l.id);
+    const saved = ["contour-lines", "contour-labels"]
+        .filter((id) => ids.includes(id))
+        .map((id) => ({ spec: layers.find((l) => l.id === id), before: ids[ids.indexOf(id) + 1] }));
+    for (const { spec } of saved) map.removeLayer(spec.id);
+    map.removeSource("contours");
+    map.addSource("contours", {
+        type: "vector",
+        tiles: [contourTilesUrl()],
+        maxzoom: 15,
+    });
+    // Labels first: when the lines sat directly under them, the lines'
+    // "before" is the labels layer, which has to exist again.
+    for (const { spec, before } of saved.reverse()) {
+        if (spec.id === "contour-labels") {
+            spec.layout = { ...spec.layout, "text-field": contourLabelField() };
+        }
+        map.addLayer(spec, before && map.getLayer(before) ? before : undefined);
+    }
+}
+
 // Called from addTerrainLayers once the terrain source exists (so the
 // showTerrain gate and the HEAD-probe fallback are already settled).
 // beforeLayer is the first symbol layer: contours land above the
@@ -5152,27 +5255,10 @@ async function addContourLayers(beforeLayer) {
         });
         demSource.setupMaplibre(maplibregl);
 
+        _contourDemSource = demSource;
         map.addSource("contours", {
             type: "vector",
-            tiles: [demSource.contourProtocolUrl({
-                // Feet, matching the app's imperial route stats.
-                // [minor, major] per zoom; majors draw thicker and
-                // carry labels. The z13 20/100 step is one overzoom
-                // level past the z12 terrain data, still honest;
-                // finer than 20 ft anywhere would render
-                // interpolation noise as confident lines.
-                multiplier: 3.28084,
-                thresholds: {
-                    9: [200, 1000], 10: [200, 1000], 11: [100, 500],
-                    12: [50, 200], 13: [20, 100],
-                    14: [20, 100], 15: [20, 100],
-                },
-                contourLayer: "contours",
-                elevationKey: "ele",
-                levelKey: "level",
-                extent: 4096,
-                buffer: 1,
-            })],
+            tiles: [contourTilesUrl()],
             maxzoom: 15,
         });
 
@@ -5195,7 +5281,7 @@ async function addContourLayers(beforeLayer) {
             filter: [">", ["get", "level"], 0],
             layout: {
                 "symbol-placement": "line",
-                "text-field": ["concat", ["to-string", ["get", "ele"]], " ft"],
+                "text-field": contourLabelField(),
                 "text-font": ["Noto Sans Regular"],
                 "text-size": 9.5,
                 "symbol-spacing": 350,
@@ -8533,7 +8619,7 @@ function buildRouteIndex() {
             // present or both absent. Stored as integer meters in
             // CONFIG.routes; render-time formatting uses
             // formatDistance / formatElevationPair which respect
-            // CONFIG.distanceUnits.
+            // distanceUnits.
             distanceM: typeof info.distance_m === "number" ? info.distance_m : null,
             elevationGainM: typeof info.elevation_gain_m === "number" ? info.elevation_gain_m : null,
             elevationLossM: typeof info.elevation_loss_m === "number" ? info.elevation_loss_m : null,
@@ -10384,6 +10470,31 @@ function setupFloatingChrome() {
         }
         watchSystemColorScheme();
         wireRadiogroupKeys(schemeGroup);
+    }
+
+    // ----- Units: Miles / Kilometers --------------------------------
+    // Two states, no Auto: until the rider picks, distanceUnits already
+    // follows the device's region, and the pill shows what that
+    // resolved to. Picking stores the choice for every map on the
+    // origin (LS_ORIGIN).
+    const unitsGroup = document.getElementById("units-segmented");
+    if (unitsGroup) {
+        const unitButtons = Array.from(
+            unitsGroup.querySelectorAll(".opt-segmented-btn"));
+        const syncUnitsPressed = () => {
+            for (const b of unitButtons) {
+                b.setAttribute("aria-checked",
+                    b.dataset.value === distanceUnits ? "true" : "false");
+            }
+        };
+        syncUnitsPressed();
+        for (const b of unitButtons) {
+            b.addEventListener("click", () => {
+                setDistanceUnits(b.dataset.value);
+                syncUnitsPressed();
+            });
+        }
+        wireRadiogroupKeys(unitsGroup);
     }
 
     // ----- Show Trails gating -----
@@ -12421,7 +12532,7 @@ function mapScaleStep(metersPerPx) {
         const p = 10 ** Math.floor(Math.log10(max));
         return [5, 2, 1].map((m) => m * p).find((v) => v <= max);
     };
-    if (CONFIG.distanceUnits === "km") {
+    if (distanceUnits === "km") {
         if (maxM < 1000) {
             const m = step(maxM);
             return { meters: m, label: `${m} m` };
@@ -12488,15 +12599,14 @@ function initMapScale() {
 // Single distance formatter shared across the whole runtime: off-screen
 // indicator pill, Finder route rows, highlight chip, any future
 // distance display. Underlying values are always meters; this function
-// converts to whatever CONFIG.distanceUnits says ("mi" default, or
-// "km" for metric-region maps).
+// converts to whatever distanceUnits says ("mi" or "km").
 //
 //   "mi": feet under 0.5 mi (~2640 ft), then decimal mi up to 10, then
 //         integer mi. Feet at the close range matches what off-screen-
 //         indicator users in imperial regions expect.
 //   "km": meters under 1000, then decimal km up to 10, then integer km.
 function formatDistance(meters) {
-    if (CONFIG.distanceUnits === "km") {
+    if (distanceUnits === "km") {
         if (meters < 1000) return `${Math.round(meters)} m`;
         const km = meters / 1000;
         return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
@@ -12507,6 +12617,25 @@ function formatDistance(meters) {
         return `${Math.round(meters * 3.28084)} ft`;
     }
     return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+}
+
+// Every displayed distance re-renders here; the scale and the
+// off-screen pill format on their next draw anyway, but a rider who
+// just changed units should see the change without moving the map.
+function setDistanceUnits(units) {
+    if (units !== "mi" && units !== "km") return;
+    LS_ORIGIN.set("mtb.units", units);
+    if (units === distanceUnits) return;
+    distanceUnits = units;
+    rebuildRoutePanel();
+    rebuildFinderList();
+    if (highlight && highlight.kind === "route") {
+        const r = routeIndex.find((x) => String(x.id) === String(highlight.key));
+        const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
+        if (r && statsEl && statsEl.textContent) statsEl.textContent = routeStatsText(r);
+    }
+    updateLocationIndicator();
+    applyContourUnits();
 }
 
 // Compact paired gain/loss display for route stats. Either or both
@@ -12527,7 +12656,7 @@ function formatElevationPair(gainM, lossM) {
     const haveGain = typeof gainM === "number";
     const haveLoss = typeof lossM === "number";
     if (!haveGain && !haveLoss) return "";
-    const isMetric = CONFIG.distanceUnits === "km";
+    const isMetric = distanceUnits === "km";
     const unit = isMetric ? "m" : "ft";
     const conv = (m) => isMetric ? Math.round(m) : Math.round(m * 3.28084);
     const parts = [];

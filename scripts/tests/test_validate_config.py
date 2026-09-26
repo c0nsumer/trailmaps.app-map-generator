@@ -347,6 +347,14 @@ def test_lane_renderer_is_a_retired_key_with_its_own_message():
         assert "unknown top-level key" not in errors[0]
 
 
+def test_distance_units_is_a_retired_key_with_its_own_message():
+    for value in ("mi", "km"):
+        errors = [e for e in _errors(distance_units=value) if "distance_units" in e]
+        assert len(errors) == 1
+        assert "removed" in errors[0]
+        assert "unknown top-level key" not in errors[0]
+
+
 # --- event_mode.pois[].directions ------------------------------------------
 
 

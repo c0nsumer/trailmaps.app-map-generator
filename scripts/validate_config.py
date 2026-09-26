@@ -133,7 +133,6 @@ KNOWN_KEYS = {
     "poi_proximity_m": (int, float),
     "show_route_distance": bool,
     "show_route_elevation": bool,
-    "distance_units": str,
     "share_button": bool,
     # User-supplied feature data
     "trailheads": list,
@@ -252,7 +251,6 @@ def effective_basemap_source(config):
 
 
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
-VALID_DISTANCE_UNITS = {"mi", "km"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
     "sunday",
@@ -365,6 +363,8 @@ _LEGACY_KEYS = {
     "extra_relations",
     # The native lane renderer and its selector went in 2026-09.
     "lane_renderer",
+    # Units became the viewer's choice in Options (2026-09).
+    "distance_units",
     # Renamed in the direction_schedule rework (May 2026). Caught
     # with pointed migration messages in _validate_weekdays.
     "default_direction_schedule",
@@ -456,12 +456,6 @@ def _validate_enums(report, config):
         report.err(
             "marker_shape",
             f"must be one of {sorted(VALID_MARKER_SHAPES)}, got {config['marker_shape']!r}",
-        )
-
-    if "distance_units" in config and config["distance_units"] not in VALID_DISTANCE_UNITS:
-        report.err(
-            "distance_units",
-            f"must be one of {sorted(VALID_DISTANCE_UNITS)}, got {config['distance_units']!r}",
         )
 
     if (
@@ -1854,6 +1848,12 @@ def _validate_legacy_keys(report, config):
             "removed. Every map draws its routes with maplibre-gl-lanes; "
             "the build-time renderer that `native` selected is gone. "
             "Delete the line.",
+        )
+    if "distance_units" in config:
+        report.err(
+            "distance_units",
+            "removed. Each viewer picks miles or kilometers in Options, "
+            "and the default follows their device's region. Delete the line.",
         )
 
 

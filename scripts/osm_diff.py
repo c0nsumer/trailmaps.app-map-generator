@@ -333,16 +333,11 @@ def diff_snapshots(prev, cur):
     return diff
 
 
-def _km_or_mi(metres, units):
-    if units == "km":
-        return f"{metres / 1000.0:+.2f} km"
-    return f"{metres / 1609.344:+.2f} mi"
-
-
-def _abs_km_or_mi(metres, units):
-    if units == "km":
-        return f"{metres / 1000.0:.2f} km"
-    return f"{metres / 1609.344:.2f} mi"
+def _length(metres, signed=False):
+    # Both units: a map carries no unit setting (the app follows each
+    # viewer's choice), so the report can't pick one for its reader.
+    fmt = "+.2f" if signed else ".2f"
+    return f"{metres / 1609.344:{fmt}} mi / {metres / 1000.0:{fmt}} km"
 
 
 def _capped(items, cap=_MAX_LIST):
@@ -400,7 +395,7 @@ def _render_super(change):
             f"{', '.join(names)}{tail})")
 
 
-def summarize(diff, units="mi"):
+def summarize(diff):
     """Short console summary: a few lines, no item dumps."""
     if not diff.get("changed"):
         return ["OSM data is unchanged since the previous snapshot."]
@@ -435,9 +430,9 @@ def summarize(diff, units="mi"):
     lines.append(
         f"ways {diff['way_count_old']} → {diff['way_count_new']}, "
         f"total length "
-        f"{_abs_km_or_mi(diff['total_length_old_m'], units)} → "
-        f"{_abs_km_or_mi(diff['total_length_new_m'], units)} "
-        f"({_km_or_mi(diff['total_length_new_m'] - diff['total_length_old_m'], units)})"
+        f"{_length(diff['total_length_old_m'])} → "
+        f"{_length(diff['total_length_new_m'])} "
+        f"({_length(diff['total_length_new_m'] - diff['total_length_old_m'], signed=True)})"
     )
 
     # A couple of concrete examples so the counts mean something without
@@ -456,7 +451,7 @@ def summarize(diff, units="mi"):
     return lines
 
 
-def format_report(diff, slug, units="mi"):
+def format_report(diff, slug):
     """Full Markdown report. Pure."""
     out = [f"# OSM refresh diff - {slug}", ""]
     out.append(f"- Previous data timestamp: `{diff['data_timestamp_old'] or 'unknown'}`")
@@ -464,9 +459,9 @@ def format_report(diff, slug, units="mi"):
     out.append(f"- Ways: {diff['way_count_old']} → {diff['way_count_new']}")
     out.append(
         f"- Total mapped length: "
-        f"{_abs_km_or_mi(diff['total_length_old_m'], units)} → "
-        f"{_abs_km_or_mi(diff['total_length_new_m'], units)} "
-        f"({_km_or_mi(diff['total_length_new_m'] - diff['total_length_old_m'], units)})"
+        f"{_length(diff['total_length_old_m'])} → "
+        f"{_length(diff['total_length_new_m'])} "
+        f"({_length(diff['total_length_new_m'] - diff['total_length_old_m'], signed=True)})"
     )
     out.append("")
 
@@ -530,9 +525,9 @@ def format_report(diff, slug, units="mi"):
                       f"`{c['old'] or '(none)'}` → `{c['new'] or '(none)'}`")
     section("Length changes", diff["length_changes"],
             lambda c: f"{c['trail']}: "
-                      f"{_abs_km_or_mi(c['old_m'], units)} → "
-                      f"{_abs_km_or_mi(c['new_m'], units)} "
-                      f"({_km_or_mi(c['delta_m'], units)})")
+                      f"{_length(c['old_m'])} → "
+                      f"{_length(c['new_m'])} "
+                      f"({_length(c['delta_m'], signed=True)})")
     section("Ways added", diff["ways_added"],
             lambda w: f"https://www.openstreetmap.org/way/{w}")
     section("Ways removed", diff["ways_removed"],
@@ -585,7 +580,7 @@ def stash_previous_snapshot(trails_src_path, cache_dir, slug):
     return prev
 
 
-def report_refresh_diff(prev, cur, cache_dir, slug, units="mi"):
+def report_refresh_diff(prev, cur, cache_dir, slug):
     """Print a summary and write the full report. Never raises."""
     if prev is None:
         return
@@ -596,14 +591,14 @@ def report_refresh_diff(prev, cur, cache_dir, slug, units="mi"):
         return
 
     console.step("OSM data diff vs previous snapshot")
-    for line in summarize(diff, units):
+    for line in summarize(diff):
         console.info(f"  {line}")
 
     try:
         path = report_path(cache_dir, slug)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            f.write(format_report(diff, slug, units))
+            f.write(format_report(diff, slug))
         if diff.get("changed"):
             console.info(f"  full report: {path}")
     except OSError as e:

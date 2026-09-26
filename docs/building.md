@@ -369,8 +369,7 @@ checks:
   against each block's allowed set (both suggest close matches for
   typos).
 - Value types and allowed enums (`default_labels`, `color_by`,
-  `distance_units`, `default_color_scheme`, `reverse_days` tokens,
-  etc.).
+  `default_color_scheme`, `reverse_days` tokens, etc.).
 - Asset file existence (`logo:`, `icon:`, `osm_file:`,
   `custom_routes[].geometry`).
 - Custom-route bucket sanity (at least one of summer / winter /

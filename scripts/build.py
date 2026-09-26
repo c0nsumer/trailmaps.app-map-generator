@@ -1080,7 +1080,6 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.info(f"pwa_install_prompt: {bool(config.get('pwa_install_prompt', True))}")
     console.info(f"share_button: {bool(config.get('share_button', True))}")
     console.info(f"url_hash: {bool(config.get('url_hash', False))}")
-    console.info(f"distance_units: {config.get('distance_units', 'mi')}")
     console.blank()
 
     console.step("Dry run complete - no files written, no network calls made.")
@@ -1321,8 +1320,7 @@ def main(argv=None):
             + "\ntrails-content="
             + (_trails_content_hash(trails_src_path) or ""),
         )
-        report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"],
-                            config.get("distance_units", "mi"))
+        report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"])
         return fetched
 
     if needs_fetch or auto_refetch_reason:

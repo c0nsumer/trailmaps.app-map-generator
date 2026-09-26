@@ -46,7 +46,8 @@ threshold are tuned together. Anything a rider would call "climbing" is
 counted; sensor noise and rolling-terrain jitter are not.
 
 The result is stored per route and shown in the rider's chosen units. Riders
-see feet for `distance_units: mi` and meters for `distance_units: km`.
+who choose miles see feet, and riders who choose kilometers see meters. See
+[Units](configuration.md#units).
 
 ## Why both gain and loss
 

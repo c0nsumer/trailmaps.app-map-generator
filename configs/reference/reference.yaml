@@ -241,9 +241,6 @@ relations:
 # Write #zoom/lat/lon to the URL hash as the rider moves and restore it on load.
 # url_hash: false
 
-# Units for all distance / elevation values: "mi" or "km".
-# distance_units: mi
-
 # Show the "Share this view" row in the Options overlay.
 # share_button: true
 

@@ -255,15 +255,6 @@ CONFIG_SPEC = [
     # entirely (URL stays clean, no persistence across reload, no
     # shareable deep-links).
     ("url_hash", "urlHash", False),
-    # Distance units for every distance/elevation display in the
-    # app: off-screen indicator pill, route stats in the Finder,
-    # highlight chip, any future distance display. The underlying
-    # data is always meters in trails.geojson; this setting only
-    # affects render-time formatting. "mi" → ft + decimal mi (and
-    # ft for elevation gain); "km" → m + decimal km (and m for
-    # elevation gain). Validator (validate_config.py) restricts the
-    # value to "mi" or "km".
-    ("distance_units", "distanceUnits", "mi"),
     # Share button in the expanded sheet (above Install). When true
     # (default), generates a shareable URL of the current view +
     # highlighted route/trail and surfaces it via the Web Share API
