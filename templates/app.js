@@ -12525,29 +12525,32 @@ const MAP_SCALE_LINGER_MS = 2000;
 // The longest 1-2-5 distance that fits the bar. Imperial runs in feet
 // to 2,000 ft, then half a mile, then 1-2-5 miles; metric in meters,
 // then km. formatDistance rounds a measured distance and would give an
-// arbitrary bar length, so the scale picks its own round steps.
+// arbitrary bar length, so the scale picks its own round steps. Numbers
+// read the English way in either system ("1,000 km", "0.5 mi"), to
+// match the English UI around them.
 function mapScaleStep(metersPerPx) {
     const maxM = metersPerPx * MAP_SCALE_MAX_PX;
     const step = (max) => {
         const p = 10 ** Math.floor(Math.log10(max));
         return [5, 2, 1].map((m) => m * p).find((v) => v <= max);
     };
+    const label = (n, unit) => `${n.toLocaleString("en-US")} ${unit}`;
     if (distanceUnits === "km") {
         if (maxM < 1000) {
             const m = step(maxM);
-            return { meters: m, label: `${m} m` };
+            return { meters: m, label: label(m, "m") };
         }
         const km = step(maxM / 1000);
-        return { meters: km * 1000, label: `${km} km` };
+        return { meters: km * 1000, label: label(km, "km") };
     }
     const maxFt = maxM * 3.28084;
     if (maxFt < 2640) {
         const ft = step(maxFt);
-        return { meters: ft / 3.28084, label: `${ft.toLocaleString("en-US")} ft` };
+        return { meters: ft / 3.28084, label: label(ft, "ft") };
     }
     const maxMi = maxFt / 5280;
     const mi = maxMi < 1 ? 0.5 : step(maxMi);
-    return { meters: mi * 1609.344, label: `${mi} mi` };
+    return { meters: mi * 1609.344, label: label(mi, "mi") };
 }
 
 function initMapScale() {
