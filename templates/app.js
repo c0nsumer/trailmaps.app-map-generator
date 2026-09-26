@@ -272,10 +272,12 @@ const BASEMAP_WETLAND = {
 };
 
 // One pattern cell holds two tufts on staggered rows so the repeat
-// reads as scattered marks rather than a grid. Registered from the
-// map's styleimagemissing handler: the basemap references the pattern
-// from the first style, before anything else could add it, and adding
-// it inside that handler also keeps MapLibre from warning about it.
+// reads as scattered marks rather than a grid. Registered by the map's
+// missing-image resolver: the basemap references the pattern from the
+// first style, before anything else could add it. MapLibre 6 awaits
+// the resolver before deciding an image is missing; its
+// styleimagemissing event fires only after that decision and the
+// console warning is logged regardless, so the event cannot stand in.
 // Like every fill pattern, the marks grow with the map through a zoom
 // level and return to size at the next one (the pattern is fixed to
 // the tile, not the screen); that is MapLibre's behavior and was seen
@@ -3397,7 +3399,7 @@ async function init() {
         return;
     }
 
-    map.on("styleimagemissing", (e) => registerWetlandPattern(e.id));
+    map.setMissingStyleImageResolver(registerWetlandPattern);
     initMapScale();
 
     // Disable two-finger twist rotation on touch devices.
