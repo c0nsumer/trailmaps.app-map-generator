@@ -3892,6 +3892,11 @@ async function init() {
     const attrControl = new maplibregl.AttributionControl({ compact: true });
     map.addControl(attrControl, "bottom-left");
     attrControl._container.classList.add("maplibregl-compact-show");
+    // MapLibre titles the (i) button "Toggle attribution", which shows
+    // as a browser tooltip on hover; nothing else on the map has one.
+    // It sets the title once, in onAdd, and the aria-label it sets
+    // alongside stays for screen readers.
+    attrControl._container.querySelector(".maplibregl-ctrl-attrib-button")?.removeAttribute("title");
 
     const collapseAttribution = () => {
         attrControl._container.classList.remove("maplibregl-compact-show");

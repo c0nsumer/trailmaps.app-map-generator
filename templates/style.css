@@ -3262,9 +3262,13 @@ body::after {
     opacity: 1;
 }
 
+/* The drawing is inset 4px inside the svg to leave room for the halo;
+ * the negative margin pulls it back so the ink starts on the same 12px
+ * edge as the brand logo and the attribution chip. */
 #map-scale svg {
     display: block;
     overflow: visible;
+    margin-left: -4px;
 }
 
 #map-scale path {
