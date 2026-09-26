@@ -4898,7 +4898,21 @@ async function addTerrainLayers() {
         paint: {
             "hillshade-illumination-direction": 315,
             "hillshade-illumination-anchor": "map",
-            "hillshade-exaggeration": 0.4,
+            // Ramped below z13 because shading fades as the DEM coarsens:
+            // Michigan relief is small landforms (moraine hummocks,
+            // ravines) that average away at z10-11 DEM resolution, and
+            // MapLibre's own low-zoom boost does not keep up. Measured on
+            // ttc, the 90th-percentile shade halves from z12 to z10 at
+            // 0.4; 0.7 at z10 restores it. Above 0.5 the standard
+            // method's slope curve boosts gentle slopes rather than
+            // compressing them, which is what fixes the faintness. z13
+            // up is the original 0.4.
+            "hillshade-exaggeration": [
+                "interpolate", ["linear"], ["zoom"],
+                10, 0.7,
+                12, 0.5,
+                13, 0.4,
+            ],
             "hillshade-shadow-color": t.hillshadeShadow,
             "hillshade-highlight-color": t.hillshadeHighlight,
         },
