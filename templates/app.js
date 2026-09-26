@@ -7060,12 +7060,12 @@ function _refreshVisibilityDependents() {
     pruneInvisibleHighlights();
     // If the highlighted entity is no longer visible, clear it.
     if (highlight) {
-        if (highlight.kind === "route" && !visibleRoutes.has(highlight.key)) {
-            clearHighlight();
-        }
         // For trails, defer to the trail index (a trail is "visible" if any
-        // of its parent routes is in visibleRoutes).
-        if (highlight.kind === "trail") {
+        // of its parent routes is in visibleRoutes). One chain, because
+        // clearing a route highlight leaves `highlight` null.
+        if (highlight.kind === "route") {
+            if (!visibleRoutes.has(highlight.key)) clearHighlight();
+        } else if (highlight.kind === "trail") {
             const t = trailIndex.find((x) => x.name === highlight.key);
             if (!t || !t.routeIds.some((rid) => visibleRoutes.has(rid))) {
                 clearHighlight();
