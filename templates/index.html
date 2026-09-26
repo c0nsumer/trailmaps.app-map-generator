@@ -277,6 +277,11 @@
         <span id="brand-title">__BRAND_TITLE__</span>
     </div>
 
+    <!-- Map scale: drawn by app.js initMapScale, shown under the brand
+         only while the rider zooms or pans. A visual aid, so hidden
+         from assistive tech. -->
+    <div id="map-scale" aria-hidden="true"></div>
+
     <!-- Off-screen location indicator (managed by app.js) -->
     <!-- Off-screen location indicator. Static markup, not rebuilt per
          frame: updateLocationIndicator (app.js) runs on every pan/zoom

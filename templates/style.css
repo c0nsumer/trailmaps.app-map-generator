@@ -3236,6 +3236,63 @@ body::after {
             drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
+/* ----- Map scale (under the brand, while the map moves) ------------ *
+ * Drawn and placed by app.js initMapScale; top is set there from the
+ * brand's height, so this top is only the no-brand fallback. Colors
+ * are the map labels' text and halo (labelText / labelHalo in
+ * MAP_PAINT_TOKENS): the scale reads as part of the map, not chrome. */
+#map-scale {
+    position: fixed;
+    top: calc(12px + var(--safe-top));
+    left: calc(12px + env(safe-area-inset-left, 0));
+    z-index: 4;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    --map-scale-ink: #1a1a1a;
+    --map-scale-halo: #ffffff;
+}
+
+[data-color-scheme="dark"] #map-scale {
+    --map-scale-ink: #f0f0f0;
+    --map-scale-halo: #000000;
+}
+
+#map-scale.is-visible {
+    opacity: 1;
+}
+
+#map-scale svg {
+    display: block;
+    overflow: visible;
+}
+
+#map-scale path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#map-scale .map-scale-halo {
+    stroke: var(--map-scale-halo);
+    stroke-width: 4;
+}
+
+#map-scale .map-scale-line {
+    stroke: var(--map-scale-ink);
+    stroke-width: 1.5;
+}
+
+#map-scale text {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--map-scale-ink);
+    stroke: var(--map-scale-halo);
+    stroke-width: 3;
+    paint-order: stroke;
+}
+
 /* ----- Additional logos (event + sponsors) ------------------------- *
  * When `additional_logos:` is configured the build stacks secondary
  * brand images under the primary one. The presence of a

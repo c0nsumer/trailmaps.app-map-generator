@@ -3398,6 +3398,7 @@ async function init() {
     }
 
     map.on("styleimagemissing", (e) => registerWetlandPattern(e.id));
+    initMapScale();
 
     // Disable two-finger twist rotation on touch devices.
     map.touchZoomRotate.disableRotation();
@@ -12377,6 +12378,93 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
 function haversineDistance(lngLat1, lngLat2) {
     return haversineMeters(lngLat1[0], lngLat1[1],
                            lngLat2[0], lngLat2[1]);
+}
+
+// ============================================================
+// Map scale (under the brand, only while the rider moves the map)
+// ============================================================
+// Every screen corner is taken on a phone, so the scale takes no space
+// at rest: it fades in when the rider zooms or pans and fades out 2 s
+// after the map settles. Steve, Style Lab round 14; always on, bottom
+// center and bottom left were the other candidates, and bottom center
+// sits behind the expanded routes card on a phone. Only gestures show
+// it: programmatic moves carry no originalEvent, so Locate's follow
+// recenters and route fly-tos don't flash it mid-ride.
+const MAP_SCALE_MAX_PX = 90;
+const MAP_SCALE_LINGER_MS = 2000;
+
+// The longest 1-2-5 distance that fits the bar. Imperial runs in feet
+// to 2,000 ft, then half a mile, then 1-2-5 miles; metric in meters,
+// then km. formatDistance rounds a measured distance and would give an
+// arbitrary bar length, so the scale picks its own round steps.
+function mapScaleStep(metersPerPx) {
+    const maxM = metersPerPx * MAP_SCALE_MAX_PX;
+    const step = (max) => {
+        const p = 10 ** Math.floor(Math.log10(max));
+        return [5, 2, 1].map((m) => m * p).find((v) => v <= max);
+    };
+    if (CONFIG.distanceUnits === "km") {
+        if (maxM < 1000) {
+            const m = step(maxM);
+            return { meters: m, label: `${m} m` };
+        }
+        const km = step(maxM / 1000);
+        return { meters: km * 1000, label: `${km} km` };
+    }
+    const maxFt = maxM * 3.28084;
+    if (maxFt < 2640) {
+        const ft = step(maxFt);
+        return { meters: ft / 3.28084, label: `${ft.toLocaleString("en-US")} ft` };
+    }
+    const maxMi = maxFt / 5280;
+    const mi = maxMi < 1 ? 0.5 : step(maxMi);
+    return { meters: mi * 1609.344, label: `${mi} mi` };
+}
+
+function initMapScale() {
+    const el = document.getElementById("map-scale");
+    if (!el) return;
+    let hideTimer = 0;
+    let drawn = "";
+
+    const draw = () => {
+        const lat = map.getCenter().lat;
+        // MapLibre's world is 512 px wide at zoom 0.
+        const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180) / (512 * 2 ** map.getZoom());
+        const s = mapScaleStep(metersPerPx);
+        const w = Math.round(s.meters / metersPerPx);
+        const key = `${w}|${s.label}`;
+        // A pan almost never changes either, so most frames skip the DOM.
+        if (key === drawn) return;
+        drawn = key;
+        const d = `M4 16v6H${w + 4}v-6`;
+        el.innerHTML = `<svg width="${w + 8}" height="26">`
+            + `<path class="map-scale-halo" d="${d}"/><path class="map-scale-line" d="${d}"/>`
+            + `<text x="4" y="12">${s.label}</text></svg>`;
+    };
+
+    map.on("move", (e) => {
+        const visible = el.classList.contains("is-visible");
+        if (!e.originalEvent) {
+            // inertia after a gesture, or a programmatic move while shown
+            if (visible) draw();
+            return;
+        }
+        clearTimeout(hideTimer);
+        draw();
+        if (!visible) {
+            // The brand's height varies by map (secondary logos stack
+            // under it), so place the scale once per showing.
+            const b = document.getElementById("brand")?.getBoundingClientRect();
+            el.style.top = b && b.height ? `${Math.round(b.bottom + 8)}px` : "";
+            el.classList.add("is-visible");
+        }
+    });
+    map.on("moveend", () => {
+        if (!el.classList.contains("is-visible")) return;
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => el.classList.remove("is-visible"), MAP_SCALE_LINGER_MS);
+    });
 }
 
 // Single distance formatter shared across the whole runtime: off-screen
