@@ -12523,18 +12523,18 @@ const MAP_SCALE_MAX_PX = 90;
 const MAP_SCALE_LINGER_MS = 2000;
 
 // The longest 1-2-5 distance that fits the bar. Imperial runs in feet
-// to 2,000 ft, then half a mile, then 1-2-5 miles; metric in meters,
+// to 2000 ft, then half a mile, then 1-2-5 miles; metric in meters,
 // then km. formatDistance rounds a measured distance and would give an
 // arbitrary bar length, so the scale picks its own round steps. Numbers
-// read the English way in either system ("1,000 km", "0.5 mi"), to
-// match the English UI around them.
+// go through formatCount, though at 90 px even a whole-world view tops
+// out at 5000 km, so no scale label ever reaches the grouped range.
 function mapScaleStep(metersPerPx) {
     const maxM = metersPerPx * MAP_SCALE_MAX_PX;
     const step = (max) => {
         const p = 10 ** Math.floor(Math.log10(max));
         return [5, 2, 1].map((m) => m * p).find((v) => v <= max);
     };
-    const label = (n, unit) => `${n.toLocaleString("en-US")} ${unit}`;
+    const label = (n, unit) => `${formatCount(n)} ${unit}`;
     if (distanceUnits === "km") {
         if (maxM < 1000) {
             const m = step(maxM);
@@ -12612,14 +12612,23 @@ function formatDistance(meters) {
     if (distanceUnits === "km") {
         if (meters < 1000) return `${Math.round(meters)} m`;
         const km = meters / 1000;
-        return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+        return km < 10 ? `${km.toFixed(1)} km` : `${formatCount(Math.round(km))} km`;
     }
     // default: mi
     const mi = meters / 1609.344;
     if (mi < 0.5) {
         return `${Math.round(meters * 3.28084)} ft`;
     }
-    return mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+    return mi < 10 ? `${mi.toFixed(1)} mi` : `${formatCount(Math.round(mi))} mi`;
+}
+
+// English number style for everything the app displays, whatever the
+// units: a period for decimals, and a comma for thousands only from five
+// digits up ("1000 km", "12,000 km"). Four digits read fine ungrouped.
+// Reaches five digits in practice for the off-screen distance to a rider
+// on another continent and for gain on a long route in feet.
+function formatCount(n) {
+    return Math.abs(n) >= 10000 ? n.toLocaleString("en-US") : String(n);
 }
 
 // Every displayed distance re-renders here; the scale and the
@@ -12661,7 +12670,7 @@ function formatElevationPair(gainM, lossM) {
     if (!haveGain && !haveLoss) return "";
     const isMetric = distanceUnits === "km";
     const unit = isMetric ? "m" : "ft";
-    const conv = (m) => isMetric ? Math.round(m) : Math.round(m * 3.28084);
+    const conv = (m) => formatCount(isMetric ? Math.round(m) : Math.round(m * 3.28084));
     const parts = [];
     if (haveGain) parts.push(`↑${conv(gainM)}`);
     if (haveLoss) parts.push(`↓${conv(lossM)}`);
