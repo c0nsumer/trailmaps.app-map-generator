@@ -11191,22 +11191,28 @@ function routeSwatchEl(r, className) {
     }
 
     const pattern = getDashPattern(r);
-    if (pattern[0] === 0 || getDashCap(r) === "round") {
-        // Round-capped patterns: dots ([0, N]) and round-cap dashes
-        // (e.g. [2, 2] + cap: round) share one rendering, two round
-        // pills. NOT drawn as perfect dots or to-scale dashes:
-        // MapLibre bakes dasharrays into a per-tile-zoom SDF strip
-        // and stretches it along the line at fractional zooms, so on
-        // the map both render as oblong pills most of the time. Two
-        // round-capped pills match that reality; perfect swatch dots
-        // over-promised, and the butt-cap ribbon misrepresented
-        // round-cap dashes as square (user reports: swatch dots vs
-        // map blobs read as different styles; a [2, 2] round route's
-        // key swatch read as square dashes). Geometry: 3px dash
-        // segments at path offsets 0-3 / 11-14 on a line from x=2
-        // to x=16; round caps extend each end by sw/2=2px → pills
-        // spanning x 0-7 and 11-18, flush to both swatch edges
-        // with 4px clear between them.
+    if (pattern[0] === 0) {
+        // Dots ([0, N]). The lanes plugin draws these as true round
+        // dots at every zoom, so the swatch does too (the earlier
+        // pill rendering matched MapLibre's stretched dash atlas,
+        // which no longer draws trails). Three sw-wide dots, centers
+        // at x=2/9/16: flush to both swatch edges with 3px clear
+        // between them, close to the map's one-width gap for [0, 2].
+        for (const cx of [2, 9, 16]) {
+            const dot = document.createElementNS(NS, "circle");
+            dot.setAttribute("cx", String(cx));
+            dot.setAttribute("cy", String(y));
+            dot.setAttribute("r", String(sw / 2));
+            dot.setAttribute("fill", r.color);
+            svg.appendChild(dot);
+        }
+    } else if (getDashCap(r) === "round") {
+        // Round-cap dashes (e.g. [2, 2] + cap: round) as two round
+        // pills; the butt-cap ribbon misrepresented them as square.
+        // Geometry: 3px dash segments at path offsets 0-3 / 11-14 on
+        // a line from x=2 to x=16; round caps extend each end by
+        // sw/2=2px, so pills span x 0-7 and 11-18, flush to both
+        // swatch edges with 4px clear between them.
         svg.appendChild(line(r.color, "3 8", "round", 2, 16));
     } else {
         // Square-cap dash pattern. Duty ratio from the config (multi-segment
