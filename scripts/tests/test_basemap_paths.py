@@ -15,10 +15,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import basemap_paths as bp  # noqa: E402
 from pmtiles_util import find_pmtiles_cli  # noqa: E402
-from validate_config import (  # noqa: E402
-    DEFAULT_BASEMAP_SOURCE,
-    effective_basemap_source,
-)
 
 # About 1 m per 0.00001 degree of latitude here, which keeps the
 # distances below readable.
@@ -47,12 +43,6 @@ WINTER = {"summer": False, "winter": True, "emergency": False}
 BOUNDS = (LON - 0.01, LAT - 0.01, LON + 0.02, LAT + 0.02)
 
 
-def test_default_is_generated_and_key_is_honored():
-    assert DEFAULT_BASEMAP_SOURCE == "generated"
-    assert effective_basemap_source({}) == "generated"
-    assert effective_basemap_source({"basemap_source": "protomaps"}) == "protomaps"
-
-
 def test_to_props_follows_the_protomaps_schema():
     assert bp.to_props({"highway": "path", "name": "Cheese Grater"}) == {
         "kind": "path",
@@ -66,6 +56,43 @@ def test_to_props_follows_the_protomaps_schema():
     private = bp.to_props({"highway": "track", "access": "private"})
     assert (private["access"], private["min_zoom"]) == ("private", 16)
     assert bp.to_props({"man_made": "pier"})["kind_detail"] == "pier"
+
+
+def test_service_roads_follow_the_protomaps_minor_road_schema():
+    service = bp.to_props({"highway": "service", "name": "Suicide Bowl Service Road"})
+    assert service == {
+        "kind": "minor_road",
+        "kind_detail": "service",
+        "sort_rank": 400,
+        "min_zoom": 14,
+        "name": "Suicide Bowl Service Road",
+    }
+    # Protomaps does not emit the subtag, and it does not move the zoom.
+    assert "service" not in bp.to_props({"highway": "service", "service": "driveway"})
+    assert bp.to_props({"highway": "service", "service": "driveway"})["min_zoom"] == 14
+    gated = bp.to_props({"highway": "service", "access": "private"})
+    assert (gated["access"], gated["min_zoom"]) == ("private", 16)
+
+
+def test_generated_classes_are_paths_piers_and_service_roads_only():
+    assert bp.is_generated_class({"highway": "service"})
+    assert bp.is_generated_class({"highway": "track"})
+    assert bp.is_generated_class({"man_made": "pier"})
+    assert not bp.is_generated_class({"highway": "residential"})
+    assert not bp.is_generated_class({"highway": "unclassified"})
+    assert not bp.is_generated_class({"highway": "tertiary"})
+    query = bp.overpass_query(BOUNDS)
+    assert "service" in query and "residential" not in query
+
+
+def test_the_strip_filter_names_exactly_the_generated_classes():
+    assert json.loads(bp.STRIP_GENERATED_FILTER) == {
+        "roads": [
+            "none",
+            ["==", "kind", "path"],
+            ["all", ["==", "kind", "minor_road"], ["==", "kind_detail", "service"]],
+        ]
+    }
     bridge = bp.to_props({"highway": "path", "bridge": "yes", "oneway": "yes", "tunnel": "no"})
     assert bridge["is_bridge"] is True and bridge["oneway"] == "yes" and "is_tunnel" not in bridge
 
@@ -78,6 +105,15 @@ def test_tile_cover_grows_outward_to_whole_tiles():
     # no more than one tile of growth on any side
     assert bp._tile_x(BOUNDS[0], 12) - bp._tile_x(w, 12) < 1
     assert bp._tile_x(e, 12) - bp._tile_x(BOUNDS[2], 12) <= 1
+
+
+def test_local_file_keeps_service_roads_and_drops_streets():
+    nodes = {1: (LON, LAT), 2: (LON, LAT + STEP)}
+    ways = {
+        10: {"tags": {"highway": "service"}, "nd_refs": [1, 2]},
+        11: {"tags": {"highway": "residential"}, "nd_refs": [1, 2]},
+    }
+    assert set(bp.local_file_ways(nodes, ways)) == {10}
 
 
 def test_local_file_wins_per_way_and_adds_its_own():
@@ -220,6 +256,23 @@ def test_names_start_at_tile_zoom_14_and_zooms_follow_min_zoom():
     assert all(f["tippecanoe"]["minzoom"] == f["tippecanoe"]["maxzoom"] for f in features)
 
 
+def test_service_roads_start_at_tile_zoom_13_and_flag_like_paths():
+    ways = {
+        1: (
+            {"highway": "service", "name": "Gate Road"},
+            [tuple(c) for c in _line((0, 0), (0, 10))],
+        )
+    }
+    trails = _trails([_route_feature(5, _line((0, 0), (0, 6)))], {"5": SUMMER})
+    features, stats = bp.build_features(ways, trails, BOUNDS, 9, 15)
+    assert sorted({f["tippecanoe"]["minzoom"] for f in features}) == [13, 14, 15]
+    assert all(f["properties"]["kind"] == "minor_road" for f in features)
+    z15 = [f["properties"] for f in features if f["tippecanoe"]["minzoom"] == 15]
+    assert sorted("tm_s" in p for p in z15) == [False, True]
+    assert all(p["sort_rank"] == 400 and p["name"] == "Gate Road" for p in z15)
+    assert 60 < stats["drawn_m"] < 70
+
+
 def test_signature_follows_trails_and_buckets_not_stats():
     base = _trails([_route_feature(5, _line((0, 0), (0, 6)))], {"5": dict(SUMMER, distance_m=100)})
     same = _trails([_route_feature(5, _line((0, 0), (0, 6)))], {"5": dict(SUMMER, distance_m=999)})
@@ -229,15 +282,14 @@ def test_signature_follows_trails_and_buckets_not_stats():
     assert sig(base) == sig(same)
     assert sig(base) != sig(moved)
     assert sig(base) != sig(winter)
-    assert bp.is_generated_signature(sig(base))
-    assert not bp.is_generated_signature("bbox=1,2,3,4;maxzoom=15;minzoom=9")
+    assert sig(base).startswith(f"paths-v{bp.SCHEMA_VERSION}|")
 
 
-def test_missing_tools_name_the_config_key(monkeypatch):
+def test_missing_tools_say_how_to_install_them(monkeypatch):
     monkeypatch.setattr(bp.shutil, "which", lambda name: None)
     with pytest.raises(bp.BasemapPathsError) as e:
         bp.require_tools()
-    assert "basemap_source: protomaps" in str(e.value)
+    assert "tippecanoe" in str(e.value) and "apt install" in str(e.value)
 
 
 @pytest.mark.skipif(
@@ -249,7 +301,8 @@ def test_join_replaces_paths_and_keeps_everything_else(tmp_path):
     # Built with bare names from inside tmp_path, as the module does,
     # because tile-join carries its inputs' command lines forward.
     src = tmp_path / "src.geojson"
-    road = {"kind": "minor_road", "name": "Division Street"}
+    road = {"kind": "minor_road", "kind_detail": "residential", "name": "Division Street"}
+    old_service = {"kind": "minor_road", "kind_detail": "service", "name": "Protomaps' own service"}
     old_path = {"kind": "path", "name": "Protomaps' own path"}
     feats = [
         {
@@ -257,6 +310,12 @@ def test_join_replaces_paths_and_keeps_everything_else(tmp_path):
             "properties": road,
             "tippecanoe": {"layer": "roads"},
             "geometry": {"type": "LineString", "coordinates": _line((-5, -5), (5, 5))},
+        },
+        {
+            "type": "Feature",
+            "properties": old_service,
+            "tippecanoe": {"layer": "roads"},
+            "geometry": {"type": "LineString", "coordinates": _line((3, 0), (3, 10))},
         },
         {
             "type": "Feature",
@@ -280,7 +339,11 @@ def test_join_replaces_paths_and_keeps_everything_else(tmp_path):
     )
 
     ways = {
-        1: ({"highway": "path", "name": "Generated"}, [tuple(c) for c in _line((0, 0), (0, 10))])
+        1: ({"highway": "path", "name": "Generated"}, [tuple(c) for c in _line((0, 0), (0, 10))]),
+        2: (
+            {"highway": "service", "name": "Generated service"},
+            [tuple(c) for c in _line((3, 0), (3, 10))],
+        ),
     }
     trails = _trails([_route_feature(5, _line((0, 0), (0, 6)))], {"5": SUMMER})
     features, _ = bp.build_features(ways, trails, BOUNDS, 12, 15)
@@ -303,8 +366,9 @@ def test_join_replaces_paths_and_keeps_everything_else(tmp_path):
                 walk(child)
 
     walk(json.loads(decoded))
-    assert "Generated" in names and "Division Street" in names and "lake" in names
-    assert "Protomaps' own path" not in names
+    assert "Generated" in names and "Generated service" in names
+    assert "Division Street" in names and "lake" in names, "other roads are left alone"
+    assert "Protomaps' own path" not in names and "Protomaps' own service" not in names
     assert layers == {"roads", "water"}, "generated paths join the existing roads layer"
     meta = subprocess.run(
         [find_pmtiles_cli(), "show", str(out)], capture_output=True, text=True

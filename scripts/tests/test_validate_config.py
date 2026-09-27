@@ -347,6 +347,24 @@ def test_lane_renderer_is_a_retired_key_with_its_own_message():
         assert "unknown top-level key" not in errors[0]
 
 
+def test_suppress_basemap_path_labels_is_a_retired_key_with_its_own_message():
+    # Both spellings, either value: gone, one message, told to delete.
+    for key in ("suppress_basemap_path_labels", "suppress_path_labels"):
+        for value in (True, False):
+            errors = [e for e in _errors(**{key: value}) if key in e]
+            assert len(errors) == 1
+            assert "removed" in errors[0] and "Delete the line" in errors[0]
+            assert "unknown top-level key" not in errors[0]
+
+
+def test_basemap_source_is_a_retired_key_with_its_own_message():
+    for value in ("generated", "protomaps"):
+        errors = [e for e in _errors(basemap_source=value) if "basemap_source" in e]
+        assert len(errors) == 1
+        assert "removed" in errors[0] and "Delete the line" in errors[0]
+        assert "unknown top-level key" not in errors[0]
+
+
 def test_distance_units_is_a_retired_key_with_its_own_message():
     for value in ("mi", "km"):
         errors = [e for e in _errors(distance_units=value) if "distance_units" in e]

@@ -41,7 +41,6 @@ clipped_relations:
 # show_difficulty: true
 # show_trails: true
 # show_direction_arrows: true
-# suppress_basemap_path_labels: false
 # suppress_basemap_pois: false
 # suppress_basemap_oneway_arrows: false
 # show_route_distance: false

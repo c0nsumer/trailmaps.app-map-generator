@@ -65,7 +65,6 @@ KNOWN_KEYS = {
     "min_zoom": (int, float),
     "max_zoom": (int, float),
     "basemap_maxzoom": (int, float),
-    "basemap_source": str,
     "terrain_maxzoom": (int, float),
     # Data sources. `relations` is the unified source list: every entry
     # may be a leaf route relation OR a super-relation (auto-expanded
@@ -123,7 +122,6 @@ KNOWN_KEYS = {
     "show_difficulty": bool,
     "show_trails": bool,
     "show_direction_arrows": bool,
-    "suppress_basemap_path_labels": bool,
     "suppress_basemap_pois": bool,
     "suppress_basemap_oneway_arrows": bool,
     "map_dim_on_highlight": bool,
@@ -198,7 +196,6 @@ BUILD_ONLY_KEYS = {
     # Build-time bbox / tile-extract knobs
     "pan_padding",  # consumed by expand_bbox_for_pan; runtime sees pan_bbox
     "basemap_maxzoom",  # consumed by fetch_basemap.py
-    "basemap_source",  # consumed by build.py (basemap_paths.py)
     "terrain_maxzoom",  # consumed by fetch_terrain.py
     # User-supplied points consumed by fetch_pois.py and baked into
     # pois.geojson; the runtime reads pois.geojson, not CONFIG.parking /
@@ -235,21 +232,6 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"relation", "trail"}
-# "generated" replaces the Protomaps basemap's path lines with ones
-# generated here, which know what this map draws (basemap_paths.py) and
-# need tippecanoe. "protomaps" is the plain extract, exactly as before
-# 2026-09: no extra tools, no Overpass query for the basemap. It is a
-# permanent choice, not a fallback: for installs without tippecanoe, for
-# very large areas, and as the baseline when comparing renderings.
-VALID_BASEMAP_SOURCES = {"generated", "protomaps"}
-DEFAULT_BASEMAP_SOURCE = "generated"
-
-
-def effective_basemap_source(config):
-    """The basemap source a build uses, with the default applied."""
-    return (config or {}).get("basemap_source", DEFAULT_BASEMAP_SOURCE)
-
-
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
@@ -372,10 +354,16 @@ _LEGACY_KEYS = {
     # Replaced by forced_visible: [direction_arrows] (May 2026).
     # Caught with a rename hint in _validate_forced_visible.
     "direction_arrows_required",
-    # Renamed to suppress_basemap_path_labels (May 2026) for symmetry
-    # with suppress_basemap_pois. Caught with a rename hint in
-    # _validate_renamed_keys.
+    # Renamed to suppress_basemap_path_labels (May 2026), then both
+    # retired (2026-09): a generated basemap hides the label of every
+    # stretch it hides, and every other path keeps its label. Caught
+    # with their own messages in _validate_renamed_keys and
+    # _validate_legacy_keys.
     "suppress_path_labels",
+    "suppress_basemap_path_labels",
+    # The plain-extract mode went with it (2026-09-27): every basemap is
+    # generated, and tippecanoe is a requirement, not an option.
+    "basemap_source",
 }
 
 
@@ -444,12 +432,6 @@ def _validate_enums(report, config):
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
-        )
-
-    if "basemap_source" in config and config["basemap_source"] not in VALID_BASEMAP_SOURCES:
-        report.err(
-            "basemap_source",
-            f"must be one of {sorted(VALID_BASEMAP_SOURCES)}, got {config['basemap_source']!r}",
         )
 
     if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:
@@ -1321,10 +1303,10 @@ def _validate_renamed_keys(report, config):
     if "suppress_path_labels" in config:
         report.err(
             "suppress_path_labels",
-            "`suppress_path_labels` was renamed to "
-            "`suppress_basemap_path_labels` for symmetry with "
-            "`suppress_basemap_pois`. Both flags only mutate the "
-            "Protomaps basemap; the new name makes that explicit.",
+            "removed (it was renamed `suppress_basemap_path_labels`, "
+            "and that was removed too). A generated basemap hides the "
+            "label of every path stretch it hides under a route, and "
+            "every other path keeps its label. Delete the line.",
         )
 
 
@@ -1848,6 +1830,21 @@ def _validate_legacy_keys(report, config):
             "removed. Every map draws its routes with maplibre-gl-lanes; "
             "the build-time renderer that `native` selected is gone. "
             "Delete the line.",
+        )
+    if "suppress_basemap_path_labels" in config:
+        report.err(
+            "suppress_basemap_path_labels",
+            "removed. A generated basemap hides the label of every path "
+            "stretch it hides under a route, and every other path keeps "
+            "its label; there is nothing left for the key to decide. "
+            "Delete the line.",
+        )
+    if "basemap_source" in config:
+        report.err(
+            "basemap_source",
+            "removed. Every basemap is the Protomaps extract with its path "
+            "and service-road lines generated here, which needs tippecanoe "
+            "and tile-join; the plain-extract mode is gone. Delete the line.",
         )
     if "distance_units" in config:
         report.err(

@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
-"""Generated basemap paths.
+"""Generated basemap paths and service roads.
 
 The Protomaps basemap draws every path in the area as a pale line,
 including the ones this map draws as routes, where the line shows
-beside the lanes and through dashes. This module replaces the
-basemap's `kind=path` features with ones generated here, from the same
-OpenStreetMap data, in the same Protomaps `roads` schema, with one
-difference: a stretch that a route draws is flagged with the
-visibility buckets that draw it (`tm_s` summer, `tm_w` winter, `tm_e`
-emergency), and the runtime hides a flagged stretch only while one of
-its buckets is on. So a winter-only trail is still a path on the
-summer map, and nothing shows under a route that is on.
+beside the lanes and through dashes. Service roads (the gated
+two-tracks a trail system rides) do the same, one step wider. This
+module replaces the basemap's `kind=path` features and its
+`kind=minor_road` + `kind_detail=service` features with ones generated
+here, from the same OpenStreetMap data, in the same Protomaps `roads`
+schema, with one difference: a stretch that a route draws is flagged
+with the visibility buckets that draw it (`tm_s` summer, `tm_w`
+winter, `tm_e` emergency), and the runtime hides a flagged stretch
+only while one of its buckets is on. So a winter-only trail is still
+a path on the summer map, and nothing shows under a route that is on.
 
 Everything else in the basemap is left exactly as Protomaps made it:
-`tile-join` strips `kind=path` from the extract and folds the
+`tile-join` strips the two classes from the extract and folds the
 generated features into the same `roads` source-layer, so the style,
-the service worker and the file name do not change.
+the service worker and the file name do not change. Other roads
+(residential, unclassified, tertiary and up) are deliberately left
+alone: a route drawn over a named street reads fine, and hiding the
+street would take its name and casing with it (decided 2026-09-21,
+narrowed to exclude service roads 2026-09-27).
 
 Design record: .claude/plans/plugin-default-and-custom-basemaps.md,
-"3a results".
+"3a results" and "Service roads".
 """
 
 import hashlib
@@ -39,7 +45,7 @@ from shapely.strtree import STRtree
 
 # Bump when the generated features change shape for the same input, so
 # existing basemaps regenerate.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # highway values Protomaps files under kind=path, with the min_zoom it
 # gives each (read off live Protomaps extracts, 2026-09-20). A feature
@@ -56,6 +62,13 @@ PATH_MIN_ZOOM = {
 }
 FOOTWAY_DETAIL_MIN_ZOOM = {"sidewalk": 15, "crossing": 15}
 PIER_MIN_ZOOM = 14
+# highway=service is Protomaps' kind=minor_road, kind_detail=service,
+# with these values (read off live extracts, 2026-09-27; upstream main
+# has since moved to 13, which the extracts do not carry yet). The
+# service=* subtag (driveway, parking_aisle) is not emitted and does
+# not change the zoom.
+SERVICE_MIN_ZOOM = 14
+MINOR_ROAD_SORT_RANK = 400
 RESTRICTED_MIN_ZOOM = 16
 
 # The lowest tile zoom that carries any path (track, min_zoom 13).
@@ -76,7 +89,18 @@ DRAWN_MIN_LENGTH_M = 10.0
 
 BUCKET_FLAGS = (("summer", "tm_s"), ("winter", "tm_w"), ("emergency", "tm_e"))
 
-STRIP_PATHS_FILTER = '{"roads":["!=","kind","path"]}'
+# What tile-join drops from the extract: exactly the classes generated
+# here. Legacy filter syntax; "none" is the negated "any".
+STRIP_GENERATED_FILTER = json.dumps(
+    {
+        "roads": [
+            "none",
+            ["==", "kind", "path"],
+            ["all", ["==", "kind", "minor_road"], ["==", "kind_detail", "service"]],
+        ]
+    },
+    separators=(",", ":"),
+)
 
 
 class BasemapPathsError(Exception):
@@ -97,11 +121,9 @@ def require_tools():
     tippecanoe, tile_join = find_tools()
     if not tippecanoe or not tile_join:
         raise BasemapPathsError(
-            "basemap_source: generated needs tippecanoe and tile-join on PATH "
-            "(Debian/Ubuntu: apt install tippecanoe; others: "
-            "https://github.com/felt/tippecanoe). To build without them, set "
-            "basemap_source: protomaps in the config, which keeps the plain "
-            "Protomaps basemap."
+            "the basemap build needs tippecanoe and tile-join on PATH "
+            "(Debian/Ubuntu: apt install tippecanoe; macOS: brew install "
+            "tippecanoe; others: https://github.com/felt/tippecanoe)."
         )
     return tippecanoe, tile_join
 
@@ -149,13 +171,15 @@ def tile_cover_bounds(bounds, z=PATHS_MIN_TILE_ZOOM):
 # ---------------------------------------------------------------------------
 
 
-def is_path_class(tags):
-    return tags.get("highway") in PATH_MIN_ZOOM or tags.get("man_made") == "pier"
+def is_generated_class(tags):
+    """True for a way this module generates: paths, piers, service roads."""
+    highway = tags.get("highway")
+    return highway in PATH_MIN_ZOOM or highway == "service" or tags.get("man_made") == "pier"
 
 
 def overpass_query(bounds):
     w, s, e, n = bounds
-    highways = "|".join(sorted(PATH_MIN_ZOOM))
+    highways = "|".join(sorted(PATH_MIN_ZOOM) + ["service"])
     area = f"({s:.6f},{w:.6f},{n:.6f},{e:.6f})"
     return (
         "[out:json][timeout:180];"
@@ -172,7 +196,7 @@ def overpass_cache_path(bounds, cache_dir):
 
 
 def fetch_ways(bounds, cache_dir, refresh=False):
-    """Every path-class way in `bounds`: {id: (tags, [(lon, lat), ...])}."""
+    """Every generated-class way in `bounds`: {id: (tags, [(lon, lat), ...])}."""
     data = overpass.query(
         overpass_query(bounds), cache_dir=cache_dir, label="basemap paths", refresh=refresh
     )
@@ -185,10 +209,10 @@ def fetch_ways(bounds, cache_dir, refresh=False):
 
 
 def local_file_ways(nodes, ways):
-    """Path-class ways of a parsed local .osm file, same shape as fetch_ways."""
+    """Generated-class ways of a parsed local .osm file, same shape as fetch_ways."""
     out = {}
     for way_id, way in ways.items():
-        if not is_path_class(way["tags"]):
+        if not is_generated_class(way["tags"]):
             continue
         coords = [nodes[ref][:2] for ref in way["nd_refs"] if ref in nodes]
         if len(coords) >= 2:
@@ -220,14 +244,22 @@ def merge_sources(fetched, local):
 def to_props(tags):
     """OSM tags to the Protomaps `roads` properties the style reads."""
     highway = tags.get("highway")
-    if highway in PATH_MIN_ZOOM:
-        detail, min_zoom = highway, PATH_MIN_ZOOM[highway]
-        if highway == "footway" and tags.get("footway") in FOOTWAY_DETAIL_MIN_ZOOM:
-            detail = tags["footway"]
-            min_zoom = FOOTWAY_DETAIL_MIN_ZOOM[detail]
+    if highway == "service":
+        props = {
+            "kind": "minor_road",
+            "kind_detail": "service",
+            "sort_rank": MINOR_ROAD_SORT_RANK,
+        }
+        min_zoom = SERVICE_MIN_ZOOM
     else:
-        detail, min_zoom = "pier", PIER_MIN_ZOOM
-    props = {"kind": "path", "kind_detail": detail}
+        if highway in PATH_MIN_ZOOM:
+            detail, min_zoom = highway, PATH_MIN_ZOOM[highway]
+            if highway == "footway" and tags.get("footway") in FOOTWAY_DETAIL_MIN_ZOOM:
+                detail = tags["footway"]
+                min_zoom = FOOTWAY_DETAIL_MIN_ZOOM[detail]
+        else:
+            detail, min_zoom = "pier", PIER_MIN_ZOOM
+        props = {"kind": "path", "kind_detail": detail}
     if tags.get("access") in ("private", "no"):
         props["access"] = tags["access"]
         min_zoom = max(min_zoom, RESTRICTED_MIN_ZOOM)
@@ -550,7 +582,7 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom,
                 "-f",
                 "-pk",
                 "-j",
-                STRIP_PATHS_FILTER,
+                STRIP_GENERATED_FILTER,
                 "-o",
                 "stripped.pmtiles",
                 "protomaps.pmtiles",
@@ -566,7 +598,8 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom,
                 "-n",
                 "Protomaps Basemap with generated paths",
                 "-N",
-                "Protomaps basemap layers; kind=path features generated from OpenStreetMap",
+                "Protomaps basemap layers; path and service road features "
+                "generated from OpenStreetMap",
                 "-o",
                 "joined.pmtiles",
                 "stripped.pmtiles",
@@ -610,11 +643,6 @@ def trails_digest(trails_geojson):
     return h.hexdigest()[:16]
 
 
-def is_generated_signature(signature):
-    """True for a basemap this module wrote, False for a plain extract's."""
-    return isinstance(signature, str) and signature.startswith("paths-v")
-
-
 def input_signature(bbox_signature, trails_geojson, ways_cache_path, osm_file_path=None):
     """What the generated basemap depends on, as one string.
 
@@ -642,7 +670,7 @@ def generate(
     refresh=False,
     osm_file_path=None,
 ):
-    """Write the basemap with generated paths to `output_path`."""
+    """Write the basemap with generated paths and service roads to `output_path`."""
     require_tools()
     cover = tile_cover_bounds(bounds)
     ways = fetch_ways(cover, cache_dir, refresh=refresh)
@@ -669,7 +697,8 @@ def generate(
         f", {local} from {os.path.basename(osm_file_path)}" if local else ""
     )
     console.info(
-        f"Basemap paths: {source}; {stats['lines']} lines in {stats['pieces']} features, "
+        f"Basemap paths and service roads: {source}; {stats['lines']} lines in "
+        f"{stats['pieces']} features, "
         f"{stats['drawn_m'] / 1000:.1f} km flagged as drawn by this map"
     )
     return stats

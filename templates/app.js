@@ -3970,7 +3970,6 @@ async function init() {
         setupFabLabels();
         setupInteractions();
         promoteBasemapLabels();
-        suppressBasemapPathLabels();
         suppressBasemapPois();
         suppressBasemapOnewayArrows();
         applyBasemapDrawnPathFilter();
@@ -11651,27 +11650,25 @@ function promoteBasemapLabels() {
     }
 }
 
-function suppressBasemapPathLabels() {
-    if (!CONFIG.suppressBasemapPathLabels) return;
-    if (map.getLayer("roads_labels_minor")) {
-        map.setFilter("roads_labels_minor", ["in", "kind", "minor_road"]);
-    }
-}
-
-// Generated basemaps (basemap_source: generated) keep the stretches
-// this map draws in the path tiles, flagged tm_s / tm_w / tm_e for the
-// visibility buckets that draw them, rather than dropping them at build
-// time: a winter-only trail has to stay a path on the summer map. So a
-// flagged stretch is hidden only while a bucket that draws it is on,
-// which is the same rule rebuildVisibleRoutesSet applies to the routes.
-// Appended to the stock filters, not swapped in for them, so the
-// flavor's own rules (tunnel, bridge, pier) keep working. On a plain
-// Protomaps basemap no feature carries a flag and the clauses pass
-// everything, so a --no-basemap build that reuses an older archive is
-// unaffected.
-const BASEMAP_PATH_LINE_LAYERS = [
+// The generated basemap keeps the stretches this map draws in the
+// path and service road tiles, flagged tm_s /
+// tm_w / tm_e for the visibility buckets that draw them, rather than
+// dropping them at build time: a winter-only trail has to stay a path
+// on the summer map. So a flagged stretch is hidden only while a
+// bucket that draws it is on, which is the same rule
+// rebuildVisibleRoutesSet applies to the routes. Appended to the stock
+// filters, not swapped in for them, so the flavor's own rules (tunnel,
+// bridge, pier) keep working. On an archive with no flags (a
+// --no-basemap build reusing an old one) the clauses pass everything. The minor tunnel
+// and bridge layers also carry residential and unclassified streets,
+// which are never flagged, so the clause passes them.
+const BASEMAP_GENERATED_LINE_LAYERS = [
     "roads_tunnels_other_casing", "roads_tunnels_other", "roads_other",
     "roads_bridges_other_casing", "roads_bridges_other",
+    "roads_tunnels_minor_casing", "roads_tunnels_minor",
+    "roads_minor_service_casing", "roads_minor_service",
+    "roads_bridges_minor_casing", "roads_bridges_minor",
+    "roads_pier",  // generated too (man_made=pier), drawn by its own layer
     BASEMAP_PATH_CASING_LAYER,  // ours, added by styleBasemapLayers
     // Ours too. A symbol layer, but it marks path lines, so a route
     // drawn over a restricted way has to hide its Xs with the line.
@@ -11681,14 +11678,14 @@ let basemapStockFilters = new Map();  // layer id -> the flavor's own filter
 
 function rememberBasemapStockFilters(layers) {
     basemapStockFilters = new Map();
-    const ids = [...BASEMAP_PATH_LINE_LAYERS, "roads_labels_minor", "roads_oneway"];
+    const ids = [...BASEMAP_GENERATED_LINE_LAYERS, "roads_labels_minor", "roads_oneway"];
     for (const l of layers) {
         if (ids.includes(l.id)) basemapStockFilters.set(l.id, l.filter);
     }
 }
 
 function applyBasemapDrawnPathFilter() {
-    if (CONFIG.basemapSource !== "generated" || isCustomLayer()) return;
+    if (isCustomLayer()) return;
     const flags = [seasonMode === "winter" ? "tm_w" : "tm_s"];
     if (emergencyOn) flags.push("tm_e");
     // The line layers and the minor-road labels use the legacy filter
@@ -11701,10 +11698,13 @@ function applyBasemapDrawnPathFilter() {
         const stock = basemapStockFilters.get(id);
         map.setFilter(id, stock ? ["all", stock, ...clauses] : ["all", ...clauses]);
     };
-    for (const id of BASEMAP_PATH_LINE_LAYERS) set(id, legacy);
-    // suppressBasemapPathLabels replaces this layer's filter with one
-    // that excludes every path; leave that alone.
-    if (!CONFIG.suppressBasemapPathLabels) set("roads_labels_minor", legacy);
+    for (const id of BASEMAP_GENERATED_LINE_LAYERS) set(id, legacy);
+    // Labels follow their line: a hidden stretch loses its name, and
+    // every path or service road the map does not draw over keeps
+    // its label. That is the whole rule (Steve, 2026-09-27); the old
+    // suppress_basemap_path_labels key, which silenced every path
+    // label on the map, is retired.
+    set("roads_labels_minor", legacy);
     set("roads_oneway", expr);
 }
 
@@ -11824,7 +11824,6 @@ function rebuildBasemapLayers() {
 
     // Re-promote basemap labels above trail layers after style rebuild
     promoteBasemapLabels();
-    suppressBasemapPathLabels();
     suppressBasemapPois();
     suppressBasemapOnewayArrows();
     applyBasemapDrawnPathFilter();

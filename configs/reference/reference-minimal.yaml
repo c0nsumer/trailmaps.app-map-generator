@@ -27,7 +27,6 @@ relations:
 # min_zoom: 10
 # max_zoom: 18
 # basemap_maxzoom: 15
-# basemap_source: generated
 # terrain_maxzoom: 12
 
 # --- Build-time data gates ---
@@ -43,7 +42,6 @@ relations:
 # show_difficulty: true
 # show_trails: true
 # show_direction_arrows: true
-# suppress_basemap_path_labels: false
 # suppress_basemap_pois: false
 # suppress_basemap_oneway_arrows: false
 # show_route_distance: false

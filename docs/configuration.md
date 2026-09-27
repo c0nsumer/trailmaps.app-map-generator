@@ -168,7 +168,6 @@ schema and rules.
 | `min_zoom` | No | `10` | Minimum zoom level. |
 | `max_zoom` | No | `18` | Maximum zoom level. |
 | `basemap_maxzoom` | No | `15` | Max zoom for basemap tile extraction. |
-| `basemap_source` | No | `"generated"` | Where the basemap's path lines come from. The Protomaps basemap draws every path in the area as a pale line. That includes the paths this map draws as routes, where the line shows beside the lanes and through dashed routes. With `"generated"`, the build replaces those path lines with ones it generates from OpenStreetMap. A stretch that a route draws is hidden while that route is on. A stretch drawn only by a winter or emergency route is still a plain path when that mode is off. Every other basemap feature stays exactly as Protomaps made it. `"generated"` needs `tippecanoe` and `tile-join`, and it makes one Overpass query for the area. That query is cached like the trail data and refreshes with `--refresh` or `--refresh-trails`. For a map built from a local `.osm` file, a way that the file contains is taken from the file, so the basemap agrees with the routes where the file has been edited. `"protomaps"` keeps the plain Protomaps extract and needs neither tool. Use it for an install without tippecanoe, or for a very large area. |
 | `terrain_maxzoom` | No | `12` | Max zoom for terrain tile extraction. |
 
 #### Pan area: `bbox` vs. `pan_bbox`
@@ -193,6 +192,12 @@ Tune `pan_padding` per map:
 For asymmetric room (more on one side than another), set `pan_bbox` directly
 instead of `pan_padding`.
 
+#### The basemap's path and service-road lines
+
+The Protomaps basemap draws every path in the area as a pale line, and every service road as a thin road. That includes the paths and service roads this map draws as routes, where the line would show beside the lanes and through dashed routes. The build replaces those lines with ones it generates from OpenStreetMap. A stretch that a route draws is hidden while that route is on, and its name label is hidden with it. Every other path and service road keeps its label. A stretch drawn only by a winter or emergency route is still a plain path when that mode is off. Other roads (residential streets and up) and every other basemap feature stay exactly as Protomaps made them, so a route that follows a street still shows the street's name and casing.
+
+This step needs `tippecanoe` and `tile-join`, and it makes one Overpass query for the area. That query is cached like the trail data and refreshes with `--refresh` or `--refresh-trails`. For a map built from a local `.osm` file, a way that the file contains is taken from the file, so the basemap agrees with the routes where the file has been edited.
+
 ### Build-time data gates
 
 These keys control **build-time data fetching and asset generation**. A map
@@ -215,7 +220,6 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
-| `suppress_basemap_path_labels` | No | `false` | Hide path / track / footway labels from the Protomaps basemap (custom base layers unaffected). |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
 | `show_route_distance` | No | `false` | When true, computes per-route distance at build time and shows it in the Finder rows and highlight chip. It is shown in the rider's [units](#units). |

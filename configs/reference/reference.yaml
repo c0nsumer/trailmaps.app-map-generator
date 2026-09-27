@@ -100,11 +100,6 @@ relations:
 # Max zoom for basemap tile extraction.
 # basemap_maxzoom: 15
 
-# Where the basemap's path lines come from: "generated" (replaced by lines
-# that hide under the routes this map draws; needs tippecanoe) or
-# "protomaps" (the plain extract). See docs/configuration.md.
-# basemap_source: generated
-
 # Max zoom for terrain tile extraction.
 # terrain_maxzoom: 12
 
@@ -153,7 +148,6 @@ relations:
 # show_direction_arrows: true
 
 # Hide path / track / footway labels from the Protomaps basemap.
-# suppress_basemap_path_labels: false
 
 # Hide POI and place=locality labels from the Protomaps basemap.
 # suppress_basemap_pois: false

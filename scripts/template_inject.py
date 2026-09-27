@@ -28,7 +28,6 @@ from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
 from pmtiles_util import extract_minzoom
 from validate_config import (
-    DEFAULT_BASEMAP_SOURCE,
     DEFAULT_VISIBLE_LAYERS,
     VALID_DAYS,
     match_day_token,
@@ -218,10 +217,6 @@ CONFIG_SPEC = [
     # trails themselves (Copper Harbor: 75 of them), a key that lists
     # every one is a wall, while search still finds any of them.
     ("route_key", "routeKey", True),
-    # "generated" basemaps carry flagged path stretches that app.js
-    # hides by season (applyBasemapDrawnPathFilter); see basemap_paths.py.
-    ("basemap_source", "basemapSource", DEFAULT_BASEMAP_SOURCE),
-    ("suppress_basemap_path_labels", "suppressBasemapPathLabels", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # When true (the default), highlighting a route or trail dims

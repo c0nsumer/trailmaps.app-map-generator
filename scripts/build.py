@@ -62,7 +62,7 @@ from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import extract_minzoom
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
-from validate_config import effective_basemap_source, validate_config
+from validate_config import validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
 # Update versions here when upgrading dependencies.
@@ -1021,10 +1021,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     else:
         bm_zoom = config.get("basemap_maxzoom", 15)
         console.info(
-            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}"
-            + (", path lines generated (basemap_source: generated)"
-               if effective_basemap_source(config) == "generated"
-               else " (basemap_source: protomaps)"))
+            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}, "
+            "path and service-road lines generated")
     if args.no_terrain or not config.get("show_terrain", True):
         reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
@@ -1634,15 +1632,15 @@ def main(argv=None):
     post_messages = []  # printed AFTER all parallel tasks complete
 
     # ---- Basemap planning ----
-    generated = effective_basemap_source(config) == "generated"
     if args.no_basemap:
         post_messages.append("Basemap: Skipped (--no-basemap)")
-    elif generated:
-        # basemap.pmtiles is the Protomaps extract with its path lines
-        # replaced by generated ones (basemap_paths.py). The plain
-        # extract is kept in the cache dir, outside output_dir where the
-        # service worker sweep would ship it, so a trail change re-runs
-        # the join without extracting again.
+    else:
+        # basemap.pmtiles is the Protomaps extract with its path and
+        # service-road lines replaced by generated ones
+        # (basemap_paths.py). The plain extract is kept in the cache
+        # dir, outside output_dir where the service worker sweep would
+        # ship it, so a trail change re-runs the join without
+        # extracting again.
         try:
             basemap_paths.require_tools()
         except basemap_paths.BasemapPathsError as e:
@@ -1660,13 +1658,6 @@ def main(argv=None):
         cache_manifest.record(ways_cache)
 
         existing_sig = _load_signature(basemap_path)
-        if (not os.path.exists(extract_path) and os.path.exists(basemap_path)
-                and existing_sig == basemap_sig):
-            # A build from before generated basemaps left its plain
-            # extract here under a plain signature; adopt it rather than
-            # downloading the same tiles again.
-            shutil.copy2(basemap_path, extract_path)
-            _save_signature(extract_path, basemap_sig)
         extract_stale, extract_reason = _pmtiles_needs_regen(
             extract_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
         refresh_paths = args.refresh or args.refresh_trails
@@ -1708,24 +1699,6 @@ def main(argv=None):
                 # and the signature must name what was actually used.
                 _save_signature(basemap_path, basemap_paths.input_signature(
                     basemap_sig, trails_geojson, ways_cache, config.get("osm_file")))
-
-            fetch_tasks.append(("basemap", _do_basemap))
-        else:
-            size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-            post_messages.append(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
-    else:
-        needs_regen, reason = _pmtiles_needs_regen(
-            basemap_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
-        if args.refresh or needs_regen:
-            if not args.refresh and reason:
-                console.step(f"Basemap: regenerating ({reason})")
-
-            def _do_basemap():
-                # Old sidecar first: it vouched for the previous file and
-                # must not survive to vouch for an interrupted regen.
-                _clear_signature(basemap_path)
-                fetch_basemap(config, basemap_path)
-                _save_signature(basemap_path, basemap_sig)
 
             fetch_tasks.append(("basemap", _do_basemap))
         else:
