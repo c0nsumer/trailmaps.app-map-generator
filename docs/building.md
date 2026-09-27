@@ -522,7 +522,7 @@ python scripts/osm_parser.py configs/mytrails/osm.osm 12345678
 ## Vendor bundling
 
 The build downloads all JavaScript and CSS dependencies (MapLibre GL
-JS, PMTiles, Protomaps basemaps) from their CDNs and bundles them
+JS, PMTiles, Protomaps basemaps, maplibre-gl-lanes) from their CDNs and bundles them
 into `vendor/` in the output directory. The generated map has
 **no runtime CDN dependency**. Everything is served from your own
 server. This ensures the map continues to work even if upstream CDNs
