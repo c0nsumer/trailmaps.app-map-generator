@@ -829,7 +829,10 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     engine still must not be measured. Guarded below.
     """
     want_distance = bool(config.get("show_distance"))
-    want_elevation = bool(config.get("show_elevation"))
+    # A difficulty map shows no per-route stats, so its build must not
+    # spend minutes on 3DEP samples nothing reads (the validator warns
+    # about the key; this is what makes the warning true).
+    want_elevation = bool(config.get("show_elevation")) and config.get("color_by") != "difficulty"
 
     for f in trails_geojson.get("features") or []:
         props = f.get("properties") or {}

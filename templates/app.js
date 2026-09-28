@@ -2898,9 +2898,12 @@ function buildShareUrl() {
     } else if (highlight && highlight.kind === "trail" && highlight.key) {
         path += `/t/${encodeURIComponent(highlight.key)}`;
     } else if (highlight && highlight.kind === "rating") {
-        // Unrated ("") leaves the last segment empty; consumeShareHash
-        // reads that back as "".
-        path += `/d/${encodeURIComponent(highlight.key)}`;
+        // Unrated ("") travels as a word: an empty last segment would
+        // be lost to any client that trims a trailing slash, and
+        // consumeShareHash would then see too few parts and drop the
+        // highlight. The ratings themselves are "0".."5", so the word
+        // cannot collide with one.
+        path += `/d/${highlight.key === "" ? "unrated" : encodeURIComponent(highlight.key)}`;
     } else if (_poiHighlightRef) {
         // POI highlight (single, name-group, or category). The ref is the
         // Finder row's uid; mutually exclusive with `highlight` by the
@@ -3054,7 +3057,9 @@ function consumeShareHash() {
             // highlightRoute), so an "r" link opens it plain.
             if (kindCode === "r" && !isDifficultyMap()) highlight = { kind: "route", key };
             else if (kindCode === "t") highlight = { kind: "trail", key };
-            else if (kindCode === "d") highlight = { kind: "rating", key };
+            else if (kindCode === "d") {
+                highlight = { kind: "rating", key: key === "unrated" ? "" : key };
+            }
             else if (kindCode === "p") highlight = { kind: "poi", key };
         }
     }
@@ -4868,7 +4873,7 @@ function buildAboutModalContent() {
     // USGS 3DEP credit is shown only when the map actually displays
     // route elevation. Detected at runtime by looking for any route
     // metadata entry with computed elevation_gain_m - present iff
-    // show_route_elevation was true at build time AND the 3DEP fetch
+    // show_elevation was true at build time AND the 3DEP fetch
     // succeeded. Avoids crediting a data source whose output isn't
     // actually surfaced to the rider.
     const hasRouteElevation = Object.values(CONFIG.routes || {}).some(
@@ -5501,14 +5506,15 @@ function lineLengthMeters(coords) {
 // Difficulty maps: rating -> meters of visible way, each shared way
 // counted once. Reads the lane plugin's input for the current
 // visibility pass (difficultyVisibleFeatures), so the key, the chip and
-// the map agree on what is visible; before the lane renderer has
-// started it computes that same set directly. Only ratings with visible
-// length are present. Cached against the feature array, which
-// refreshLaneGraph replaces on every visibility pass.
+// the map agree on what is visible. That input exists before anything
+// asks: init awaits loadTrails, which starts the lane renderer, before
+// the first visibility pass runs. Only ratings with visible length are
+// present. Cached against the feature array, which refreshLaneGraph
+// replaces on every visibility pass.
 let _ratingLengthsCache = null;  // { features, lengths }
 function ratingLengths() {
-    if (!routesData) return new Map();
-    const features = difficultyVisibleFeatures || difficultyLaneFeatures();
+    const features = difficultyVisibleFeatures;
+    if (!features) return new Map();
     if (_ratingLengthsCache && _ratingLengthsCache.features === features) {
         return _ratingLengthsCache.lengths;
     }
@@ -6871,10 +6877,10 @@ function initLaneRenderer() {
 // geometry, and bundling those copies would draw a shared way as two or
 // three parallel lanes of the same rating color, which says nothing on a
 // map where the color is the way's own. So the copies collapse to one,
-// kept while any parent is visible and owned by the first visible
-// parent in shared_routes order. The owner matters because the route
-// still carries the per-route look (laneRouteMeta): a way on a dashed
-// relation keeps its dash through it.
+// kept while any parent is visible and owned by one visible parent, a
+// dashed one first, else the first in shared_routes order. The owner
+// matters because the route still carries the per-route look
+// (laneRouteMeta): a way on a dashed relation keeps its dash through it.
 //
 // A run is keyed by its way ids as a set plus its two end points, not
 // by the id list alone: a relation that runs a way the other way round
@@ -6886,8 +6892,7 @@ function initLaneRenderer() {
 // the owner.
 //
 // Pure given routesData and visibleRoutes: refreshLaneGraph keeps the
-// result as difficultyVisibleFeatures, and ratingLengths calls this
-// directly when the lane renderer has not started yet.
+// result as difficultyVisibleFeatures, which the key and the finder read.
 function difficultyLaneFeatures() {
     const schedules = CONFIG.directionSchedules || {};
     const runs = new Map();  // run key -> the run's copies, in file order
@@ -6910,7 +6915,12 @@ function difficultyLaneFeatures() {
         const parents = (first.shared_routes || [first.route_id])
             .filter((id) => visibleRoutes.has(id));
         if (!parents.length) continue;
-        const owner = parents[0];
+        // A dashed parent wins the ownership while it is visible: the
+        // dash is a curated per-route look (Santos' grey "Paved
+        // Multi-Use"), and a way it shares with a solid relation would
+        // otherwise flip between dashed and solid on whichever parent
+        // sorts first. Ties keep shared_routes order.
+        const owner = parents.find((id) => isDashed(CONFIG.routes[id])) || parents[0];
         const own = copies.find((f) => f.properties.route_id === owner);
         const base = own || copies[0];
         out.push({
@@ -7334,7 +7344,7 @@ function _refreshVisibilityDependents() {
                 clearHighlight();
             } else if (isDifficultyMap()) {
                 // Still on the map, but perhaps less of it.
-                refreshTrailChipStats();
+                showTrailChip(highlight.key);
             }
         } else if (highlight.kind === "rating") {
             // Gone with its key row when no visible way of that rating is
@@ -7842,17 +7852,7 @@ function highlightTrail(trailName) {
 
     fitToRouteOrTrail({ trailName });
     if (onDifficultyMap) {
-        // The chip carries the trail's finder mark: its main rating's
-        // glyph, or the unrated line, and its visible length where the
-        // map shows distances.
-        const t = difficultyTrailEntry(trailName);
-        const rating = t ? t.rating : "";
-        showHighlightChip({
-            label: trailName,
-            glyph: rating === "" ? null : difficultyIconDataUrl(rating),
-            line: rating === "" ? unratedSwatchModel() : null,
-            stats: trailStatsText(t),
-        });
+        showTrailChip(trailName);
     } else {
         // A trail is a line on the map, so the chip gets a line swatch
         // (solid highlighter yellow); POI highlights keep the dot.
@@ -7881,14 +7881,21 @@ function difficultyTrailOutlineColor() {
     return ratingMatchExpr(ratingHighlightOutlineColor);
 }
 
-// The highlighted trail's chip distance on a difficulty map, after the
-// rider changes units or a visibility toggle changes how much of the
-// trail is on the map.
-function refreshTrailChipStats() {
-    const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
-    if (statsEl && CONFIG.showDistance) {
-        statsEl.textContent = trailStatsText(difficultyTrailEntry(highlight.key));
-    }
+// A difficulty map's trail chip: the trail's finder mark (its main
+// rating's glyph, or the unrated line) and its visible length where
+// the map shows distances. Re-issued whole after a units change or a
+// visibility toggle, since a toggle can change how much of the trail
+// is on the map AND which rating most of that length carries, so the
+// glyph must follow the finder row, not only the distance.
+function showTrailChip(trailName) {
+    const t = difficultyTrailEntry(trailName);
+    const rating = t ? t.rating : "";
+    showHighlightChip({
+        label: trailName,
+        glyph: rating === "" ? null : difficultyIconDataUrl(rating),
+        line: rating === "" ? unratedSwatchModel() : null,
+        stats: trailStatsText(t),
+    });
 }
 
 // Outline of a rating highlight: luminance-matched to the rating's color,
@@ -9082,8 +9089,8 @@ function buildRouteIndex() {
             // route a rider chooses between).
             featured: !!info.featured,
             // Per-route stats from compute_route_stats.py. Any may
-            // be absent: distance is gated by show_route_distance,
-            // elevation by show_route_elevation + a successful
+            // be absent: distance is gated by show_distance,
+            // elevation by show_elevation + a successful
             // USGS 3DEP fetch at build time. Gain and loss are
             // computed in the same pass, so they're either both
             // present or both absent. Stored as integer meters in
@@ -9127,13 +9134,15 @@ function buildTrailIndex() {
 //                   harder one on a tie (the finder mark and the chip)
 //   lengthM         the trail's visible length
 // Reads the lane plugin's input for the current visibility pass, as
-// ratingLengths does, so the finder, the chip and the map agree. The
-// stamp is redone only when that input or the index is replaced, so a
-// keystroke in the finder costs nothing.
+// ratingLengths does (and like it, only once the lane renderer has
+// started), so the finder, the chip and the map agree. The stamp is
+// redone only when that input or the index is replaced, so a keystroke
+// in the finder costs nothing.
 let _trailRatingsStamp = null;  // { features, index }
 function refreshTrailRatings() {
-    if (!isDifficultyMap() || !routesData) return;
-    const features = difficultyVisibleFeatures || difficultyLaneFeatures();
+    if (!isDifficultyMap()) return;
+    const features = difficultyVisibleFeatures;
+    if (!features) return;
     if (_trailRatingsStamp && _trailRatingsStamp.features === features
             && _trailRatingsStamp.index === trailIndex) {
         return;
@@ -13277,7 +13286,7 @@ function setDistanceUnits(units) {
     } else if (highlight && highlight.kind === "rating") {
         refreshRatingChipStats();
     } else if (highlight && highlight.kind === "trail" && isDifficultyMap()) {
-        refreshTrailChipStats();
+        showTrailChip(highlight.key);
     }
     updateLocationIndicator();
     applyContourUnits();

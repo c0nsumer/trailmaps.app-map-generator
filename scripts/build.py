@@ -1034,7 +1034,9 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- Route stats ----
     want_dist = bool(config.get("show_distance"))
-    want_elev = bool(config.get("show_elevation"))
+    # Mirrors compute_and_attach: elevation is per route and skipped on
+    # a difficulty map.
+    want_elev = bool(config.get("show_elevation")) and config.get("color_by") != "difficulty"
     if want_dist or want_elev:
         console.step("Per-route stats:")
         if want_dist:
@@ -1431,15 +1433,14 @@ def main(argv=None):
     raw_dv = config.get("default_visible")
     raw_fv = config.get("forced_visible")
     arrows_suppressed = config.get("show_direction_arrows", True) is False
-    arrows_default_on = (
-        raw_dv is None
-        or raw_dv == "all"
-        or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
-        or raw_fv == "all"
+    arrows_forced_on = (
+        raw_fv == "all"
         or (isinstance(raw_fv, list) and "direction_arrows" in raw_fv)
     )
+    # Only an explicit default_visible list (including []) can leave the
+    # arrows off; unset means the first-visit set, which has them.
     explicit_dv_omits_arrows = isinstance(raw_dv, list) and "direction_arrows" not in raw_dv
-    if explicit_dv_omits_arrows and not arrows_default_on and not arrows_suppressed:
+    if explicit_dv_omits_arrows and not arrows_forced_on and not arrows_suppressed:
         oneway_count = 0
         for f in trails_geojson.get("features") or []:
             ow = (f.get("properties") or {}).get("oneway")

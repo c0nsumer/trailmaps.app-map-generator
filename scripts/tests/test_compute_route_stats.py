@@ -246,6 +246,23 @@ def test_compute_elevations_records_cache_paths(tmp_path, monkeypatch):
     assert cache_manifest.drain() == [cache_path]
 
 
+def test_difficulty_map_skips_elevation(monkeypatch):
+    # The validator only warns about show_elevation on a difficulty map;
+    # the build must not then spend the 3DEP calls on values no
+    # difficulty-map surface reads.
+    import compute_route_stats as crs
+
+    def boom(*_a, **_k):
+        raise AssertionError("compute_elevations must not run on a difficulty map")
+
+    monkeypatch.setattr(crs, "compute_elevations", boom)
+    g = _fc()
+    assert compute_and_attach(
+        g, {"show_distance": True, "show_elevation": True, "color_by": "difficulty"}, None)
+    assert g["metadata"]["routes"]["100"]["distance_m"] > 0
+    assert "elevation_gain_m" not in g["metadata"]["routes"]["100"]
+
+
 @pytest.mark.parametrize("marker", ["isStub", "_subwayHostVariant"])
 def test_refuses_subway_expanded_geometry(marker):
     # The multi-mode subway pass replaces a truncated host with one

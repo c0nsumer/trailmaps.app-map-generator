@@ -661,7 +661,7 @@ Several config keys change meaning:
 | `default_labels` | Defaults to `"trails"` instead of `"none"`. |
 | `relation_colors` | Ignored, with a build warning. Lines take their rating color. |
 | `show_elevation` | Ignored, with a build warning. Elevation is per route. |
-| `dashed_relations` | Honored. A way keeps its relation's dash, and an unrated way on a dashed relation takes the dash's first color. |
+| `dashed_relations` | Honored. A way on a dashed relation keeps that dash while the relation is visible, even where a solid relation shares the way. An unrated way on a dashed relation takes the dash's first color. |
 | `clipped_relations` | Honored. Continuation arrows at the map edge take the rating color of the way they continue. |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
 | `show_distance` | Same meaning; gates per-rating and per-trail distances. |
