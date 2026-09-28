@@ -134,7 +134,7 @@ than on the relation itself.
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (under `color_by: trail`), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
+| [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (under `color_by: difficulty`), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
 
 The IMBA-rating scale, condensed:
 

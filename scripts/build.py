@@ -1033,8 +1033,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.blank()
 
     # ---- Route stats ----
-    want_dist = bool(config.get("show_route_distance"))
-    want_elev = bool(config.get("show_route_elevation"))
+    want_dist = bool(config.get("show_distance"))
+    want_elev = bool(config.get("show_elevation"))
     if want_dist or want_elev:
         console.step("Per-route stats:")
         if want_dist:

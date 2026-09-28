@@ -226,7 +226,7 @@ tiles.
 - First-ever build of a new map: 5 to 10 min (downloads basemap,
   terrain, sprites).
 - Re-build with cached data, no `--refresh`: under 30 seconds.
-- Build with `show_route_elevation: true` and a fresh cache: extra
+- Build with `show_elevation: true` and a fresh cache: extra
   ~30 sec to 2 min for USGS 3DEP API calls (one batch per route at
   25m sampling; auto-retries transient 502s).
 - `--refresh` on a large map: 10 to 20 min.

@@ -70,7 +70,7 @@ def test_compute_distances_counts_each_route_once():
 
 def test_attach_writes_distance_and_strips_when_disabled():
     g = _fc()
-    assert compute_and_attach(g, {"show_route_distance": True}, None)
+    assert compute_and_attach(g, {"show_distance": True}, None)
     assert g["metadata"]["routes"]["100"]["distance_m"] > 0
     # Gate turned off: stale fields are stripped.
     assert compute_and_attach(g, {}, None)
@@ -255,7 +255,7 @@ def test_refuses_subway_expanded_geometry(marker):
     g = _fc()
     g["features"].append(_feat("100", _SEG_B, **{marker: True, "mode": "summer"}))
     with pytest.raises(ValueError, match="canonical"):
-        compute_and_attach(g, {"show_route_distance": True}, None)
+        compute_and_attach(g, {"show_distance": True}, None)
 
 
 if __name__ == "__main__":

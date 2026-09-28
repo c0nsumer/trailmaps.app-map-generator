@@ -600,7 +600,7 @@ first-glance answer to "which color am I riding?". A map with a couple of
 featured routes boots with the card expanded; the panel starts expanded
 whenever the card fits comfortably in the viewport. The card shows each
 course's color and name. When
-[`show_route_distance`](configuration.md#build-time-data-gates) is on, it also
+[`show_distance`](configuration.md#build-time-data-gates) is on, it also
 shows distance. Tapping a row highlights that course and fits it in view.
 
 ## What event mode leaves unchanged

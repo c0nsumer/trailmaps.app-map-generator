@@ -212,7 +212,7 @@ CONFIG_SPEC = [
     # Default true matches historical behavior; curators with
     # colored logos that look bad inverted set false per-map.
     ("invert_logo_dark", "invertLogoDark", True),
-    ("color_by", "colorBy", "relation"),
+    ("color_by", "colorBy", "route"),
     # false: the bottom-right panel is a Search button alone, no key
     # card and no chip. For a trail system whose relations are the
     # trails themselves (Copper Harbor: 75 of them), a key that lists
@@ -575,6 +575,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
             config_obj[js_key] = config[yaml_key]  # required keys
         else:
             config_obj[js_key] = config.get(yaml_key, default)
+
+    # On a difficulty map the trail name is the only name there is (no
+    # route to label instead), so an unset default_labels shows it on a
+    # first visit. A routes map keeps the "none" default set above.
+    if config.get("color_by") == "difficulty" and "default_labels" not in config:
+        config_obj["defaultLabels"] = "trails"
 
     # Keys with custom logic
     config_obj["routes"] = routes

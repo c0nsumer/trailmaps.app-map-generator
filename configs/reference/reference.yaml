@@ -156,10 +156,13 @@ relations:
 # suppress_basemap_oneway_arrows: false
 
 # Compute per-route distance at build time; show it in the Finder + chip.
-# show_route_distance: false
+# On a difficulty map (color_by: difficulty) this also gates the per-grade
+# and per-trail distances shown in the key and the finder.
+# show_distance: false
 
 # Sample USGS 3DEP for per-route gain / loss (US only). See docs/elevation.md.
-# show_route_elevation: false
+# Per route only; ignored on a difficulty map.
+# show_elevation: false
 
 # Max distance (m) from a visible trail for a feature / marker POI to render.
 # poi_proximity_m: 50
@@ -169,6 +172,7 @@ relations:
 # ============================================================
 
 # Map of relation ID to CSS color; overrides the OSM colour= tag.
+# route maps only; ignored (with a build warning) on a difficulty map.
 # relation_colors: {}
 
 # Map of relation ID to display name; overrides the OSM name tag everywhere
@@ -178,16 +182,21 @@ relations:
 # Map of relation ID to dash config. See docs/configuration.md (Dash patterns).
 # dashed_relations: {}
 
-# Trail line coloring: "relation" (route color) or "trail" (per-way IMBA palette).
-# color_by: relation
+# Which map this is: "route" (the default) colors lines by route, with
+# parallel lanes where routes share a trail. "difficulty" colors each
+# way by its own IMBA grade instead, one line per way; event_mode is
+# rejected. See docs/configuration.md (Difficulty maps).
+# color_by: route
 
-# Route key (the bottom-right routes panel). false replaces it with a
+# Route key (the bottom-right panel). On a route map it lists routes; on
+# a difficulty map it lists grades instead. false replaces it with a
 # Search button alone: for a trail system whose relations are the trails
 # themselves, a key listing every one is a wall. See docs/configuration.md.
 # route_key: true
 
 # Fallback trail color, or an object with color / pattern / cap for dashed
-# uncolored trails.
+# uncolored trails. Used for relations with no colour= tag on a route map,
+# or ways with no mtb:scale:imba tag on a difficulty map.
 # default_trail_color: "#808080"
 
 # ============================================================

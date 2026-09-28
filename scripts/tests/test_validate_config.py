@@ -50,6 +50,13 @@ def _errors(**overrides):
     return errors
 
 
+def _warnings(**overrides):
+    cfg = dict(BASE)
+    cfg.update(overrides)
+    _errors, warnings = validate_config(cfg)
+    return warnings
+
+
 def test_minimal_config_is_valid():
     errors, _ = validate_config(dict(BASE))
     assert errors == [], errors
@@ -402,3 +409,98 @@ def test_event_poi_directions_defaults_off_in_the_poi_data():
     fc = build_pois_geojson({"elements": []}, [], [], config_event_pois=pois)
     got = {f["properties"]["name"]: f["properties"]["directions"] for f in fc["features"]}
     assert got == {"Start / Finish": False, "Event Parking": True, "Aid 1": False}
+
+
+# --- color_by: route | difficulty --------------------------------------------
+
+
+def test_color_by_route_and_difficulty_are_valid():
+    assert _errors(color_by="route") == []
+    assert _errors(color_by="difficulty") == []
+
+
+def test_color_by_legacy_values_rejected_as_ordinary_junk():
+    # 1: no alias, no special message - the same "must be one of" error
+    # any other unknown value gets.
+    for value in ("relation", "trail"):
+        errors = [e for e in _errors(color_by=value) if "color_by" in e]
+        assert len(errors) == 1
+        assert "must be one of" in errors[0], errors
+
+
+# --- show_distance / show_elevation (renamed from show_route_*) ------------
+
+
+def test_show_route_distance_is_an_unknown_key():
+    assert any("show_route_distance" in e for e in _errors(show_route_distance=True))
+
+
+def test_show_route_elevation_is_an_unknown_key():
+    assert any("show_route_elevation" in e for e in _errors(show_route_elevation=True))
+
+
+def test_show_distance_and_show_elevation_are_valid():
+    assert _errors(show_distance=True) == []
+    assert _errors(show_elevation=True) == []
+
+
+# --- difficulty-map-only validation rules -----------------------------------
+
+
+def test_difficulty_map_rejects_event_mode():
+    errors = _errors(color_by="difficulty", event_mode={"featured": [12345678]})
+    assert any("event_mode" in e for e in errors), errors
+
+
+def test_routes_map_allows_event_mode():
+    assert _errors(event_mode={"featured": [12345678]}) == []
+
+
+def test_difficulty_map_rejects_default_labels_routes():
+    errors = _errors(color_by="difficulty", default_labels="routes")
+    assert any("default_labels" in e for e in errors), errors
+
+
+def test_difficulty_map_rejects_forced_labels_routes():
+    errors = _errors(color_by="difficulty", forced_labels="routes")
+    assert any("forced_labels" in e for e in errors), errors
+
+
+def test_difficulty_map_allows_trails_and_none_labels():
+    assert _errors(color_by="difficulty", default_labels="trails") == []
+    assert _errors(color_by="difficulty", default_labels="none") == []
+    assert _errors(color_by="difficulty", forced_labels="trails") == []
+
+
+def test_difficulty_map_rejects_show_trails_false():
+    errors = _errors(color_by="difficulty", show_trails=False)
+    assert any("show_trails" in e for e in errors), errors
+
+
+def test_routes_map_allows_show_trails_false():
+    assert _errors(show_trails=False) == []
+
+
+def test_difficulty_map_warns_on_relation_colors():
+    warnings = _warnings(color_by="difficulty", relation_colors={12345678: "#ff0000"})
+    assert any("relation_colors" in w for w in warnings), warnings
+
+
+def test_difficulty_map_ignores_empty_relation_colors():
+    warnings = _warnings(color_by="difficulty", relation_colors={})
+    assert not any("relation_colors" in w for w in warnings), warnings
+
+
+def test_routes_map_relation_colors_no_difficulty_warning():
+    warnings = _warnings(relation_colors={12345678: "#ff0000"})
+    assert not any("relation_colors" in w for w in warnings), warnings
+
+
+def test_difficulty_map_warns_on_show_elevation():
+    warnings = _warnings(color_by="difficulty", show_elevation=True)
+    assert any("show_elevation" in w for w in warnings), warnings
+
+
+def test_routes_map_show_elevation_no_difficulty_warning():
+    warnings = _warnings(show_elevation=True)
+    assert not any("show_elevation" in w for w in warnings), warnings

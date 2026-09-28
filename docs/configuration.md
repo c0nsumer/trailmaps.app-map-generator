@@ -222,19 +222,19 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
-| `show_route_distance` | No | `false` | When true, computes per-route distance at build time and shows it in the Finder rows and highlight chip. It is shown in the rider's [units](#units). |
-| `show_route_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
+| `show_distance` | No | `false` | When true, computes distance at build time. On a routes map this shows per-route distance in the Finder rows and highlight chip. On a difficulty map it also gates the per-grade totals in the key and the per-trail distance in the finder and chip. It is shown in the rider's [units](#units). |
+| `show_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. Per route only; ignored (with a build warning) on a difficulty map. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
 ### Per-route style overrides
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `color_by` | No | `"relation"` | How trail lines are colored. `"relation"` colors by route color from the OSM `colour` tag, optionally overridden via `relation_colors`. `"trail"` colors by per-trail IMBA `mtb:scale:imba` rating using the fixed IMBA palette; `relation_colors` does not apply to trail polylines in this mode. |
-| `route_key` | No | `true` | Whether the bottom-right routes panel shows the route key: one row per visible route, with its swatch, name and stats. Set `false` for a trail system whose relations are the trails themselves. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route, trail and place. |
-| `default_trail_color` | No | `"#808080"` | Fallback trail color. In `relation` mode: used when a relation has no OSM `colour` tag. In `trail` mode: used for segments with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
+| `color_by` | No | `"route"` | Which map this is: a **routes map** or a **difficulty map**. `"route"` colors each line by its route color, with parallel lanes where routes share a trail; the key lists routes. `"difficulty"` colors each way by its own IMBA `mtb:scale:imba` grade instead, one line per way with no bundling; the key lists grades, the finder lists trails and places only (no Routes section), labels are trail names, and the tap popup drops its route rows. Difficulty symbols stay an optional toggle either way. See [Difficulty maps](#difficulty-maps) for which other keys change meaning, are ignored, or are rejected under `"difficulty"`. |
+| `route_key` | No | `true` | Whether the bottom-right panel shows the key: one row per visible route on a routes map, or one row per grade on a difficulty map, each with its swatch, name and stats. Set `false` for a trail system dense enough that a full key is a wall. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route (or trail) and place. |
+| `default_trail_color` | No | `"#808080"` | Fallback trail color. On a routes map: used when a relation has no OSM `colour` tag. On a difficulty map: used for ways with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
 | `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
-| `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`); overrides the OSM `colour` tag. Only takes effect when `color_by: relation` (the default). Under `color_by: trail` the map, the key and the finder all show the IMBA grade colors instead, and a route's swatch shows the grade that most of its length carries. |
+| `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`); overrides the OSM `colour` tag. Only takes effect on a routes map (`color_by: route`, the default). On a difficulty map it is ignored, with a build warning; the map, the key and the finder all show the IMBA grade colors instead. |
 | `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 
 ### Direction schedules
@@ -251,8 +251,8 @@ See [Direction arrows](#direction-arrows) for the full model.
 |-----|----------|---------|-------------|
 | `default_visible` | No | _(see description)_ | First-visit visibility for layer toggles. Four accepted forms. If unset (omitted or `null`), these layers default on: `trail_markers`, `trailheads`, `hubs`, `parking`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `direction_arrows`. The rest (`features`, `difficulty`, `emergency`) default off. An empty list (`[]`) is the bare-map opt-out: everything off, riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** leaving `default_visible` unset already turns `direction_arrows` on for maps with one-way trails. If you set an explicit list (including `[]`), add `direction_arrows` to it, use `"all"`, or list it in `forced_visible`, so riders still see the arrows. The build prints a warning when one-way trails exist and an explicit `default_visible` list omits `direction_arrows` with no coverage from `forced_visible`. |
 | `forced_visible` | No | `[]` | Layers rendered on regardless of `localStorage` or `default_visible`. Their toggle is hidden, so the rider cannot turn them off. Same forms and layer names as `default_visible`. Use for safety-critical layers (`direction_arrows` on flow trails) or any layer that must always show. Subordinate to the `show_*` gates: a layer suppressed by `show_X: false`, or with no data, has nothing to force on. |
-| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. The rider opts into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
-| `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`). |
+| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"` on a routes map, so a fresh visit produces a clean map. On a difficulty map the default is `"trails"` instead, since the trail name is the only name there is; `"routes"` is rejected on a difficulty map. The rider opts into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
+| `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`), or if it is `"routes"` on a difficulty map. |
 | `default_color_scheme` | No | `"light"` | First-visit color scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colors are scheme-independent. |
 | `invert_logo_dark` | No | `true` | Whether the brand logo auto-inverts in dark mode. The default suits monochrome and limited-palette logos. If the logo is colorful or photographic and inverting it looks wrong, set `false`. |
 | `map_dim_on_highlight` | No | `true` | When a route or trail is highlighted (via Finder tap or in-map click), dim every non-highlighted route / trail. Name labels stay visible so connecting trails can still be read for wayfinding. Set `false` to keep the rest of the network at full saturation. |
@@ -501,7 +501,7 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
   toggles exactly like the finder; event maps list featured routes only.
 - **Tapping a row** highlights that route (tap again to clear), the same
   behavior as a finder route row.
-- **Row stats** follow `show_route_distance` / `show_route_elevation`, and
+- **Row stats** follow `show_distance` / `show_elevation`, and
   are shown in the rider's [units](#units).
 - **Boot state.** The panel opens either as the key card or as a compact round
   list-icon chip. The choice depends on how many rows there are and whether
@@ -605,7 +605,7 @@ hiding a trail (e.g. by switching season) also hides its difficulty symbols.
 ### Difficulty is a way-level tag
 
 The `mtb:scale:imba` tag is read from individual **ways** only. Tags on the
-parent **relation** are ignored, including for `color_by: trail` coloring.
+parent **relation** are ignored, including for `color_by: difficulty` coloring.
 
 This matches OpenStreetMap's tagging convention (`mtb:scale:imba` is a per-way
 tag) and reflects the reality that real trails often vary in difficulty along
@@ -614,8 +614,35 @@ their length:
 | Way tag | Relation tag | What renders |
 |---|---|---|
 | `4` | `2` | Black diamond (4): way value wins |
-| (none) | `2` | Nothing: segment is unrated; in `color_by: trail` it falls back to `default_trail_color` |
+| (none) | `2` | Nothing: segment is unrated; in `color_by: difficulty` it falls back to `default_trail_color` |
 | `4` | (none) | Black diamond (4) |
+
+### Difficulty maps
+
+Set `color_by: difficulty` to make a difficulty map: lines colored by
+each way's own IMBA grade, not by route. Choose it for a trail system
+with named trails and `mtb:scale:imba` tags, but no route colors worth
+keying, such as Copper Harbor or NTN Marquette.
+
+On a difficulty map, the rider sees one line per way, colored by that
+way's grade. The bottom-right key lists grades, not routes, with an
+"Unrated" row when unrated ways are visible. Tapping a key row
+highlights every trail of that grade; the map does not move to fit
+them. The finder lists trails and places only, no Routes section.
+Labels show trail names, since there is no route name to show instead.
+
+Several config keys change meaning:
+
+| Key | On a difficulty map |
+|-----|----------------------|
+| `event_mode` | Rejected. Event maps are routes maps. |
+| `show_trails` | Rejected if `false`. A difficulty map lists trails only. |
+| `default_labels` / `forced_labels` | `"routes"` is rejected; use `"trails"` or `"none"`. |
+| `default_labels` | Defaults to `"trails"` instead of `"none"`. |
+| `relation_colors` | Ignored, with a build warning. Lines take their grade color. |
+| `show_elevation` | Ignored, with a build warning. Elevation is per route. |
+| `route_key` | Same meaning: `false` hides the key, Search only. |
+| `show_distance` | Same meaning; gates per-grade and per-trail distances. |
 
 ## Direction arrows
 
@@ -872,7 +899,7 @@ or more colors are not supported; the build fails validation.
 
 **Interaction with other features.** Alternating-color dashes work with
 direction arrows, labels, and the route visibility rules exactly like any other
-dashed route. They are *not* compatible with `color_by: trail`: when difficulty
+dashed route. They are *not* compatible with `color_by: difficulty`: when difficulty
 coloring is active, IMBA-rated segments use the difficulty palette and `colors`
 is ignored on those segments.
 

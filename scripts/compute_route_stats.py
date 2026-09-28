@@ -2,19 +2,19 @@
 
 Two stats, both gated by config:
 
-  show_route_distance: true   →  walks the GeoJSON, sums haversine
-                                 segment lengths per route. No data
-                                 dependency; always runs when enabled.
+  show_distance: true   →  walks the GeoJSON, sums haversine
+                           segment lengths per route. No data
+                           dependency; always runs when enabled.
 
-  show_route_elevation: true  →  samples elevation along each route
-                                 via USGS 3DEP's getSamples endpoint
-                                 (1m lidar bare-earth where available,
-                                 10m/30m fallback elsewhere), computes
-                                 both positive elevation gain (climb)
-                                 and absolute negative gain (loss).
-                                 Requires network; degrades to
-                                 no-data on failure or when the
-                                 endpoint is unreachable.
+  show_elevation: true  →  samples elevation along each route
+                           via USGS 3DEP's getSamples endpoint
+                           (1m lidar bare-earth where available,
+                           10m/30m fallback elsewhere), computes
+                           both positive elevation gain (climb)
+                           and absolute negative gain (loss).
+                           Requires network; degrades to
+                           no-data on failure or when the
+                           endpoint is unreachable.
 
 Output: writes per-route stats into trails_geojson["metadata"]["routes"]
 [<id>] as ``distance_m``, ``elevation_gain_m``, and ``elevation_loss_m``
@@ -815,7 +815,7 @@ def compute_elevations(trails_geojson, cache_dir):
 def compute_and_attach(trails_geojson, config, cache_dir):
     """Compute enabled stats and attach them to trails_geojson in place.
 
-    Reads ``show_route_distance`` and ``show_route_elevation`` from
+    Reads ``show_distance`` and ``show_elevation`` from
     config. Writes ``distance_m``, ``elevation_gain_m``, and
     ``elevation_loss_m`` (when available) into ``metadata.routes[<id>]``.
     Returns True if anything was attached (caller writes back to disk).
@@ -828,8 +828,8 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     a file any more, but one left in a build directory by an older
     engine still must not be measured. Guarded below.
     """
-    want_distance = bool(config.get("show_route_distance"))
-    want_elevation = bool(config.get("show_route_elevation"))
+    want_distance = bool(config.get("show_distance"))
+    want_elevation = bool(config.get("show_elevation"))
 
     for f in trails_geojson.get("features") or []:
         props = f.get("properties") or {}

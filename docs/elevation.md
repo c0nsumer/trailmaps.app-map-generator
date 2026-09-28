@@ -1,6 +1,6 @@
 # Elevation data
 
-When `show_route_elevation: true` is set on a map, per-route climb (`gain`) and
+When `show_elevation: true` is set on a map, per-route climb (`gain`) and
 descent (`loss`) totals appear in the Finder rows and highlight chip. This
 document explains where those numbers come from, how they're computed, and why
 they may not match what your GPS or another app says.

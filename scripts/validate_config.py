@@ -129,8 +129,8 @@ KNOWN_KEYS = {
     "highlight_glow": bool,
     "url_hash": bool,
     "poi_proximity_m": (int, float),
-    "show_route_distance": bool,
-    "show_route_elevation": bool,
+    "show_distance": bool,
+    "show_elevation": bool,
     "share_button": bool,
     # User-supplied feature data
     "trailheads": list,
@@ -181,8 +181,8 @@ BUILD_ONLY_KEYS = {
     # runtime via per-route metadata (CONFIG.routes[id].distance_m /
     # elevation_gain_m), not through CONFIG_SPEC. Both are pure
     # build-time gates from the config schema's perspective.
-    "show_route_distance",
-    "show_route_elevation",
+    "show_distance",
+    "show_elevation",
     # Style overrides folded into per-route metadata at build time
     # (relation_colors / dashed_relations / direction_schedule are
     # consumed in inject_config_into_template's pre-pass and emerge
@@ -231,7 +231,7 @@ HANDLED_SPECIALLY = {
 }
 
 VALID_LABELS = {"routes", "trails", "none"}
-VALID_COLOR_BY = {"relation", "trail"}
+VALID_COLOR_BY = {"route", "difficulty"}
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
@@ -450,7 +450,7 @@ def _validate_enums(report, config):
         )
 
     # (Historical note: an earlier draft cross-checked
-    # show_route_elevation against show_terrain because the original
+    # show_elevation against show_terrain because the original
     # plan was to sample our own terrain raster for elevation gain.
     # The shipping implementation uses USGS 3DEP's getSamples HTTP
     # endpoint instead, which is independent of the hillshade layer
@@ -1783,6 +1783,52 @@ def _validate_event_gpx(report, gpx):
             seen_basenames[base] = i
 
 
+def _validate_difficulty_map(report, config):
+    """Validate config keys that only make sense on a difficulty map.
+
+    `color_by: difficulty` colors every way by its own IMBA grade, so the
+    config keys that describe routes (event mode, a routes label mode,
+    per-route colors, per-route elevation, the Trails section itself)
+    stop applying or start meaning something the map can't render. See
+    difficulty-model.md section 3.6 for the full table.
+    """
+    if config.get("color_by") != "difficulty":
+        return
+
+    if "event_mode" in config:
+        report.err(
+            "event_mode",
+            "event maps are routes maps; set color_by: route or remove event_mode",
+        )
+
+    for key in ("default_labels", "forced_labels"):
+        if config.get(key) == "routes":
+            report.err(
+                key,
+                "a difficulty map labels trails only; must be 'trails' or 'none'",
+            )
+
+    if config.get("show_trails") is False:
+        report.err(
+            "show_trails",
+            "a difficulty map lists trails only; the Trails section can't "
+            "be hidden - remove show_trails or set color_by: route",
+        )
+
+    rc = config.get("relation_colors")
+    if isinstance(rc, dict) and rc:
+        report.warn(
+            "relation_colors",
+            "ignored on a difficulty map; lines take their grade color",
+        )
+
+    if config.get("show_elevation") is True:
+        report.warn(
+            "show_elevation",
+            "elevation is per route and is not shown on a difficulty map",
+        )
+
+
 def _validate_geometry_source(report, config):
     """A map needs at least one geometry source to render.
 
@@ -1937,6 +1983,7 @@ def validate_config(config, *, config_path=None):
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_event_mode(report, config)
+    _validate_difficulty_map(report, config)
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)

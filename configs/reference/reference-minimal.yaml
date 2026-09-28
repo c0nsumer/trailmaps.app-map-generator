@@ -44,15 +44,15 @@ relations:
 # show_direction_arrows: true
 # suppress_basemap_pois: false
 # suppress_basemap_oneway_arrows: false
-# show_route_distance: false
-# show_route_elevation: false
+# show_distance: false
+# show_elevation: false
 # poi_proximity_m: 50
 
 # --- Per-route style overrides ---
 # relation_colors: {}
 # relation_names: {}
 # dashed_relations: {}
-# color_by: relation
+# color_by: route
 # route_key: true
 # default_trail_color: "#808080"
 
