@@ -609,6 +609,19 @@ body::after {
     overflow: visible;
 }
 
+/* A rating highlight shows its key row's glyph (an <img>), at the key's
+ * size; the dot's ring, fill and hairline would frame the glyph's own
+ * halo. */
+.highlight-chip-swatch.is-glyph {
+    width: 18px;
+    height: 15px;
+    border: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    object-fit: contain;
+}
+
 .highlight-chip:has(.highlight-chip-swatch.is-poi) {
     padding-top: 3px;
     padding-bottom: 3px;
@@ -4360,6 +4373,18 @@ body.modal-open .gpx-overlay.is-open {
     flex-shrink: 0;
     background: #888;
     box-shadow: var(--swatch-hairline);
+}
+
+/* Difficulty key rows (color_by: difficulty) lead with the rating's
+ * glyph, the same canvas render as .opt-key-glyph and at its 15px, in
+ * the swatch's 18px column so names align with the Unrated row's line
+ * swatch. 15px sits inside the 13px text's line box, so a glyph row is
+ * no taller than a swatch row. */
+.route-panel-glyph {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 15px;
+    object-fit: contain;
 }
 
 .route-panel-row-name {

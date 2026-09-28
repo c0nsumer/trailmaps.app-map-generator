@@ -1,4 +1,4 @@
-"""Tests for the `color_by` / `default_labels` injector defaults.
+"""Tests for the `color_by` / `default_labels` / `show_distance` injector defaults.
 
 `color_by` defaults to `"route"` (a routes map). On a difficulty map
 (`color_by: difficulty`) the trail name is the only name there is, so an
@@ -60,3 +60,10 @@ def test_explicit_default_labels_is_honored_on_a_difficulty_map():
     config = dict(BASE, color_by="difficulty", default_labels="none")
     obj = _config_obj(config)
     assert obj["defaultLabels"] == "none"
+
+
+def test_show_distance_reaches_the_runtime():
+    # Difficulty maps sum per-rating key distances at runtime, so the
+    # build-time stats gate is emitted too.
+    assert _config_obj(dict(BASE))["showDistance"] is False
+    assert _config_obj(dict(BASE, show_distance=True))["showDistance"] is True

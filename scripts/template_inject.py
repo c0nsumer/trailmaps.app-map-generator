@@ -218,6 +218,11 @@ CONFIG_SPEC = [
     # trails themselves (Copper Harbor: 75 of them), a key that lists
     # every one is a wall, while search still finds any of them.
     ("route_key", "routeKey", True),
+    # Also a build-time gate (compute_route_stats.py writes per-route
+    # distance_m for routes maps). A difficulty map sums its per-rating
+    # key distances at runtime from the visible ways, so the runtime
+    # needs the flag itself.
+    ("show_distance", "showDistance", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # When true (the default), highlighting a route or trail dims

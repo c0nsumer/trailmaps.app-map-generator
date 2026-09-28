@@ -589,14 +589,19 @@ function applyMapPaintForScheme(scheme) {
     // route, so it is swapped through the layer's setter.
     if (laneLayer) laneLayer.setCasingColor(laneCasingColor());
     // Highlight silhouettes. The TRAIL outline is a constant scheme-
-    // contrasting silhouette (black on the light basemap, white on dark).
+    // contrasting silhouette (black on the light basemap, white on dark),
+    // except under a rating highlight, which shares the trail layers and
+    // matches its outline to the rating's color (see highlightRating).
     // The ROUTE outline is luminance-matched to the highlighted route's
     // own color, or the scheme silhouette for single-color dashed routes
     // (see routeHighlightOutlineColor); re-applied here so a scheme
     // toggle mid-highlight recomputes it (the dashed case follows the
     // scheme, the rest keep their stroke-contrast pick).
     if (map.getLayer("trail-highlight-outline")) {
-        map.setPaintProperty("trail-highlight-outline", "line-color", t.highlightOutline);
+        map.setPaintProperty("trail-highlight-outline", "line-color",
+            highlight && highlight.kind === "rating"
+                ? ratingHighlightOutlineColor(highlight.key)
+                : t.highlightOutline);
     }
     if (map.getLayer("route-highlight-outline")) {
         const routeInfo = highlight && highlight.kind === "route"
@@ -736,13 +741,15 @@ function watchSystemColorScheme() {
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
 // emits CONFIG.defaultVisible as a list of layer names that should
-// default to ON; everything else defaults to OFF. Empty list (the
-// framework default) → minimal map, rider opts in via Options. The
-// YAML knob `default_visible: all` expands to the full layer list at
-// build time, so the runtime always sees a clean array. Persistence
-// semantics unchanged: once the rider toggles a layer, their LS
-// preference wins on subsequent visits, defaults only apply on
-// first visit (empty LS for that key).
+// default to ON; everything else defaults to OFF. An unset
+// `default_visible` becomes the framework's first-visit set (the
+// wayfinding layers: markers, trailheads, hubs, parking, amenities,
+// direction arrows), an explicit `[]` is the bare-map opt-out with
+// everything off, and `default_visible: all` expands to the full layer
+// list, all at build time, so the runtime always sees a clean array.
+// Persistence semantics unchanged: once the rider toggles a layer,
+// their LS preference wins on subsequent visits, defaults only apply
+// on first visit (empty LS for that key).
 function isDefaultVisible(name) {
     return (CONFIG.defaultVisible || []).includes(name);
 }
@@ -1879,6 +1886,9 @@ function computeDecorations() {
                         text: way.trailName,
                         trail_name: way.trailName,
                         shared_routes: way.sharedRoutes,
+                        // A rating highlight keeps its own ways' names
+                        // bright (ratingIdentityMatch).
+                        imba_difficulty: way.imba,
                     },
                 });
             }
@@ -1986,9 +1996,12 @@ function computeDecorations() {
                 trailLongest.set(way.trailName, way);
             }
         }
+        // The rating is the one under the label (its longest way), so
+        // on a rating highlight a bright name sits on a bright ribbon.
         for (const [tname, way] of trailLongest) {
             emitOverviewLabel(tname, way,
-                { kind: KIND.TRAIL_LABEL_PT, trail_name: tname });
+                { kind: KIND.TRAIL_LABEL_PT, trail_name: tname,
+                  imba_difficulty: way.imba });
         }
     }
 
@@ -2276,14 +2289,17 @@ function directionArrowsToggleOn() {
 
 // Build kind-filter + (optionally) highlight-filter for a decor layer.
 // The kind/min_zoom gate is non-negotiable; under spotlight dim we AND
-// in a shared_routes / trail_name match so non-highlighted decor goes
-// dark with the rest of the map.
+// in a shared_routes / trail_name / rating match so non-highlighted
+// decor goes dark with the rest of the map.
 function buildDecorFilter(kind) {
     const base = ["all",
         ["==", ["get", "kind"], kind],
         ["<=", ["get", "min_zoom"], ["zoom"]],
     ];
     if (!highlightDimActive()) return base;
+    if (highlight.kind === "rating") {
+        return ["all", ...base.slice(1), ratingIdentityMatch()];
+    }
     if (highlight.kind === "route") {
         return ["all", ...base.slice(1),
             ["in", highlight.key, ["get", "shared_routes"]]];
@@ -2316,7 +2332,9 @@ function buildChevronFilter(rev) {
         : false;
     f.push(rev ? revExpr : ["!", revExpr]);
     if (highlightDimActive()) {
-        if (highlight.kind === "route") {
+        if (highlight.kind === "rating") {
+            f.push(ratingIdentityMatch());
+        } else if (highlight.kind === "route") {
             f.push(["any",
                 ["==", ["get", "route_id"], highlight.key],
                 ["in", highlight.key, sharedOf]]);
@@ -2439,8 +2457,9 @@ if (isDifficultyMap() && labelMode === "routes") labelMode = "trails";
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
 let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 
-// Single-highlight invariant: at most one route OR trail highlighted.
-let highlight = null; // { kind: "route"|"trail", key: string } | null
+// Single-highlight invariant: at most one route, trail OR rating
+// highlighted. A rating key is "0".."5", or "" for unrated (wayRating).
+let highlight = null; // { kind: "route"|"trail"|"rating", key: string } | null
 
 // Indexes derived once at startup
 let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM, elevationGainM, elevationLossM }]
@@ -2822,7 +2841,7 @@ let _initialViewTarget = null;
 function applyPendingShareHighlight() {
     const h = _pendingShareHighlight;
     _pendingShareHighlight = null;
-    if (!h || !h.kind || !h.key) return;
+    if (!h || !h.kind || !highlightHasKey(h)) return;
     if (h.kind === "route") {
         // h.key is the OSM relation ID (or custom-route ID), matching
         // the keys of CONFIG.routes. Verify before calling.
@@ -2837,6 +2856,13 @@ function applyPendingShareHighlight() {
         if (trailIndex.some((t) => t.name === h.key)) {
             highlightTrail(h.key);
         }
+    } else if (h.kind === "rating") {
+        // h.key is a rating ("2", or "" for unrated). Applied only while
+        // the key would list it, so a link to a rating this map no
+        // longer shows (or a routes map) opens plain.
+        if (isDifficultyMap() && keyRatings().includes(h.key)) {
+            highlightRating(h.key);
+        }
     } else if (h.kind === "poi") {
         // h.key is a Finder row descriptor (poi:/group:/refgroup:/category:).
         // highlightPoiByRef resolves it against the live POI index and
@@ -2844,6 +2870,12 @@ function applyPendingShareHighlight() {
         // if nothing matches.
         highlightPoiByRef(h.key);
     }
+}
+
+// Whether a highlight descriptor names something. Only a rating key may
+// be empty: "" stands for unrated.
+function highlightHasKey(h) {
+    return !!h.key || (h.kind === "rating" && h.key === "");
 }
 
 // Build the "#share=..." URL for the current map view + active
@@ -2861,6 +2893,10 @@ function buildShareUrl() {
         path += `/r/${encodeURIComponent(highlight.key)}`;
     } else if (highlight && highlight.kind === "trail" && highlight.key) {
         path += `/t/${encodeURIComponent(highlight.key)}`;
+    } else if (highlight && highlight.kind === "rating") {
+        // Unrated ("") leaves the last segment empty; consumeShareHash
+        // reads that back as "".
+        path += `/d/${encodeURIComponent(highlight.key)}`;
     } else if (_poiHighlightRef) {
         // POI highlight (single, name-group, or category). The ref is the
         // Finder row's uid; mutually exclusive with `highlight` by the
@@ -2886,6 +2922,9 @@ function buildShareTitle() {
     }
     if (highlight && highlight.kind === "trail" && highlight.key) {
         return `${baseTitle}: ${highlight.key}`;
+    }
+    if (highlight && highlight.kind === "rating") {
+        return `${baseTitle}: ${ratingName(highlight.key)}`;
     }
     if (_poiHighlightRef && _highlightedPois.length) {
         const n = _highlightedPois.length;
@@ -2965,7 +3004,7 @@ function setupShareButton() {
     btn.addEventListener("click", shareCurrentView);
 }
 
-// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/p/<poiRef>]"
+// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/d/<rating>|/p/<poiRef>]"
 // hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
 // null if no share hash is present / parseable. Side effect: strips
 // the hash from the URL via history.replaceState so that
@@ -3007,8 +3046,11 @@ function consumeShareHash() {
             // Malformed escape - ignore the highlight portion.
         }
         if (key !== null) {
-            if (kindCode === "r") highlight = { kind: "route", key };
+            // A difficulty map has no route highlight (see
+            // highlightRoute), so an "r" link opens it plain.
+            if (kindCode === "r" && !isDifficultyMap()) highlight = { kind: "route", key };
             else if (kindCode === "t") highlight = { kind: "trail", key };
+            else if (kindCode === "d") highlight = { kind: "rating", key };
             else if (kindCode === "p") highlight = { kind: "poi", key };
         }
     }
@@ -3067,7 +3109,7 @@ function reloadForUpdate() {
         // highlights carry {kind, key}; a POI highlight (single,
         // group, or category) carries the Finder ref, re-expanded
         // against live data on the receiving side.
-        if (highlight && highlight.kind && highlight.key) {
+        if (highlight && highlight.kind && highlightHasKey(highlight)) {
             state.highlight = { kind: highlight.kind, key: highlight.key };
         } else if (_poiHighlightRef) {
             state.highlight = { kind: "poi", key: _poiHighlightRef };
@@ -3112,7 +3154,7 @@ function consumeResumeView() {
     return {
         center: s.center,
         zoom: s.zoom,
-        highlight: (h && h.kind && h.key)
+        highlight: (h && h.kind && highlightHasKey(h))
             ? { kind: String(h.kind), key: String(h.key) }
             : null,
     };
@@ -4333,7 +4375,9 @@ function _joinHumanList(items) {
 // Avoids the previous claim that every map has "(parking, water,
 // toilets, trailheads)" regardless of reality.
 function _welcomeSearchDescription() {
-    const targets = ["routes"];
+    // A difficulty map offers no routes to look up, only its trails
+    // (which the validator keeps on there).
+    const targets = isDifficultyMap() ? [] : ["routes"];
     if (CONFIG.showTrails !== false) targets.push("trails");
 
     // Specific POI types, order roughly follows the rhythm of a
@@ -4476,10 +4520,15 @@ function buildWelcomeControlsHint() {
             desc: "Reset the map to its starting view." },
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
-        { icon: _WELCOME_ICON_ROUTES,     name: "Routes",
-            desc: "Each route's color and name."
-                + " Tap a route to highlight it on the map"
-                + " or collapse the panel." },
+        isDifficultyMap()
+            ? { icon: _WELCOME_ICON_ROUTES, name: "Difficulty",
+                desc: "Each trail's color is its difficulty."
+                    + " Tap a level to highlight those trails"
+                    + " or collapse the panel." }
+            : { icon: _WELCOME_ICON_ROUTES,     name: "Routes",
+                desc: "Each route's color and name."
+                    + " Tap a route to highlight it on the map"
+                    + " or collapse the panel." },
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
             desc: _welcomeSearchDescription() },
     ];
@@ -5362,12 +5411,7 @@ function computeRouteGradeColors() {
         const g = f.geometry;
         if (!g || g.type !== "LineString") continue;
         const grade = isRatedDifficulty(p.imba_difficulty) ? String(Number(p.imba_difficulty)) : "";
-        let len = 0;
-        const c = g.coordinates;
-        for (let i = 1; i < c.length; i++) {
-            const dx = (c[i][0] - c[i - 1][0]) * Math.cos(c[i][1] * Math.PI / 180);
-            len += Math.hypot(dx, c[i][1] - c[i - 1][1]);
-        }
+        const len = lineLengthMeters(g.coordinates);
         let byGrade = lengths.get(String(p.route_id));
         if (!byGrade) lengths.set(String(p.route_id), (byGrade = new Map()));
         byGrade.set(grade, (byGrade.get(grade) || 0) + len);
@@ -5447,6 +5491,78 @@ function isRatedDifficulty(value) {
 function difficultyColor(value) {
     return isRatedDifficulty(value)
         ? IMBA_RATINGS[Number(value)].color : CONFIG.defaultTrailColor;
+}
+
+// A way's rating as the difficulty model keys it: "0".."5", or "" for
+// an unrated way. A value off the IMBA scale counts as unrated, since
+// that is how the map draws it (laneTrailStyle, gradeMatchExpr).
+function wayRating(value) {
+    return isRatedDifficulty(value) ? String(Number(value)) : "";
+}
+
+// The name a rider reads for a rating, as on the trailhead signs and
+// in the Options key strip.
+function ratingName(rating) {
+    return rating === "" ? "Unrated" : RATING_NAMES[Number(rating)];
+}
+
+// The unrated look as a routeSwatchModel-shaped object, so a key row or
+// the chip draws unrated ways the way the lanes do (laneTrailStyle's
+// default_trail_color, dash and cap).
+function unratedSwatchModel() {
+    return {
+        color: CONFIG.defaultTrailColor,
+        dashed: Array.isArray(CONFIG.defaultTrailDash) ? CONFIG.defaultTrailDash : null,
+        dashCap: CONFIG.defaultTrailCap || null,
+        dashColors: null,
+    };
+}
+
+// Length of a LineString in meters, by the equirectangular
+// approximation: across one way its error is far below anything a
+// displayed distance rounds to.
+function lineLengthMeters(coords) {
+    let len = 0;
+    for (let i = 1; i < coords.length; i++) {
+        const dx = (coords[i][0] - coords[i - 1][0]) * Math.cos(coords[i][1] * Math.PI / 180);
+        len += Math.hypot(dx, coords[i][1] - coords[i - 1][1]);
+    }
+    return len * _LAT_M_PER_DEG;
+}
+
+// Difficulty maps: rating -> meters of visible way, each shared way
+// counted once. Reads the lane plugin's input for the current
+// visibility pass (difficultyVisibleFeatures), so the key, the chip and
+// the map agree on what is visible; before the lane renderer has
+// started it computes that same set directly. Only ratings with visible
+// length are present. Cached against the feature array, which
+// refreshLaneGraph replaces on every visibility pass.
+let _ratingLengthsCache = null;  // { features, lengths }
+function ratingLengths() {
+    if (!routesData) return new Map();
+    const features = difficultyVisibleFeatures || difficultyLaneFeatures();
+    if (_ratingLengthsCache && _ratingLengthsCache.features === features) {
+        return _ratingLengthsCache.lengths;
+    }
+    const lengths = new Map();
+    for (const f of features) {
+        const len = lineLengthMeters(f.geometry.coordinates);
+        if (!(len > 0)) continue;
+        const rating = wayRating(f.properties.imba_difficulty);
+        lengths.set(rating, (lengths.get(rating) || 0) + len);
+    }
+    _ratingLengthsCache = { features, lengths };
+    return lengths;
+}
+
+// The ratings a difficulty key lists right now: every rating with visible
+// length, easiest first, then unrated last, where a curator reads it as
+// the data still to tag.
+function keyRatings() {
+    const lengths = ratingLengths();
+    const ratings = IMBA_RATINGS.map((_, i) => String(i)).filter((r) => lengths.has(r));
+    if (lengths.has("")) ratings.push("");
+    return ratings;
 }
 
 // ============================================================
@@ -5532,6 +5648,12 @@ function distanceToHighlighted(lng, lat) {
         if (highlight.kind === "route") {
             const shared = props.shared_routes || [props.route_id];
             match = shared.includes(highlight.key);
+        } else if (highlight.kind === "rating") {
+            // A rating spans routes the rider may have hidden, and only
+            // the ways on the map are highlighted.
+            const shared = props.shared_routes || [props.route_id];
+            match = wayRating(props.imba_difficulty) === highlight.key
+                && shared.some((id) => visibleRoutes.has(id));
         } else {
             match = props.trail_name === highlight.key;
         }
@@ -6474,14 +6596,24 @@ function labelDimExpr(normal, matchExprFn) {
 // highlight dims the whole label set (route mode AND trail mode) the
 // same way, not just whichever mode happens to be on screen.
 function routeIdentityMatch() {
+    if (highlight.kind === "rating") return ratingIdentityMatch();
     return highlight.kind === "route"
         ? ["==", ["get", "solo_route_id"], highlight.key]
         : ["==", ["get", "trail_name"], highlight.key];
 }
 function trailIdentityMatch() {
+    if (highlight.kind === "rating") return ratingIdentityMatch();
     return highlight.kind === "trail"
         ? ["==", ["get", "trail_name"], highlight.key]
         : ["in", highlight.key, ["get", "shared_routes"]];
+}
+// A rating highlight: the feature's own way has that rating. Read
+// through gradeMatchExpr so an off-scale value matches unrated, as the
+// map draws it; a feature with no rating at all (a route name) reads as
+// unrated too, which only matters on routes maps, where there are no
+// rating highlights.
+function ratingIdentityMatch() {
+    return ["==", gradeMatchExpr((r) => r), highlight.key];
 }
 
 function updateLabels() {
@@ -6782,6 +6914,10 @@ function initLaneRenderer() {
 // a way fact because the popup's one-way qualifier asks whether ANY
 // visible parent has a direction schedule, and the lane hit only names
 // the owner.
+//
+// Pure given routesData and visibleRoutes: refreshLaneGraph keeps the
+// result as difficultyVisibleFeatures, and ratingLengths calls this
+// directly when the lane renderer has not started yet.
 function difficultyLaneFeatures() {
     const schedules = CONFIG.directionSchedules || {};
     const runs = new Map();  // run key -> the run's copies, in file order
@@ -6816,7 +6952,6 @@ function difficultyLaneFeatures() {
             },
         });
     }
-    difficultyVisibleFeatures = out;
     return out;
 }
 
@@ -6839,7 +6974,8 @@ function refreshLaneGraph() {
         // Difficulty map: one lane per edge leaves nothing to order or
         // to hold in place, so no seed. Same options as the full graph,
         // plus the popup's reverses_by_day.
-        next = L.buildLineGraph(difficultyLaneFeatures(), {
+        difficultyVisibleFeatures = difficultyLaneFeatures();
+        next = L.buildLineGraph(difficultyVisibleFeatures, {
             routeProperty: "route_id",
             colorProperty: "route_colour",
             nameProperty: "route_name",
@@ -7000,17 +7136,21 @@ function refreshLaneHighlight() {
     const token = ++laneHighlightToken;
     const kind = highlight && highlight.kind;
     const key = highlight && highlight.key;
-    if (kind !== "route" && kind !== "trail") {
+    if (kind !== "route" && kind !== "trail" && kind !== "rating") {
         src.setData({ type: "FeatureCollection", features: [] });
         return;
     }
     // A trail spans routes, so that one lays the whole graph out
-    // (cached per zoom by the plugin) and cuts it down to the trail.
+    // (cached per zoom by the plugin) and cuts it down to the trail. A
+    // rating does the same, cut down to its ways.
+    const keep = kind === "rating"
+        ? (f) => wayRating(f.properties.imba_difficulty) === key
+        : (f) => f.properties.trail_name === key;
     const wanted = kind === "route"
         ? laneFeatureCollectionAsync({ extent: "full", routes: [key] })
         : laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
             type: "FeatureCollection",
-            features: all.features.filter((f) => f.properties.trail_name === key),
+            features: all.features.filter(keep),
         }));
     wanted.then((fc) => {
         if (token === laneHighlightToken) src.setData(fc);
@@ -7223,6 +7363,11 @@ function _refreshVisibilityDependents() {
             if (!t || !t.routeIds.some((rid) => visibleRoutes.has(rid))) {
                 clearHighlight();
             }
+        } else if (highlight.kind === "rating") {
+            // Gone with its key row when no visible way of that rating is
+            // left; otherwise its length may have changed.
+            if (!keyRatings().includes(highlight.key)) clearHighlight();
+            else refreshRatingChipStats();
         }
     }
 }
@@ -7375,8 +7520,8 @@ function highlightDimActive() {
 
 // Per-route clip-arrow visibility. Clip-arrow layers are route-scoped
 // (one layer per route), so this is straight visibility toggling.
-// Trail highlights hide every clip-arrow since they're a route-level
-// concept.
+// Trail and rating highlights hide every clip-arrow since they're a
+// route-level concept.
 function updateClipArrowsDim() {
     const dim = highlightDimActive();
     for (const routeId of Object.keys(CONFIG.routes)) {
@@ -7560,6 +7705,10 @@ function gradeMatchExpr(pick) {
 function highlightRoute(routeId) {
     const info = CONFIG.routes[routeId];
     if (!info) return;
+    // A difficulty map draws each way once, under one owner route, so
+    // the lane highlight source cannot hold a whole route there; an old
+    // route share link or a stale caller would draw part of one.
+    if (isDifficultyMap()) return;
     // Single-highlight invariant across kinds: drop any POI highlight
     // (rings, force-mounted markers, open popup) before lighting a
     // route. The route/trail filters clear each other inline below.
@@ -7697,6 +7846,12 @@ function highlightTrail(trailName) {
             map.setPaintProperty(layerId, "line-color", highlighter);
         }
     }
+    // Back to the scheme silhouette: a rating highlight on these same
+    // layers may have left its own outline color.
+    if (map.getLayer("trail-highlight-outline")) {
+        map.setPaintProperty("trail-highlight-outline", "line-color",
+            mapPaintTokens().highlightOutline);
+    }
     // The ribbon source holds the trail's lanes, filled before the
     // filters expose the layers.
     refreshLaneHighlight();
@@ -7723,6 +7878,80 @@ function highlightTrail(trailName) {
     // A trail highlight is not a route highlight, clear any panel
     // key row marked from a previous route selection.
     syncRoutePanelActiveRow();
+}
+
+// Outline of a rating highlight: luminance-matched to the rating's color,
+// the rule route highlights follow (highlightOutlineForColor), so a
+// black diamond keeps a light edge under the dark spotlight wash
+// instead of vanishing into it.
+function ratingHighlightOutlineColor(rating) {
+    return highlightOutlineForColor(difficultyColor(rating));
+}
+
+// Every visible way with one rating, from a difficulty key row or a share
+// link. The ribbon reuses the trail highlight layers (a rating, like a
+// trail, is a set of ways, and the lane highlight source is cut down to
+// it in refreshLaneHighlight) in the rating's own color, so the
+// selection reads as the unselected look, thicker, with an outline. No
+// camera move: a rating spans the map, and fitting to it would all but
+// reset the view.
+function highlightRating(rating) {
+    if (!isDifficultyMap()) return;
+    clearPoiHighlight();
+    closeTrailPopup();
+    highlight = { kind: "rating", key: rating };
+
+    // Paint before filter, the flash-prevention order highlightRoute
+    // explains.
+    const color = difficultyColor(rating);
+    for (const layerId of TRAIL_TINTED_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, "line-color", color);
+        }
+    }
+    if (map.getLayer("trail-highlight-outline")) {
+        map.setPaintProperty("trail-highlight-outline", "line-color",
+            ratingHighlightOutlineColor(rating));
+    }
+    refreshLaneHighlight();
+    const ratingFilter = ["==", gradeMatchExpr((r) => r), rating];
+    for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(layerId)) {
+            map.setFilter(layerId, ratingFilter);
+        }
+    }
+    for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(layerId)) {
+            map.setFilter(layerId, ROUTE_NONE_FILTER);
+        }
+    }
+
+    // The chip carries the key row's own glyph (or the unrated line)
+    // and, where the map shows distances, the rating's visible length.
+    showHighlightChip({
+        label: ratingName(rating),
+        glyph: rating === "" ? null : difficultyIconDataUrl(rating),
+        line: rating === "" ? unratedSwatchModel() : null,
+        stats: ratingStatsText(rating),
+    });
+
+    applyDimState();
+    syncRoutePanelActiveRow();
+}
+
+// A rating's distance for its key row and chip, in the rider's units;
+// "" when the map does not show distances.
+function ratingStatsText(rating) {
+    if (!CONFIG.showDistance) return "";
+    const meters = ratingLengths().get(rating);
+    return meters ? formatDistance(meters) : "";
+}
+
+// The highlighted rating's chip distance, after the rider changes units
+// or a visibility toggle changes how much of the rating is on the map.
+function refreshRatingChipStats() {
+    const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
+    if (statsEl && CONFIG.showDistance) statsEl.textContent = ratingStatsText(highlight.key);
 }
 
 // Pending deferred-popup state for the single-POI highlight path.
@@ -8428,7 +8657,7 @@ function fitToRouteOrTrail({ routeId, trailName }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note, line, poiType, markerLabel }) {
+function showHighlightChip({ label, color, stats, note, line, glyph, poiType, markerLabel }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
@@ -8448,6 +8677,13 @@ function showHighlightChip({ label, color, stats, note, line, poiType, markerLab
         let next;
         if (line) {
             next = routeSwatchEl(line, "highlight-chip-swatch is-line");
+        } else if (glyph) {
+            // A rating highlight: the difficulty key row's glyph, a
+            // data URL from difficultyIconDataUrl.
+            next = document.createElement("img");
+            next.className = "highlight-chip-swatch is-glyph";
+            next.src = glyph;
+            next.alt = "";
         } else if (poiType) {
             // The search row's icon (same .layer-swatch recipe), sized
             // for the chip by .highlight-chip-swatch.is-poi.
@@ -8587,6 +8823,11 @@ function rebuildRoutePanel() {
     // next season flip repopulates it.
     wrap.classList.remove("hidden");
 
+    if (isDifficultyMap()) {
+        rebuildRatingRows(list);
+        return;
+    }
+
     const rows = panelListableRoutes();
     list.textContent = "";
     for (const r of rows) {
@@ -8636,6 +8877,60 @@ function rebuildRoutePanel() {
     syncRoutePanelActiveRow();
 }
 
+// A difficulty map's key rows: one per rating on the map right now
+// (keyRatings), so a season toggle that hides every blue way drops the
+// blue row. Each row pairs the rating's glyph (the canvas the map's own
+// symbols and the Options key strip use, so nothing can drift) with its
+// name and, where the map shows distances, its visible length. Unrated
+// takes the unrated line swatch, since it has no glyph. Tapping a row
+// toggles that rating's highlight, as a route row toggles its route.
+function rebuildRatingRows(list) {
+    list.textContent = "";
+    for (const rating of keyRatings()) {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "route-panel-row";
+        btn.dataset.rating = rating;
+
+        if (rating === "") {
+            btn.appendChild(routeSwatchEl(unratedSwatchModel(), "route-panel-swatch"));
+        } else {
+            const glyph = document.createElement("img");
+            glyph.className = "route-panel-glyph";
+            glyph.src = difficultyIconDataUrl(rating);
+            // Decorative: the name beside it carries the meaning.
+            glyph.alt = "";
+            btn.appendChild(glyph);
+        }
+
+        const name = document.createElement("span");
+        name.className = "route-panel-row-name";
+        name.textContent = ratingName(rating);
+        btn.appendChild(name);
+
+        const stats = ratingStatsText(rating);
+        if (stats) {
+            const statsEl = document.createElement("span");
+            statsEl.className = "route-panel-row-stats";
+            statsEl.textContent = stats;
+            btn.appendChild(statsEl);
+        }
+
+        btn.addEventListener("click", () => {
+            if (highlight && highlight.kind === "rating" && highlight.key === rating) {
+                clearHighlight();
+            } else {
+                highlightRating(rating);
+            }
+        });
+
+        li.appendChild(btn);
+        list.appendChild(li);
+    }
+    syncRoutePanelActiveRow();
+}
+
 // Mark the currently-highlighted route's key row (accent stripe via
 // .is-active + aria-current) and clear every other row's mark. Reads
 // the global highlight state rather than taking a parameter so every
@@ -8648,8 +8943,14 @@ function syncRoutePanelActiveRow() {
     if (!list) return;
     const activeId = (highlight && highlight.kind === "route")
         ? String(highlight.key) : null;
+    // Rating rows (difficulty maps) carry data-rating instead, "" for
+    // unrated, hence the explicit null.
+    const activeRating = (highlight && highlight.kind === "rating")
+        ? highlight.key : null;
     for (const btn of list.querySelectorAll(".route-panel-row")) {
-        const on = activeId !== null && btn.dataset.routeId === activeId;
+        const on = "rating" in btn.dataset
+            ? activeRating !== null && btn.dataset.rating === activeRating
+            : activeId !== null && btn.dataset.routeId === activeId;
         btn.classList.toggle("is-active", on);
         if (on) btn.setAttribute("aria-current", "true");
         else btn.removeAttribute("aria-current");
@@ -8669,6 +8970,7 @@ function initRoutePanel() {
     // .no-key form); a stored preference from a key this map used to
     // have must not pull the chip back.
     if (CONFIG.routeKey === false) return;
+    if (isDifficultyMap()) labelDifficultyKey(chip, collapseBtn);
 
     const applyCollapsed = (collapsed) => {
         wrap.classList.toggle("is-collapsed", collapsed);
@@ -8712,6 +9014,17 @@ function initRoutePanel() {
         LS.set("mtb.routePanelExpanded", false);
         if (_lastInputWasKeyboard) chip.focus();
     });
+}
+
+// index.html names the panel for the routes model, which both models
+// share, so a difficulty map renames its key once at boot.
+function labelDifficultyKey(chip, collapseBtn) {
+    const card = document.getElementById("route-panel-card");
+    const title = card && card.querySelector(".route-panel-title");
+    if (title) title.textContent = "Difficulty";
+    if (card) card.setAttribute("aria-label", "Difficulty");
+    collapseBtn.setAttribute("aria-label", "Collapse difficulty key");
+    chip.setAttribute("aria-label", "Show difficulty key");
 }
 
 // Viewport-aware boot default when the rider has no stored preference.
@@ -9570,7 +9883,8 @@ function setupFabLabels() {
     const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
-        label.textContent = noKey ? "Search" : "Route key";
+        label.textContent = noKey ? "Search"
+            : isDifficultyMap() ? "Difficulty key" : "Route key";
         label.setAttribute("aria-hidden", "true");
         (noKey ? document.getElementById("route-panel-search") : panelChip).appendChild(label);
         mounted.push({ btn: panel, label });
@@ -9781,7 +10095,12 @@ function setupFloatingChrome() {
                 finderInput.placeholder = placeholder;
                 finderInput.setAttribute("aria-label", ariaLabel);
             }
-            if (searchBtn) searchBtn.setAttribute("aria-label", ariaLabel);
+            if (searchBtn) {
+                // A difficulty map offers no routes to look up.
+                searchBtn.setAttribute("aria-label", isDifficultyMap()
+                    ? `Search ${_joinHumanList(targets.filter((x) => x !== "routes"))}`
+                    : ariaLabel);
+            }
             if (searchOverlay) searchOverlay.setAttribute("aria-label", ariaLabel);
         }
     }
@@ -12821,6 +13140,8 @@ function setDistanceUnits(units) {
         const r = routeIndex.find((x) => String(x.id) === String(highlight.key));
         const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
         if (r && statsEl && statsEl.textContent) statsEl.textContent = routeStatsText(r);
+    } else if (highlight && highlight.kind === "rating") {
+        refreshRatingChipStats();
     }
     updateLocationIndicator();
     applyContourUnits();

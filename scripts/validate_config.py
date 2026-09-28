@@ -179,9 +179,9 @@ BUILD_ONLY_KEYS = {
     # Route stats: gates the build-time computation in
     # compute_route_stats.py. The values themselves flow into the
     # runtime via per-route metadata (CONFIG.routes[id].distance_m /
-    # elevation_gain_m), not through CONFIG_SPEC. Both are pure
-    # build-time gates from the config schema's perspective.
-    "show_distance",
+    # elevation_gain_m), not through CONFIG_SPEC. show_distance is also
+    # in CONFIG_SPEC because difficulty maps sum per-rating distances at
+    # runtime; show_elevation stays a pure build-time gate.
     "show_elevation",
     # Style overrides folded into per-route metadata at build time
     # (relation_colors / dashed_relations / direction_schedule are
