@@ -1225,6 +1225,29 @@ DEFAULT_VISIBLE_LAYERS = {
     "direction_arrows",
 }
 
+# The first-visit ON set when `default_visible` is left unset. A layer
+# that starts on advertises itself; when every layer started hidden,
+# riders discovered nothing without opening Options first. `features`
+# and `difficulty` stay off by default (map-specific styling choices,
+# not safety- or wayfinding-critical), and `emergency` stays off (it
+# is a rare-use overlay, not a first-visit concern). `default_visible:
+# []` remains the explicit bare-map opt-out and is unaffected by this set.
+DEFAULT_FIRST_VISIT_LAYERS = frozenset(
+    {
+        "trail_markers",
+        "trailheads",
+        "hubs",
+        "parking",
+        "toilets",
+        "drinking_water",
+        "bicycle_repair_stations",
+        "direction_arrows",
+    }
+)
+assert DEFAULT_FIRST_VISIT_LAYERS <= DEFAULT_VISIBLE_LAYERS, (
+    "DEFAULT_FIRST_VISIT_LAYERS must be a subset of DEFAULT_VISIBLE_LAYERS"
+)
+
 
 _ACCENT_COLOR_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -1283,8 +1306,11 @@ def _check_layer_list(report, key, val):
 def _validate_default_visible(report, config):
     """Validate the optional `default_visible` key.
 
-    Three forms accepted:
-      - omitted: every layer toggle defaults to OFF on first visit
+    Four forms accepted:
+      - omitted (or null): DEFAULT_FIRST_VISIT_LAYERS default to ON,
+        everything else defaults to OFF
+      - []: every layer toggle defaults to OFF on first visit (the
+        bare-map opt-out)
       - the literal string "all": every supported layer defaults to ON
       - list of layer names: those layers default to ON; everything
         else defaults to OFF

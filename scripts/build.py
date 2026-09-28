@@ -1419,23 +1419,27 @@ def main(argv=None):
     # Safety warning: a map with one-way trails should normally
     # surface the direction-arrow layer by default, otherwise a
     # first-visit rider on a flow trail won't see which way they're
-    # supposed to ride. Detect oneway segments in trails_geojson and
-    # warn if direction_arrows isn't included in default_visible.
-    # Skip the warning when forced_visible includes direction_arrows
-    # (the layer is forced on at every visit, so default_visible is
-    # irrelevant). Event mode adds direction_arrows to forced_visible
-    # above when event_mode.direction_arrows: true, so the warning is
-    # naturally suppressed for event maps.
+    # supposed to ride. An unset default_visible already turns arrows
+    # on (DEFAULT_FIRST_VISIT_LAYERS includes direction_arrows), so
+    # this only needs to catch the case where the curator wrote an
+    # explicit list (or []) that leaves arrows out. Skip the warning
+    # when forced_visible includes direction_arrows (the layer is
+    # forced on at every visit, so default_visible is irrelevant).
+    # Event mode adds direction_arrows to forced_visible above when
+    # event_mode.direction_arrows: true, so the warning is naturally
+    # suppressed for event maps.
     raw_dv = config.get("default_visible")
     raw_fv = config.get("forced_visible")
     arrows_suppressed = config.get("show_direction_arrows", True) is False
     arrows_default_on = (
-        raw_dv == "all"
+        raw_dv is None
+        or raw_dv == "all"
         or (isinstance(raw_dv, list) and "direction_arrows" in raw_dv)
         or raw_fv == "all"
         or (isinstance(raw_fv, list) and "direction_arrows" in raw_fv)
     )
-    if not arrows_default_on and not arrows_suppressed:
+    explicit_dv_omits_arrows = isinstance(raw_dv, list) and "direction_arrows" not in raw_dv
+    if explicit_dv_omits_arrows and not arrows_default_on and not arrows_suppressed:
         oneway_count = 0
         for f in trails_geojson.get("features") or []:
             ow = (f.get("properties") or {}).get("oneway")
@@ -1445,9 +1449,9 @@ def main(argv=None):
             console.warn(
                 f"Map has {oneway_count} one-way trail segment(s) "
                 "but direction_arrows is not in default_visible. Riders "
-                "won't see directional indicators on first visit - "
-                "consider adding 'direction_arrows' to default_visible "
-                "(or use default_visible: all)."
+                "won't see directional indicators on first visit. "
+                "Leaving default_visible unset turns arrows on, or add "
+                "'direction_arrows' to the default_visible list."
             )
 
     # Enrich trails.geojson with the three non-exclusive bucket flags

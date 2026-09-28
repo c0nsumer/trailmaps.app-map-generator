@@ -202,7 +202,9 @@ relations:
 # Display
 # ============================================================
 
-# First-visit layers ON. [] = all off, "all" = all on, or a list of layer names.
+# First-visit layers ON. Unset = markers, trailheads, hubs, parking, toilets,
+# water, repair stations, direction arrows. [] = all off, "all" = all on, or a
+# list of layer names.
 # default_visible: []
 
 # Layers forced ON with their toggle hidden. Same forms as default_visible.

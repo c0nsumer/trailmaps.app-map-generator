@@ -249,7 +249,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_visible` | No | `[]` | First-visit visibility for layer toggles. Three accepted forms. Omitted or an empty list: everything off; riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** maps with one-way trails should normally include `direction_arrows`, use `"all"`, or list it in `forced_visible`. The build prints a warning if one-way trails exist but `direction_arrows` isn't in either list. |
+| `default_visible` | No | _(see description)_ | First-visit visibility for layer toggles. Four accepted forms. If unset (omitted or `null`), these layers default on: `trail_markers`, `trailheads`, `hubs`, `parking`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `direction_arrows`. The rest (`features`, `difficulty`, `emergency`) default off. An empty list (`[]`) is the bare-map opt-out: everything off, riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** leaving `default_visible` unset already turns `direction_arrows` on for maps with one-way trails. If you set an explicit list (including `[]`), add `direction_arrows` to it, use `"all"`, or list it in `forced_visible`, so riders still see the arrows. The build prints a warning when one-way trails exist and an explicit `default_visible` list omits `direction_arrows` with no coverage from `forced_visible`. |
 | `forced_visible` | No | `[]` | Layers rendered on regardless of `localStorage` or `default_visible`. Their toggle is hidden, so the rider cannot turn them off. Same forms and layer names as `default_visible`. Use for safety-critical layers (`direction_arrows` on flow trails) or any layer that must always show. Subordinate to the `show_*` gates: a layer suppressed by `show_X: false`, or with no data, has nothing to force on. |
 | `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. The rider opts into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`). |
@@ -664,12 +664,14 @@ Three keys interact, from outermost to innermost:
    is nothing to force on. Use for safety-critical maps where wrong-way travel on
    flow trails would be dangerous.
 3. `default_visible` controls the toggle's initial state when neither list above
-   names `direction_arrows`. Include it (or use `default_visible: all`) to show
-   arrows at first visit; omit it to start with them off. The rider can flip
-   the toggle, and that choice persists.
+   names `direction_arrows`. If `default_visible` is unset, arrows start on.
+   An empty list (`[]`) or an explicit list that omits `direction_arrows`
+   starts them off instead. Include `direction_arrows` in the list (or use
+   `default_visible: all`) to start them on. The rider can flip the toggle,
+   and that choice persists.
 
-The default behavior (no key set) is: arrows allowed, toggle in Options,
-initial state from `default_visible`.
+The default behavior (no keys set) is: arrows allowed, toggle in Options,
+on at first visit.
 
 The toggle row also hides when the map has no oneway-tagged trail features,
 since no arrows would render anyway. This runtime gate is driven by the trails
@@ -908,9 +910,10 @@ Junction"). Distinct POI type from Trailheads:
   "Get Directions" link would only mislead them into routing toward a forest
   junction. The inline name is the entire signal a rider needs.
 - **Options toggle:** independent from Trailheads (`Hubs`). Auto-hides
-  when no hubs are configured for the map. First-visit visibility is
-  controlled by `default_visible` (include `hubs` to default on); the
-  rider's choice persists in localStorage (`mtb.poi.hubs`).
+  when no hubs are configured for the map. Hubs default on when
+  `default_visible` is unset. An empty list or a list that omits `hubs`
+  starts them off instead. The rider's choice persists in localStorage
+  (`mtb.poi.hubs`).
 - **Search integration:** hubs appear in the Search overlay's POI scope
   alongside trailheads and parking; tap a result to pan and ring-pulse the
   marker (no popup, since there is none).

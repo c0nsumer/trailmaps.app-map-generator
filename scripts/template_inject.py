@@ -28,6 +28,7 @@ from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
 from pmtiles_util import extract_minzoom
 from validate_config import (
+    DEFAULT_FIRST_VISIT_LAYERS,
     DEFAULT_VISIBLE_LAYERS,
     VALID_DAYS,
     match_day_token,
@@ -745,10 +746,15 @@ def inject_config_into_template(template_content, config, trails_geojson):
         welcome = welcome if isinstance(welcome, dict) and welcome else None
     config_obj["welcome"] = welcome
     # default_visible: list of layer names that default to ON for
-    # first-visit riders. Three accepted YAML forms:
-    #   - omitted: empty list (everything off)
+    # first-visit riders. Four accepted YAML forms:
+    #   - omitted (or null): the DEFAULT_FIRST_VISIT_LAYERS set, so a
+    #     first-visit rider sees markers, trailheads, hubs, parking,
+    #     toilets, water, repair stations, and direction arrows without
+    #     opening Options. `features`, `difficulty`, and `emergency`
+    #     stay off (map-specific or rare-use, not wayfinding-critical).
+    #   - []:      explicit bare-map opt-out, everything off
     #   - "all":   expand to the full layer list
-    #   - list:   pass through (validator already checked names)
+    #   - list:    pass through (validator already checked names)
     # Runtime always sees a list, so isDefaultVisible() can do a
     # plain .includes() check.
     raw_default_visible = config.get("default_visible")
@@ -756,6 +762,8 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultVisible"] = sorted(DEFAULT_VISIBLE_LAYERS)
     elif isinstance(raw_default_visible, list):
         config_obj["defaultVisible"] = list(raw_default_visible)
+    elif raw_default_visible is None:
+        config_obj["defaultVisible"] = sorted(DEFAULT_FIRST_VISIT_LAYERS)
     else:
         config_obj["defaultVisible"] = []
     # forced_visible: list of layer names whose toggle row is hidden
