@@ -747,6 +747,15 @@ function isDefaultVisible(name) {
     return (CONFIG.defaultVisible || []).includes(name);
 }
 
+// The map model, fixed at build time by `color_by`. A routes map (the
+// default) colors each relation and bundles the routes sharing a way
+// into parallel lanes; a difficulty map colors each way by its IMBA
+// grade and draws it once, so everything a rider sees there is keyed
+// on the way (its name and grade) rather than on relations.
+function isDifficultyMap() {
+    return CONFIG.colorBy === "difficulty";
+}
+
 // Curator-forced visibility: when a layer name appears in
 // CONFIG.forcedVisible, the toggle row is hidden in setupFloatingChrome
 // and the layer is rendered visible at boot regardless of LS state /
@@ -1816,11 +1825,15 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 // direction is NOT placed here anymore; the decor-chevron-* line
 // symbol layers own it.)
 // Event mode restricts route-name labels to the featured route(s) so
-// the muted background network never labels itself. Non-event maps
+// the muted background network never labels itself. Other routes maps
 // label every route, so this gate is a no-op there. Mirrors the
 // per-route shared-way label layers, which are only created for
 // featured routes (see the trail-label-<id> addLayer loop).
+//
+// Difficulty maps have no route labels at all, so nothing is emitted
+// and no footprint is reserved for a label that could never show.
 function routeLabelAllowed(rid) {
+    if (isDifficultyMap()) return false;
     if (!CONFIG.eventModeActive) return true;
     return !!(CONFIG.routes[rid] && CONFIG.routes[rid].featured);
 }
@@ -2109,33 +2122,36 @@ function addDecorationLayers() {
         },
     });
 
-    map.addLayer({
-        id: "decor-route-name",
-        type: "symbol",
-        source: "trail-decorations",
-        minzoom: LABEL_CROSSOVER_ZOOM,
-        filter: ["all",
-            ["==", ["get", "kind"], KIND.ROUTE_NAME],
-            ["<=", ["get", "min_zoom"], ["zoom"]],
-        ],
-        layout: {
-            "symbol-placement": "line",
-            "text-field": ["get", "text"],
-            "text-font": ["Noto Sans Regular"],
-            "text-size": ["interpolate", ["linear"], ["zoom"],
-                10, 10, 14, 13, 18, 16],
-            "text-max-angle": 45,
-            "text-padding": 3,
-            "symbol-spacing": 250,
-            "text-optional": true,
-            "visibility": labelMode === "routes" ? "visible" : "none",
-        },
-        paint: {
-            "text-color": "#1a1a1a",
-            "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 3,
-        },
-    });
+    // No route-name labels on a difficulty map (see routeLabelAllowed).
+    if (!isDifficultyMap()) {
+        map.addLayer({
+            id: "decor-route-name",
+            type: "symbol",
+            source: "trail-decorations",
+            minzoom: LABEL_CROSSOVER_ZOOM,
+            filter: ["all",
+                ["==", ["get", "kind"], KIND.ROUTE_NAME],
+                ["<=", ["get", "min_zoom"], ["zoom"]],
+            ],
+            layout: {
+                "symbol-placement": "line",
+                "text-field": ["get", "text"],
+                "text-font": ["Noto Sans Regular"],
+                "text-size": ["interpolate", ["linear"], ["zoom"],
+                    10, 10, 14, 13, 18, 16],
+                "text-max-angle": 45,
+                "text-padding": 3,
+                "symbol-spacing": 250,
+                "text-optional": true,
+                "visibility": labelMode === "routes" ? "visible" : "none",
+            },
+            paint: {
+                "text-color": "#1a1a1a",
+                "text-halo-color": "rgba(255,255,255,0.9)",
+                "text-halo-width": 3,
+            },
+        });
+    }
 
     if (CONFIG.showDifficulty) {
         map.addLayer({
@@ -2183,33 +2199,35 @@ function addDecorationLayers() {
     // where curve text can't fit yet (see the OVERVIEW_LABEL_MAX_ZOOM
     // comment). symbol-sort-key (negative length) makes the longest names win
     // MapLibre's overlap drop among themselves.
-    map.addLayer({
-        id: "decor-route-name-pt",
-        type: "symbol",
-        source: "trail-decorations",
-        maxzoom: OVERVIEW_LABEL_MAX_ZOOM,
-        filter: ["all",
-            ["==", ["get", "kind"], KIND.ROUTE_LABEL_PT],
-            ["<=", ["get", "min_zoom"], ["zoom"]],
-        ],
-        layout: {
-            "symbol-placement": "point",
-            "text-field": ["get", "text"],
-            "text-font": ["Noto Sans Regular"],
-            // Track the line label's growth (10->14:13, 18:16) so where the
-            // overview label persists into the on-path band it doesn't read
-            // frozen-small next to its neighbors.
-            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13, 18, 15],
-            "text-padding": 4,
-            "symbol-sort-key": ["get", "symbol_sort_key"],
-            "visibility": labelMode === "routes" ? "visible" : "none",
-        },
-        paint: {
-            "text-color": "#1a1a1a",
-            "text-halo-color": "rgba(255,255,255,0.9)",
-            "text-halo-width": 3,
-        },
-    });
+    if (!isDifficultyMap()) {
+        map.addLayer({
+            id: "decor-route-name-pt",
+            type: "symbol",
+            source: "trail-decorations",
+            maxzoom: OVERVIEW_LABEL_MAX_ZOOM,
+            filter: ["all",
+                ["==", ["get", "kind"], KIND.ROUTE_LABEL_PT],
+                ["<=", ["get", "min_zoom"], ["zoom"]],
+            ],
+            layout: {
+                "symbol-placement": "point",
+                "text-field": ["get", "text"],
+                "text-font": ["Noto Sans Regular"],
+                // Track the line label's growth (10->14:13, 18:16) so where the
+                // overview label persists into the on-path band it doesn't read
+                // frozen-small next to its neighbors.
+                "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 13, 13, 18, 15],
+                "text-padding": 4,
+                "symbol-sort-key": ["get", "symbol_sort_key"],
+                "visibility": labelMode === "routes" ? "visible" : "none",
+            },
+            paint: {
+                "text-color": "#1a1a1a",
+                "text-halo-color": "rgba(255,255,255,0.9)",
+                "text-halo-width": 3,
+            },
+        });
+    }
     map.addLayer({
         id: "decor-trail-name-pt",
         type: "symbol",
@@ -2411,6 +2429,11 @@ let labelMode = CONFIG.eventModeActive
     : (CONFIG.forcedLabels
         ? CONFIG.forcedLabels
         : LS.get("mtb.labels", CONFIG.defaultLabels || "none"));
+// A difficulty map has no route labels. A stored "routes" (the map was
+// a routes map on an earlier visit) reads as the trail names, the
+// nearest thing it still offers; the layers below are created from
+// this value, before the Labels control gets its own chance to coerce.
+if (isDifficultyMap() && labelMode === "routes") labelMode = "trails";
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
@@ -5302,7 +5325,7 @@ async function addContourLayers(beforeLayer) {
 
 // Resolve the color a route appears as on the map, in priority order:
 //   1. dashed_relations[id].colors[0], explicit dash colors beat anything
-//   2. under color_by: trail, the IMBA color of the grade most of the
+//   2. under color_by: difficulty, the IMBA color of the grade most of the
 //      route's length carries (routeGradeColors), since that is what
 //      the map draws; a route's own colour is not on the map there
 //   3. routeInfo.colour, from OSM `colour` tag or relation_colors override
@@ -5319,7 +5342,7 @@ function effectiveRouteColor(routeInfo) {
     return CONFIG.defaultTrailColor;
 }
 
-// color_by: trail. CONFIG.routes entry -> the IMBA color of the grade
+// color_by: difficulty. CONFIG.routes entry -> the IMBA color of the grade
 // that most of the route's length carries, so a key row, a finder
 // row, the highlight chip and a popup's route rows show what the map
 // draws instead of the default grey every uncolored route got. On a
@@ -5327,12 +5350,12 @@ function effectiveRouteColor(routeInfo) {
 // so this is exactly the trail's color; a route that mixes grades
 // shows its dominant one (the highlight ribbon itself is colored per
 // way, see routeHighlightStrokeColor). Built once the trail data is
-// loaded; null under color_by: relation so effectiveRouteColor keeps
+// loaded; null under color_by: route so effectiveRouteColor keeps
 // its old answers there.
 let routeGradeColors = null;
 function computeRouteGradeColors() {
     routeGradeColors = null;
-    if (CONFIG.colorBy !== "trail" || !routesData) return;
+    if (!isDifficultyMap() || !routesData) return;
     const lengths = new Map();  // route id -> { grade -> length }
     for (const f of routesData.features) {
         const p = f.properties;
@@ -5368,7 +5391,7 @@ function computeRouteGradeColors() {
 // prior casingFromFill approach) gave dark fills a translucent-light
 // casing that vanished on the light basemap, so blue/black trails read
 // skinny (and, symmetrically, light trails would in dark mode). Both
-// relation mode and color_by:trail share this one value, so every trail
+// map models (color_by: route and difficulty) share this one value, so every trail
 // gets the same visible halo regardless of difficulty/route color. The
 // colors live in MAP_PAINT_TOKENS so applyMapPaintForScheme() can
 // re-apply them on a scheme toggle.
@@ -5959,6 +5982,7 @@ async function loadTrails() {
 
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
+        if (isDifficultyMap()) stampClipEndpointGrades();
         for (const f of clipEndpointsData.features) {
             const ids = f.properties.route_ids || [];
             let n = 0;
@@ -6042,12 +6066,17 @@ async function loadTrails() {
             //   single route →
             //     fill with the route's actual color; halo contrasts the
             //     basemap via the scheme (see clipArrowHaloExpr), matching
-            //     the trail casing and highlight outline.
+            //     the trail casing and highlight outline. On a difficulty
+            //     map the route's color is not on the map, so the arrow
+            //     takes the grade of the way it continues (stamped by
+            //     stampClipEndpointGrades).
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
                 sharedArrowColor(),
-                effectiveRouteColor(routeInfo),
+                isDifficultyMap()
+                    ? gradeMatchExpr(difficultyColor)
+                    : effectiveRouteColor(routeInfo),
             ];
             const haloCol = clipArrowHaloExpr();
             map.addLayer({
@@ -6322,9 +6351,13 @@ async function loadTrails() {
     // somehow flips labelMode. Saves layer churn and removes a class
     // of bug where a hidden segmented-control click could surface
     // background labels.
+    //
+    // Difficulty maps label trails only (the Labels control offers
+    // Trails / None), so no route gets one.
     for (let li = 0; li < sortedRoutes.length; li++) {
         const [routeId, routeInfo] = sortedRoutes[li];
         if (CONFIG.eventModeActive && !routeInfo.featured) continue;
+        if (isDifficultyMap()) continue;
 
         // Stagger labels along the line so shared-segment route names
         // don't stack up. With symbol-placement "line", text-offset x
@@ -6609,6 +6642,10 @@ let laneLayer = null;        // LaneLayer, once the first ordering resolves
 let laneGraphFull = null;    // graph over every route in trails.geojson
 let laneGraph = null;        // laneGraphFull filtered to visibleRoutes
 let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
+// Difficulty maps: the plugin input for the current visibility pass,
+// one feature per visible way run (see difficultyLaneFeatures). Null
+// on a routes map, and until the lane renderer has started.
+let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
 const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
@@ -6642,17 +6679,28 @@ function laneCasingColor() {
     return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
 }
 
-// color_by: trail, per way rather than per route: rated ways solid in
-// the IMBA palette, unrated ways in default_trail_color with its own
+// color_by: difficulty, per way rather than per route: rated ways solid
+// in the IMBA palette, unrated ways in default_trail_color with its own
 // dash and cap. The lane layer asks per (edge, route), and each field
 // this does not return falls back
 // to the route's own, so a rated way on a dashed route keeps that
 // route's dash. Connectors take the arriving edge's look, which is the
 // plugin's rule and keeps a way-level dash from flickering through
 // junctions. Only the first dash/gap pair carries over, as for routes.
-function laneTrailStyle(edge) {
+//
+// An unrated way on a dashed route is that route's look, not the
+// generic unrated one: it keeps the route's dash and takes its first
+// dash color, so a curated line such as Santos' grey "Paved Multi-Use"
+// reads as itself. On a difficulty map each way has one lane, and its
+// route is the owner difficultyLaneFeatures picked.
+function laneTrailStyle(edge, route) {
     const grade = edge.properties.imba_difficulty;
     if (isRatedDifficulty(grade)) return { color: difficultyColor(grade) };
+    const info = CONFIG.routes[route];
+    if (info && isDashed(info)) {
+        const dashColors = getDashColors(info);
+        return { color: dashColors && dashColors.length ? dashColors[0] : CONFIG.defaultTrailColor };
+    }
     const look = { color: CONFIG.defaultTrailColor };
     if (CONFIG.defaultTrailDash) {
         look.dash = [CONFIG.defaultTrailDash[0], CONFIG.defaultTrailDash[1]];
@@ -6696,6 +6744,14 @@ function laneRouteMeta() {
 // when the ordering resolves.
 function initLaneRenderer() {
     const L = window.maplibreLanes;
+    if (isDifficultyMap()) {
+        // No full graph to filter: the visible set changes which copy
+        // of a way owns it, so refreshLaneGraph builds from scratch on
+        // every pass (see difficultyLaneFeatures).
+        difficultyVisibleFeatures = [];
+        refreshLaneGraph();
+        return;
+    }
     laneGraphFull = L.buildLineGraph(routesData.features, {
         routeProperty: "route_id",
         colorProperty: "route_colour",
@@ -6708,6 +6764,62 @@ function initLaneRenderer() {
     refreshLaneGraph();
 }
 
+// Difficulty maps: the plugin input, one feature per visible way run.
+// trails.geojson carries a run once per parent relation, with identical
+// geometry, and bundling those copies would draw a shared way as two or
+// three parallel lanes of the same grade color, which says nothing on a
+// map where the color is the way's own. So the copies collapse to one,
+// kept while any parent is visible and owned by the first visible
+// parent in shared_routes order. The owner matters because the route
+// still carries the per-route look (laneRouteMeta): a way on a dashed
+// relation keeps its dash through it.
+//
+// A run is keyed by its way ids as a set plus its two end points, not
+// by the id list alone: a relation that runs a way the other way round
+// lists the same ids reversed, and a clipped relation can leave one run
+// as several pieces that share ids but not ends. Custom routes carry no
+// way ids and key on their coordinates. reverses_by_day rides along as
+// a way fact because the popup's one-way qualifier asks whether ANY
+// visible parent has a direction schedule, and the lane hit only names
+// the owner.
+function difficultyLaneFeatures() {
+    const schedules = CONFIG.directionSchedules || {};
+    const runs = new Map();  // run key -> the run's copies, in file order
+    for (const f of routesData.features) {
+        const g = f.geometry;
+        if (!g || g.type !== "LineString" || g.coordinates.length < 2) continue;
+        const c = g.coordinates;
+        const ids = f.properties.way_ids;
+        const key = Array.isArray(ids) && ids.length
+            ? JSON.stringify(ids.slice().sort((a, b) => a - b)) + "|"
+                + [String(c[0]), String(c[c.length - 1])].sort().join("|")
+            : JSON.stringify(c);
+        const copies = runs.get(key);
+        if (copies) copies.push(f);
+        else runs.set(key, [f]);
+    }
+    const out = [];
+    for (const copies of runs.values()) {
+        const first = copies[0].properties;
+        const parents = (first.shared_routes || [first.route_id])
+            .filter((id) => visibleRoutes.has(id));
+        if (!parents.length) continue;
+        const owner = parents[0];
+        const own = copies.find((f) => f.properties.route_id === owner);
+        const base = own || copies[0];
+        out.push({
+            ...base,
+            properties: {
+                ...base.properties,
+                route_id: owner,
+                reverses_by_day: parents.some((id) => !!schedules[id]),
+            },
+        });
+    }
+    difficultyVisibleFeatures = out;
+    return out;
+}
+
 // (Re)order the lanes for the current visibleRoutes: filter the full
 // graph, seed the ordering with the lane orders in force so routes
 // that stay visible hold their lanes, and swap the result in. The
@@ -6717,10 +6829,25 @@ function initLaneRenderer() {
 // added the first time through, directly under dim-tint, so the
 // spotlight wash and every overlay above it stack over the lanes.
 function refreshLaneGraph() {
-    if (!laneGraphFull) return;
+    if (!laneGraphFull && !difficultyVisibleFeatures) return;
     const L = window.maplibreLanes;
-    const seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
-    const next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
+    let seed, next;
+    if (laneGraphFull) {
+        seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
+        next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
+    } else {
+        // Difficulty map: one lane per edge leaves nothing to order or
+        // to hold in place, so no seed. Same options as the full graph,
+        // plus the popup's reverses_by_day.
+        next = L.buildLineGraph(difficultyLaneFeatures(), {
+            routeProperty: "route_id",
+            colorProperty: "route_colour",
+            nameProperty: "route_name",
+            routes: laneRouteMeta(),
+            uniformProperties: ["oneway", "trail_name", "imba_difficulty",
+                "reverses_by_day"],
+        });
+    }
     const token = ++laneOrderToken;
     L.orderLanesAsync(next, { stabilize: {}, seed }).then(() => {
         if (token !== laneOrderToken) return;
@@ -6734,7 +6861,7 @@ function refreshLaneGraph() {
                 graph: next,
                 sizes: laneStyleAt,
                 casingColor: laneCasingColor(),
-                laneStyle: CONFIG.colorBy === "trail" ? laneTrailStyle : undefined,
+                laneStyle: isDifficultyMap() ? laneTrailStyle : undefined,
                 onBuild: onLaneBuild,
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
@@ -6952,6 +7079,33 @@ function computeTrailsSourceData() {
     });
 
     return { type: "FeatureCollection", features: features };
+}
+
+// Difficulty maps color a continuation arrow like the way it leaves
+// the map on, so each endpoint needs that way's grade. The build does
+// not write it (clip_endpoints.geojson is shared by both models), but
+// every endpoint is the first or last vertex of one of its routes'
+// clipped trail features, so the nearest such vertex names the way.
+// Stored normalized ("2", or "" for unrated) so gradeMatchExpr reads
+// it the way it reads the lane features.
+function stampClipEndpointGrades() {
+    for (const ep of clipEndpointsData.features) {
+        const [x, y] = ep.geometry.coordinates;
+        const ids = new Set((ep.properties.route_ids || []).map(String));
+        let best = null, bestD = Infinity;
+        for (const f of routesData.features) {
+            const g = f.geometry;
+            if (!g || g.type !== "LineString" || !ids.has(String(f.properties.route_id))) continue;
+            const c = g.coordinates;
+            for (const v of [c[0], c[c.length - 1]]) {
+                const d = (v[0] - x) * (v[0] - x) + (v[1] - y) * (v[1] - y);
+                if (d < bestD) { bestD = d; best = f; }
+            }
+        }
+        const grade = best ? best.properties.imba_difficulty : "";
+        ep.properties.imba_difficulty =
+            isRatedDifficulty(grade) ? String(Number(grade)) : "";
+    }
 }
 
 // Recompute `visible_count` on every clip-endpoint feature.
@@ -7382,7 +7536,7 @@ function routeHighlightOutlineColor(info) {
 }
 
 // Stroke of a highlighted ROUTE. Its own color, except under color_by:
-// trail, where the map draws each way in its grade's color and a
+// difficulty, where the map draws each way in its grade's color and a
 // route-wide color would repaint a black diamond light grey the moment
 // it was selected (Copper Harbor). There the ribbon takes the grade
 // color per way, and the outline its luminance match per way, so the
@@ -10525,10 +10679,16 @@ function setupFloatingChrome() {
         // handlers or sync state.
     } else if (labelGroup) {
         // Drop the Trails button when trails are hidden. Routes always
-        // show, so the Routes and None buttons always remain, the row
-        // never collapses to None-only.
+        // show on a routes map, so the Routes and None buttons remain
+        // there, the row never collapses to None-only.
         if (!showTrails) {
             const btn = labelGroup.querySelector('[data-value="trails"]');
+            if (btn) btn.remove();
+        }
+        // A difficulty map has no route labels (the validator keeps
+        // show_trails on there), so its row is Trails / None.
+        if (isDifficultyMap()) {
+            const btn = labelGroup.querySelector('[data-value="routes"]');
             if (btn) btn.remove();
         }
         const buttons = Array.from(labelGroup.querySelectorAll(".opt-segmented-btn"));
@@ -11535,7 +11695,12 @@ function setupInteractions() {
         // still opens when every membership is filtered out - the
         // trail itself is visible, so its name/difficulty/one-way
         // rows remain useful; only the "Part of" section drops.
-        const matchedRoutes = routeIds
+        //
+        // A difficulty map lists no routes at all: the relations there
+        // are the unit of fetching, not something a rider follows, and
+        // the rows only repeated the title (Copper Harbor) or named the
+        // one network relation on every tap (NTN).
+        const matchedRoutes = isDifficultyMap() ? [] : routeIds
             .filter((id) => visibleRoutes.has(id))
             .map((id) => CONFIG.routes[id])
             .filter(Boolean);
@@ -11586,8 +11751,14 @@ function setupInteractions() {
             // reverses too. CONFIG.directionSchedules holds only routes
             // with non-empty reverse_days. The wording matches
             // reverse_days and the Options help ("Some reverse by day").
+            // On a difficulty map the hit names only the way's owner, so
+            // the way carries the any-visible-parent answer itself (see
+            // difficultyLaneFeatures).
             const schedules = CONFIG.directionSchedules || {};
-            const text = routeIds.some((id) => schedules[id])
+            const reverses = isDifficultyMap()
+                ? laneProps.reverses_by_day === true
+                : routeIds.some((id) => schedules[id]);
+            const text = reverses
                 ? "One-way (reverses by day)" : "One-way";
             html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
         }
