@@ -34,7 +34,9 @@ Oaks Map as of 2026-Jul-05*
     install the PWA; open About.
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
-    routes, trails, and POIs on the map.
+    routes, trails, and POIs on the map. On a difficulty map (`color_by:
+    difficulty`) the key lists IMBA ratings instead, and a row highlights
+    every trail of that rating.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
 - Trail markers, trailheads, parking, features, toilets, drinking water, and
   bicycle repair stations as configurable POI layers; direction arrows on
@@ -201,7 +203,7 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.colorScheme`: "light", "dark", or "auto"
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
-- `mtb.routePanelExpanded`: boolean (routes panel expanded/collapsed)
+- `mtb.routePanelExpanded`: boolean (key panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
 
 One key has no slug prefix, because units are the visitor's preference and

@@ -156,7 +156,7 @@ relations:
 # suppress_basemap_oneway_arrows: false
 
 # Compute per-route distance at build time; show it in the Finder + chip.
-# On a difficulty map (color_by: difficulty) this also gates the per-grade
+# On a difficulty map (color_by: difficulty) this also gates the per-rating
 # and per-trail distances shown in the key and the finder.
 # show_distance: false
 
@@ -184,12 +184,12 @@ relations:
 
 # Which map this is: "route" (the default) colors lines by route, with
 # parallel lanes where routes share a trail. "difficulty" colors each
-# way by its own IMBA grade instead, one line per way; event_mode is
+# way by its own IMBA rating instead, one line per way; event_mode is
 # rejected. See docs/configuration.md (Difficulty maps).
 # color_by: route
 
 # Route key (the bottom-right panel). On a route map it lists routes; on
-# a difficulty map it lists grades instead. false replaces it with a
+# a difficulty map it lists ratings instead. false replaces it with a
 # Search button alone: for a trail system whose relations are the trails
 # themselves, a key listing every one is a wall. See docs/configuration.md.
 # route_key: true
