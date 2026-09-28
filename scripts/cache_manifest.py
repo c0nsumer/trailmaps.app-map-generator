@@ -94,7 +94,11 @@ def load(cache_dir, slug):
         return None
     out = {}
     for key in CATEGORIES:
-        vals = cats.get(key)
+        # A manifest written before a category existed (overpass_basemap
+        # arrived in 2026-09) claims nothing in it. Reading that as
+        # unreadable made every OTHER map skip its prune until the old
+        # map was rebuilt, since _other_claims aborts on any None.
+        vals = cats.get(key, [])
         if not isinstance(vals, list) or not all(isinstance(p, str) for p in vals):
             return None
         out[key] = vals

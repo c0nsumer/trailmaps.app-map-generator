@@ -110,6 +110,21 @@ def test_load_returns_none_on_missing_corrupt_or_wrong_shape(tmp_path, content):
     assert cache_manifest.load(str(tmp_path), "mymap") is None
 
 
+def test_load_reads_a_missing_category_as_empty(tmp_path):
+    """A manifest from before a category existed claims nothing in it;
+    it must not read as unreadable, or every sibling map skips its
+    prune (see _other_claims)."""
+    path = tmp_path / "manifests" / "old.json"
+    path.parent.mkdir()
+    cats = {k: [] for k in cache_manifest.CATEGORIES if k != "overpass_basemap"}
+    cats["overpass_trails"] = ["overpass_0123456789ab.json"]
+    path.write_text(json.dumps({"version": 1, "slug": "old", "categories": cats}))
+    loaded = cache_manifest.load(str(tmp_path), "old")
+    assert loaded is not None
+    assert loaded["overpass_basemap"] == []
+    assert loaded["overpass_trails"] == ["overpass_0123456789ab.json"]
+
+
 def test_prune_removes_only_stale_candidates(tmp_path):
     cache_dir = str(tmp_path)
     path_a = _plant(cache_dir, OP_A, content='{"a": 1}')
