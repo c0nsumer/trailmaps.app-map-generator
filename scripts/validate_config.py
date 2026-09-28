@@ -1786,7 +1786,7 @@ def _validate_event_gpx(report, gpx):
 def _validate_difficulty_map(report, config):
     """Validate config keys that only make sense on a difficulty map.
 
-    `color_by: difficulty` colors every way by its own IMBA grade, so the
+    `color_by: difficulty` colors every way by its own IMBA rating, so the
     config keys that describe routes (event mode, a routes label mode,
     per-route colors, per-route elevation, the Trails section itself)
     stop applying or start meaning something the map can't render. See
@@ -1819,7 +1819,7 @@ def _validate_difficulty_map(report, config):
     if isinstance(rc, dict) and rc:
         report.warn(
             "relation_colors",
-            "ignored on a difficulty map; lines take their grade color",
+            "ignored on a difficulty map; lines take their rating color",
         )
 
     if config.get("show_elevation") is True:

@@ -761,8 +761,8 @@ function isDefaultVisible(name) {
 // The map model, fixed at build time by `color_by`. A routes map (the
 // default) colors each relation and bundles the routes sharing a way
 // into parallel lanes; a difficulty map colors each way by its IMBA
-// grade and draws it once, so everything a rider sees there is keyed
-// on the way (its name and grade) rather than on relations.
+// rating and draws it once, so everything a rider sees there is keyed
+// on the way (its name and rating) rather than on relations.
 function isDifficultyMap() {
     return CONFIG.colorBy === "difficulty";
 }
@@ -5452,7 +5452,7 @@ function sharedArrowColor() {
 // callback (laneTrailStyle).
 function isRatedDifficulty(value) {
     // Test the value, never compare it: unrated ways carry an empty
-    // string, and "" >= 0 is true, so a range check reads them as grade 0.
+    // string, and "" >= 0 is true, so a range check reads them as rating 0.
     return !!IMBA_RATINGS[Number(value)] && String(Number(value)) === String(value);
 }
 
@@ -5463,7 +5463,7 @@ function difficultyColor(value) {
 
 // A way's rating as the difficulty model keys it: "0".."5", or "" for
 // an unrated way. A value off the IMBA scale counts as unrated, since
-// that is how the map draws it (laneTrailStyle, gradeMatchExpr).
+// that is how the map draws it (laneTrailStyle, ratingMatchExpr).
 function wayRating(value) {
     return isRatedDifficulty(value) ? String(Number(value)) : "";
 }
@@ -6072,7 +6072,7 @@ async function loadTrails() {
 
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
-        if (isDifficultyMap()) stampClipEndpointGrades();
+        if (isDifficultyMap()) stampClipEndpointRatings();
         for (const f of clipEndpointsData.features) {
             const ids = f.properties.route_ids || [];
             let n = 0;
@@ -6158,14 +6158,14 @@ async function loadTrails() {
             //     basemap via the scheme (see clipArrowHaloExpr), matching
             //     the trail casing and highlight outline. On a difficulty
             //     map the route's color is not on the map, so the arrow
-            //     takes the grade of the way it continues (stamped by
-            //     stampClipEndpointGrades).
+            //     takes the rating of the way it continues (stamped by
+            //     stampClipEndpointRatings).
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
                 sharedArrowColor(),
                 isDifficultyMap()
-                    ? gradeMatchExpr(difficultyColor)
+                    ? ratingMatchExpr(difficultyColor)
                     : effectiveRouteColor(routeInfo),
             ];
             const haloCol = clipArrowHaloExpr();
@@ -6578,12 +6578,12 @@ function trailIdentityMatch() {
         : ["in", highlight.key, ["get", "shared_routes"]];
 }
 // A rating highlight: the feature's own way has that rating. Read
-// through gradeMatchExpr so an off-scale value matches unrated, as the
+// through ratingMatchExpr so an off-scale value matches unrated, as the
 // map draws it; a feature with no rating at all (a route name) reads as
 // unrated too, which only matters on routes maps, where there are no
 // rating highlights.
 function ratingIdentityMatch() {
-    return ["==", gradeMatchExpr((r) => r), highlight.key];
+    return ["==", ratingMatchExpr((r) => r), highlight.key];
 }
 
 function updateLabels() {
@@ -6796,8 +6796,8 @@ function laneCasingColor() {
 // reads as itself. On a difficulty map each way has one lane, and its
 // route is the owner difficultyLaneFeatures picked.
 function laneTrailStyle(edge, route) {
-    const grade = edge.properties.imba_difficulty;
-    if (isRatedDifficulty(grade)) return { color: difficultyColor(grade) };
+    const rating = edge.properties.imba_difficulty;
+    if (isRatedDifficulty(rating)) return { color: difficultyColor(rating) };
     const info = CONFIG.routes[route];
     if (info && isDashed(info)) {
         const dashColors = getDashColors(info);
@@ -6869,7 +6869,7 @@ function initLaneRenderer() {
 // Difficulty maps: the plugin input, one feature per visible way run.
 // trails.geojson carries a run once per parent relation, with identical
 // geometry, and bundling those copies would draw a shared way as two or
-// three parallel lanes of the same grade color, which says nothing on a
+// three parallel lanes of the same rating color, which says nothing on a
 // map where the color is the way's own. So the copies collapse to one,
 // kept while any parent is visible and owned by the first visible
 // parent in shared_routes order. The owner matters because the route
@@ -7192,13 +7192,13 @@ function computeTrailsSourceData() {
 }
 
 // Difficulty maps color a continuation arrow like the way it leaves
-// the map on, so each endpoint needs that way's grade. The build does
+// the map on, so each endpoint needs that way's rating. The build does
 // not write it (clip_endpoints.geojson is shared by both models), but
 // every endpoint is the first or last vertex of one of its routes'
 // clipped trail features, so the nearest such vertex names the way.
-// Stored normalized ("2", or "" for unrated) so gradeMatchExpr reads
+// Stored normalized ("2", or "" for unrated) so ratingMatchExpr reads
 // it the way it reads the lane features.
-function stampClipEndpointGrades() {
+function stampClipEndpointRatings() {
     for (const ep of clipEndpointsData.features) {
         const [x, y] = ep.geometry.coordinates;
         const ids = new Set((ep.properties.route_ids || []).map(String));
@@ -7212,9 +7212,9 @@ function stampClipEndpointGrades() {
                 if (d < bestD) { bestD = d; best = f; }
             }
         }
-        const grade = best ? best.properties.imba_difficulty : "";
+        const rating = best ? best.properties.imba_difficulty : "";
         ep.properties.imba_difficulty =
-            isRatedDifficulty(grade) ? String(Number(grade)) : "";
+            isRatedDifficulty(rating) ? String(Number(rating)) : "";
     }
 }
 
@@ -7654,11 +7654,11 @@ function routeHighlightOutlineColor(info) {
     return highlightOutlineForColor(effectiveRouteColor(info));
 }
 
-// ["match", imba_difficulty, ...] with `pick(grade)` as each branch and
+// ["match", imba_difficulty, ...] with `pick(rating)` as each branch and
 // pick("") (the unrated color) as the fallback. Lane pieces carry the
 // way's imba_difficulty (uniformProperties), so this works on the
 // highlight source.
-function gradeMatchExpr(pick) {
+function ratingMatchExpr(pick) {
     const expr = ["match", ["get", "imba_difficulty"]];
     IMBA_RATINGS.forEach((_, i) => expr.push(String(i), pick(String(i))));
     expr.push(pick(""));
@@ -7805,7 +7805,7 @@ function highlightTrail(trailName) {
     // highlight does (a mixed trail keeps its blue and black stretches).
     const highlighter = "#FFEC00";
     const onDifficultyMap = isDifficultyMap();
-    const stroke = onDifficultyMap ? gradeMatchExpr(difficultyColor) : highlighter;
+    const stroke = onDifficultyMap ? ratingMatchExpr(difficultyColor) : highlighter;
     const trailFilter = ["==", ["get", "trail_name"], trailName];
     // Paint before filter, same flash-prevention pattern as
     // highlightRoute(). Less critical here since trail-highlight-stroke
@@ -7878,7 +7878,7 @@ function difficultyTrailEntry(trailName) {
 // Outline of a difficulty map's trail highlight: each way's rating
 // highlight outline, since the stroke carries each way's rating color.
 function difficultyTrailOutlineColor() {
-    return gradeMatchExpr(ratingHighlightOutlineColor);
+    return ratingMatchExpr(ratingHighlightOutlineColor);
 }
 
 // The highlighted trail's chip distance on a difficulty map, after the
@@ -7925,7 +7925,7 @@ function highlightRating(rating) {
             ratingHighlightOutlineColor(rating));
     }
     refreshLaneHighlight();
-    const ratingFilter = ["==", gradeMatchExpr((r) => r), rating];
+    const ratingFilter = ["==", ratingMatchExpr((r) => r), rating];
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, ratingFilter);
