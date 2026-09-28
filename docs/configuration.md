@@ -511,6 +511,13 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
   and beats that default. When the panel boots collapsed, a first-visit
   **Route key** label points the chip out (the expanded card explains itself).
 
+On a [difficulty map](#difficulty-maps), the panel is a difficulty key headed
+**Difficulty**. It lists one row per rating on the map, easiest first. Each row
+shows the rating's symbol and name. An **Unrated** row follows when unrated
+ways are visible. If `show_distance` is on, each row shows that rating's
+visible length. Tapping a row highlights every visible way with that rating.
+The map does not move. The first-visit chip label reads **Difficulty key**.
+
 ## Units
 
 Units are the rider's choice, not a config setting. The Options **Units** row
@@ -556,6 +563,9 @@ TRAILS
             Birch Hollow           Red
 ```
 
+This example is a routes map. A difficulty map differs as described at the end
+of this section.
+
 - **One scrollable list, two section headers.** Routes on top, trails below.
 - **Single search input** filters both sections (case-insensitive substring
   match against route names and trail names).
@@ -574,6 +584,14 @@ TRAILS
   the chip to clear.
 - **One thing highlighted at a time.** Picking a new row replaces the previous
   highlight. Everything else stays visible; the highlight only adds emphasis.
+
+On a [difficulty map](#difficulty-maps), the finder lists trails and places
+only. It has no Routes section and no Routes chip. A trail row shows the symbol
+of the rating that most of the trail's visible length carries. An unrated trail
+shows the unrated line instead. The row names every rating on the trail, such
+as "Easy, More Difficult". If `show_distance` is on, the row also shows the
+trail's visible length. A trail highlight draws each way in its rating color,
+not in highlighter yellow.
 
 ## Trail difficulty
 
@@ -620,16 +638,18 @@ their length:
 ### Difficulty maps
 
 Set `color_by: difficulty` to make a difficulty map: lines colored by
-each way's own IMBA grade, not by route. Choose it for a trail system
+each way's own IMBA rating, not by route. Choose it for a trail system
 with named trails and `mtb:scale:imba` tags, but no route colors worth
 keying, such as Copper Harbor or NTN Marquette.
 
 On a difficulty map, the rider sees one line per way, colored by that
-way's grade. The bottom-right key lists grades, not routes, with an
+way's rating. The bottom-right key lists ratings, not routes, with an
 "Unrated" row when unrated ways are visible. Tapping a key row
-highlights every trail of that grade; the map does not move to fit
-them. The finder lists trails and places only, no Routes section.
+highlights every visible way with that rating; the map does not move
+to fit them. The finder lists trails and places only, no Routes section.
 Labels show trail names, since there is no route name to show instead.
+Tapping a trail opens a popup with its name and, where tagged, its
+rating and one-way status. The popup lists no routes.
 
 Several config keys change meaning:
 
@@ -639,10 +659,10 @@ Several config keys change meaning:
 | `show_trails` | Rejected if `false`. A difficulty map lists trails only. |
 | `default_labels` / `forced_labels` | `"routes"` is rejected; use `"trails"` or `"none"`. |
 | `default_labels` | Defaults to `"trails"` instead of `"none"`. |
-| `relation_colors` | Ignored, with a build warning. Lines take their grade color. |
+| `relation_colors` | Ignored, with a build warning. Lines take their rating color. |
 | `show_elevation` | Ignored, with a build warning. Elevation is per route. |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
-| `show_distance` | Same meaning; gates per-grade and per-trail distances. |
+| `show_distance` | Same meaning; gates per-rating and per-trail distances. |
 
 ## Direction arrows
 

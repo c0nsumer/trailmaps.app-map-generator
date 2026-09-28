@@ -1825,6 +1825,17 @@ body::after {
     flex-shrink: 0;
 }
 
+/* A difficulty map's trail row leads with its rating's glyph, sized as
+ * the difficulty key's .route-panel-glyph and in the swatch's 18px
+ * column, so names align with unrated rows, which take the line
+ * swatch. */
+.finder-row-glyph {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 15px;
+    object-fit: contain;
+}
+
 /* (Removed: .finder-row-text + .finder-row-title - orphan classes
  * from the pre-search-overlay finder layout. Current row rendering
  * (makeRouteRow / makeTrailRow / makePoiRow in app.js) doesn't use
