@@ -1104,6 +1104,13 @@ const _popupIconCache = {};
 // gone by then. Closing is the honest move.
 let _trailPopup = null;
 
+// The laneHit and anchor last passed to openTrailPopup for the popup
+// above, so setDistanceUnits can re-render its Length row (see
+// trailPopupHtml) without a fresh map hit test. Cleared alongside
+// _trailPopup so a units change after close has nothing stale to redraw.
+let _trailPopupHit = null;
+let _trailPopupAnchor = null;
+
 // Also closed when a new highlight replaces the view (route key, finder,
 // share link): those fly or fit the camera elsewhere, and MapLibre's
 // closeOnClick only reacts to taps on the map itself, so the card would
@@ -1116,6 +1123,8 @@ function closeTrailPopup() {
         _trailPopup.remove();
         _trailPopup = null;
     }
+    _trailPopupHit = null;
+    _trailPopupAnchor = null;
 }
 
 // While a trail popup is open, the named trail it describes is lifted
@@ -10959,6 +10968,15 @@ function setupFloatingChrome() {
             closeSearchOverlay();
             return;
         }
+        // A trail popup is a look at one trail, the most recent thing
+        // the rider asked for, so it outranks a still-standing
+        // highlight: the first Escape closes the popup (and its lift)
+        // and leaves any highlight/wash alone; a second Escape then
+        // falls through to clear that highlight as before.
+        if (_trailPopup) {
+            closeTrailPopup();
+            return;
+        }
         // Both the route/trail highlight and the POI highlight set
         // count as "something to dismiss." clearHighlight() handles
         // both, so a single Esc press reliably clears whatever's lit.
@@ -12605,13 +12623,12 @@ function setupInteractions() {
     });
 }
 
-// Opens the popup and the lift for one lane hit (laneLayer.queryLane or
-// queryLaneAt), anchored at `anchor`. Shared by a map tap and a finder
-// trail result (showTrail) so the two can never answer differently.
-function openTrailPopup(laneHit, anchor) {
-    // Whatever opens a popup supersedes a finder popup still waiting
-    // for its camera, which would otherwise land on top of this one.
-    cancelPendingTrailPopup();
+// Builds the popup body for one lane hit: title, Length row, difficulty
+// row, one-way row, and route memberships. Split out of openTrailPopup
+// so a units change (setDistanceUnits) can re-render just this markup
+// into an already-open popup via _trailPopup.setHTML, without moving
+// the popup or re-laying out the tap lift (see the comment there).
+function trailPopupHtml(laneHit) {
     const laneProps = laneHit.properties || {};
     const routeIds = [laneHit.route,
         ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
@@ -12745,6 +12762,19 @@ function openTrailPopup(laneHit, anchor) {
         html += routeItems;
     }
 
+    return html;
+}
+
+// Opens the popup and the lift for one lane hit (laneLayer.queryLane or
+// queryLaneAt), anchored at `anchor`. Shared by a map tap and a finder
+// trail result (showTrail) so the two can never answer differently.
+function openTrailPopup(laneHit, anchor) {
+    // Whatever opens a popup supersedes a finder popup still waiting
+    // for its camera, which would otherwise land on top of this one.
+    cancelPendingTrailPopup();
+    const html = trailPopupHtml(laneHit);
+    const trailName = (laneHit.properties || {}).trail_name || "";
+
     // The old popup's close clears its lift, so the new lift is
     // set only after the old popup is gone.
     if (_trailPopup) _trailPopup.remove();
@@ -12756,7 +12786,16 @@ function openTrailPopup(laneHit, anchor) {
         .setLngLat(anchor)
         .setHTML(html)
         .addTo(map);
-    _trailPopup.on("close", clearTapLift);
+    // Remembered so setDistanceUnits can re-render this popup's Length
+    // row in place on a units change; cleared here and on close so a
+    // stale hit never outlives its popup.
+    _trailPopupHit = laneHit;
+    _trailPopupAnchor = anchor;
+    _trailPopup.on("close", () => {
+        clearTapLift();
+        _trailPopupHit = null;
+        _trailPopupAnchor = null;
+    });
     showTapLift(trailName ? { trailName } : { edge: laneHit.edge });
 }
 
@@ -13806,6 +13845,16 @@ function setDistanceUnits(units) {
         if (r && statsEl && statsEl.textContent) statsEl.textContent = routeStatsText(r);
     } else if (highlight && highlight.kind === "rating") {
         refreshRatingChipStats();
+    }
+    if (_trailPopup && _trailPopupHit) {
+        // Rebuild the markup in place rather than re-running
+        // openTrailPopup: a full re-open would also re-run showTapLift,
+        // which re-lays out the lift through the worker for a change
+        // that only touches displayed text. setHTML is a synchronous
+        // DOM swap, so there's nothing to flicker, and re-asserting the
+        // anchor (itself unchanged) keeps the popup pinned exactly
+        // where it was.
+        _trailPopup.setHTML(trailPopupHtml(_trailPopupHit)).setLngLat(_trailPopupAnchor);
     }
     updateLocationIndicator();
     applyContourUnits();
