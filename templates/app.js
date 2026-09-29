@@ -7914,7 +7914,10 @@ function highlightRoute(routeId) {
     syncRoutePanelActiveRow();
 }
 
-function highlightTrail(trailName) {
+// fit: false skips fitToRouteOrTrail (the tap-select path, where the
+// rider is already looking at the trail; see selectTappedTrail). The
+// finder row and share-link callers pass nothing and keep the fit.
+function highlightTrail(trailName, { fit = true } = {}) {
     // Drop any POI highlight before lighting a trail (single-highlight
     // invariant across kinds); route filters clear inline below.
     clearPoiHighlight();
@@ -7968,7 +7971,7 @@ function highlightTrail(trailName) {
         }
     }
 
-    fitToRouteOrTrail({ trailName });
+    if (fit) fitToRouteOrTrail({ trailName });
     if (onDifficultyMap) {
         showTrailChip(trailName);
     } else {
@@ -8015,6 +8018,38 @@ function showTrailChip(trailName) {
         line: rated ? null : keyLook(key),
         stats: trailStatsText(t),
     });
+}
+
+// Tap-select trial (plan section 4.2): a tap on a named lane, on a
+// difficulty map, runs the same highlight the finder row runs, minus
+// the camera move (the rider is looking at the trail they just tapped,
+// same rule as a rating tap). The click handler calls this before
+// building the popup, since highlightTrail() closes any open popup as
+// part of the single-highlight invariant; the popup must be built
+// after, or it would open and immediately be swept away.
+//
+// Steve's reservation (plan 4.2): this may be too heavy for a rider
+// panning around (accidental dim wash). Fallback rungs, each a
+// one-line change here, in order from what ships to the floor:
+//   built:       highlightTrail(trailName, { fit: false }) - full
+//                highlight + dim wash + chip, no camera move.
+//   fallback 1:  same, but skip the dim wash (drop the applyDimState
+//                call inside highlightTrail for this path, or pass a
+//                new option through) - ribbon + chip, map stays lit.
+//   fallback 2:  also clear the highlight when a tap misses every lane
+//                (the click handler's `if (!laneHit) return` early-out
+//                would instead call a clear-trail-highlight path) -
+//                one tap in, one tap out.
+//   fallback 3:  delete the call below entirely - popup only, as
+//                today; the popup's new distance row does not depend
+//                on the highlight and keeps working.
+function selectTappedTrail(trailName) {
+    // Tapping the already-lit trail again should only move the popup,
+    // not re-run the highlight (clearPoiHighlight/refreshLaneHighlight/
+    // chip re-issue), which would flash the wash and chip for no
+    // visible change.
+    if (highlight && highlight.kind === "trail" && highlight.key === trailName) return;
+    highlightTrail(trailName, { fit: false });
 }
 
 // Outline of a color key highlight: luminance-matched to the key's
@@ -12324,6 +12359,18 @@ function setupInteractions() {
         const styledKey = isDifficultyMap() && isStyledKey(laneProps.color_key)
             ? laneProps.color_key : null;
 
+        // A tap on a named trail, on a difficulty map, selects the
+        // trail the way the finder does (see selectTappedTrail for the
+        // full rationale and the fallback ladder). This runs BEFORE the
+        // popup markup below: highlightTrail() closes any open popup as
+        // part of the single-highlight invariant, so building the popup
+        // first would just have it swept away. An unnamed way (no
+        // trailName) has no trail to select, so the popup opens alone,
+        // as it always has.
+        if (isDifficultyMap() && trailName) {
+            selectTappedTrail(trailName);
+        }
+
         let html = "";
         if (trailName) {
             // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -12331,6 +12378,22 @@ function setupInteractions() {
             // event handlers) in OSM data. Data URLs are
             // self-generated, not OSM strings.
             html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
+        }
+        if (isDifficultyMap() && trailName && CONFIG.showDistance) {
+            // The tapped trail's whole visible length, deduped by way,
+            // the same number the chip and the finder row show: it is
+            // the length of what the highlight above just lit, not the
+            // length of the single way under the tap. trailStatsText
+            // already gates on CONFIG.showDistance; the check here is
+            // just to skip the entry lookup when it would be "".
+            const distanceText = trailStatsText(difficultyTrailEntry(trailName));
+            if (distanceText) {
+                // Same quiet inline-style pattern as popup-difficulty
+                // below (see the comment there: markup-in-JS on purpose,
+                // so the popup never renders half-styled against a
+                // stale service-worker-cached stylesheet).
+                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;">${escapeHtml(distanceText)}</div>`;
+            }
         }
         if (iconUrl) {
             // Symbol + rating name on their own row, same quiet
