@@ -234,7 +234,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `route_key` | No | `true` | Whether the bottom-right panel shows the key: one row per visible route on a routes map, or one row per rating on a difficulty map, each with its swatch, name and stats. Set `false` for a trail system dense enough that a full key is a wall. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route (or trail) and place. |
 | `default_trail_color` | No | `"#808080"` | Fallback trail color. On a routes map: used when a relation has no OSM `colour` tag. On a difficulty map: used for ways with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
 | `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
-| `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`); overrides the OSM `colour` tag. Only takes effect on a routes map (`color_by: route`, the default). On a difficulty map it is ignored, with a build warning; the map, the key and the finder all show the IMBA rating colors instead. |
+| `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`); overrides the OSM `colour` tag. On a routes map (`color_by: route`, the default) it colors the whole route. On a difficulty map it colors only that relation's unrated ways. A rated way always keeps its rating color. The styled relation gets its own key row beside the rating rows, and its own mark in the finder. |
 | `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 
 ### Direction schedules
@@ -644,7 +644,10 @@ keying, such as Copper Harbor or NTN Marquette.
 
 On a difficulty map, the rider sees one line per way, colored by that
 way's rating. The bottom-right key lists ratings, not routes, with an
-"Unrated" row when unrated ways are visible. Tapping a key row
+"Unrated" row when unrated ways are visible. A relation with a
+`relation_colors` or `dashed_relations` entry gets its own key row too,
+for its unrated ways. A rated way in that relation still lists under
+its rating. Tapping a key row
 highlights every visible way with that rating; the map does not move
 to fit them. The finder lists trails and places only, no Routes section.
 Labels show trail names, since there is no route name to show instead.
@@ -659,7 +662,7 @@ Several config keys change meaning:
 | `show_trails` | Rejected if `false`. A difficulty map lists trails only. |
 | `default_labels` / `forced_labels` | `"routes"` is rejected; use `"trails"` or `"none"`. |
 | `default_labels` | Defaults to `"trails"` instead of `"none"`. |
-| `relation_colors` | Ignored, with a build warning. Lines take their rating color. |
+| `relation_colors` | Honored, for that relation's unrated ways only. A rated way keeps its rating color, shared with the relation or not. The styled relation gets its own row in the key. |
 | `show_elevation` | Ignored, with a build warning. Elevation is per route. |
 | `dashed_relations` | Honored. A way on a dashed relation keeps that dash while the relation is visible, even where a solid relation shares the way. An unrated way on a dashed relation takes the dash's first color. |
 | `clipped_relations` | Honored. Continuation arrows at the map edge take the rating color of the way they continue. |

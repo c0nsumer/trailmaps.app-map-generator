@@ -171,8 +171,9 @@ relations:
 # Per-route style overrides
 # ============================================================
 
-# Map of relation ID to CSS color; overrides the OSM colour= tag.
-# route maps only; ignored (with a build warning) on a difficulty map.
+# Map of relation ID to CSS color; overrides the OSM colour= tag on a
+# route map. On a difficulty map it colors that relation's unrated ways
+# instead. A rated way always keeps its rating color.
 # relation_colors: {}
 
 # Map of relation ID to display name; overrides the OSM name tag everywhere

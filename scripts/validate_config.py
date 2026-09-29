@@ -1786,11 +1786,13 @@ def _validate_event_gpx(report, gpx):
 def _validate_difficulty_map(report, config):
     """Validate config keys that only make sense on a difficulty map.
 
-    `color_by: difficulty` colors every way by its own IMBA rating, so the
-    config keys that describe routes (event mode, a routes label mode,
-    per-route colors, per-route elevation, the Trails section itself)
-    stop applying or start meaning something the map can't render. See
-    difficulty-model.md section 3.6 for the full table.
+    `color_by: difficulty` colors every way by its own IMBA rating, so
+    some config keys that describe routes (event mode, a routes label
+    mode, per-route elevation, the Trails section itself) stop applying
+    or start meaning something the map can't render. `relation_colors`
+    is the one exception: it still styles a relation's unrated ways
+    (styled-relations-and-tap-select.md). See difficulty-model.md
+    section 3.6 for the rest of the table.
     """
     if config.get("color_by") != "difficulty":
         return
@@ -1813,13 +1815,6 @@ def _validate_difficulty_map(report, config):
             "show_trails",
             "a difficulty map lists trails only; the Trails section can't "
             "be hidden - remove show_trails or set color_by: route",
-        )
-
-    rc = config.get("relation_colors")
-    if isinstance(rc, dict) and rc:
-        report.warn(
-            "relation_colors",
-            "ignored on a difficulty map; lines take their rating color",
         )
 
     if config.get("show_elevation") is True:

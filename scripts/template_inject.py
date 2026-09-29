@@ -547,6 +547,17 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
         route_id = int(route_id_str)
 
+        # On a difficulty map a line color is a rating, so a route's
+        # color there is only ever the curator's explicit opt-in for
+        # that relation's unrated ways (a bike path with no
+        # mtb:scale:imba tag), never the OSM `colour` tag: an
+        # untouched relation must fall back to the default unrated
+        # look, not whatever colour OSM happens to carry. Drop it
+        # before the override below applies, so the runtime's
+        # `!!info.colour` styled check reads only curator intent.
+        if config.get("color_by") == "difficulty":
+            route_info["colour"] = None
+
         # Color override
         color_override = relation_colors.get(route_id)
         if color_override:

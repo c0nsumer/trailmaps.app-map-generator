@@ -481,12 +481,13 @@ def test_routes_map_allows_show_trails_false():
     assert _errors(show_trails=False) == []
 
 
-def test_difficulty_map_warns_on_relation_colors():
+def test_difficulty_map_does_not_warn_on_relation_colors():
+    # relation_colors is honored on a difficulty map (styles a relation's
+    # unrated ways; a rated way keeps its rating), so it never warns
+    # there, populated or empty.
     warnings = _warnings(color_by="difficulty", relation_colors={12345678: "#ff0000"})
-    assert any("relation_colors" in w for w in warnings), warnings
+    assert not any("relation_colors" in w for w in warnings), warnings
 
-
-def test_difficulty_map_ignores_empty_relation_colors():
     warnings = _warnings(color_by="difficulty", relation_colors={})
     assert not any("relation_colors" in w for w in warnings), warnings
 
