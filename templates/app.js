@@ -8230,8 +8230,9 @@ function ratingHighlightOutlineColor(key) {
 // The ribbon reuses the trail highlight layers (a key, like a trail, is
 // a set of ways, and the lane highlight source is cut down to it in
 // refreshLaneHighlight) in the key's own color, so the selection reads
-// as the unselected look, thicker, with an outline. No camera move: a
-// key spans the map, and fitting to it would all but reset the view.
+// as the unselected look, thicker, with an outline. The camera fits to
+// the lit ways, as a route row does, so every key row answers a tap the
+// same way on either map model even when a rating spans most of the map.
 function highlightRating(rating) {
     if (!isDifficultyMap()) return;
     clearPoiHighlight();
@@ -8262,6 +8263,8 @@ function highlightRating(rating) {
             map.setFilter(layerId, ROUTE_NONE_FILTER);
         }
     }
+
+    fitToRouteOrTrail({ colorKey: rating });
 
     // The chip carries the key row's own mark (a rating's glyph, else
     // the key's line) and, where the map shows distances, the key's
@@ -8984,7 +8987,10 @@ function clearHighlight() {
     applyDimState();
 }
 
-function fitToRouteOrTrail({ routeId, trailName }) {
+// colorKey matches a way by its bucket under the current visibility
+// (featureColorKey), the same set highlightRating lights; "" is a real
+// key (unrated), so the selectors test for undefined, not falsiness.
+function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
     if (!routesData) return;
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
     let hasCoords = false;
@@ -8997,6 +9003,8 @@ function fitToRouteOrTrail({ routeId, trailName }) {
             match = shared.includes(routeId);
         } else if (trailName !== undefined) {
             match = props.trail_name === trailName;
+        } else if (colorKey !== undefined) {
+            match = featureColorKey(props) === colorKey;
         }
         if (!match) continue;
 

@@ -648,8 +648,9 @@ way's rating. The bottom-right key lists ratings, not routes, with an
 `relation_colors` or `dashed_relations` entry gets its own key row too,
 for its unrated ways. A rated way in that relation still lists under
 its rating. Tapping a key row
-highlights every visible way with that rating; the map does not move
-to fit them. The finder lists trails and places only, no Routes section.
+highlights every visible way with that rating. The map then fits to
+them, as it does for a route. The finder lists trails and places only,
+no Routes section.
 Labels show trail names, since there is no route name to show instead.
 Tapping a trail opens a popup with its name and, where tagged, its
 rating and one-way status. The popup lists no routes. While the popup
