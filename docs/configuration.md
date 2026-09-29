@@ -222,7 +222,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
-| `show_distance` | No | `false` | When true, computes distance at build time. On a routes map this shows per-route distance in the Finder rows and highlight chip. On a difficulty map it also gates the per-rating totals in the key and the per-trail distance in the finder and chip. It is shown in the rider's [units](#units). The tap popup, the trail chip, and the finder's trail rows show each named trail's visible length on both map models. For an unnamed way, the popup shows the length of the tapped segment. |
+| `show_distance` | No | `false` | When true, computes distance at build time. On a routes map this shows per-route distance in the Finder rows and highlight chip. On a difficulty map it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The trail popup and the finder's trail rows show each named trail's visible length on both map models. For an unnamed way, the popup shows the length of the tapped segment. |
 | `show_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. Per route only; ignored (with a build warning) on a difficulty map. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
@@ -255,11 +255,11 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`), or if it is `"routes"` on a difficulty map. |
 | `default_color_scheme` | No | `"light"` | First-visit color scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colors are scheme-independent. |
 | `invert_logo_dark` | No | `true` | Whether the brand logo auto-inverts in dark mode. The default suits monochrome and limited-palette logos. If the logo is colorful or photographic and inverting it looks wrong, set `false`. |
-| `map_dim_on_highlight` | No | `true` | When a route or trail is highlighted (via Finder tap or in-map click), dim every non-highlighted route / trail. Name labels stay visible so connecting trails can still be read for wayfinding. Set `false` to keep the rest of the network at full saturation. |
-| `scrim_opacity` | No | `0.40` | Opacity (0-1) of the dark scrim. The scrim is used both for the in-map spotlight wash while a route / trail is highlighted (only when `map_dim_on_highlight` is `true`) **and** for the Search / Options / About menu backdrops. One value, so the wash and the menus share a consistent density as the rider moves between them. Lower keeps more of the map legible; higher is a stronger dim. |
-| `highlight_glow` | No | `true` | Draw a soft amber selection glow beneath the highlighted ribbon. The selected route or trail, dark ones included, then reads as "selected" at a glance. Set `false` for the plain outline + stroke ribbon with no glow. |
+| `map_dim_on_highlight` | No | `true` | When a route or a rating is highlighted (from the Finder, the key, or a share link), dim every non-highlighted route / trail. A trail picked in the Finder opens its popup instead, with the map fit to it, and does not dim the map. Name labels stay visible so connecting trails can still be read for wayfinding. Set `false` to keep the rest of the network at full saturation. |
+| `scrim_opacity` | No | `0.40` | Opacity (0-1) of the dark scrim. The scrim is used both for the in-map spotlight wash while a route or a rating is highlighted (only when `map_dim_on_highlight` is `true`) **and** for the Search / Options / About menu backdrops. One value, so the wash and the menus share a consistent density as the rider moves between them. Lower keeps more of the map legible; higher is a stronger dim. |
+| `highlight_glow` | No | `true` | Draw a soft amber selection glow beneath the highlighted ribbon. The selected route or rating, dark ones included, then reads as "selected" at a glance. Set `false` for the plain outline + stroke ribbon with no glow. |
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honor any hash on page load. This enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
-| `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view plus any active highlight as a deep-link URL. A highlight can be a route, a trail, or a place selected from the Finder: a single POI, a name group, or a whole POI category. The link is offered via the native share sheet (mobile) or clipboard (desktop). Opening the link restores the view and the highlight. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
+| `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view plus any active highlight as a deep-link URL. A highlight can be a route, a trail, or a place selected from the Finder: a single POI, a name group, or a whole POI category. The link is offered via the native share sheet (mobile) or clipboard (desktop). Opening the link restores the view and the highlight. A trail link fits the map to the trail and opens the trail's popup. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. |
 
 The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
 
@@ -482,7 +482,7 @@ Custom routes are indistinguishable from OSM routes in every runtime behavior:
 - Tapping a custom-route row in the finder highlights the whole route in its own
   color (same as any OSM route).
 - If `trail_name_field` points at per-segment names, those trails also appear in
-  the **Trails** section of the finder and can be highlighted individually.
+  the **Trails** section of the finder and can be picked individually.
 
 ## Routes panel
 
@@ -578,20 +578,26 @@ of this section.
   routes panel uses) plus the name. OSM and custom routes appear together and
   behave identically.
 - **Trail rows** show the trail name and the parent route(s) underneath.
-- **Tapping a row** highlights it on the map (glow + stroke in the route's own
-  color for routes, or amber for trails). It also pans / zooms to its extent,
+- **Tapping a route row** highlights the route on the map (glow + stroke in the
+  route's own color). It also pans / zooms to its extent,
   collapses the sheet, and shows a floating chip at the top of the map. Tap
   the chip to clear.
-- **One thing highlighted at a time.** Picking a new row replaces the previous
-  highlight. Everything else stays visible; the highlight only adds emphasis.
+- **Tapping a trail row** fits the map to the trail and collapses the sheet.
+  The trail's popup then opens on the middle of the trail, the same popup a tap
+  on the trail opens. A thin outline and a soft shadow lift the trail off the
+  map. The popup closes on the next tap elsewhere. A trail pick leaves any
+  highlighted route or place as it is.
+- **One thing highlighted at a time.** Picking a new route or place replaces the
+  previous highlight. Everything else stays visible; the highlight only adds
+  emphasis.
 
 On a [difficulty map](#difficulty-maps), the finder lists trails and places
 only. It has no Routes section and no Routes chip. A trail row shows the symbol
 of the rating that most of the trail's visible length carries. An unrated trail
 shows the unrated line instead. The row names every rating on the trail, such
 as "Easy, More Difficult". If `show_distance` is on, the row also shows the
-trail's visible length. A trail highlight draws each way in its rating color,
-not in highlighter yellow.
+trail's visible length. Tapping a trail row fits the map to the trail and
+opens the trail's popup, as on a routes map.
 
 ## Trail difficulty
 
@@ -650,7 +656,8 @@ for its unrated ways. A rated way in that relation still lists under
 its rating. Tapping a key row
 highlights every visible way with that rating. The map then fits to
 them, as it does for a route. The finder lists trails and places only,
-no Routes section.
+no Routes section. A trail result fits the map to the trail and opens
+the trail's popup.
 Labels show trail names, since there is no route name to show instead.
 Tapping a trail opens a popup with its name and, where tagged, its
 rating and one-way status. The popup lists no routes. While the popup

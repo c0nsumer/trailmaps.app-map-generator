@@ -602,9 +602,7 @@ function applyMapPaintForScheme(scheme) {
     // Highlight silhouettes. The TRAIL outline is a constant scheme-
     // contrasting silhouette (black on the light basemap, white on dark),
     // except under a rating highlight, which shares the trail layers and
-    // matches its outline to the rating's color (see highlightRating),
-    // and under a difficulty map's trail highlight, which does the same
-    // per way (see highlightTrail).
+    // matches its outline to the rating's color (see highlightRating).
     // The ROUTE outline is luminance-matched to the highlighted route's
     // own color, or the scheme silhouette for single-color dashed routes
     // (see routeHighlightOutlineColor); re-applied here so a scheme
@@ -614,9 +612,7 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("trail-highlight-outline", "line-color",
             highlight && highlight.kind === "rating"
                 ? ratingHighlightOutlineColor(highlight.key)
-                : highlight && highlight.kind === "trail" && isDifficultyMap()
-                    ? difficultyTrailOutlineColor()
-                    : t.highlightOutline);
+                : t.highlightOutline);
     }
     if (map.getLayer("route-highlight-outline")) {
         const routeInfo = highlight && highlight.kind === "route"
@@ -1112,8 +1108,10 @@ let _trailPopup = null;
 // share link): those fly or fit the camera elsewhere, and MapLibre's
 // closeOnClick only reacts to taps on the map itself, so the card would
 // otherwise linger off-screen and reappear beside an unrelated highlight
-// when the rider pans back.
+// when the rider pans back. A finder trail popup still waiting for its
+// camera (showTrail) is cancelled for the same reason.
 function closeTrailPopup() {
+    cancelPendingTrailPopup();
     if (_trailPopup) {
         _trailPopup.remove();
         _trailPopup = null;
@@ -1128,10 +1126,12 @@ function closeTrailPopup() {
 // heavy, and a colored glow collided with route colors (magenta with a
 // future Snow Bike Route, amber sinking under green), whereas a neutral
 // lift reads on every lane color. The popup is a note, the lift only
-// says which trail the note is about, and the finder stays the
-// selection tool, so `highlight`, the wash, the chip and the camera
-// are left exactly as they are. On a routes map it also shows where a
-// named trail starts and ends inside a same-color route.
+// says which trail the note is about, and routes, ratings and places
+// stay the selection tools, so `highlight`, the wash, the chip and the
+// camera are left exactly as they are. A finder trail result opens the
+// same popup and lift after a camera fit (showTrail). On a routes map
+// the lift also shows where a named trail starts and ends inside a
+// same-color route.
 // The geometry is the trail's lanes, not its raw ways: on a routes map
 // a way's lanes are offset into a parallel bundle, and a centerline
 // would not hug them. The same whole-graph layout as the highlight
@@ -2384,8 +2384,8 @@ function directionArrowsToggleOn() {
 
 // Build kind-filter + (optionally) highlight-filter for a decor layer.
 // The kind/min_zoom gate is non-negotiable; under spotlight dim we AND
-// in a shared_routes / trail_name / rating match so non-highlighted
-// decor goes dark with the rest of the map.
+// in a shared_routes / color key match so non-highlighted decor goes
+// dark with the rest of the map.
 function buildDecorFilter(kind) {
     const base = ["all",
         ["==", ["get", "kind"], kind],
@@ -2395,12 +2395,8 @@ function buildDecorFilter(kind) {
     if (highlight.kind === "rating") {
         return ["all", ...base.slice(1), ratingIdentityMatch()];
     }
-    if (highlight.kind === "route") {
-        return ["all", ...base.slice(1),
-            ["in", highlight.key, ["get", "shared_routes"]]];
-    }
     return ["all", ...base.slice(1),
-        ["==", ["get", "trail_name"], highlight.key]];
+        ["in", highlight.key, ["get", "shared_routes"]]];
 }
 
 // Build the filter for one chevron layer. `rev` selects ways whose
@@ -2429,12 +2425,10 @@ function buildChevronFilter(rev) {
     if (highlightDimActive()) {
         if (highlight.kind === "rating") {
             f.push(ratingIdentityMatch());
-        } else if (highlight.kind === "route") {
+        } else {
             f.push(["any",
                 ["==", ["get", "route_id"], highlight.key],
                 ["in", highlight.key, sharedOf]]);
-        } else {
-            f.push(["==", ["get", "trail_name"], highlight.key]);
         }
     }
     return f;
@@ -2557,9 +2551,10 @@ if (isDifficultyMap() && labelMode === "routes") labelMode = "trails";
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
 let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 
-// Single-highlight invariant: at most one route, trail OR rating
-// highlighted. A rating key is "0".."5", or "" for unrated (wayRating).
-let highlight = null; // { kind: "route"|"trail"|"rating", key: string } | null
+// Single-highlight invariant: at most one route OR rating highlighted.
+// A rating key is "0".."5", or "" for unrated (wayRating). A trail is
+// never a highlight: it opens a popup (showTrail, openTrailPopup).
+let highlight = null; // { kind: "route"|"rating", key: string } | null
 
 // Indexes derived once at startup
 let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM, elevationGainM, elevationLossM }]
@@ -2950,11 +2945,12 @@ function applyPendingShareHighlight() {
         }
     } else if (h.kind === "trail") {
         // h.key is the trail name as-stored on each feature's
-        // trail_name property. highlightTrail does its own matching.
+        // trail_name property. A trail link restores what the finder
+        // shows for it (showTrail): the fit, the popup and the lift.
         // Sanity-check that at least one feature carries the name so
-        // we don't surface an empty highlight.
+        // a stale link opens plain.
         if (trailIndex.some((t) => t.name === h.key)) {
-            highlightTrail(h.key);
+            showTrail(h.key);
         }
     } else if (h.kind === "rating") {
         // h.key is a color key ("2", a styled relation's id, or "" for
@@ -2992,8 +2988,6 @@ function buildShareUrl() {
     let path = `share=${zoom}/${lat}/${lon}`;
     if (highlight && highlight.kind === "route" && highlight.key) {
         path += `/r/${encodeURIComponent(highlight.key)}`;
-    } else if (highlight && highlight.kind === "trail" && highlight.key) {
-        path += `/t/${encodeURIComponent(highlight.key)}`;
     } else if (highlight && highlight.kind === "rating") {
         // Unrated ("") travels as a word: an empty last segment would
         // be lost to any client that trims a trailing slash, and
@@ -3007,6 +3001,11 @@ function buildShareUrl() {
         // single-highlight invariant. consumeShareHash + highlightPoiByRef
         // re-expand it against live data on the receiving side.
         path += `/p/${encodeURIComponent(_poiHighlightRef)}`;
+    } else if (sharedTrailName()) {
+        // A named trail's popup. It comes last: a popup is a look, gone
+        // on the next tap, and a selection that is still on the map is
+        // the more deliberate thing to pass on.
+        path += `/t/${encodeURIComponent(sharedTrailName())}`;
     }
     const url = new URL(window.location.href);
     url.hash = path;
@@ -3024,9 +3023,6 @@ function buildShareTitle() {
             && CONFIG.routes && CONFIG.routes[highlight.key]) {
         return `${baseTitle}: ${CONFIG.routes[highlight.key].name}`;
     }
-    if (highlight && highlight.kind === "trail" && highlight.key) {
-        return `${baseTitle}: ${highlight.key}`;
-    }
     if (highlight && highlight.kind === "rating") {
         return `${baseTitle}: ${keyName(highlight.key)}`;
     }
@@ -3041,7 +3037,15 @@ function buildShareTitle() {
             : "";
         if (groupName) return `${baseTitle}: ${groupName} (× ${n})`;
     }
+    if (sharedTrailName()) return `${baseTitle}: ${sharedTrailName()}`;
     return baseTitle;
+}
+
+// The named trail whose popup is open, which a share link or an update
+// reload carries as a /t/ link, or null. An unnamed way's popup has no
+// name to restore it by, so it shares as a plain view.
+function sharedTrailName() {
+    return _trailPopup && tapLiftTrail ? tapLiftTrail : null;
 }
 
 // Share-button click handler. Tries Web Share API first (native
@@ -3211,14 +3215,17 @@ function reloadForUpdate() {
             highlight: null,
             savedAt: Date.now(),
         };
-        // Same serialization the Share button uses: route/trail
+        // Same serialization the Share button uses: route and rating
         // highlights carry {kind, key}; a POI highlight (single,
         // group, or category) carries the Finder ref, re-expanded
-        // against live data on the receiving side.
+        // against live data on the receiving side; a named trail's
+        // popup carries the trail name.
         if (highlight && highlight.kind && highlightHasKey(highlight)) {
             state.highlight = { kind: highlight.kind, key: highlight.key };
         } else if (_poiHighlightRef) {
             state.highlight = { kind: "poi", key: _poiHighlightRef };
+        } else if (sharedTrailName()) {
+            state.highlight = { kind: "trail", key: sharedTrailName() };
         }
         window.sessionStorage.setItem(RESUME_VIEW_KEY, JSON.stringify(state));
     } catch (e) {
@@ -5756,7 +5763,7 @@ const POI_PROXIMITY_METERS = CONFIG.poiProximityMeters ?? 50;
 const POI_AMENITY_PROXIMITY_METERS = 500;
 
 // Threshold (meters) for "on the highlighted route" during the
-// spotlight dim. A highlighted route/trail can run a mile or more,
+// spotlight dim. A highlighted route or rating can run a mile or more,
 // and POIs are hand-placed or geocoded rather than snapped to the
 // line, so 10 m (the original value) clipped real trailside POIs, a
 // parking area set back from the road, a feature a few paces off the
@@ -5802,10 +5809,10 @@ function distanceToVisibleTrails(lng, lat) {
 }
 
 // Min distance (meters) from (lng, lat) to the currently-highlighted
-// route or trail's line geometry. For a route highlight, any feature
+// route or color key's line geometry. For a route highlight, any feature
 // whose shared_routes includes the highlighted id counts (captures
-// shared segments that belong to the route). For a trail highlight,
-// only features with matching trail_name count. Returns Infinity when
+// shared segments that belong to the route). For a color key, the ways
+// it lights (featureColorKey). Returns Infinity when
 // no highlight is set or routesData hasn't loaded, callers treat that
 // as "too far" and dim the marker.
 function distanceToHighlighted(lng, lat) {
@@ -5822,8 +5829,6 @@ function distanceToHighlighted(lng, lat) {
             // only the ways on the map are highlighted (featureColorKey
             // is null for a way with no visible parent).
             match = featureColorKey(props) === highlight.key;
-        } else {
-            match = props.trail_name === highlight.key;
         }
         if (!match) continue;
         const coords = f.geometry.type === "LineString"
@@ -5942,7 +5947,7 @@ function washMarkerElement(rootEl, type, dimmed) {
     }
 }
 
-// Recolor markers that aren't adjacent to the highlighted route/trail
+// Recolor markers that aren't adjacent to the highlighted route or rating
 // via washMarkerElement() above, rather than fading their opacity.
 // User-location markers are never enumerated here, so they never dim.
 // Safe to call repeatedly.
@@ -6326,7 +6331,7 @@ async function loadTrails() {
     // Dim-tint, full-viewport black wash, transparent by default.
     // Rendered above the basemap and the lane layer but below the
     // clip-arrows, highlights, labels, difficulty, and arrows. When
-    // `CONFIG.mapDimOnHighlight` is true AND a route/trail is highlighted,
+    // `CONFIG.mapDimOnHighlight` is true AND a route or rating is highlighted,
     // refreshSpotlightDim() sets its opacity to SCRIM_OPACITY so the
     // basemap + non-highlighted trail lines recede behind the wash and
     // the highlighted ribbon reads as a spotlight. It stays steady while
@@ -6441,11 +6446,11 @@ async function loadTrails() {
     }
 
     // ----- Highlight layers (above trail fills, below labels + arrows) -----
-    // Two layers per highlight kind (route / trail): outline + stroke.
+    // Two layers per ribbon (route / trail): outline + stroke.
     // Rendered above the fills so they read as a "highlighted ribbon",
     // but below labels + difficulty + arrows so those stay readable /
-    // visible when a route or trail is highlighted. All start with a
-    // no-match filter; highlightRoute()/highlightTrail() swap in the
+    // visible when a route or rating is highlighted. All start with a
+    // no-match filter; highlightRoute()/highlightRating() swap in the
     // real filter and set the dynamic color.
     //
     // History: this used to be a four-layer sandwich (outline, blurred
@@ -6581,21 +6586,20 @@ async function loadTrails() {
         },
         layout: { "line-cap": "round", "line-join": "round" },
     });
-    // Trail highlight ribbon (bottom → top), over an optional amber glow:
-    //   outline:  thick scheme-contrasting silhouette (black on light
-    //             basemap, white on dark, see applyMapPaintForScheme)
-    //   stroke:   highlighter yellow (#FFEC00), see highlightTrail().
-    //             Trails span multiple routes so they have no native
-    //             color; the highlighter yellow is the framework's
-    //             "no color of its own" emphasis state. On a difficulty
-    //             map the stroke takes each way's rating color and the
-    //             outline that color's luminance match.
+    // Trail ribbon (bottom → top), over an optional amber glow: a set
+    // of ways that crosses routes, which today is a difficulty map's
+    // color key (highlightRating). A trail itself is a look, not a
+    // selection (showTrail), so it never lights this ribbon.
+    //   outline:  the key color's luminance match
+    //             (ratingHighlightOutlineColor), the scheme silhouette
+    //             until one is set
+    //   stroke:   the key's own color, painted per selection; the
+    //             initial color never shows under the no-match filter
     // Optional selection glow, see the route glow above for why it's an
     // opaque core + blur rather than a translucent stroke.
     // The trail ribbon shares the route ribbon's source, which
-    // refreshLaneHighlight fills with every lane of the trail (lane
-    // features carry trail_name), so it sits on the lanes and survives
-    // pans the same way.
+    // refreshLaneHighlight fills with the key's lanes, so it sits on the
+    // lanes and survives pans the same way.
     if (CONFIG.highlightGlow !== false) {
         map.addLayer({
             id: "trail-highlight-glow",
@@ -6800,7 +6804,7 @@ function washDim(cssColor) {
 
 // Paint value for a name-label layer's `prop` (text-color or
 // text-halo-color) under the current highlight: `normal` for labels
-// belonging to the highlighted route/trail, washDim(normal) for the
+// belonging to the highlighted route or rating, washDim(normal) for the
 // rest, still visible (a rider retracing the network to reach the
 // highlight needs to read the surrounding names), dimmed by the exact
 // same wash the rest of the map uses under a highlight, fill AND
@@ -6818,23 +6822,19 @@ function labelDimExpr(normal, matchExprFn) {
         : normal;
 }
 
-// Match expressions for the two label identities. Route highlights
-// brighten a route's own name plus the trail names along it; trail
-// highlights brighten that trail's own name plus the route name(s) it
-// belongs to. Reused across every label layer below so a route/trail
-// highlight dims the whole label set (route mode AND trail mode) the
-// same way, not just whichever mode happens to be on screen.
+// Match expressions for the two label identities. A route highlight
+// brightens the route's own name plus the trail names along it; a
+// color key brightens the labels of its own ways. Reused across every
+// label layer below so a highlight dims the whole label set (route
+// mode AND trail mode) the same way, not just whichever mode happens
+// to be on screen.
 function routeIdentityMatch() {
     if (highlight.kind === "rating") return ratingIdentityMatch();
-    return highlight.kind === "route"
-        ? ["==", ["get", "solo_route_id"], highlight.key]
-        : ["==", ["get", "trail_name"], highlight.key];
+    return ["==", ["get", "solo_route_id"], highlight.key];
 }
 function trailIdentityMatch() {
     if (highlight.kind === "rating") return ratingIdentityMatch();
-    return highlight.kind === "trail"
-        ? ["==", ["get", "trail_name"], highlight.key]
-        : ["in", highlight.key, ["get", "shared_routes"]];
+    return ["in", highlight.key, ["get", "shared_routes"]];
 }
 // A color key highlight: the feature's own way has that key. Labels
 // and chevrons of unrated ways carry color_key (stamped per visibility
@@ -7380,21 +7380,17 @@ function refreshLaneHighlight() {
     const token = ++laneHighlightToken;
     const kind = highlight && highlight.kind;
     const key = highlight && highlight.key;
-    if (kind !== "route" && kind !== "trail" && kind !== "rating") {
+    if (kind !== "route" && kind !== "rating") {
         src.setData({ type: "FeatureCollection", features: [] });
         return;
     }
-    // A trail spans routes, so that one lays the whole graph out
-    // (cached per zoom by the plugin) and cuts it down to the trail. A
-    // color key does the same, cut down to its ways.
-    const keep = kind === "rating"
-        ? (f) => f.properties.color_key === key
-        : (f) => f.properties.trail_name === key;
+    // A color key spans routes, so it lays the whole graph out (cached
+    // per zoom by the plugin) and cuts it down to the key's ways.
     const wanted = kind === "route"
         ? laneFeatureCollectionAsync({ extent: "full", routes: [key] })
         : laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
             type: "FeatureCollection",
-            features: all.features.filter(keep),
+            features: all.features.filter((f) => f.properties.color_key === key),
         }));
     wanted.then((fc) => {
         if (token === laneHighlightToken) src.setData(fc);
@@ -7654,25 +7650,11 @@ function _refreshVisibilityDependents() {
     rebuildFinderList();
     rebuildRoutePanel();
     pruneInvisibleHighlights();
-    // If the highlighted entity is no longer visible, clear it.
+    // If the highlighted entity is no longer visible, clear it. One
+    // chain, because clearing a route highlight leaves `highlight` null.
     if (highlight) {
-        // For trails, defer to the trail index (a trail is "visible" if any
-        // of its parent routes is in visibleRoutes). One chain, because
-        // clearing a route highlight leaves `highlight` null.
         if (highlight.kind === "route") {
             if (!visibleRoutes.has(highlight.key)) clearHighlight();
-        } else if (highlight.kind === "trail") {
-            const t = trailIndex.find((x) => x.name === highlight.key);
-            if (!t || !t.routeIds.some((rid) => visibleRoutes.has(rid))) {
-                clearHighlight();
-            } else if (isDifficultyMap()) {
-                // Still on the map, but perhaps less of it.
-                showTrailChip(highlight.key);
-            } else {
-                // Routes map: same "perhaps less of it" concern, just
-                // the stats span (see refreshTrailChipStats).
-                refreshTrailChipStats(highlight.key);
-            }
         } else if (highlight.kind === "rating") {
             // Gone with its key row when no visible way of that rating is
             // left; otherwise its length may have changed.
@@ -7736,22 +7718,18 @@ function updateTrailDisplay() {
 //   glow (optional): soft amber aura beneath everything; constant
 //            color, opaque core + blur. Gated by highlight_glow, the
 //            id stays in the arrays below and the getLayer() guards in
-//            highlightRoute/Trail skip it when the layer wasn't created.
+//            highlightRoute/Rating skip it when the layer wasn't created.
 //   outline: thick silhouette. For routes it's luminance-matched to the
 //            route's own color (white for a dark route, black for a
 //            light one, see highlightOutlineForColor) so the ribbon
-//            keeps a readable edge under the wash; for trails it's the
-//            scheme-contrasting silhouette (black on light, white on
-//            dark), except on a difficulty map, where a trail or rating
-//            gets the same luminance match per way.
+//            keeps a readable edge under the wash; a rating gets the
+//            same luminance match to its own color.
 //   underlay (routes only): stroke-width layer that highlightRoute()
 //            paints with a two-color dashed route's second color so
 //            dash gaps show it, hidden (opacity 0) otherwise.
 //   stroke:  recolored per highlight via setPaintProperty, the route's
-//            native color (chip + ribbon agree on identity), or the
-//            framework's "highlighter yellow" #FFEC00 for trails (which
-//            span multiple routes, so no single native color; a
-//            difficulty map's trail takes its rating colors). Dashed
+//            native color (chip + ribbon agree on identity), or a
+//            rating's color on the trail ribbon. Dashed
 //            routes carry their dash pattern + cap here too, set per
 //            selection by highlightRoute().
 //
@@ -7786,12 +7764,12 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 // ============================================================
 // Gated behind `CONFIG.mapDimOnHighlight` (per-map YAML, default ON,
 // opt out with `map_dim_on_highlight: false`). When active,
-// highlighting a route or trail dims the rest of the map:
+// highlighting a route or a rating dims the rest of the map:
 //   - The `dim-tint` background layer fades in, washing the basemap +
 //     non-highlighted trail casings/fills toward black (strength is
 //     SCRIM_OPACITY, from scrim_opacity).
 //   - Difficulty icons, one-way arrows, and clip-arrows narrow HARD to
-//     the highlighted route/trail only (filtered out elsewhere, so they
+//     the highlighted route or rating only (filtered out elsewhere, so they
 //     don't punch through the tint on other lines).
 //   - Name labels (route AND trail names, whichever labelMode is
 //     active) take a softer treatment in updateLabels(): the ones
@@ -7802,10 +7780,8 @@ const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 //     dimming exactly instead of drifting toward its own look. Labels
 //     stay visible rather than hiding, a rider retracing the network
 //     to reach the highlight still needs to read the connecting
-//     names. Same rule for both highlight kinds: a route highlight
-//     brightens that route's name + the trail names along it; a
-//     trail highlight brightens that trail's name + the route
-//     name(s) it belongs to.
+//     names. A route highlight brightens that route's name + the
+//     trail names along it; a rating brightens its own ways' labels.
 //   - POI markers (DOM overlay, above the WebGL canvas) recolor
 //     toward the same wash unless adjacent to the highlight, via
 //     washMarkerElement() in updateMarkerDimState(). Recolored rather
@@ -7832,7 +7808,7 @@ function highlightDimActive() {
 
 // Per-route clip-arrow visibility. Clip-arrow layers are route-scoped
 // (one layer per route), so this is straight visibility toggling.
-// Trail and rating highlights hide every clip-arrow since they're a
+// A rating highlight hides every clip-arrow since they're a
 // route-level concept.
 function updateClipArrowsDim() {
     const dim = highlightDimActive();
@@ -7898,7 +7874,7 @@ function refreshSpotlightDim() {
 }
 
 // One-shot sync of everything that responds to dim + highlight state.
-// Called from highlightRoute / highlightTrail / clearHighlight, and
+// Called from highlightRoute / highlightRating / clearHighlight, and
 // from updateTrailDisplay() so season/emergency toggles don't
 // accidentally re-enable non-highlighted labels under an active dim.
 function applyDimState() {
@@ -8025,7 +8001,8 @@ function highlightRoute(routeId) {
     if (isDifficultyMap()) return;
     // Single-highlight invariant across kinds: drop any POI highlight
     // (rings, force-mounted markers, open popup) before lighting a
-    // route. The route/trail filters clear each other inline below.
+    // route. The route and trail ribbon filters clear each other
+    // inline below.
     clearPoiHighlight();
     closeTrailPopup();
     highlight = { kind: "route", key: routeId };
@@ -8103,7 +8080,7 @@ function highlightRoute(routeId) {
             map.setFilter(layerId, routeFilter);
         }
     }
-    // Clear trail highlights (single-highlight invariant)
+    // Clear the trail ribbon (single-highlight invariant)
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
@@ -8137,117 +8114,133 @@ function highlightRoute(routeId) {
     syncRoutePanelActiveRow();
 }
 
-function highlightTrail(trailName) {
-    // Drop any POI highlight before lighting a trail (single-highlight
-    // invariant across kinds); route filters clear inline below.
-    clearPoiHighlight();
+// A finder trail result, and a /t/ share link, is a look, not a
+// selection (Steve, 2026-09-29): the camera fits the trail, then the
+// popup a tap opens appears on it, with its lift. A trail is found
+// once and then ridden by eye, like a place, so it gets no chip,
+// ribbon or wash, and a KEEP selection (a route, a rating, a place)
+// stays exactly as it was, the way a tap on a lane leaves it.
+//
+// The popup waits for the camera: lane positions are laid out per
+// zoom, so the anchor is snapped to the lane only once the fit has
+// settled. Arrival is moveend or a fallback timer (a fit that does not
+// move the camera fires no reliable moveend), whichever comes first,
+// the pattern highlightPoi uses. The pending state is separate from
+// the POI one, and everything that opens or closes a trail popup or
+// replaces the view cancels it (openTrailPopup, closeTrailPopup,
+// clearHighlight), so a late popup never lands over a newer choice.
+let _trailPopupTimer = null;
+let _trailPopupMoveHandler = null;
+
+function cancelPendingTrailPopup() {
+    if (_trailPopupTimer !== null) {
+        clearTimeout(_trailPopupTimer);
+        _trailPopupTimer = null;
+    }
+    if (_trailPopupMoveHandler) {
+        map.off("moveend", _trailPopupMoveHandler);
+        _trailPopupMoveHandler = null;
+    }
+}
+
+function showTrail(trailName) {
     closeTrailPopup();
-    highlight = { kind: "trail", key: trailName };
-
-    // Trails span multiple routes, no single native color to
-    // inherit. Use highlighter yellow (#FFEC00, Stabilo Boss territory)
-    // as the framework's "no color of its own" emphasis state. Reads
-    // unmistakably as "selected" without claiming the trail belongs to
-    // any one route.
-    //
-    // A difficulty map is the exception: there each way already has a
-    // color of its own, its color key's, and the trail is the thing a
-    // rider picks, so it lights up as itself, per way, the way a rating
-    // highlight does (a mixed trail keeps its blue and black stretches).
-    const highlighter = "#FFEC00";
-    const onDifficultyMap = isDifficultyMap();
-    const stroke = onDifficultyMap ? colorKeyMatchExpr((k) => keyLook(k).color) : highlighter;
-    const trailFilter = ["==", ["get", "trail_name"], trailName];
-    // Paint before filter, same flash-prevention pattern as
-    // highlightRoute(). Less critical here since trail-highlight-stroke
-    // is always #FFEC00 either way on a routes map, but kept symmetric
-    // with the route path for consistency and defensive against future
-    // changes.
-    for (const layerId of TRAIL_TINTED_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, "line-color", stroke);
-        }
-    }
-    // Back to the scheme silhouette: a rating highlight on these same
-    // layers may have left its own outline color. A difficulty map's
-    // trail takes the rating highlight's outline per way instead.
-    if (map.getLayer("trail-highlight-outline")) {
-        map.setPaintProperty("trail-highlight-outline", "line-color",
-            onDifficultyMap ? difficultyTrailOutlineColor()
-                : mapPaintTokens().highlightOutline);
-    }
-    // The ribbon source holds the trail's lanes, filled before the
-    // filters expose the layers.
-    refreshLaneHighlight();
-    for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, trailFilter);
-        }
-    }
-    // Clear route highlights
-    for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, ROUTE_NONE_FILTER);
-        }
-    }
-
     fitToRouteOrTrail({ trailName });
-    if (onDifficultyMap) {
-        showTrailChip(trailName);
+    const run = longestVisibleTrailRun(trailName);
+    if (!run) return;
+    const onArrival = () => {
+        cancelPendingTrailPopup();
+        openTrailPopupOnRun(trailName, run);
+    };
+    _trailPopupMoveHandler = onArrival;
+    map.on("moveend", onArrival);
+    _trailPopupTimer = setTimeout(onArrival, POI_ARRIVAL_FALLBACK_MS);
+}
+
+// The popup anchor for a trail: the middle, by length, of its longest
+// visible run. A single run rather than the whole trail's middle, which
+// for a trail in pieces could fall between them, off every lane.
+// Difficulty maps read the lane plugin's input for the current
+// visibility pass; routes maps read the ways with a visible parent, the
+// ones the lanes draw. Returns { mid, properties } or null.
+function longestVisibleTrailRun(trailName) {
+    let candidates;
+    if (isDifficultyMap()) {
+        candidates = difficultyVisibleFeatures || [];
     } else {
-        // A trail is a line on the map, so the chip gets a line swatch
-        // (solid highlighter yellow); POI highlights keep the dot. Stats
-        // is the trail's own visible length (trailStatsText / "" when
-        // distances are off), the same number the popup and finder row
-        // show, so the chip reads the same as a difficulty map's.
-        showHighlightChip({
-            label: trailName,
-            line: { color: highlighter },
-            stats: trailStatsText(trailEntry(trailName)),
-        });
+        candidates = routesData ? routesData.features.filter((f) => {
+            const p = f.properties;
+            return (p.shared_routes || [p.route_id]).some((id) => visibleRoutes.has(id));
+        }) : [];
     }
+    let best = null;
+    let bestLen = 0;
+    for (const f of candidates) {
+        if (f.properties.trail_name !== trailName) continue;
+        const parts = f.geometry.type === "LineString"
+            ? [f.geometry.coordinates] : f.geometry.coordinates;
+        for (const coords of parts) {
+            const len = lineLengthMeters(coords);
+            if (len > bestLen) {
+                bestLen = len;
+                best = { coords, properties: f.properties };
+            }
+        }
+    }
+    if (!best) return null;
+    const { coords } = best;
+    let walked = 0;
+    let mid = coords[0];
+    for (let i = 1; i < coords.length; i++) {
+        walked += lineLengthMeters([coords[i - 1], coords[i]]);
+        mid = coords[i];
+        if (walked >= bestLen / 2) break;
+    }
+    return { mid: [mid[0], mid[1]], properties: best.properties };
+}
 
-    // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
-    applyDimState();
-
-    // A trail highlight is not a route highlight, clear any panel
-    // key row marked from a previous route selection.
-    syncRoutePanelActiveRow();
+// Snaps the run's middle vertex to the lane and opens the tap popup
+// there. The tolerance is generous because the vertex is the way's
+// centerline and a routes map's lanes are offset into a bundle beside
+// it; the nearest lane wins, so the extra reach costs no accuracy, and
+// a hit on a different trail is refused rather than described.
+function openTrailPopupOnRun(trailName, run) {
+    const tolerancePx = 30;
+    const named = (hit) => (hit && hit.properties
+        && hit.properties.trail_name === trailName ? hit : null);
+    let hit = null;
+    if (laneLayer) {
+        hit = named(laneLayer.queryLaneAt(run.mid, map.getZoom(), tolerancePx))
+            || named(laneLayer.queryLane(map.project(run.mid), tolerancePx));
+    }
+    if (hit) {
+        openTrailPopup(hit, hit.lngLat || run.mid);
+        return;
+    }
+    // Not expected: the lanes draw every visible way. If the lane layer
+    // is missing or its last build does not reach the run, the popup
+    // still answers, at the raw vertex and from the way's own facts,
+    // which carry the same trail_name, rating and one-way the lane
+    // graph keeps. It has no edge, which only an unnamed way needs.
+    const p = run.properties;
+    const route = p.route_id;
+    openTrailPopup({
+        route,
+        routes: p.shared_routes || [route],
+        edge: null,
+        properties: p,
+    }, run.mid);
 }
 
 // A trail's index entry, stamped for the current visibility pass:
 // refreshTrailRatings on a difficulty map (ratings + length),
 // refreshTrailLengths on a routes map (length only). Model-agnostic so
-// the popup, the chip and the finder row can read it the same way on
+// the popup and the finder row can read it the same way on
 // either map. Undefined for a name the index does not hold.
 function trailEntry(trailName) {
     if (isDifficultyMap()) refreshTrailRatings();
     else refreshTrailLengths();
     return trailIndex.find((t) => t.name === trailName);
-}
-
-// Outline of a difficulty map's trail highlight: each way's color key
-// highlight outline, since the stroke carries each way's key color.
-function difficultyTrailOutlineColor() {
-    return colorKeyMatchExpr(ratingHighlightOutlineColor);
-}
-
-// A difficulty map's trail chip: the trail's finder mark (its main
-// key's glyph, or its line) and its visible length where the map shows
-// distances. Re-issued whole after a units change or a visibility
-// toggle, since a toggle can change how much of the trail is on the map
-// AND which key most of that length carries, so the mark must follow
-// the finder row, not only the distance.
-function showTrailChip(trailName) {
-    const t = trailEntry(trailName);
-    const key = t ? t.rating : "";
-    const rated = isRatedDifficulty(key);
-    showHighlightChip({
-        label: trailName,
-        glyph: rated ? difficultyIconDataUrl(key) : null,
-        line: rated ? null : keyLook(key),
-        stats: trailStatsText(t),
-    });
 }
 
 // Outline of a color key highlight: luminance-matched to the key's
@@ -8260,8 +8253,8 @@ function ratingHighlightOutlineColor(key) {
 
 // Every visible way with one color key (a rating, a styled relation's
 // unrated ways, or unrated), from a difficulty key row or a share link.
-// The ribbon reuses the trail highlight layers (a key, like a trail, is
-// a set of ways, and the lane highlight source is cut down to it in
+// The ribbon is the trail ribbon layers (a key is a set of ways that
+// crosses routes, and the lane highlight source is cut down to it in
 // refreshLaneHighlight) in the key's own color, so the selection reads
 // as the unselected look, thicker, with an outline. The camera fits to
 // the lit ways, as a route row does, so every key row answers a tap the
@@ -8333,23 +8326,6 @@ function ratingStatsText(rating) {
 function refreshRatingChipStats() {
     const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
     if (statsEl && CONFIG.showDistance) statsEl.textContent = ratingStatsText(highlight.key);
-}
-
-// A routes map's highlighted trail chip distance, after the rider
-// changes units or a visibility toggle changes how much of the trail
-// is on the map. A difficulty map re-issues the whole chip instead
-// (showTrailChip), because there a toggle can also change which key
-// most of the trail's length carries, so the mark has to follow; a
-// routes-map trail's mark is fixed highlighter yellow (highlightTrail),
-// so only the stats span needs to move, same as refreshRatingChipStats.
-// Can empty out (every parent route hidden leaves lengthM at 0), so
-// this hides the span itself rather than leaving stale text in it.
-function refreshTrailChipStats(trailName) {
-    const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
-    if (!statsEl) return;
-    const stats = trailStatsText(trailEntry(trailName));
-    statsEl.textContent = stats;
-    statsEl.classList.toggle("hidden", !stats);
 }
 
 // Pending deferred-popup state for the single-POI highlight path.
@@ -8565,7 +8541,7 @@ let _highlightedPois = [];                       // module-scope state
 // uid, a name-group's `group:<type>:<name>` uid (`refgroup:<ref>:<name>`
 // for same-named trail markers that share a different ref), or a category row's
 // `category:<type>` uid. buildShareUrl() serializes this so a POI
-// highlight round-trips through a share link the way a route/trail does
+// highlight round-trips through a share link the way a route or rating does
 // via `highlight`. Set by highlightPoi / highlightPoiGroup, nulled by
 // clearPoiHighlight. The single-highlight invariant (see commit history)
 // keeps this and `highlight` mutually exclusive: at most one is non-null.
@@ -9008,6 +8984,9 @@ function clearRouteTrailHighlight() {
 }
 
 function clearHighlight() {
+    // A finder trail popup still waiting for its camera belongs to the
+    // view being cleared.
+    cancelPendingTrailPopup();
     clearRouteTrailHighlight();
     // POI outlines + chip, clearPoiHighlight is a no-op if nothing's
     // currently highlighted, and it tears down the chip itself, so
@@ -9109,9 +9088,6 @@ function showHighlightChip({ label, color, stats, note, line, glyph, poiType, ma
     chip.setAttribute("aria-label", `Clear highlight: ${label}`);
     // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
     // routeStatsText(), empty string or missing means hide the span
-    // entirely. A trail highlight passes trailStatsText() on either map
-    // model: the trail's own visible length, deduped by way, not a
-    // per-route figure (a trail name can span multiple routes).
     if (statsEl) {
         if (stats) {
             statsEl.textContent = stats;
@@ -9330,7 +9306,7 @@ function rebuildRatingRows(list) {
 // Mark the currently-highlighted route's key row (accent stripe via
 // .is-active + aria-current) and clear every other row's mark. Reads
 // the global highlight state rather than taking a parameter so every
-// call site, highlightRoute, highlightTrail, clearRouteTrailHighlight,
+// call site, highlightRoute, highlightRating, clearRouteTrailHighlight,
 // rebuildRoutePanel, stays a bare one-liner that can't pass stale
 // data. String() both sides: route ids arrive as strings from dataset
 // but may be set as numbers by map-tap handlers.
@@ -9522,7 +9498,7 @@ function buildTrailIndex() {
 //   lengthM         the trail's visible length
 // Reads the lane plugin's input for the current visibility pass, as
 // ratingLengths does (and like it, only once the lane renderer has
-// started), so the finder, the chip and the map agree. The stamp is
+// started), so the finder, the popup and the map agree. The stamp is
 // redone only when that input or the index is replaced, so a keystroke
 // in the finder costs nothing.
 let _trailRatingsStamp = null;  // { features, index }
@@ -9619,7 +9595,7 @@ function refreshTrailLengths() {
     _trailLengthsStamp = { version: visibleRoutesVersion, index: trailIndex };
 }
 
-// A trail's visible length for its finder row and chip, in the rider's
+// A trail's visible length for its finder row and popup, in the rider's
 // units; "" when the map does not show distances. Both map models:
 // refreshTrailRatings/refreshTrailLengths (via trailEntry) stamp
 // lengthM either way, this just formats it. Appends " shown" when the
@@ -12306,7 +12282,7 @@ function makeTrailRow(t, visibleRouteIds) {
     if (isDifficultyMap()) {
         appendDifficultyTrailRowContent(row, t);
         row.addEventListener("click", () => {
-            highlightTrail(t.name);
+            showTrail(t.name);
             if (window.__closeSearchOverlay) window.__closeSearchOverlay();
         });
         return row;
@@ -12352,7 +12328,7 @@ function makeTrailRow(t, visibleRouteIds) {
     }
 
     row.addEventListener("click", () => {
-        highlightTrail(t.name);
+        showTrail(t.name);
         if (window.__closeSearchOverlay) window.__closeSearchOverlay();
     });
 
@@ -12625,154 +12601,163 @@ function setupInteractions() {
         if (!laneLayer) return;
         const laneHit = laneLayer.queryLane(e.point, TRAIL_TAP_BUFFER_PX);
         if (!laneHit) return;
-        const laneProps = laneHit.properties || {};
-        const routeIds = [laneHit.route,
-            ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
-        const trailName = laneProps.trail_name || "";
-        const anchor = laneHit.lngLat || [e.lngLat.lng, e.lngLat.lat];
-        const imba = laneProps.imba_difficulty || "";
-        const oneway = laneProps.oneway || "";
-
-        // List only memberships the rider can currently see, using the
-        // same season/emergency-aware visibleRoutes set the panel,
-        // finder, and labels key off. The lane hit carries every
-        // relation the way belongs to, so without this a summer popup
-        // advertised winter-only routes (and vice versa). The popup
-        // still opens when every membership is filtered out - the
-        // trail itself is visible, so its name/difficulty/one-way
-        // rows remain useful; only the "Part of" section drops.
-        //
-        // A difficulty map lists no routes at all: the relations there
-        // are the unit of fetching, not something a rider follows, and
-        // the rows only repeated the title (Copper Harbor) or named the
-        // one network relation on every tap (NTN).
-        const matchedRoutes = isDifficultyMap() ? [] : routeIds
-            .filter((id) => visibleRoutes.has(id))
-            .map((id) => CONFIG.routes[id])
-            .filter(Boolean);
-        const routeItems = matchedRoutes
-            .map((rel) => {
-                // Same line swatch as the Routes key / finder rows.
-                // Safe to inline via outerHTML: the element is
-                // self-generated by routeSwatchEl (color comes from
-                // the validated palette path), only the OSM route
-                // name is untrusted and it stays escaped. Flex layout
-                // rides inline like the difficulty/one-way rows below.
-                const swatchHtml =
-                    routeSwatchEl(routeSwatchModel(rel), "popup-route-swatch").outerHTML;
-                return `<div class="popup-routes" style="display:flex;align-items:center;gap:6px;">${swatchHtml}<span>${escapeHtml(rel.name)}</span></div>`;
-            })
-            .join("");
-
-        // Difficulty / one-way rows carry their presentation INLINE
-        // (flex centering, sizes, gaps) rather than in style.css:
-        // the markup is generated here, so shipping its look in the
-        // same file means a popup can never render half-styled when
-        // the service worker serves a stale stylesheet alongside a
-        // fresh app.js. Sizing attrs + flex:none also pin the icons
-        // to text scale (the canvases' natural size is 4x for
-        // crispness, not for display).
-        const iconUrl = difficultyIconDataUrl(imba);
-        const ratingName = iconUrl ? RATING_NAMES[parseInt(imba, 10)] : "";
-        let html = "";
-        if (trailName) {
-            // trailName comes from OSM `name=` tag - UNTRUSTED.
-            // Escape to neutralize any vandalism (script tags,
-            // event handlers) in OSM data. Data URLs are
-            // self-generated, not OSM strings.
-            html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
-        } else {
-            // A fixed string, not OSM data, so nothing to escape. Every
-            // tap on a lane answers with a popup, so an unnamed way
-            // still gets a title rather than rows with no subject.
-            html += `<div class="popup-title">Unnamed trail</div>`;
-        }
-        if (trailName && CONFIG.showDistance) {
-            // The tapped trail's whole visible length, deduped by way,
-            // the same number the chip and the finder row show: it is
-            // the length of the trail the tap lift marks (showTapLift),
-            // not the length of the single way under the tap. Same row
-            // on both map models (trailEntry reads whichever stamp
-            // applies) so the popup feels the same either way.
-            // trailStatsText already gates on CONFIG.showDistance; the
-            // check here is just to skip the entry lookup when it would
-            // be "". bare: true so the qualifier lives in the label
-            // instead of the number (isTruncatedTrail is the same
-            // gate trailStatsText uses internally, so the label and
-            // the number can't disagree about a truncated trail).
-            const distanceText = trailStatsText(trailEntry(trailName), { bare: true });
-            if (distanceText) {
-                // Same quiet inline-style pattern as popup-difficulty
-                // below (see the comment there: markup-in-JS on purpose,
-                // so the popup never renders half-styled against a
-                // stale service-worker-cached stylesheet).
-                const lengthLabel = isTruncatedTrail(trailName) ? "Length shown:" : "Length:";
-                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
-            }
-        }
-        if (!trailName && CONFIG.showDistance) {
-            // An unnamed way has no trail to total, so the row measures
-            // the graph edge under the tap, the stretch its lift marks
-            // (showTapLift below), from junction to junction. It is
-            // never "Length shown:": the segment is the whole answer to
-            // the tap, and an edge the map cut simply ends at the map's
-            // edge. Telling that apart would mean matching clip
-            // endpoints to graph nodes, which do not coincide exactly.
-            const distanceText = formatDistance(edgeLengthMeters(laneHit.edge));
-            html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
-        }
-        if (iconUrl) {
-            // Symbol + rating name on their own row, same quiet
-            // typography as the one-way row below (with or without
-            // a trail name above).
-            html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
-        }
-        // A styled relation's unrated way gets no row: naming the
-        // relation here read as "part of a route", which a difficulty
-        // map does not say (Steve, 2026-09-29). Its key row already
-        // explains the color.
-        if (oneway === "yes" || oneway === "reversible") {
-            // The qualifier follows the config's direction_schedule, the
-            // same thing that flips the arrows, not the OSM tag: a
-            // reversible way always has a schedule (the build fails
-            // otherwise), and a plain one-way on a scheduled route
-            // reverses too. CONFIG.directionSchedules holds only routes
-            // with non-empty reverse_days. The wording matches
-            // reverse_days and the Options help ("Some reverse by day").
-            // On a difficulty map the hit names only the way's owner, so
-            // the way carries the any-visible-parent answer itself (see
-            // difficultyLaneFeatures).
-            const schedules = CONFIG.directionSchedules || {};
-            const reverses = isDifficultyMap()
-                ? laneProps.reverses_by_day === true
-                : routeIds.some((id) => schedules[id]);
-            const text = reverses
-                ? "One-way (reverses by day)" : "One-way";
-            html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
-        }
-        if (routeItems) {
-            const label = matchedRoutes.length === 1
-                ? "Part of Route:"
-                : "Part of Routes:";
-            html += `<hr class="popup-hr">`;
-            html += `<div class="popup-routes">${label}</div>`;
-            html += routeItems;
-        }
-
-        // The old popup's close clears its lift, so the new lift is
-        // set only after the old popup is gone.
-        if (_trailPopup) _trailPopup.remove();
-        _trailPopup = new maplibregl.Popup({
-            maxWidth: "220px",
-            closeButton: false,
-            focusAfterOpen: false,
-        })
-            .setLngLat(anchor || e.lngLat)
-            .setHTML(html)
-            .addTo(map);
-        _trailPopup.on("close", clearTapLift);
-        showTapLift(trailName ? { trailName } : { edge: laneHit.edge });
+        openTrailPopup(laneHit, laneHit.lngLat || [e.lngLat.lng, e.lngLat.lat]);
     });
+}
+
+// Opens the popup and the lift for one lane hit (laneLayer.queryLane or
+// queryLaneAt), anchored at `anchor`. Shared by a map tap and a finder
+// trail result (showTrail) so the two can never answer differently.
+function openTrailPopup(laneHit, anchor) {
+    // Whatever opens a popup supersedes a finder popup still waiting
+    // for its camera, which would otherwise land on top of this one.
+    cancelPendingTrailPopup();
+    const laneProps = laneHit.properties || {};
+    const routeIds = [laneHit.route,
+        ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
+    const trailName = laneProps.trail_name || "";
+    const imba = laneProps.imba_difficulty || "";
+    const oneway = laneProps.oneway || "";
+
+    // List only memberships the rider can currently see, using the
+    // same season/emergency-aware visibleRoutes set the panel,
+    // finder, and labels key off. The lane hit carries every
+    // relation the way belongs to, so without this a summer popup
+    // advertised winter-only routes (and vice versa). The popup
+    // still opens when every membership is filtered out - the
+    // trail itself is visible, so its name/difficulty/one-way
+    // rows remain useful; only the "Part of" section drops.
+    //
+    // A difficulty map lists no routes at all: the relations there
+    // are the unit of fetching, not something a rider follows, and
+    // the rows only repeated the title (Copper Harbor) or named the
+    // one network relation on every tap (NTN).
+    const matchedRoutes = isDifficultyMap() ? [] : routeIds
+        .filter((id) => visibleRoutes.has(id))
+        .map((id) => CONFIG.routes[id])
+        .filter(Boolean);
+    const routeItems = matchedRoutes
+        .map((rel) => {
+            // Same line swatch as the Routes key / finder rows.
+            // Safe to inline via outerHTML: the element is
+            // self-generated by routeSwatchEl (color comes from
+            // the validated palette path), only the OSM route
+            // name is untrusted and it stays escaped. Flex layout
+            // rides inline like the difficulty/one-way rows below.
+            const swatchHtml =
+                routeSwatchEl(routeSwatchModel(rel), "popup-route-swatch").outerHTML;
+            return `<div class="popup-routes" style="display:flex;align-items:center;gap:6px;">${swatchHtml}<span>${escapeHtml(rel.name)}</span></div>`;
+        })
+        .join("");
+
+    // Difficulty / one-way rows carry their presentation INLINE
+    // (flex centering, sizes, gaps) rather than in style.css:
+    // the markup is generated here, so shipping its look in the
+    // same file means a popup can never render half-styled when
+    // the service worker serves a stale stylesheet alongside a
+    // fresh app.js. Sizing attrs + flex:none also pin the icons
+    // to text scale (the canvases' natural size is 4x for
+    // crispness, not for display).
+    const iconUrl = difficultyIconDataUrl(imba);
+    const ratingName = iconUrl ? RATING_NAMES[parseInt(imba, 10)] : "";
+    let html = "";
+    if (trailName) {
+        // trailName comes from OSM `name=` tag - UNTRUSTED.
+        // Escape to neutralize any vandalism (script tags,
+        // event handlers) in OSM data. Data URLs are
+        // self-generated, not OSM strings.
+        html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
+    } else {
+        // A fixed string, not OSM data, so nothing to escape. Every
+        // tap on a lane answers with a popup, so an unnamed way
+        // still gets a title rather than rows with no subject.
+        html += `<div class="popup-title">Unnamed trail</div>`;
+    }
+    if (trailName && CONFIG.showDistance) {
+        // The tapped trail's whole visible length, deduped by way,
+        // the same number the finder row shows: it is
+        // the length of the trail the tap lift marks (showTapLift),
+        // not the length of the single way under the tap. Same row
+        // on both map models (trailEntry reads whichever stamp
+        // applies) so the popup feels the same either way.
+        // trailStatsText already gates on CONFIG.showDistance; the
+        // check here is just to skip the entry lookup when it would
+        // be "". bare: true so the qualifier lives in the label
+        // instead of the number (isTruncatedTrail is the same
+        // gate trailStatsText uses internally, so the label and
+        // the number can't disagree about a truncated trail).
+        const distanceText = trailStatsText(trailEntry(trailName), { bare: true });
+        if (distanceText) {
+            // Same quiet inline-style pattern as popup-difficulty
+            // below (see the comment there: markup-in-JS on purpose,
+            // so the popup never renders half-styled against a
+            // stale service-worker-cached stylesheet).
+            const lengthLabel = isTruncatedTrail(trailName) ? "Length shown:" : "Length:";
+            html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
+        }
+    }
+    if (!trailName && CONFIG.showDistance) {
+        // An unnamed way has no trail to total, so the row measures
+        // the graph edge under the tap, the stretch its lift marks
+        // (showTapLift below), from junction to junction. It is
+        // never "Length shown:": the segment is the whole answer to
+        // the tap, and an edge the map cut simply ends at the map's
+        // edge. Telling that apart would mean matching clip
+        // endpoints to graph nodes, which do not coincide exactly.
+        const distanceText = formatDistance(edgeLengthMeters(laneHit.edge));
+        html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
+    }
+    if (iconUrl) {
+        // Symbol + rating name on their own row, same quiet
+        // typography as the one-way row below (with or without
+        // a trail name above).
+        html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
+    }
+    // A styled relation's unrated way gets no row: naming the
+    // relation here read as "part of a route", which a difficulty
+    // map does not say (Steve, 2026-09-29). Its key row already
+    // explains the color.
+    if (oneway === "yes" || oneway === "reversible") {
+        // The qualifier follows the config's direction_schedule, the
+        // same thing that flips the arrows, not the OSM tag: a
+        // reversible way always has a schedule (the build fails
+        // otherwise), and a plain one-way on a scheduled route
+        // reverses too. CONFIG.directionSchedules holds only routes
+        // with non-empty reverse_days. The wording matches
+        // reverse_days and the Options help ("Some reverse by day").
+        // On a difficulty map the hit names only the way's owner, so
+        // the way carries the any-visible-parent answer itself (see
+        // difficultyLaneFeatures).
+        const schedules = CONFIG.directionSchedules || {};
+        const reverses = isDifficultyMap()
+            ? laneProps.reverses_by_day === true
+            : routeIds.some((id) => schedules[id]);
+        const text = reverses
+            ? "One-way (reverses by day)" : "One-way";
+        html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
+    }
+    if (routeItems) {
+        const label = matchedRoutes.length === 1
+            ? "Part of Route:"
+            : "Part of Routes:";
+        html += `<hr class="popup-hr">`;
+        html += `<div class="popup-routes">${label}</div>`;
+        html += routeItems;
+    }
+
+    // The old popup's close clears its lift, so the new lift is
+    // set only after the old popup is gone.
+    if (_trailPopup) _trailPopup.remove();
+    _trailPopup = new maplibregl.Popup({
+        maxWidth: "220px",
+        closeButton: false,
+        focusAfterOpen: false,
+    })
+        .setLngLat(anchor)
+        .setHTML(html)
+        .addTo(map);
+    _trailPopup.on("close", clearTapLift);
+    showTapLift(trailName ? { trailName } : { edge: laneHit.edge });
 }
 
 // ============================================================
@@ -13821,12 +13806,6 @@ function setDistanceUnits(units) {
         if (r && statsEl && statsEl.textContent) statsEl.textContent = routeStatsText(r);
     } else if (highlight && highlight.kind === "rating") {
         refreshRatingChipStats();
-    } else if (highlight && highlight.kind === "trail") {
-        if (isDifficultyMap()) {
-            showTrailChip(highlight.key);
-        } else {
-            refreshTrailChipStats(highlight.key);
-        }
     }
     updateLocationIndicator();
     applyContourUnits();
