@@ -652,10 +652,11 @@ highlights every visible way with that rating; the map does not move
 to fit them. The finder lists trails and places only, no Routes section.
 Labels show trail names, since there is no route name to show instead.
 Tapping a trail opens a popup with its name and, where tagged, its
-rating and one-way status. The popup lists no routes. The tap also
-highlights the trail the way a finder row does, without moving the
-map. With `show_distance` on, the popup adds a row for the trail's
-visible length.
+rating and one-way status. The popup lists no routes. While the popup
+is open, a soft glow marks the trail it describes. Nothing else changes:
+no dimming, no selection, and the map does not move. With
+`show_distance` on, the popup adds a row for the trail's visible
+length.
 
 Several config keys change meaning:
 

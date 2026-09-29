@@ -1105,6 +1105,31 @@ function closeTrailPopup() {
     }
 }
 
+// Difficulty maps: while a trail popup is open, the named trail it
+// describes carries a slight glow beneath its lanes. Steve's call
+// (2026-09-29), after a trial where a tap ran the finder's full
+// selection (dim wash, chip) and felt too heavy: the popup is a note,
+// the glow only says which trail the note is about, and the finder
+// stays the selection tool. So nothing else changes: `highlight`, the
+// wash, the chip and the camera are left exactly as they are.
+// Raw way geometry is enough: on a difficulty map each way is one lane
+// on its own centerline, so the line sits right under the lane at
+// every zoom and there is no zoom-dependent layout to refresh.
+function showTapGlow(trailName) {
+    const src = map.getSource(TAP_GLOW_SOURCE);
+    if (!src) return;
+    const features = (difficultyVisibleFeatures || [])
+        .filter((f) => f.properties && f.properties.trail_name === trailName);
+    src.setData({ type: "FeatureCollection", features });
+}
+
+// Runs on the popup's close event, so every way a popup goes (a tap
+// elsewhere, closeTrailPopup, a replacing tap) takes the glow with it.
+function clearTapGlow() {
+    const src = map.getSource(TAP_GLOW_SOURCE);
+    if (src) src.setData({ type: "FeatureCollection", features: [] });
+}
+
 function difficultyIconDataUrl(imba) {
     const n = parseInt(imba, 10);
     if (!(n >= 0 && n < IMBA_RATINGS.length)) return null;
@@ -6141,6 +6166,10 @@ async function loadTrails() {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
+    map.addSource(TAP_GLOW_SOURCE, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+    });
     map.on("moveend", refreshLaneSymbols);
     map.on("zoom", onLaneZoom);
     map.on("zoomend", refreshLaneHighlight);
@@ -6527,6 +6556,29 @@ async function loadTrails() {
         layout: { "line-cap": "round", "line-join": "round" },
     });
 
+    // Tap glow (difficulty maps, showTapGlow): a slight amber halo round
+    // the trail an open popup describes. Same spike-safe opaque core +
+    // line-blur as the selection glow above, narrower and softer so it
+    // reads as an accent, not a selection; Steve tunes the numbers on a
+    // device. It sits directly BENEATH the lane layer, so the halo
+    // shows only outside the trail's own rating colors; the lane layer
+    // is custom and not yet added here, so refreshLaneGraph and
+    // promoteBasemapLabels put it back under the lanes each time the
+    // stack changes. Anchored on dim-tint until then so it never paints
+    // over the wash.
+    map.addLayer({
+        id: TAP_GLOW_LAYER,
+        type: "line",
+        source: TAP_GLOW_SOURCE,
+        paint: {
+            "line-color": "#ffb700",
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 8, 14, 13, 18, 20],
+            "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 6],
+            "line-opacity": 1,
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+    }, map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : "dim-tint");
+
     // One-way chevron layers go here: above the lanes and every
     // highlight line added before this point, below EVERY text layer
     // (the per-route trail-label-<id> layers below, plus the decor
@@ -6858,6 +6910,9 @@ let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
 const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
+// Source and layer of the popup's tap glow (showTapGlow); one id for both.
+const TAP_GLOW_SOURCE = "trail-tap-glow";
+const TAP_GLOW_LAYER = "trail-tap-glow";
 
 // Lane geometry per zoom, in px. The fill width follows
 // TRAIL_WIDTH_STOPS.fill exactly, the spacing exceeds it by 1 px so
@@ -7081,6 +7136,10 @@ function refreshLaneGraph() {
                 onBuild: onLaneBuild,
             });
             map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
+            // promoteBasemapLabels ran before the lanes existed and put
+            // the labels between the tap glow and dim-tint, where the
+            // lanes just landed; the glow belongs directly under them.
+            if (map.getLayer(TAP_GLOW_LAYER)) map.moveLayer(TAP_GLOW_LAYER, LANE_LAYER_ID);
         }
     }).catch((e) => console.error("lanes: ordering failed", e));
 }
@@ -7914,10 +7973,7 @@ function highlightRoute(routeId) {
     syncRoutePanelActiveRow();
 }
 
-// fit: false skips fitToRouteOrTrail (the tap-select path, where the
-// rider is already looking at the trail; see selectTappedTrail). The
-// finder row and share-link callers pass nothing and keep the fit.
-function highlightTrail(trailName, { fit = true } = {}) {
+function highlightTrail(trailName) {
     // Drop any POI highlight before lighting a trail (single-highlight
     // invariant across kinds); route filters clear inline below.
     clearPoiHighlight();
@@ -7971,7 +8027,7 @@ function highlightTrail(trailName, { fit = true } = {}) {
         }
     }
 
-    if (fit) fitToRouteOrTrail({ trailName });
+    fitToRouteOrTrail({ trailName });
     if (onDifficultyMap) {
         showTrailChip(trailName);
     } else {
@@ -8018,38 +8074,6 @@ function showTrailChip(trailName) {
         line: rated ? null : keyLook(key),
         stats: trailStatsText(t),
     });
-}
-
-// Tap-select trial (plan section 4.2): a tap on a named lane, on a
-// difficulty map, runs the same highlight the finder row runs, minus
-// the camera move (the rider is looking at the trail they just tapped,
-// same rule as a rating tap). The click handler calls this before
-// building the popup, since highlightTrail() closes any open popup as
-// part of the single-highlight invariant; the popup must be built
-// after, or it would open and immediately be swept away.
-//
-// Steve's reservation (plan 4.2): this may be too heavy for a rider
-// panning around (accidental dim wash). Fallback rungs, each a
-// one-line change here, in order from what ships to the floor:
-//   built:       highlightTrail(trailName, { fit: false }) - full
-//                highlight + dim wash + chip, no camera move.
-//   fallback 1:  same, but skip the dim wash (drop the applyDimState
-//                call inside highlightTrail for this path, or pass a
-//                new option through) - ribbon + chip, map stays lit.
-//   fallback 2:  also clear the highlight when a tap misses every lane
-//                (the click handler's `if (!laneHit) return` early-out
-//                would instead call a clear-trail-highlight path) -
-//                one tap in, one tap out.
-//   fallback 3:  delete the call below entirely - popup only, as
-//                today; the popup's new distance row does not depend
-//                on the highlight and keeps working.
-function selectTappedTrail(trailName) {
-    // Tapping the already-lit trail again should only move the popup,
-    // not re-run the highlight (clearPoiHighlight/refreshLaneHighlight/
-    // chip re-issue), which would flash the wash and chip for no
-    // visible change.
-    if (highlight && highlight.kind === "trail" && highlight.key === trailName) return;
-    highlightTrail(trailName, { fit: false });
 }
 
 // Outline of a color key highlight: luminance-matched to the key's
@@ -12359,18 +12383,6 @@ function setupInteractions() {
         const styledKey = isDifficultyMap() && isStyledKey(laneProps.color_key)
             ? laneProps.color_key : null;
 
-        // A tap on a named trail, on a difficulty map, selects the
-        // trail the way the finder does (see selectTappedTrail for the
-        // full rationale and the fallback ladder). This runs BEFORE the
-        // popup markup below: highlightTrail() closes any open popup as
-        // part of the single-highlight invariant, so building the popup
-        // first would just have it swept away. An unnamed way (no
-        // trailName) has no trail to select, so the popup opens alone,
-        // as it always has.
-        if (isDifficultyMap() && trailName) {
-            selectTappedTrail(trailName);
-        }
-
         let html = "";
         if (trailName) {
             // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -12382,10 +12394,11 @@ function setupInteractions() {
         if (isDifficultyMap() && trailName && CONFIG.showDistance) {
             // The tapped trail's whole visible length, deduped by way,
             // the same number the chip and the finder row show: it is
-            // the length of what the highlight above just lit, not the
-            // length of the single way under the tap. trailStatsText
-            // already gates on CONFIG.showDistance; the check here is
-            // just to skip the entry lookup when it would be "".
+            // the length of the trail the tap glow marks (showTapGlow),
+            // not the length of the single way under the tap.
+            // trailStatsText already gates on CONFIG.showDistance; the
+            // check here is just to skip the entry lookup when it would
+            // be "".
             const distanceText = trailStatsText(difficultyTrailEntry(trailName));
             if (distanceText) {
                 // Same quiet inline-style pattern as popup-difficulty
@@ -12441,6 +12454,8 @@ function setupInteractions() {
         // as a rendering bug.
         if (!html) return;
 
+        // The old popup's close clears its glow, so the new glow is
+        // set only after the old popup is gone.
         if (_trailPopup) _trailPopup.remove();
         _trailPopup = new maplibregl.Popup({
             maxWidth: "220px",
@@ -12450,6 +12465,8 @@ function setupInteractions() {
             .setLngLat(anchor || e.lngLat)
             .setHTML(html)
             .addTo(map);
+        _trailPopup.on("close", clearTapGlow);
+        if (isDifficultyMap() && trailName) showTapGlow(trailName);
     });
 }
 
@@ -12481,6 +12498,12 @@ function promoteBasemapLabels() {
 
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
+    }
+    // The labels just landed between the tap glow and the lanes (or,
+    // after a basemap rebuild, the setStyle diff may have shuffled the
+    // glow); keep it directly beneath the lanes, labels under it.
+    if (map.getLayer(LANE_LAYER_ID) && map.getLayer(TAP_GLOW_LAYER)) {
+        map.moveLayer(TAP_GLOW_LAYER, LANE_LAYER_ID);
     }
 }
 
