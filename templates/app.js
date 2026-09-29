@@ -2497,6 +2497,11 @@ let poisData = null;
 // `visible_count` and push the update back through setData().
 let clipEndpointsData = null;
 let visibleRoutes = new Set(); // route IDs currently shown (strings)
+// Bumped every rebuildVisibleRoutesSet(), since visibleRoutes is mutated
+// in place (clear/add) rather than replaced: its own identity never
+// changes, so a cache that wants to know "has visibility changed since
+// I last computed" (refreshTrailLengths) needs this counter instead.
+let visibleRoutesVersion = 0;
 let basemapMode = "default"; // "default" or "custom:<id>"
 // Labels: 3-state mode (routes / trails / none). CONFIG.defaultLabels
 // is the per-map default (defaults to "none" framework-wide). Once
@@ -7547,6 +7552,7 @@ function rebuildVisibleRoutesSet() {
             continue;
         }
     }
+    visibleRoutesVersion++;
 }
 
 // Coalescing flag for the deferred half of applyVisibilityChange.
@@ -7629,6 +7635,10 @@ function _refreshVisibilityDependents() {
             } else if (isDifficultyMap()) {
                 // Still on the map, but perhaps less of it.
                 showTrailChip(highlight.key);
+            } else {
+                // Routes map: same "perhaps less of it" concern, just
+                // the stats span (see refreshTrailChipStats).
+                refreshTrailChipStats(highlight.key);
             }
         } else if (highlight.kind === "rating") {
             // Gone with its key row when no visible way of that rating is
@@ -8153,8 +8163,15 @@ function highlightTrail(trailName) {
         showTrailChip(trailName);
     } else {
         // A trail is a line on the map, so the chip gets a line swatch
-        // (solid highlighter yellow); POI highlights keep the dot.
-        showHighlightChip({ label: trailName, line: { color: highlighter } });
+        // (solid highlighter yellow); POI highlights keep the dot. Stats
+        // is the trail's own visible length (trailStatsText / "" when
+        // distances are off), the same number the popup and finder row
+        // show, so the chip reads the same as a difficulty map's.
+        showHighlightChip({
+            label: trailName,
+            line: { color: highlighter },
+            stats: trailStatsText(trailEntry(trailName)),
+        });
     }
 
     // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
@@ -8165,11 +8182,14 @@ function highlightTrail(trailName) {
     syncRoutePanelActiveRow();
 }
 
-// A difficulty map's trail index entry, stamped with the trail's ratings
-// for the current visibility pass (refreshTrailRatings); undefined for a
-// name the index does not hold.
-function difficultyTrailEntry(trailName) {
-    refreshTrailRatings();
+// A trail's index entry, stamped for the current visibility pass:
+// refreshTrailRatings on a difficulty map (ratings + length),
+// refreshTrailLengths on a routes map (length only). Model-agnostic so
+// the popup, the chip and the finder row can read it the same way on
+// either map. Undefined for a name the index does not hold.
+function trailEntry(trailName) {
+    if (isDifficultyMap()) refreshTrailRatings();
+    else refreshTrailLengths();
     return trailIndex.find((t) => t.name === trailName);
 }
 
@@ -8186,7 +8206,7 @@ function difficultyTrailOutlineColor() {
 // AND which key most of that length carries, so the mark must follow
 // the finder row, not only the distance.
 function showTrailChip(trailName) {
-    const t = difficultyTrailEntry(trailName);
+    const t = trailEntry(trailName);
     const key = t ? t.rating : "";
     const rated = isRatedDifficulty(key);
     showHighlightChip({
@@ -8277,6 +8297,23 @@ function ratingStatsText(rating) {
 function refreshRatingChipStats() {
     const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
     if (statsEl && CONFIG.showDistance) statsEl.textContent = ratingStatsText(highlight.key);
+}
+
+// A routes map's highlighted trail chip distance, after the rider
+// changes units or a visibility toggle changes how much of the trail
+// is on the map. A difficulty map re-issues the whole chip instead
+// (showTrailChip), because there a toggle can also change which key
+// most of the trail's length carries, so the mark has to follow; a
+// routes-map trail's mark is fixed highlighter yellow (highlightTrail),
+// so only the stats span needs to move, same as refreshRatingChipStats.
+// Can empty out (every parent route hidden leaves lengthM at 0), so
+// this hides the span itself rather than leaving stale text in it.
+function refreshTrailChipStats(trailName) {
+    const statsEl = document.querySelector("#highlight-chip .highlight-chip-stats");
+    if (!statsEl) return;
+    const stats = trailStatsText(trailEntry(trailName));
+    statsEl.textContent = stats;
+    statsEl.classList.toggle("hidden", !stats);
 }
 
 // Pending deferred-popup state for the single-POI highlight path.
@@ -9031,10 +9068,9 @@ function showHighlightChip({ label, color, stats, note, line, glyph, poiType, ma
     chip.setAttribute("aria-label", `Clear highlight: ${label}`);
     // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
     // routeStatsText(), empty string or missing means hide the span
-    // entirely. Trail highlights pass nothing on a routes map (per-route
-    // stats don't apply to trail segments since trail names span
-    // multiple routes); on a difficulty map they pass the trail's own
-    // visible length.
+    // entirely. A trail highlight passes trailStatsText() on either map
+    // model: the trail's own visible length, deduped by way, not a
+    // per-route figure (a trail name can span multiple routes).
     if (statsEl) {
         if (stats) {
             statsEl.textContent = stats;
@@ -9491,14 +9527,67 @@ function refreshTrailRatings() {
     _trailRatingsStamp = { features, index: trailIndex };
 }
 
+// Routes maps: stamp each trailIndex entry's lengthM with the trail's
+// visible length. The routes-map twin of refreshTrailRatings above,
+// same shape, different source data: routesData carries one copy of a
+// shared way under each parent route it belongs to (identical
+// geometry), so summing every copy by name would count a shared
+// stretch once per route running it instead of once. Dedupe into runs
+// keyed the way difficultyLaneFeatures keys a lane (way ids as a
+// sorted set plus the run's two endpoints, or the coordinates for a
+// custom route with no way ids), then count a run once when at least
+// one of its parents (shared_routes, else route_id) is visible.
+//
+// visibleRoutes is a Set mutated in place (rebuildVisibleRoutesSet),
+// so its identity never changes and can't serve as a cache key the
+// way refreshTrailRatings uses `features`; visibleRoutesVersion is
+// bumped on every rebuild instead, giving the stamp something to
+// compare against.
+let _trailLengthsStamp = null;  // { version, index }
+function refreshTrailLengths() {
+    if (isDifficultyMap()) return;
+    if (!routesData) return;
+    if (_trailLengthsStamp && _trailLengthsStamp.version === visibleRoutesVersion
+            && _trailLengthsStamp.index === trailIndex) {
+        return;
+    }
+    const runs = new Map();  // run key -> one representative copy
+    for (const f of routesData.features) {
+        if (!f.properties.trail_name) continue;
+        const g = f.geometry;
+        if (!g || g.type !== "LineString" || g.coordinates.length < 2) continue;
+        const c = g.coordinates;
+        const ids = f.properties.way_ids;
+        const key = Array.isArray(ids) && ids.length
+            ? JSON.stringify(ids.slice().sort((a, b) => a - b)) + "|"
+                + [String(c[0]), String(c[c.length - 1])].sort().join("|")
+            : JSON.stringify(c);
+        if (!runs.has(key)) runs.set(key, f);
+    }
+    const byName = new Map();  // trail name -> meters
+    for (const f of runs.values()) {
+        const props = f.properties;
+        const parents = props.shared_routes || [props.route_id];
+        if (!parents.some((id) => visibleRoutes.has(id))) continue;
+        const len = lineLengthMeters(f.geometry.coordinates);
+        byName.set(props.trail_name, (byName.get(props.trail_name) || 0) + len);
+    }
+    for (const t of trailIndex) {
+        t.lengthM = byName.get(t.name) || 0;
+    }
+    _trailLengthsStamp = { version: visibleRoutesVersion, index: trailIndex };
+}
+
 // A trail's visible length for its finder row and chip, in the rider's
-// units; "" when the map does not show distances. Difficulty maps
-// only. Appends " shown" when the trail is truncated at the map edge
-// (isTruncatedTrail): the length is the map's window onto the trail,
-// not the trail's full length. Pass `{ bare: true }` for the number
-// alone (the popup carries the qualifier in its label instead,
-// "Length shown:"), still gated through isTruncatedTrail so the two
-// surfaces can't disagree about which trails are truncated.
+// units; "" when the map does not show distances. Both map models:
+// refreshTrailRatings/refreshTrailLengths (via trailEntry) stamp
+// lengthM either way, this just formats it. Appends " shown" when the
+// trail is truncated at the map edge (isTruncatedTrail): the length is
+// the map's window onto the trail, not the trail's full length. Pass
+// `{ bare: true }` for the number alone (the popup carries the
+// qualifier in its label instead, "Length shown:"), still gated
+// through isTruncatedTrail so the two surfaces can't disagree about
+// which trails are truncated.
 function trailStatsText(t, opts) {
     if (!CONFIG.showDistance) return "";
     if (!t || !t.lengthM) return "";
@@ -11726,9 +11815,11 @@ function rebuildFinderList() {
     const visibleRouteIds = new Set(routes.map((r) => r.id));
     const trails = trailIndex.filter((t) =>
         t.routeIds.some((rid) => visibleRouteIds.has(rid)));
-    // A difficulty map's trail rows show their ratings, which follow
-    // the visible set (no-op on a routes map).
+    // A difficulty map's trail rows show their ratings, a routes map's
+    // show their length; either way each stamps trailIndex against the
+    // visible set (each is a no-op on the other map model).
     refreshTrailRatings();
+    refreshTrailLengths();
 
     const matchedRoutes = !includeRoutes ? []
         : (query ? routes.filter((r) => r.name.toLowerCase().includes(query))
@@ -12207,6 +12298,18 @@ function makeTrailRow(t, visibleRouteIds) {
         row.appendChild(meta);
     }
 
+    // Visible length, same element and number as a difficulty map's
+    // trail row (appendDifficultyTrailRowContent): rebuildFinderList
+    // calls refreshTrailLengths() before building rows, so t.lengthM
+    // is already current.
+    const stats = trailStatsText(t);
+    if (stats) {
+        const statsEl = document.createElement("span");
+        statsEl.className = "finder-row-stats";
+        statsEl.textContent = stats;
+        row.appendChild(statsEl);
+    }
+
     row.addEventListener("click", () => {
         highlightTrail(t.name);
         if (window.__closeSearchOverlay) window.__closeSearchOverlay();
@@ -12538,18 +12641,20 @@ function setupInteractions() {
             // self-generated, not OSM strings.
             html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
         }
-        if (isDifficultyMap() && trailName && CONFIG.showDistance) {
+        if (trailName && CONFIG.showDistance) {
             // The tapped trail's whole visible length, deduped by way,
             // the same number the chip and the finder row show: it is
             // the length of the trail the tap lift marks (showTapLift),
-            // not the length of the single way under the tap.
+            // not the length of the single way under the tap. Same row
+            // on both map models (trailEntry reads whichever stamp
+            // applies) so the popup feels the same either way.
             // trailStatsText already gates on CONFIG.showDistance; the
             // check here is just to skip the entry lookup when it would
             // be "". bare: true so the qualifier lives in the label
             // instead of the number (isTruncatedTrail is the same
             // gate trailStatsText uses internally, so the label and
             // the number can't disagree about a truncated trail).
-            const distanceText = trailStatsText(difficultyTrailEntry(trailName), { bare: true });
+            const distanceText = trailStatsText(trailEntry(trailName), { bare: true });
             if (distanceText) {
                 // Same quiet inline-style pattern as popup-difficulty
                 // below (see the comment there: markup-in-JS on purpose,
@@ -13666,8 +13771,12 @@ function setDistanceUnits(units) {
         if (r && statsEl && statsEl.textContent) statsEl.textContent = routeStatsText(r);
     } else if (highlight && highlight.kind === "rating") {
         refreshRatingChipStats();
-    } else if (highlight && highlight.kind === "trail" && isDifficultyMap()) {
-        showTrailChip(highlight.key);
+    } else if (highlight && highlight.kind === "trail") {
+        if (isDifficultyMap()) {
+            showTrailChip(highlight.key);
+        } else {
+            refreshTrailChipStats(highlight.key);
+        }
     }
     updateLocationIndicator();
     applyContourUnits();
