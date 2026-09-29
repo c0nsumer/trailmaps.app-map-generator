@@ -652,7 +652,10 @@ highlights every visible way with that rating; the map does not move
 to fit them. The finder lists trails and places only, no Routes section.
 Labels show trail names, since there is no route name to show instead.
 Tapping a trail opens a popup with its name and, where tagged, its
-rating and one-way status. The popup lists no routes.
+rating and one-way status. The popup lists no routes. The tap also
+highlights the trail the way a finder row does, without moving the
+map. With `show_distance` on, the popup adds a row for the trail's
+visible length.
 
 Several config keys change meaning:
 
@@ -667,7 +670,7 @@ Several config keys change meaning:
 | `dashed_relations` | Honored. A way on a dashed relation keeps that dash while the relation is visible, even where a solid relation shares the way. An unrated way on a dashed relation takes the dash's first color. |
 | `clipped_relations` | Honored. Continuation arrows at the map edge take the rating color of the way they continue. |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
-| `show_distance` | Same meaning; gates per-rating and per-trail distances. |
+| `show_distance` | Same meaning; gates per-rating and per-trail distances, including the trail's length in the tap popup. |
 
 ## Direction arrows
 

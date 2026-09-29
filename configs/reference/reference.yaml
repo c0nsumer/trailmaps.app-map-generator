@@ -157,7 +157,7 @@ relations:
 
 # Compute per-route distance at build time; show it in the Finder + chip.
 # On a difficulty map (color_by: difficulty) this also gates the per-rating
-# and per-trail distances shown in the key and the finder.
+# and per-trail distances shown in the key, the finder, and the tap popup.
 # show_distance: false
 
 # Sample USGS 3DEP for per-route gain / loss (US only). See docs/elevation.md.
