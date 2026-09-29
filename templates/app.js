@@ -6571,7 +6571,7 @@ async function loadTrails() {
         type: "line",
         source: TAP_GLOW_SOURCE,
         paint: {
-            "line-color": "#ffb700",
+            "line-color": TAP_GLOW_COLOR,
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 8, 14, 13, 18, 20],
             "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 4, 18, 6],
             "line-opacity": 1,
@@ -6913,6 +6913,10 @@ const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
 // Source and layer of the popup's tap glow (showTapGlow); one id for both.
 const TAP_GLOW_SOURCE = "trail-tap-glow";
 const TAP_GLOW_LAYER = "trail-tap-glow";
+// The glow's color. One value to swap while Steve picks it on a device:
+// it has to read against every rating color (white, green, blue, black,
+// orange), grey unrated ways and any curated relation color.
+const TAP_GLOW_COLOR = "#ffb700";
 
 // Lane geometry per zoom, in px. The fill width follows
 // TRAIL_WIDTH_STOPS.fill exactly, the spacing exceeds it by 1 px so
@@ -12377,12 +12381,6 @@ function setupInteractions() {
         // crispness, not for display).
         const iconUrl = difficultyIconDataUrl(imba);
         const ratingName = iconUrl ? RATING_NAMES[parseInt(imba, 10)] : "";
-        // A difficulty map names a styled relation's unrated way by its
-        // look and name, as its key row does; a rated way keeps the
-        // rating row, and an unrated way with no look has no row.
-        const styledKey = isDifficultyMap() && isStyledKey(laneProps.color_key)
-            ? laneProps.color_key : null;
-
         let html = "";
         if (trailName) {
             // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -12405,7 +12403,7 @@ function setupInteractions() {
                 // below (see the comment there: markup-in-JS on purpose,
                 // so the popup never renders half-styled against a
                 // stale service-worker-cached stylesheet).
-                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;">${escapeHtml(distanceText)}</div>`;
+                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
             }
         }
         if (iconUrl) {
@@ -12413,12 +12411,11 @@ function setupInteractions() {
             // typography as the one-way row below (with or without
             // a trail name above).
             html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
-        } else if (styledKey) {
-            // Same swatch and escaping as the route rows above.
-            const swatchHtml =
-                routeSwatchEl(keyLook(styledKey), "popup-route-swatch").outerHTML;
-            html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;">${swatchHtml}<span>${escapeHtml(keyName(styledKey))}</span></div>`;
         }
+        // A styled relation's unrated way gets no row: naming the
+        // relation here read as "part of a route", which a difficulty
+        // map does not say (Steve, 2026-09-29). Its key row already
+        // explains the color.
         if (oneway === "yes" || oneway === "reversible") {
             // The qualifier follows the config's direction_schedule, the
             // same thing that flips the arrows, not the OSM tag: a
