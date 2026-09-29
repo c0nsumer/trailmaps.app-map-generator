@@ -33,6 +33,7 @@ relations:
 # osm_file: osm.osm
 
 # Relations to include but clip to the core trail bounding box (e.g. rail trails).
+# Distances for a clipped relation, or a trail cut at the map edge, read "7.5 mi shown".
 # clipped_relations: []
 
 # Feature one or more routes prominently; every other trail renders muted.

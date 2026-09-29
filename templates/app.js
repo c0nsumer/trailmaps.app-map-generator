@@ -6247,7 +6247,7 @@ async function loadTrails() {
 
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
-        if (isDifficultyMap()) stampClipEndpointRatings();
+        stampClipEndpointWays();
         for (const f of clipEndpointsData.features) {
             const ids = f.properties.route_ids || [];
             let n = 0;
@@ -6334,7 +6334,7 @@ async function loadTrails() {
             //     the trail casing and highlight outline. On a difficulty
             //     map the route's color is not on the map, so the arrow
             //     takes the rating of the way it continues (stamped by
-            //     stampClipEndpointRatings), or for an unrated way the
+            //     stampClipEndpointWays), or for an unrated way the
             //     look of its only visible route, which owns it (a
             //     styled relation's color, else the unrated one).
             const iconCol = [
@@ -7432,13 +7432,15 @@ function computeTrailsSourceData() {
 }
 
 // Difficulty maps color a continuation arrow like the way it leaves
-// the map on, so each endpoint needs that way's rating. The build does
-// not write it (clip_endpoints.geojson is shared by both models), but
-// every endpoint is the first or last vertex of one of its routes'
-// clipped trail features, so the nearest such vertex names the way.
-// Stored normalized ("2", or "" for unrated) so ratingMatchExpr reads
+// the map on, so each endpoint needs that way's rating; both models
+// need the way's trail_name, to know a trail is truncated (see
+// isTruncatedRoute / isTruncatedTrail below). The build does not write
+// either (clip_endpoints.geojson is shared by both models), but every
+// endpoint is the first or last vertex of one of its routes' clipped
+// trail features, so the nearest such vertex names the way. Rating is
+// stored normalized ("2", or "" for unrated) so ratingMatchExpr reads
 // it the way it reads the lane features.
-function stampClipEndpointRatings() {
+function stampClipEndpointWays() {
     for (const ep of clipEndpointsData.features) {
         const [x, y] = ep.geometry.coordinates;
         const ids = new Set((ep.properties.route_ids || []).map(String));
@@ -7455,7 +7457,59 @@ function stampClipEndpointRatings() {
         const rating = best ? best.properties.imba_difficulty : "";
         ep.properties.imba_difficulty =
             isRatedDifficulty(rating) ? String(Number(rating)) : "";
+        ep.properties.trail_name = best ? (best.properties.trail_name || "") : "";
     }
+    // Rebuild lazily on next use rather than here: callers that only
+    // want the rating stamp (or run before routesData is settled)
+    // shouldn't pay for a set they may never read.
+    truncatedRouteIds = null;
+    truncatedTrailNames = null;
+}
+
+// Route ids and trail names that leave the map at a clip endpoint, per
+// stampClipEndpointWays. A clipped relation's (or a truncated trail's)
+// length ON THE MAP is the map's window, not the trail's full length:
+// a rider reading "7.5 mi" beside the Iron Ore Heritage Trail would
+// take it for the trail's whole length, when the IOHT is about 47 mi.
+// isTruncatedRoute / isTruncatedTrail let every stats surface (key
+// rows, finder rows, chips, the popup) append the "shown" qualifier
+// consistently. Built once from clipEndpointsData and cached; null
+// until first use, so a map with no clipped relations never pays for
+// it.
+let truncatedRouteIds = null;
+let truncatedTrailNames = null;
+
+function buildTruncatedSets() {
+    truncatedRouteIds = new Set();
+    truncatedTrailNames = new Set();
+    for (const ep of clipEndpointsData.features) {
+        for (const id of (ep.properties.route_ids || [])) {
+            truncatedRouteIds.add(String(id));
+        }
+        if (ep.properties.trail_name) {
+            truncatedTrailNames.add(ep.properties.trail_name);
+        }
+    }
+}
+
+// A route is truncated when some clip endpoint names its id among the
+// relations continuing there. False with no clip endpoints at all
+// (nothing on the map is cut).
+function isTruncatedRoute(id) {
+    if (!clipEndpointsData) return false;
+    if (!truncatedRouteIds) buildTruncatedSets();
+    return truncatedRouteIds.has(String(id));
+}
+
+// A trail is truncated when some clip endpoint's nearest end vertex
+// belongs to a feature carrying this trail_name. A short named segment
+// fully inside the map is NOT truncated even if its relation is: the
+// relation being clipped elsewhere doesn't shorten this trail's own
+// length on the map.
+function isTruncatedTrail(name) {
+    if (!clipEndpointsData || !name) return false;
+    if (!truncatedTrailNames) buildTruncatedSets();
+    return truncatedTrailNames.has(name);
 }
 
 // Recompute `visible_count` on every clip-endpoint feature.
@@ -8205,11 +8259,17 @@ function highlightRating(rating) {
 }
 
 // A color key's distance for its key row and chip, in the rider's units;
-// "" when the map does not show distances.
+// "" when the map does not show distances. A styled relation that
+// leaves the map at a clip endpoint (isTruncatedRoute) gets " shown"
+// appended: the number is the map's window onto the relation, not its
+// full length. A rating is never truncated (it names a bucket of ways,
+// not one thing with a full length), so ratings skip the check.
 function ratingStatsText(rating) {
     if (!CONFIG.showDistance) return "";
     const meters = ratingLengths().get(rating);
-    return meters ? formatDistance(meters) : "";
+    if (!meters) return "";
+    const text = formatDistance(meters);
+    return (isStyledKey(rating) && isTruncatedRoute(rating)) ? `${text} shown` : text;
 }
 
 // The highlighted rating's chip distance, after the rider changes units
@@ -9432,10 +9492,19 @@ function refreshTrailRatings() {
 }
 
 // A trail's visible length for its finder row and chip, in the rider's
-// units; "" when the map does not show distances. Difficulty maps only.
-function trailStatsText(t) {
+// units; "" when the map does not show distances. Difficulty maps
+// only. Appends " shown" when the trail is truncated at the map edge
+// (isTruncatedTrail): the length is the map's window onto the trail,
+// not the trail's full length. Pass `{ bare: true }` for the number
+// alone (the popup carries the qualifier in its label instead,
+// "Length shown:"), still gated through isTruncatedTrail so the two
+// surfaces can't disagree about which trails are truncated.
+function trailStatsText(t, opts) {
     if (!CONFIG.showDistance) return "";
-    return t && t.lengthM ? formatDistance(t.lengthM) : "";
+    if (!t || !t.lengthM) return "";
+    const text = formatDistance(t.lengthM);
+    if (opts && opts.bare) return text;
+    return isTruncatedTrail(t.name) ? `${text} shown` : text;
 }
 
 // Build the POI search index from poisData (loaded by loadPOIs at
@@ -11933,11 +12002,16 @@ function groupPoisForFinder(matchedPois, query) {
 // Returns "" when neither stat is available (gates off, build
 // couldn't fetch elevation, etc.) so the caller can decide to omit
 // the stats span entirely. Distance and elevation are independent;
-// gain and loss come together (computed in one pass).
+// gain and loss come together (computed in one pass). Distance gets
+// " shown" when the route is truncated at the map edge
+// (isTruncatedRoute): the clip cut it before its full length, so the
+// number is the map's window, not the route's. Elevation is left
+// alone; gain/loss over the shown portion is still honest.
 function routeStatsText(r) {
     const parts = [];
     if (typeof r.distanceM === "number") {
-        parts.push(formatDistance(r.distanceM));
+        const text = formatDistance(r.distanceM);
+        parts.push(isTruncatedRoute(r.id) ? `${text} shown` : text);
     }
     const elev = formatElevationPair(r.elevationGainM, r.elevationLossM);
     if (elev) parts.push(elev);
@@ -12471,14 +12545,18 @@ function setupInteractions() {
             // not the length of the single way under the tap.
             // trailStatsText already gates on CONFIG.showDistance; the
             // check here is just to skip the entry lookup when it would
-            // be "".
-            const distanceText = trailStatsText(difficultyTrailEntry(trailName));
+            // be "". bare: true so the qualifier lives in the label
+            // instead of the number (isTruncatedTrail is the same
+            // gate trailStatsText uses internally, so the label and
+            // the number can't disagree about a truncated trail).
+            const distanceText = trailStatsText(difficultyTrailEntry(trailName), { bare: true });
             if (distanceText) {
                 // Same quiet inline-style pattern as popup-difficulty
                 // below (see the comment there: markup-in-JS on purpose,
                 // so the popup never renders half-styled against a
                 // stale service-worker-cached stylesheet).
-                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
+                const lengthLabel = isTruncatedTrail(trailName) ? "Length shown:" : "Length:";
+                html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
             }
         }
         if (iconUrl) {

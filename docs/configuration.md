@@ -128,7 +128,7 @@ into the same folder, and reference them by bare filename in the config.
 |-----|----------|---------|-------------|
 | `relations` | Conditional | : | Non-empty list of OSM relation IDs to render as routes. **Required unless the map supplies geometry via `custom_routes` or `event_mode.routes`**; a route-only or event map can omit it. **Each entry may be a leaf route relation or a super-relation.** A super-relation is auto-expanded into its child routes one level deep at fetch time. The parent itself is dropped since it has no ways. Order doesn't matter. Multi-system maps list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its Length row "Length shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
 | `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. Also carries `gpx:`, downloadable course files offered via a download FAB. See [Event mode](event-mode.md) for the schema and worked examples ([GPX downloads](event-mode.md#gpx-downloads)). |
 
 ### Route buckets
@@ -670,7 +670,7 @@ Several config keys change meaning:
 | `relation_colors` | Honored, for that relation's unrated ways only. A rated way keeps its rating color, shared with the relation or not. The styled relation gets its own row in the key. |
 | `show_elevation` | Ignored, with a build warning. Elevation is per route. |
 | `dashed_relations` | Honored. A way on a dashed relation keeps that dash while the relation is visible, even where a solid relation shares the way. An unrated way on a dashed relation takes the dash's first color. |
-| `clipped_relations` | Honored. Continuation arrows at the map edge take the rating color of the way they continue. |
+| `clipped_relations` | Honored. Continuation arrows at the map edge take the rating color of the way they continue. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
 | `show_distance` | Same meaning; gates per-rating and per-trail distances, including the trail's length in the tap popup. |
 
