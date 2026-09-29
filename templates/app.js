@@ -161,7 +161,7 @@ const MAP_PAINT_TOKENS = {
         // grey rather than black so its blurred fringe reads as a
         // shadow, not a black halo.
         tapHairline:      "#ffffff",
-        tapShadow:        "#3a3a3a",
+        tapShadow:        "#111111",
         // Contour lines: warm brown at moderate alpha so they read
         // as terrain annotation under the trail network, not as
         // routes. Labels keep full contrast in both schemes; a
@@ -6625,8 +6625,8 @@ async function loadTrails() {
         paint: {
             "line-color": tapTokens.tapShadow,
             "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 13, 14, 16, 18, 20],
-            "line-blur": 4,
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 15, 14, 18, 18, 22],
+            "line-blur": 5,
             "line-opacity": 1,
         },
         layout: { "line-cap": "round", "line-join": "round" },
@@ -12319,6 +12319,18 @@ function poiSwatchContent(el, type, markerLabel) {
 // Trail interactions (hover, click)
 // ============================================================
 function setupInteractions() {
+    // MapLibre listens for the wheel on the canvas container alone, and
+    // a popup is that container's sibling, so a wheel over an open
+    // popup zoomed nothing: the rider had to move off the card first.
+    // Re-dispatch a copy on the canvas container (clientX/Y carry over,
+    // so the zoom still centers on the pointer). The copy's target is
+    // the canvas container, not a popup, so it cannot loop.
+    map.getContainer().addEventListener("wheel", (e) => {
+        if (!(e.target instanceof Element) || !e.target.closest(".maplibregl-popup")) return;
+        e.preventDefault();
+        map.getCanvasContainer().dispatchEvent(new WheelEvent("wheel", e));
+    }, { passive: false });
+
     // Every POI marker type belongs in this guard: a tap on a marker
     // chip that sits on a trail line must not bubble into the map-wide
     // click handler below and open the trail popup underneath the
