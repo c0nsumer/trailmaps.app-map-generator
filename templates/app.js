@@ -1138,11 +1138,23 @@ function closeTrailPopup() {
 // ribbon (refreshLaneHighlight), and for the same reason: it stays
 // valid while the map pans. It is laid out for one zoom, so it
 // refreshes where the ribbon does, on zoomend and after a graph swap.
+//
+// An unnamed way has no trail to lift, so its popup lifts the graph
+// edge under the tap instead: a junction-to-junction run with uniform
+// way facts, the unit the plugin already draws and the one the
+// popup's Length row measures, so the lit stretch and the number agree.
+// An edge id is an index into one graph, so the lift remembers which
+// graph it came from and drops out rather than light a different
+// edge once that graph is replaced. (A visibility change, the one
+// thing that swaps the graph under an open popup, closes the popup
+// first anyway.)
 let tapLiftTrail = null;
+let tapLiftEdge = null;  // { id, graph } for an unnamed way
 let tapLiftToken = 0;
 
-function showTapLift(trailName) {
-    tapLiftTrail = trailName;
+function showTapLift({ trailName = null, edge = null } = {}) {
+    tapLiftTrail = trailName || null;
+    tapLiftEdge = edge === null ? null : { id: edge, graph: laneGraph };
     refreshTapLift();
 }
 
@@ -1150,6 +1162,7 @@ function showTapLift(trailName) {
 // elsewhere, closeTrailPopup, a replacing tap) takes the lift with it.
 function clearTapLift() {
     tapLiftTrail = null;
+    tapLiftEdge = null;
     refreshTapLift();
 }
 
@@ -1160,15 +1173,20 @@ function refreshTapLift() {
     // newer popup or a clear has replaced.
     const token = ++tapLiftToken;
     const name = tapLiftTrail;
-    if (!name || !laneLayer) {
+    if (tapLiftEdge && tapLiftEdge.graph !== laneGraph) tapLiftEdge = null;
+    const edgeId = tapLiftEdge ? tapLiftEdge.id : null;
+    if ((!name && edgeId === null) || !laneLayer) {
         src.setData({ type: "FeatureCollection", features: [] });
         return;
     }
+    const keep = name
+        ? (f) => f.properties.trail_name === name
+        : (f) => f.properties.edge === edgeId;
     laneFeatureCollectionAsync({ extent: "full" }).then((all) => {
         if (token !== tapLiftToken) return;
         src.setData({
             type: "FeatureCollection",
-            features: all.features.filter((f) => f.properties.trail_name === name),
+            features: all.features.filter(keep),
         });
     }).catch((e) => console.error("lanes: tap lift layout failed", e));
 }
@@ -5667,6 +5685,21 @@ function lineLengthMeters(coords) {
         len += Math.hypot(dx, coords[i][1] - coords[i - 1][1]);
     }
     return len * _LAT_M_PER_DEG;
+}
+
+// Length of one lane graph edge (an object or its id in laneGraph) in
+// meters, measured along its centerline, which the plugin keeps as a
+// flat Mercator polyline. The unnamed-way popup reports this: the
+// stretch its tap lift marks.
+function edgeLengthMeters(edge) {
+    const e = typeof edge === "number" ? laneGraph && laneGraph.edges[edge] : edge;
+    if (!e || !e.coords) return 0;
+    const L = window.maplibreLanes;
+    const coords = [];
+    for (let i = 0; i + 1 < e.coords.length; i += 2) {
+        coords.push(L.mercatorToLngLat(e.coords[i], e.coords[i + 1]));
+    }
+    return lineLengthMeters(coords);
 }
 
 // Difficulty maps: color key -> meters of visible way, each shared way
@@ -12648,6 +12681,11 @@ function setupInteractions() {
             // event handlers) in OSM data. Data URLs are
             // self-generated, not OSM strings.
             html += `<div class="popup-title">${escapeHtml(trailName)}</div>`;
+        } else {
+            // A fixed string, not OSM data, so nothing to escape. Every
+            // tap on a lane answers with a popup, so an unnamed way
+            // still gets a title rather than rows with no subject.
+            html += `<div class="popup-title">Unnamed trail</div>`;
         }
         if (trailName && CONFIG.showDistance) {
             // The tapped trail's whole visible length, deduped by way,
@@ -12671,6 +12709,17 @@ function setupInteractions() {
                 const lengthLabel = isTruncatedTrail(trailName) ? "Length shown:" : "Length:";
                 html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
             }
+        }
+        if (!trailName && CONFIG.showDistance) {
+            // An unnamed way has no trail to total, so the row measures
+            // the graph edge under the tap, the stretch its lift marks
+            // (showTapLift below), from junction to junction. It is
+            // never "Length shown:": the segment is the whole answer to
+            // the tap, and an edge the map cut simply ends at the map's
+            // edge. Telling that apart would mean matching clip
+            // endpoints to graph nodes, which do not coincide exactly.
+            const distanceText = formatDistance(edgeLengthMeters(laneHit.edge));
+            html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
         }
         if (iconUrl) {
             // Symbol + rating name on their own row, same quiet
@@ -12705,17 +12754,10 @@ function setupInteractions() {
             const label = matchedRoutes.length === 1
                 ? "Part of Route:"
                 : "Part of Routes:";
-            if (html) {
-                html += `<hr class="popup-hr">`;
-            }
+            html += `<hr class="popup-hr">`;
             html += `<div class="popup-routes">${label}</div>`;
             html += routeItems;
         }
-
-        // Nothing survived: an unnamed, undecorated trail whose route
-        // memberships are all out of season. An empty popup would read
-        // as a rendering bug.
-        if (!html) return;
 
         // The old popup's close clears its lift, so the new lift is
         // set only after the old popup is gone.
@@ -12729,7 +12771,7 @@ function setupInteractions() {
             .setHTML(html)
             .addTo(map);
         _trailPopup.on("close", clearTapLift);
-        if (trailName) showTapLift(trailName);
+        showTapLift(trailName ? { trailName } : { edge: laneHit.edge });
     });
 }
 
