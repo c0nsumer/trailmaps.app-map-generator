@@ -12818,7 +12818,7 @@ function moveTapLiftUnderLanes() {
 }
 
 // The generated basemap keeps the stretches this map draws in the
-// path and service road tiles, flagged tm_s /
+// path, service road and minor street tiles, flagged tm_s /
 // tm_w / tm_e for the visibility buckets that draw them, rather than
 // dropping them at build time: a winter-only trail has to stay a path
 // on the summer map. So a flagged stretch is hidden only while a
@@ -12826,14 +12826,16 @@ function moveTapLiftUnderLanes() {
 // rebuildVisibleRoutesSet applies to the routes. Appended to the stock
 // filters, not swapped in for them, so the flavor's own rules (tunnel,
 // bridge, pier) keep working. On an archive with no flags (a
-// --no-basemap build reusing an old one) the clauses pass everything. The minor tunnel
-// and bridge layers also carry residential and unclassified streets,
-// which are never flagged, so the clause passes them.
+// --no-basemap build reusing an old one) the clauses pass everything.
+// Major roads (tertiary and up) are never generated or flagged, so
+// their layers are not listed and a route along a highway leaves the
+// highway drawn (basemap_paths.py says why).
 const BASEMAP_GENERATED_LINE_LAYERS = [
     "roads_tunnels_other_casing", "roads_tunnels_other", "roads_other",
     "roads_bridges_other_casing", "roads_bridges_other",
     "roads_tunnels_minor_casing", "roads_tunnels_minor",
     "roads_minor_service_casing", "roads_minor_service",
+    "roads_minor_casing", "roads_minor",
     "roads_bridges_minor_casing", "roads_bridges_minor",
     "roads_pier",  // generated too (man_made=pier), drawn by its own layer
     BASEMAP_PATH_CASING_LAYER,  // ours, added by styleBasemapLayers
@@ -12870,8 +12872,17 @@ function applyBasemapDrawnPathFilter() {
     // every path or service road the map does not draw over keeps
     // its label. That is the whole rule (Steve, 2026-09-27); the old
     // suppress_basemap_path_labels key, which silenced every path
-    // label on the map, is retired.
-    set("roads_labels_minor", legacy);
+    // label on the map, is retired. One exception since the minor
+    // streets joined the generated set (Steve, 2026-09-29): a street
+    // keeps its name under the route that hides its line. A rider on
+    // a street route navigates by the street name, and a symbol layer
+    // places the name along its own geometry whether or not any line
+    // layer draws it, so the label survives while the line goes.
+    const streetClauses = legacy.map((clause) => [
+        "any", clause,
+        ["==", "kind_detail", "residential"], ["==", "kind_detail", "unclassified"],
+    ]);
+    set("roads_labels_minor", streetClauses);
     set("roads_oneway", expr);
 }
 

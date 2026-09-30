@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
-"""Generated basemap paths and service roads.
+"""Generated basemap paths, service roads and minor streets.
 
 The Protomaps basemap draws every path in the area as a pale line,
 including the ones this map draws as routes, where the line shows
 beside the lanes and through dashes. Service roads (the gated
-two-tracks a trail system rides) do the same, one step wider. This
-module replaces the basemap's `kind=path` features and its
-`kind=minor_road` + `kind_detail=service` features with ones generated
-here, from the same OpenStreetMap data, in the same Protomaps `roads`
-schema, with one difference: a stretch that a route draws is flagged
-with the visibility buckets that draw it (`tm_s` summer, `tm_w`
-winter, `tm_e` emergency), and the runtime hides a flagged stretch
-only while one of its buckets is on. So a winter-only trail is still
-a path on the summer map, and nothing shows under a route that is on.
+two-tracks a trail system rides) and minor streets (residential,
+unclassified) do the same, one and two steps wider. This module
+replaces the basemap's `kind=path` features and its `kind=minor_road`
+features with ones generated here, from the same OpenStreetMap data,
+in the same Protomaps `roads` schema, with one difference: a stretch
+that a route draws is flagged with the visibility buckets that draw
+it (`tm_s` summer, `tm_w` winter, `tm_e` emergency), and the runtime
+hides a flagged stretch only while one of its buckets is on. So a
+winter-only trail is still a path on the summer map, and nothing
+shows under a route that is on. The rule (Steve, 2026-09-29): any way
+a route draws over is clipped from the basemap. A street keeps its
+name label under the route (the runtime filters the line layers, not
+the street's label); a path or service road loses its label with its
+line.
 
 Everything else in the basemap is left exactly as Protomaps made it:
-`tile-join` strips the two classes from the extract and folds the
-generated features into the same `roads` source-layer, so the style,
-the service worker and the file name do not change. Other roads
-(residential, unclassified, tertiary and up) are deliberately left
-alone: a route drawn over a named street reads fine, and hiding the
-street would take its name and casing with it (decided 2026-09-21,
-narrowed to exclude service roads 2026-09-27).
+`tile-join` strips the generated classes from the extract and folds
+the generated features into the same `roads` source-layer, so the
+style, the service worker and the file name do not change. Major
+roads (tertiary and up) are deliberately left alone: at low zoom a
+lane is two pixels wide and cannot stand in for a highway, so hiding
+the road under it would cut the road network (paths 2026-09-20,
+service roads 2026-09-27, minor streets 2026-09-29).
 
 Design record: .claude/plans/plugin-default-and-custom-basemaps.md,
-"3a results" and "Service roads".
+"3a results", "Service roads" and "Minor streets".
 """
 
 import hashlib
@@ -45,7 +50,7 @@ from shapely.strtree import STRtree
 
 # Bump when the generated features change shape for the same input, so
 # existing basemaps regenerate.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # highway values Protomaps files under kind=path, with the min_zoom it
 # gives each (read off live Protomaps extracts, 2026-09-20). A feature
@@ -68,6 +73,13 @@ PIER_MIN_ZOOM = 14
 # service=* subtag (driveway, parking_aisle) is not emitted and does
 # not change the zoom.
 SERVICE_MIN_ZOOM = 14
+# highway=residential and highway=unclassified are Protomaps' kind=minor_road
+# with kind_detail = the highway value (read off the RAMBA extract,
+# 2026-09-29: min_zoom 13, sort_rank 400, name and ref, is_bridge and
+# oneway where tagged). living_street is not in that extract and its
+# Protomaps filing is unverified, so it is left alone.
+STREET_HIGHWAYS = ("residential", "unclassified")
+STREET_MIN_ZOOM = 13
 MINOR_ROAD_SORT_RANK = 400
 RESTRICTED_MIN_ZOOM = 16
 
@@ -97,6 +109,10 @@ STRIP_GENERATED_FILTER = json.dumps(
             "none",
             ["==", "kind", "path"],
             ["all", ["==", "kind", "minor_road"], ["==", "kind_detail", "service"]],
+            *[
+                ["all", ["==", "kind", "minor_road"], ["==", "kind_detail", h]]
+                for h in STREET_HIGHWAYS
+            ],
         ]
     },
     separators=(",", ":"),
@@ -172,14 +188,19 @@ def tile_cover_bounds(bounds, z=PATHS_MIN_TILE_ZOOM):
 
 
 def is_generated_class(tags):
-    """True for a way this module generates: paths, piers, service roads."""
+    """True for a way this module generates: paths, piers, service roads, minor streets."""
     highway = tags.get("highway")
-    return highway in PATH_MIN_ZOOM or highway == "service" or tags.get("man_made") == "pier"
+    return (
+        highway in PATH_MIN_ZOOM
+        or highway == "service"
+        or highway in STREET_HIGHWAYS
+        or tags.get("man_made") == "pier"
+    )
 
 
 def overpass_query(bounds):
     w, s, e, n = bounds
-    highways = "|".join(sorted(PATH_MIN_ZOOM) + ["service"])
+    highways = "|".join(sorted(PATH_MIN_ZOOM) + ["service"] + sorted(STREET_HIGHWAYS))
     area = f"({s:.6f},{w:.6f},{n:.6f},{e:.6f})"
     return (
         "[out:json][timeout:180];"
@@ -244,13 +265,13 @@ def merge_sources(fetched, local):
 def to_props(tags):
     """OSM tags to the Protomaps `roads` properties the style reads."""
     highway = tags.get("highway")
-    if highway == "service":
+    if highway == "service" or highway in STREET_HIGHWAYS:
         props = {
             "kind": "minor_road",
-            "kind_detail": "service",
+            "kind_detail": highway,
             "sort_rank": MINOR_ROAD_SORT_RANK,
         }
-        min_zoom = SERVICE_MIN_ZOOM
+        min_zoom = SERVICE_MIN_ZOOM if highway == "service" else STREET_MIN_ZOOM
     else:
         if highway in PATH_MIN_ZOOM:
             detail, min_zoom = highway, PATH_MIN_ZOOM[highway]
@@ -598,8 +619,8 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom,
                 "-n",
                 "Protomaps Basemap with generated paths",
                 "-N",
-                "Protomaps basemap layers; path and service road features "
-                "generated from OpenStreetMap",
+                "Protomaps basemap layers; path, service road and minor street "
+                "features generated from OpenStreetMap",
                 "-o",
                 "joined.pmtiles",
                 "stripped.pmtiles",
@@ -670,7 +691,7 @@ def generate(
     refresh=False,
     osm_file_path=None,
 ):
-    """Write the basemap with generated paths and service roads to `output_path`."""
+    """Write the basemap with generated paths, service roads and streets to `output_path`."""
     require_tools()
     cover = tile_cover_bounds(bounds)
     ways = fetch_ways(cover, cache_dir, refresh=refresh)
@@ -697,7 +718,7 @@ def generate(
         f", {local} from {os.path.basename(osm_file_path)}" if local else ""
     )
     console.info(
-        f"Basemap paths and service roads: {source}; {stats['lines']} lines in "
+        f"Basemap paths, service roads and streets: {source}; {stats['lines']} lines in "
         f"{stats['pieces']} features, "
         f"{stats['drawn_m'] / 1000:.1f} km flagged as drawn by this map"
     )
