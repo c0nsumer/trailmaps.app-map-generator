@@ -945,6 +945,34 @@ def print_summary(output_dir):
     console.step("=" * 60)
 
 
+def _dry_run_elevation_line(config):
+    """Say which relations the elevation step will sample, in the terms
+    the config can state before the fetch.
+
+    Mirrors compute_and_attach: elevation is per route and runs for
+    route-mode relations only. The exception lists may name
+    super-relations that fan out only after the fetch, so the line names
+    the lists rather than counting relations.
+    """
+    default_route = config.get("color_by", "route") == "route"
+    route_list = [str(x) for x in (config.get("color_by_route") or [])]
+    diff_list = [str(x) for x in (config.get("color_by_difficulty") or [])]
+    api = "USGS 3DEP getSamples (network calls, ~1 per route at 5m sampling)"
+    if default_route and not diff_list:
+        return f"elevation gain + loss: {api}"
+    if default_route:
+        return (
+            f"elevation gain + loss: {api} for route-mode relations; skipped for "
+            f"color_by_difficulty ({', '.join(diff_list)}), resolved after the fetch"
+        )
+    if route_list:
+        return (
+            f"elevation gain + loss: {api} for color_by_route only "
+            f"({', '.join(route_list)}), resolved after the fetch"
+        )
+    return "elevation gain + loss: skipped, no relation is in route mode"
+
+
 def _print_dry_run_summary(config, args, output_dir, cache_dir):
     """Print what the build WOULD do, then exit 0.
 
@@ -1036,22 +1064,13 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- Route stats ----
     want_dist = bool(config.get("show_distance"))
-    # Mirrors compute_and_attach: elevation is per route and skipped for
-    # difficulty-mode relations. Only the default is knowable before the
-    # fetch, so with a difficulty default a route-mode exception list
-    # is what keeps the step on.
-    want_elev = bool(config.get("show_elevation")) and (
-        config.get("color_by", "route") == "route" or bool(config.get("color_by_route"))
-    )
+    want_elev = bool(config.get("show_elevation"))
     if want_dist or want_elev:
         console.step("Per-route stats:")
         if want_dist:
             console.info("distance: computed (haversine, no API)")
         if want_elev:
-            console.info(
-                "elevation gain + loss: USGS 3DEP getSamples "
-                "(network calls, ~1 per route at 5m sampling)"
-            )
+            console.info(_dry_run_elevation_line(config))
         console.blank()
 
     # ---- Branding assets ----
