@@ -1525,6 +1525,22 @@ def _validate_event_mode(report, config):
             "non-empty (event mode needs something to feature)",
         )
 
+    # Trail labels name the ways a featured route runs on, and only OSM
+    # relations have named ways; inline routes and custom_routes are bare
+    # geometry. Warning, not error: the map still works, the labels are
+    # just empty along the course.
+    has_osm_featured = featured_nonempty and any(
+        isinstance(f, int) and not isinstance(f, bool) for f in featured
+    )
+    if (routes_nonempty or featured_nonempty) and not has_osm_featured:
+        for key in ("default_labels", "forced_labels"):
+            if config.get(key) == "trails":
+                report.warn(
+                    key,
+                    "inline event routes carry no way names, so trail labels "
+                    "show nothing along the course",
+                )
+
     # Validate inline routes via the shared custom-route entry checker.
     # Carry the seen_ids set across BOTH event_mode.routes and the
     # top-level custom_routes so the duplicate-id check spans both.

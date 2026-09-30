@@ -570,20 +570,24 @@ welcome:
 
 ## Labels in event mode
 
-Event mode locks the Labels segmented control to the "routes" mode internally
-and hides the control from the Options overlay. The rider can't flip it. On
-top of that lock, only featured routes get a label layer at all. The only
-on-map trail label that ever appears is the event route's name.
+Event mode does not lock the label mode. Labels follow `forced_labels`, then
+the rider's choice, then `default_labels`, as on any other map. The Labels
+segmented control stays in the Options overlay unless `forced_labels` is set.
 
-Background routes get no labels. Trail-name labels are also suppressed in
-event mode. That layer, the "decor-trail-name" decoration layer, normally
-renders one label per named trail when labelMode is "trails". The reason is
-the same: the event route is the focus rather than the underlying trail
-network.
+Event mode restricts which ways get labels. Only featured routes get route
+labels. Only ways that a featured route runs on get trail labels. Background
+routes get no labels in any mode, because the event route is the focus rather
+than the underlying trail network.
 
-This pairs well with `default_labels: routes` in your YAML, which seeds the
-rider's first-visit experience. Event mode forces the runtime state
-regardless of what's persisted in localStorage.
+If `default_labels` is unset, an event map reads it as `routes`. A first visit
+then shows the featured route's name.
+
+`default_labels: trails` puts the road and trail names along the course on the
+map. This suits a gravel or road event, where riders navigate by road names.
+
+Inline routes (`event_mode.routes`) carry no way names. If every featured route
+is inline, the Trails option is absent from the Labels control. The build warns
+if `default_labels` or `forced_labels` is `trails` on such a map.
 
 ## Routes panel in event mode
 
@@ -624,7 +628,8 @@ Difficulty toggle, the Season toggle), use the existing per-key knobs:
 - Omit `winter_relations` / `summer_relations` / `emergency_access_relations` to
   skip the Season + Emergency toggles.
 - `default_labels: routes` (or `trails` or `none`) to set the initial label
-  mode.
+  mode. On an event map, an unset value reads as `routes`. See
+  [Labels in event mode](#labels-in-event-mode).
 - `default_visible: all` (or a specific list) to set first-visit layer
   visibility.
 

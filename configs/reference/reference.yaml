@@ -229,7 +229,8 @@ relations:
 # Layers forced ON with their toggle hidden. Same forms as default_visible.
 # forced_visible: []
 
-# First-visit label mode: "routes", "trails", or "none".
+# First-visit label mode: "routes", "trails", or "none". An event map reads
+# an unset value as "routes".
 # default_labels: none
 
 # Lock the label mode and hide the Labels control: "routes", "trails", or "none".

@@ -563,3 +563,20 @@ def test_route_mode_relation_lifts_the_no_route_mode_checks():
     assert _errors(**kwargs) == []
     warnings = _warnings(**kwargs)
     assert not any("show_elevation" in w for w in warnings), warnings
+
+
+def test_trail_labels_on_an_inline_only_event_map_warn():
+    # Inline event routes are bare geometry with no way names.
+    with _geojson_file() as geom:
+        routes = [{"id": "course", "name": "Course", "color": "#d00", "geometry": geom}]
+        for key in ("default_labels", "forced_labels"):
+            cfg = {"name": "E", "slug": "e", "title": "E Map",
+                   "event_mode": {"routes": routes}, key: "trails"}
+            errors, warnings = validate_config(cfg)
+            assert errors == [], errors
+            assert any(key in w and "no way names" in w for w in warnings), warnings
+
+
+def test_trail_labels_on_an_event_map_with_a_featured_relation_do_not_warn():
+    warnings = _warnings(event_mode={"featured": [12345678]}, default_labels="trails")
+    assert not any("no way names" in w for w in warnings), warnings

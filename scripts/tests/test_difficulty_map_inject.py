@@ -208,3 +208,15 @@ def test_default_labels_follows_whether_any_route_is_in_route_mode():
     ] == "trails"
     config = dict(BASE, color_by="difficulty", color_by_route=[1])
     assert _config_obj_with_routes(config, routes)["defaultLabels"] == "none"
+
+
+def test_default_labels_reads_routes_on_an_event_map():
+    # Event mode no longer locks the label mode, so an unset default keeps
+    # the course named on a first visit, as the lock did.
+    config = dict(BASE, relations=[1, 2], event_mode={"featured": [1]})
+    assert _config_obj_with_routes(config, _routes())["defaultLabels"] == "routes"
+
+
+def test_explicit_default_labels_survives_on_an_event_map():
+    config = dict(BASE, relations=[1, 2], event_mode={"featured": [1]}, default_labels="trails")
+    assert _config_obj_with_routes(config, _routes())["defaultLabels"] == "trails"

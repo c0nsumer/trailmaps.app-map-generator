@@ -808,6 +808,15 @@ function hasRouteLanes() {
     return Object.keys(CONFIG.routes).some(isRouteMode);
 }
 
+// Whether trail labels can name anything along an event course. Inline
+// event routes (isCustom) are bare GeoJSON with no way names, so an
+// event map whose featured routes are all inline drops the Trails
+// label option. Non-event maps always offer it (subject to show_trails).
+function eventTrailLabelsAvailable() {
+    if (!CONFIG.eventModeActive) return true;
+    return Object.values(CONFIG.routes).some((info) => info.featured && !info.isCustom);
+}
+
 // Whether any relation on this map draws rating lanes. Such a map
 // builds its lane graph per visibility pass (initLaneRenderer).
 function hasRatingLanes() {
@@ -1996,6 +2005,21 @@ function routeLabelAllowed(rid) {
     return !!(CONFIG.routes[rid] && CONFIG.routes[rid].featured);
 }
 
+// Trail-name labels follow the same event-mode rule as route labels:
+// only a way that belongs to a featured route names itself, so the
+// muted background network stays unlabeled in trails mode too. A way
+// shared with a featured route qualifies even when its canonical owner
+// is a background relation, because the course runs on it.
+function trailLabelAllowed(way) {
+    if (!CONFIG.eventModeActive) return true;
+    const rids = (way.sharedRoutes && way.sharedRoutes.length)
+        ? way.sharedRoutes : [way.routeId];
+    return rids.some((rid) => {
+        const info = CONFIG.routes[String(rid)];
+        return !!(info && info.featured);
+    });
+}
+
 function computeDecorations() {
     const decorations = [];
     // Build a spatial-hash index of all collision targets. Seed with
@@ -2026,7 +2050,7 @@ function computeDecorations() {
     for (const way of ways) {
         const runs = clipCoordsAroundObstacles(way.coords, placed,
             DECOR_RADIUS_M.label_line_clearance);
-        if (way.trailName) {
+        if (way.trailName && trailLabelAllowed(way)) {
             for (const run of runs) {
                 decorations.push({
                     type: "Feature",
@@ -2142,7 +2166,7 @@ function computeDecorations() {
     if (POINT_LABELS_IN_TRAILS_MODE && CONFIG.showTrails !== false) {
         const trailLongest = new Map();   // trailName -> longest way
         for (const way of ways) {
-            if (!way.trailName) continue;
+            if (!way.trailName || !trailLabelAllowed(way)) continue;
             const cur = trailLongest.get(way.trailName);
             if (!cur || way.totalLength > cur.totalLength) {
                 trailLongest.set(way.trailName, way);
@@ -2578,34 +2602,34 @@ let basemapMode = "default"; // "default" or "custom:<id>"
 // is the per-map default (defaults to "none" framework-wide). Once
 // the rider picks a mode, LS persists their choice.
 //
-// Event mode override: when CONFIG.eventModeActive is true, the label
-// mode is locked to "routes" (so the featured route's name shows)
-// and the rider's persisted preference is ignored. The Labels
-// segmented control is hidden in setupOptionsOverlay so they have
-// no way to flip it. Route labels then render exactly as on a normal
-// map (overview point label at low zoom handing off to curve-following
-// on-path labels up close), but only for the featured route(s): the
+// Event mode does not lock the mode: an event map reads forced_labels,
+// the stored choice and defaultLabels like any other map (the engine
+// defaults an event map to "routes"). It restricts WHICH ways get
+// labels instead: route labels come only from featured routes (the
 // per-route shared-way layers are created for featured routes alone,
-// and the trail-decorations route labels are gated at emission via
-// routeLabelAllowed() so the muted background network stays unlabeled.
+// and trail-decorations route labels are gated by routeLabelAllowed),
+// and trail labels only from ways a featured route runs on
+// (trailLabelAllowed), so the muted background network stays
+// unlabeled in every mode.
 //
 // forced_labels override: when CONFIG.forcedLabels is set (one of
 // "routes", "trails", "none"), labelMode is locked to that value
-// and the segmented control is hidden, same as event mode. Distinct
-// from defaultLabels (which seeds the initial value but lets the
-// rider override via Options). Validated at build time so a config
-// can't force a mode that contradicts show_trails.
-let labelMode = CONFIG.eventModeActive
-    ? "routes"
-    : (CONFIG.forcedLabels
-        ? CONFIG.forcedLabels
-        : LS.get("mtb.labels", CONFIG.defaultLabels || "none"));
+// and the segmented control is hidden. Distinct from defaultLabels
+// (which seeds the initial value but lets the rider override via
+// Options). Validated at build time so a config can't force a mode
+// that contradicts show_trails.
+let labelMode = CONFIG.forcedLabels
+    ? CONFIG.forcedLabels
+    : LS.get("mtb.labels", CONFIG.defaultLabels || "none");
 // A map with no route-mode relation has no route labels. A stored
 // "routes" (the map drew route lanes on an earlier visit) reads as the
 // trail names, the nearest thing it still offers; the layers below are
 // created from this value, before the Labels control gets its own
 // chance to coerce.
 if (!hasRouteLanes() && labelMode === "routes") labelMode = "trails";
+// An event map whose featured routes are all inline has no way names
+// along the course, so trails mode would show nothing at all.
+if (!eventTrailLabelsAvailable() && labelMode === "trails") labelMode = "routes";
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
@@ -4624,11 +4648,11 @@ function _welcomeOptionsDescription() {
         "turn map markers and overlays on or off",
     ];
     // Labels clause only when the segmented control is interactive
-    // (not event-mode/forced) AND offers the routes-vs-trails choice;
+    // (not forced) AND offers the routes-vs-trails choice;
     // a Routes/None-only row is adequately covered by the lead clause,
     // and so is the Trails/None row of a map with no route labels.
-    if (!CONFIG.eventModeActive && !CONFIG.forcedLabels
-            && CONFIG.showTrails !== false && hasRouteLanes()) {
+    if (!CONFIG.forcedLabels && CONFIG.showTrails !== false && hasRouteLanes()
+            && eventTrailLabelsAvailable()) {
         items.push("switch labels between routes and trails");
     }
     if (anyRouteHas("winter")) {
@@ -6743,7 +6767,8 @@ function updateLabels() {
     }
 
     // Trail-name labels (one per physical way). Visible only in
-    // "trails" mode.
+    // "trails" mode. On an event map the source carries only ways a
+    // featured route runs on (trailLabelAllowed).
     if (map.getLayer("decor-trail-name")) {
         const visible = labelMode === "trails";
         map.setLayoutProperty("decor-trail-name", "visibility",
@@ -11170,25 +11195,23 @@ function setupFloatingChrome() {
     // than a <select>. Semantics: exactly one radio pressed at any
     // time; aria-checked drives the active paint.
     //
-    // Event mode: hide the row entirely. labelMode is locked to
-    // "routes" at boot (see the `let labelMode = ...` declaration
-    // earlier) and the per-route label visibility is restricted to
-    // featured routes only by updateLabels(), so the rider sees
-    // exactly the event-route label and nothing else. Surfacing a
-    // toggle they can't really change would just confuse them.
+    // forced_labels hides the row: the mode is locked to the curator's
+    // choice, and a toggle the rider can't really change would just
+    // confuse them. Event maps keep the row; they restrict which ways
+    // get labels, not the mode (see the `let labelMode = ...`
+    // declaration earlier).
     const labelField = document.getElementById("label-field");
     const labelGroup = document.getElementById("label-segmented");
-    if (CONFIG.eventModeActive || CONFIG.forcedLabels) {
+    if (CONFIG.forcedLabels) {
         if (labelField) labelField.classList.add("hidden");
-        // Skip the rest of the labels wiring: the segmented control
-        // is invisible (event-mode locks to "routes"; forced_labels
-        // locks to whatever the curator chose), no need to rig up
-        // handlers or sync state.
+        // Skip the rest of the labels wiring: the segmented control is
+        // invisible, no need to rig up handlers or sync state.
     } else if (labelGroup) {
-        // Drop the Trails button when trails are hidden. Routes always
-        // show on a routes map, so the Routes and None buttons remain
-        // there, the row never collapses to None-only.
-        if (!showTrails) {
+        // Drop the Trails button when trails are hidden, or on an event
+        // map whose featured routes are all inline (no way names to
+        // show). Routes always show on a routes map, so the Routes and
+        // None buttons remain there, the row never collapses to None-only.
+        if (!showTrails || !eventTrailLabelsAvailable()) {
             const btn = labelGroup.querySelector('[data-value="trails"]');
             if (btn) btn.remove();
         }

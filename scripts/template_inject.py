@@ -599,8 +599,15 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # "none" default set above. A map with no routes at all reads its
     # default mode, so a config-only test sees the same rule.
     has_route_mode = "route" in modes.values() if routes else config.get("color_by", "route") == "route"
-    if not has_route_mode and "default_labels" not in config:
-        config_obj["defaultLabels"] = "trails"
+    # An event map's unset default_labels reads as "routes", so the featured
+    # course is named on a first visit as it was when event mode locked the
+    # mode. Checked last so it wins over the no-route-mode rule; the
+    # validator keeps the two from meeting today.
+    if "default_labels" not in config:
+        if config.get("event_mode"):
+            config_obj["defaultLabels"] = "routes"
+        elif not has_route_mode:
+            config_obj["defaultLabels"] = "trails"
 
     # Keys with custom logic
     config_obj["routes"] = routes
