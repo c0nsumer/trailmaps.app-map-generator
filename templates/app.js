@@ -12119,30 +12119,26 @@ function routeStatsText(r) {
 // (showHighlightChip), and the trail popup's "Part of Route(s)" rows
 // (map click handler), so no surface can disagree about how a
 // route's line is drawn. Plain routes get the flat color bar; dashed
-// routes get a mini inline SVG ribbon, a two-color underlay beneath
-// a dashed top line, round pills for round-capped patterns. `className`
-// is the caller's own swatch class (.route-panel-swatch,
-// .finder-row-swatch, .highlight-chip-swatch is-line, or
-// .popup-route-swatch), which the .is-dashed CSS variant widens for
-// the SVG.
+// routes get a mini inline SVG ribbon with a two-color underlay
+// beneath a dashed top line. `className` is the caller's own swatch
+// class (.route-panel-swatch, .finder-row-swatch, .highlight-chip-swatch
+// is-line, or .popup-route-swatch), which the .is-dashed CSS variant
+// widens for the SVG.
 //
-// The ribbon renders for LEGIBILITY, not map-space fidelity. Naively
-// scaling the config pattern into the SVG breaks two ways at swatch
-// size: (a) SVG round/square linecaps extend every dash by half the
-// stroke width (2px here) at EACH end, so any scaled gap ≤ 4px is
-// swallowed and the ribbon reads solid, that's [1, 1] as a solid bar;
-// (b) a long-dash cycle ([4, 1]) scaled to map proportions is wider
-// than the whole swatch, also reading solid. So instead: square-cap
-// dashes render with butt caps (no extension) at the pattern's
-// dash:gap duty ratio, gap clamped to stay visible; round-capped
-// patterns (dots and round-cap dashes alike) render as round pills
-// with the cap extension folded into the geometry. Any dashed/dotted
-// route thus visibly differs from a solid bar, which is the swatch's
-// actual job.
+// The ribbon is a window onto the line as the lane plugin draws it at
+// z14, where a lane is 4 px wide, the swatch's own stroke: dash and
+// gap in lane widths, a round cap reaching half a width into each gap,
+// a dot one width across, and a square cap drawn butt, all as the
+// plugin does. Which slice of the line shows is the only choice made
+// here: the pattern is centered on a dash or on a gap, whichever
+// shows at least two marks with the least cut off at the edges. A
+// cycle longer than the swatch, [4, 1] say, shows as a bar with one
+// notch, which is what the map shows of it at that zoom, and the
+// earlier design that squeezed every pattern into three evenly
+// spaced marks was what made the key disagree with the map.
 //
-// The SVG shares the solid bar's exact 18×4 footprint and paints
-// flush to both edges, so list rows keep their labels left-justified
-// whether a route is dashed or not.
+// The SVG shares the solid bar's exact 18×4 footprint, so list rows
+// keep their labels left-justified whether a route is dashed or not.
 function routeSwatchEl(r, className) {
     if (!isDashed(r)) {
         const swatch = document.createElement("span");
@@ -12159,6 +12155,7 @@ function routeSwatchEl(r, className) {
     svg.setAttribute("width", String(W));
     svg.setAttribute("height", String(H));
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("overflow", "hidden");
     svg.setAttribute("aria-hidden", "true");
 
     const line = (stroke, dashArray, cap, x1, x2) => {
@@ -12181,50 +12178,34 @@ function routeSwatchEl(r, className) {
         svg.appendChild(line(dashColors[1], null));
     }
 
+    // Only the first dash/gap pair, as the lane plugin takes it.
     const pattern = getDashPattern(r);
-    if (pattern[0] === 0) {
-        // Dots ([0, N]). The lanes plugin draws these as true round
-        // dots at every zoom, so the swatch does too (the earlier
-        // pill rendering matched MapLibre's stretched dash atlas,
-        // which no longer draws trails). Three sw-wide dots, centers
-        // at x=2/9/16: flush to both swatch edges with 3px clear
-        // between them, close to the map's one-width gap for [0, 2].
-        for (const cx of [2, 9, 16]) {
-            const dot = document.createElementNS(NS, "circle");
-            dot.setAttribute("cx", String(cx));
-            dot.setAttribute("cy", String(y));
-            dot.setAttribute("r", String(sw / 2));
-            dot.setAttribute("fill", r.color);
-            svg.appendChild(dot);
+    const round = pattern[0] === 0 || getDashCap(r) === "round";
+    const D = pattern[0] * sw, G = pattern[1] * sw, P = D + G;
+    const reach = round ? sw / 2 : 0;
+    // Score a phase by where the marks land: `start` is the offset of
+    // some dash's core. Counts marks that show and how much of them
+    // the swatch edges cut off.
+    const score = (start) => {
+        const first = start - Math.ceil((start + reach + P) / P) * P;
+        let marks = 0, cut = 0;
+        for (let x = first; x - reach < W; x += P) {
+            const a = x - reach, b = x + D + reach;
+            if (b <= 0) continue;
+            marks++;
+            cut += Math.max(0, -a) + Math.max(0, b - W);
         }
-    } else if (getDashCap(r) === "round") {
-        // Round-cap dashes (e.g. [2, 2] + cap: round) as two round
-        // pills; the butt-cap ribbon misrepresented them as square.
-        // Geometry: 3px dash segments at path offsets 0-3 / 11-14 on
-        // a line from x=2 to x=16; round caps extend each end by
-        // sw/2=2px, so pills span x 0-7 and 11-18, flush to both
-        // swatch edges with 4px clear between them.
-        svg.appendChild(line(r.color, "3 8", "round", 2, 16));
-    } else {
-        // Square-cap dash pattern. Duty ratio from the config (multi-segment
-        // patterns fold to their overall dash:gap ratio), three dashes
-        // and two gaps sized to end flush at both edges (3d + 2g = W),
-        // butt caps so the gap is exactly what we set. The ideal cycle
-        // c = d + g then satisfies c = W / (2 + duty) with
-        // g = c * (1 - duty). Clamps keep both parts visible for
-        // extreme ratios ([4, 1] would otherwise leave a 1.3px gap,
-        // [1, 3] a 2px dash).
-        let dashSum = 0, total = 0;
-        for (let i = 0; i < pattern.length; i++) {
-            total += pattern[i];
-            if (i % 2 === 0) dashSum += pattern[i];
-        }
-        const duty = dashSum / total;
-        const gap = Math.min((W - 6) / 2,
-            Math.max(2.5, (W / (2 + duty)) * (1 - duty)));
-        const dash = (W - 2 * gap) / 3;
-        svg.appendChild(line(r.color, `${dash} ${gap}`, "butt"));
-    }
+        return { start, marks, cut };
+    };
+    const onDash = score(W / 2 - D / 2);
+    const onGap = score(W / 2 + G / 2);
+    const enough = [onDash, onGap].filter((c) => c.marks >= 2);
+    const pick = (enough.length ? enough : [onDash, onGap])
+        .sort((a, b) => a.cut - b.cut || (a === onGap ? -1 : 1))[0];
+    // Run the line in from beyond the left edge so a cut-off mark is
+    // cut by the viewBox, not ended by a cap.
+    const x1 = pick.start - Math.ceil((pick.start + sw) / P) * P;
+    svg.appendChild(line(r.color, `${D} ${G}`, round ? "round" : "butt", x1, W + sw));
     return svg;
 }
 
