@@ -625,11 +625,11 @@ function applyMapPaintForScheme(scheme) {
     // overlays), so their color is re-applied here rather than only at
     // build time:
     //   trail-label-<id>: name text + halo
-    //   clip-arrow-<id>: continuation-arrow halo (basemap-contrasting)
+    //   clip-arrow-<id>: continuation-arrow halo (basemap-contrasting,
+    //                    or the lift's yellow; updateClipArrowsDim owns it)
     // Without the label flip they'd freeze at light-mode values (the "some
     // labels dark-inner light-outer" bug); without the halo flip the
     // arrow edges would freeze at the build-time scheme.
-    const arrowHalo = clipArrowHaloExpr();
     // Single getStyle() call: it serializes every source and layer
     // (~130 basemap layers plus ~5 per route), so calling it once for
     // the guard and again for the iteration doubled real work on both
@@ -640,11 +640,10 @@ function applyMapPaintForScheme(scheme) {
             if (layer.id.startsWith("trail-label-")) {
                 map.setPaintProperty(layer.id, "text-color", t.labelText);
                 map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
-            } else if (layer.id.startsWith("clip-arrow-")) {
-                map.setPaintProperty(layer.id, "icon-halo-color", arrowHalo);
             }
         }
     }
+    updateClipArrowsDim();
     // The lane casing is one color on the lane layer, not a layer per
     // route, so it is swapped through the layer's setter.
     if (laneLayer) laneLayer.setCasingColor(laneCasingColor());
@@ -6848,6 +6847,10 @@ const TAP_GLOW_COLOR = "#FFEC00";
 // halo.
 const ROUTE_LIFT_HALO_WIDTH = 5;
 const ROUTE_LIFT_HALO_BLUR = 3;
+// The continuation arrows of a lifted route take the same yellow as an
+// icon halo; the SDF's gradient zone caps how wide that can go before
+// it eats the arrowhead (1.2 px is the everyday contrasting halo).
+const CLIP_ARROW_LIFT_HALO_PX = 2.2;
 
 // Tell the lane layer which route or key is lifted and how hard to dim
 // the rest, from the highlight state and the wash state. Called
@@ -7094,6 +7097,7 @@ function refreshLaneGraph() {
             // the labels between the tap lift and the anchor, where the
             // lanes just landed; the lift belongs directly under them.
             moveTapLiftUnderLanes();
+            placeClipArrowsAboveLanes();
             // A share link can select a route before the lanes exist.
             syncLaneHighlight();
         }
@@ -7568,17 +7572,37 @@ function highlightDimActive() {
 // (one layer per route), so this is straight visibility toggling.
 // A rating highlight hides every clip-arrow since they're a
 // route-level concept.
+// The continuation arrows narrow to the highlight while the map is
+// dimmed, and the ones that stay are part of it: the lifted route's
+// (or, on a difficulty map, the lifted key's: a styled relation's own
+// layer, or every visible route's layer cut down to the endpoints
+// whose way carries the rating), so they take the lift's yellow halo
+// and the arrow reads as the lifted line leaving the map. Without a
+// highlight every arrow follows its route's bucket visibility with the
+// scheme's contrasting halo. Owns the halo color, so a scheme toggle
+// mid-highlight keeps the yellow (applyMapPaintForScheme calls here).
 function updateClipArrowsDim() {
     const dim = highlightDimActive();
+    const kind = dim ? highlight.kind : null;
+    const key = dim ? highlight.key : null;
+    const byRating = kind === "rating" && !isStyledKey(key);
+    const halo = dim ? TAP_GLOW_COLOR : clipArrowHaloExpr();
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `clip-arrow-${routeId}`;
         if (!map.getLayer(layerId)) continue;
         // Baseline: clip-arrows follow the route's bucket visibility.
-        const routeVisible = visibleRoutes.has(routeId);
-        let vis = routeVisible;
+        let vis = visibleRoutes.has(routeId);
         if (vis && dim) {
-            vis = highlight.kind === "route" && routeId === highlight.key;
+            vis = byRating
+                ? !isStyledRelation(CONFIG.routes[routeId]) || key !== ""
+                : routeId === key;
         }
+        const routeFilter = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
+        map.setFilter(layerId, byRating
+            ? ["all", routeFilter, ["==", ["get", "imba_difficulty"], key]]
+            : routeFilter);
+        map.setPaintProperty(layerId, "icon-halo-color", halo);
+        map.setPaintProperty(layerId, "icon-halo-width", dim ? CLIP_ARROW_LIFT_HALO_PX : 1.2);
         map.setLayoutProperty(layerId, "visibility", vis ? "visible" : "none");
     }
 }
@@ -12406,6 +12430,20 @@ function promoteBasemapLabels() {
     // after a basemap rebuild, the setStyle diff may have shuffled the
     // lift); keep it directly beneath the lanes, labels under it.
     moveTapLiftUnderLanes();
+    placeClipArrowsAboveLanes();
+}
+
+// The continuation arrows sit above the lanes and the wash, under the
+// chevrons, the anchor the lanes insert at. Moving the wash under the
+// labels left them below it, so they are re-placed with the rest of
+// the stack, and again once the lanes exist, since the lanes insert at
+// the same anchor and would otherwise land above them.
+function placeClipArrowsAboveLanes() {
+    if (!map.getLayer("decor-chevron-fwd")) return;
+    for (const routeId of Object.keys(CONFIG.routes)) {
+        const id = `clip-arrow-${routeId}`;
+        if (map.getLayer(id)) map.moveLayer(id, "decor-chevron-fwd");
+    }
 }
 
 // Where the lane layer inserts: under the one-way chevrons, the first
