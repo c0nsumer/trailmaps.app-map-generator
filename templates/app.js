@@ -802,6 +802,27 @@ function isDifficultyMap() {
     return CONFIG.colorBy === "difficulty";
 }
 
+// Each relation (and custom route) renders in its own color mode,
+// resolved at build time into CONFIG.routes[id].colorBy: a route-mode
+// relation draws a lane of its own, keyed by its id, and a
+// difficulty-mode relation's ways draw one lane per way keyed by the
+// way's rating. A way shared by both kinds draws both lanes.
+function isRouteMode(id) {
+    const info = CONFIG.routes[id];
+    return !!info && info.colorBy === "route";
+}
+
+// Whether any relation on this map draws route lanes.
+function hasRouteLanes() {
+    return Object.keys(CONFIG.routes).some(isRouteMode);
+}
+
+// Whether any relation on this map draws rating lanes. Such a map
+// builds its lane graph per visibility pass (initLaneRenderer).
+function hasRatingLanes() {
+    return Object.values(CONFIG.routes).some((info) => info.colorBy === "difficulty");
+}
+
 // Curator-forced visibility: when a layer name appears in
 // CONFIG.forcedVisible, the toggle row is hidden in setupFloatingChrome
 // and the layer is rendered visible at boot regardless of LS state /
@@ -1681,7 +1702,9 @@ function collectCanonicalWays() {
             soloRouteId,
             // Difficulty maps: the way's color key, for the labels a
             // key highlight keeps bright (ratingIdentityMatch).
-            colorKey: isDifficultyMap() ? featureColorKey(props) : null,
+            // The false stand-in marks a way with no rating lane, so a
+            // rating highlight does not fall back to its rating.
+            colorKey: hasRatingLanes() ? (featureColorKey(props) ?? false) : null,
         });
     }
     return ways;
@@ -2988,7 +3011,7 @@ function applyPendingShareHighlight() {
             showTrail(h.key);
         }
     } else if (h.kind === "rating") {
-        // h.key is a color key ("2", a styled relation's id, or "" for
+        // h.key is a color key ("2", a route key, or "" for
         // unrated). Applied only while the key would list it, so a link
         // to a key this map no longer shows (or a routes map) opens
         // plain.
@@ -5529,8 +5552,9 @@ async function addContourLayers(beforeLayer) {
 //   1. dashed_relations[id].colors[0], explicit dash colors beat anything
 //   2. routeInfo.colour, from OSM `colour` tag or relation_colors override
 //   3. CONFIG.defaultTrailColor
-// A difficulty map draws no route colors (laneKeyMeta colors each
-// way by its key), and no route row, highlight or swatch appears there.
+// Only a route-mode relation's lanes wear this color; a
+// difficulty-mode relation's ways draw in their rating's color
+// (laneKeyMeta).
 function effectiveRouteColor(routeInfo) {
     if (!routeInfo) return CONFIG.defaultTrailColor;
     if (Array.isArray(routeInfo.dashColors) && routeInfo.dashColors.length > 0) {
@@ -5630,91 +5654,57 @@ function unratedSwatchModel() {
     };
 }
 
-// A way's color key, its one bucket on a difficulty map: its rating
-// "0".."5" when it has one, else the id of its owner relation when
-// that relation is styled (isStyledRelation), else "" for unrated.
-// The lanes, the key, the chip, the finder, the popup and share links
-// all read this one value, so they cannot disagree about a way.
-//
-// The map promises that a line color is a rating, so a rated way keeps
-// its rating color whether or not a styled relation runs over it: the
-// North Country Trail co-runs NTN's EZ-PZ, and painting that way NCT
-// green would hide its rating from the rider it matters to. A styled
-// relation is a look for the ways that have no rating.
-function wayColorKey(rating, owner) {
-    if (rating !== "") return rating;
-    return owner != null && isStyledRelation(CONFIG.routes[owner]) ? String(owner) : "";
-}
-
-// The visible parent that draws a shared way on a difficulty map, or
-// null when no parent is visible. A styled parent wins while it is
-// visible: its look is curated per relation (Santos' grey "Paved
-// Multi-Use"), and a way it shares with a plain relation would
-// otherwise flip between its look and the unrated one on whichever
-// parent sorts first. Ties keep shared_routes order.
-function difficultyWayOwner(parents) {
-    if (!parents.length) return null;
-    return parents.find((id) => isStyledRelation(CONFIG.routes[id])) || parents[0];
-}
-
-// wayColorKey for a trails.geojson feature under the current
-// visibility, or null when none of its parents is visible. For the
-// layers built from routesData (labels, chevrons), which must bucket a
-// way exactly as difficultyLaneFeatures does.
+// The rating lane key of a trails.geojson feature's way under the
+// current visibility: its rating ("" when unrated) while any visible
+// parent is difficulty mode, else null (the way has no rating lane,
+// whatever route lanes it draws). Every difficulty parent agrees on
+// the key, since the rating is a way tag. For the layers built from
+// routesData (labels, chevrons), which must bucket a way exactly as
+// laneFeaturesByMode does.
 function featureColorKey(props) {
-    const parents = (props.shared_routes || [props.route_id])
-        .filter((id) => visibleRoutes.has(id));
-    if (!parents.length) return null;
-    return wayColorKey(wayRating(props.imba_difficulty), difficultyWayOwner(parents));
+    const parents = props.shared_routes || [props.route_id];
+    if (!parents.some((id) => visibleRoutes.has(id) && !isRouteMode(id))) return null;
+    return wayRating(props.imba_difficulty);
 }
 
-// Whether a color key names a styled relation. A share link can name
-// a relation that is no longer styled, or none at all; such a key
-// reads as unrated everywhere rather than throwing.
-function isStyledKey(key) {
+// Whether a color key names a route-mode relation, whose lanes it
+// keys. A share link can name a relation that is not in route mode,
+// or none at all; such a key reads as unrated everywhere rather than
+// throwing.
+function isRouteKey(key) {
     return typeof key === "string" && key !== "" && !isRatedDifficulty(key)
         && Object.prototype.hasOwnProperty.call(CONFIG.routes, key)
-        && isStyledRelation(CONFIG.routes[key]);
+        && isRouteMode(key);
 }
 
 // The look of a color key's ways as a routeSwatchModel-shaped object,
 // so the key row, the chip, the finder mark and the popup all draw a
-// key the way laneKeyMeta draws its lanes. A relation's
-// own color comes first, then its first dash color; only its dash
-// makes it dashed.
+// key the way laneKeyMeta draws its lanes: a rating in the IMBA
+// palette, a route key as its route's row draws it, anything else in
+// the unrated look.
 function keyLook(key) {
     if (isRatedDifficulty(key)) {
         return { color: difficultyColor(key), dashed: null, dashCap: null, dashColors: null };
     }
-    if (!isStyledKey(key)) return unratedSwatchModel();
-    const info = CONFIG.routes[key];
-    const dashColors = getDashColors(info);
-    const dashed = isDashed(info) && Array.isArray(info.dashed) ? info.dashed : null;
-    return {
-        color: info.colour
-            || (dashColors && dashColors.length ? dashColors[0] : CONFIG.defaultTrailColor),
-        dashed,
-        dashCap: dashed ? info.dashCap || null : null,
-        dashColors: dashed && Array.isArray(dashColors) ? dashColors : null,
-    };
+    return isRouteKey(key) ? routeSwatchModel(CONFIG.routes[key]) : unratedSwatchModel();
 }
 
 // The name a rider reads for a color key: the rating's name, the
 // relation's display name (relation_names honored), or "Unrated".
 function keyName(key) {
     if (isRatedDifficulty(key)) return ratingName(key);
-    return isStyledKey(key) ? CONFIG.routes[key].name : "Unrated";
+    return isRouteKey(key) ? CONFIG.routes[key].name : "Unrated";
 }
 
-// Color keys in the key's order: ratings easiest first, then styled
-// relations by name, then unrated last, where a curator reads it as
-// the data still to tag.
+// Color keys in the key's order: ratings easiest first, then route
+// keys by name, then unrated last, where a curator reads it as the
+// data still to tag.
 function sortColorKeys(keys) {
     const list = [...keys];
     const ratings = IMBA_RATINGS.map((_, i) => String(i)).filter((r) => list.includes(r));
-    const styled = list.filter(isStyledKey)
+    const routeKeys = list.filter(isRouteKey)
         .sort((a, b) => keyName(a).localeCompare(keyName(b)));
-    return ratings.concat(styled, list.includes("") ? [""] : []);
+    return ratings.concat(routeKeys, list.includes("") ? [""] : []);
 }
 
 // Length of a LineString in meters, by the equirectangular
@@ -6164,14 +6154,6 @@ function isDashed(routeInfo) {
     return !!routeInfo.dashed;
 }
 
-// A relation the curator gave a look on a difficulty map: a
-// relation_colors entry, a dashed_relations entry, or both. OSM
-// `colour=` is not read there (template_inject.py leaves colour null
-// unless relation_colors sets it), so no relation is styled uninvited.
-function isStyledRelation(routeInfo) {
-    return !!routeInfo && (!!routeInfo.colour || isDashed(routeInfo));
-}
-
 function getDashPattern(routeInfo) {
     return routeInfo.dashed || [1, 0];
 }
@@ -6406,19 +6388,18 @@ async function loadTrails() {
             //   single route →
             //     fill with the route's actual color; halo contrasts the
             //     basemap via the scheme (see clipArrowHaloExpr), matching
-            //     the trail casing and highlight outline. On a difficulty
-            //     map the route's color is not on the map, so the arrow
-            //     takes the rating of the way it continues (stamped by
-            //     stampClipEndpointWays), or for an unrated way the
-            //     look of its only visible route, which owns it (a
-            //     styled relation's color, else the unrated one).
+            //     the trail casing and highlight outline. A
+            //     difficulty-mode relation's color is not on the map, so
+            //     its arrow takes the rating of the way it continues
+            //     (stamped by stampClipEndpointWays), in the unrated
+            //     look for an unrated way.
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
                 sharedArrowColor(),
-                isDifficultyMap()
-                    ? ratingMatchExpr(difficultyColor, keyLook(routeId).color)
-                    : effectiveRouteColor(routeInfo),
+                isRouteMode(routeId)
+                    ? effectiveRouteColor(routeInfo)
+                    : ratingMatchExpr(difficultyColor),
             ];
             const haloCol = clipArrowHaloExpr();
             const layout = {
@@ -6683,8 +6664,8 @@ function trailIdentityMatch() {
     return ["in", highlight.key, ["get", "shared_routes"]];
 }
 // A color key highlight: the feature's own way has that key. Labels
-// and chevrons of unrated ways carry color_key (stamped per visibility
-// pass, since a styled owner can come and go); rated ways' features,
+// and chevrons carry color_key (stamped per visibility pass, false for
+// a way with no visible difficulty-mode parent); features without it,
 // the diamonds among them, fall back to their rating, read through
 // ratingMatchExpr so an off-scale value matches unrated, as the map
 // draws it. A feature with no rating at all (a route name) reads as
@@ -6853,9 +6834,10 @@ let laneLayer = null;        // LaneLayer, once the first ordering resolves
 let laneGraphFull = null;    // graph over every route in trails.geojson
 let laneGraph = null;        // laneGraphFull filtered to visibleRoutes
 let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
-// Difficulty maps: the plugin input for the current visibility pass,
-// one feature per visible way run (see difficultyLaneFeatures). Null
-// on a routes map, and until the lane renderer has started.
+// Maps with rating lanes: the plugin input for the current visibility
+// pass, per visible way run one rating feature and one copy per
+// route-mode parent (see laneFeaturesByMode). Null on a map with no
+// difficulty-mode relation, and until the lane renderer has started.
 let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
@@ -6937,16 +6919,16 @@ function laneCasingColor() {
     return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
 }
 
-// color_by: difficulty: on a difficulty map each way has one lane and
-// the lane's ROUTE is its color key (refreshLaneGraph), not the
-// relation that owns the way, so that the plugin can lift a whole key
-// the way it lifts a route (syncLaneHighlight) and so that connectors
-// join same-colored lanes through a junction. This is the per-key
-// metadata for buildLineGraph: rated keys solid in the IMBA palette, a
-// styled relation's key in that relation's look (as laneRouteMeta
-// would give it), and unrated in default_trail_color with its own dash
-// and cap. Only the first dash/gap pair carries over, as for routes.
-// A rated way is always solid, whichever relation owns it.
+// Per-key metadata for buildLineGraph on a map with rating lanes,
+// where a lane's ROUTE is its color key (refreshLaneGraph): a
+// route-mode relation's lanes are keyed by its id and wear its look
+// (laneRouteMeta), and a way's rating lane is keyed by its rating, not
+// by the relation that owns the way, so that the plugin can lift a
+// whole rating the way it lifts a route (syncLaneHighlight) and so that
+// connectors join same-colored lanes through a junction. Rated keys
+// draw solid in the IMBA palette, unrated in default_trail_color with
+// its own dash and cap. Only the first dash/gap pair carries over, as
+// for routes.
 function laneKeyMeta(features) {
     const meta = {};
     for (const f of features) {
@@ -6954,7 +6936,7 @@ function laneKeyMeta(features) {
         if (key === undefined || meta[key]) continue;
         if (isRatedDifficulty(key)) {
             meta[key] = { color: difficultyColor(key), name: keyName(key) };
-        } else if (isStyledKey(key)) {
+        } else if (isRouteKey(key)) {
             meta[key] = laneRouteMeta()[key];
         } else {
             const m = { color: CONFIG.defaultTrailColor, name: keyName(key) };
@@ -7003,10 +6985,12 @@ function laneRouteMeta() {
 // when the ordering resolves.
 function initLaneRenderer() {
     const L = window.maplibreLanes;
-    if (isDifficultyMap()) {
-        // No full graph to filter: the visible set changes which copy
-        // of a way owns it, so refreshLaneGraph builds from scratch on
-        // every pass (see difficultyLaneFeatures).
+    if (hasRatingLanes()) {
+        // No full graph to filter: a rating lane is visible while any
+        // of its way's difficulty-mode parents is, which is per edge,
+        // and the plugin's filterGraph filters by lane id alone. So
+        // refreshLaneGraph builds from scratch on every pass (see
+        // laneFeaturesByMode).
         difficultyVisibleFeatures = [];
         refreshLaneGraph();
         return;
@@ -7023,29 +7007,30 @@ function initLaneRenderer() {
     refreshLaneGraph();
 }
 
-// Difficulty maps: the plugin input, one feature per visible way run.
-// trails.geojson carries a run once per parent relation, with identical
-// geometry, and bundling those copies would draw a shared way as two or
-// three parallel lanes of the same rating color, which says nothing on a
-// map where the color is the way's own. So the copies collapse to one,
-// kept while any parent is visible and owned by one visible parent
-// (difficultyWayOwner: a styled one first, else the first in
-// shared_routes order). The owner names the way's color key, and the
-// route still carries the per-route look (laneRouteMeta): a rated way
-// on a dashed relation keeps its dash through it.
+// Maps with rating lanes: the plugin input for this visibility pass.
+// trails.geojson carries a way run once per parent relation, with
+// identical geometry. Each visible route-mode parent keeps its own copy
+// as its lane, keyed by its id, as on a routes map. The visible
+// difficulty-mode parents collapse to ONE feature keyed by the way's
+// rating: bundling their copies would draw two or three parallel lanes
+// of the same rating color, which says nothing. So a way shared by the
+// North Country Trail (route mode) and an NTN relation (difficulty
+// mode) draws two lanes, the NCT's and the rating's.
 //
 // A run is keyed by its way ids as a set plus its two end points, not
 // by the id list alone: a relation that runs a way the other way round
 // lists the same ids reversed, and a clipped relation can leave one run
 // as several pieces that share ids but not ends. Custom routes carry no
-// way ids and key on their coordinates. reverses_by_day rides along as
-// a way fact because the popup's one-way qualifier asks whether ANY
-// visible parent has a direction schedule, and the lane hit only names
-// the owner.
+// way ids and key on their coordinates. The rating feature's route_id
+// is the first visible difficulty-mode parent's, a way fact for the
+// popup. reverses_by_day rides along on every feature of the run as a
+// way fact because the popup's one-way qualifier asks whether ANY
+// visible parent has a direction schedule, and the lane hit names only
+// its own lane.
 //
 // Pure given routesData and visibleRoutes: refreshLaneGraph keeps the
 // result as difficultyVisibleFeatures, which the key and the finder read.
-function difficultyLaneFeatures() {
+function laneFeaturesByMode() {
     const schedules = CONFIG.directionSchedules || {};
     const runs = new Map();  // run key -> the run's copies, in file order
     for (const f of routesData.features) {
@@ -7067,18 +7052,40 @@ function difficultyLaneFeatures() {
         const parents = (first.shared_routes || [first.route_id])
             .filter((id) => visibleRoutes.has(id));
         if (!parents.length) continue;
-        const owner = difficultyWayOwner(parents);
-        const own = copies.find((f) => f.properties.route_id === owner);
-        const base = own || copies[0];
-        out.push({
-            ...base,
-            properties: {
-                ...base.properties,
-                route_id: owner,
-                color_key: wayColorKey(wayRating(base.properties.imba_difficulty), owner),
-                reverses_by_day: parents.some((id) => !!schedules[id]),
-            },
-        });
+        const reverses = parents.some((id) => !!schedules[id]);
+        const copyOf = (id) => copies.find((f) => f.properties.route_id === id) || copies[0];
+        // The rating lane first: the plugin keeps the first feature's
+        // uniformProperties for an edge, and the rating feature's
+        // route_id is the one the popup reads.
+        const ratingParents = parents.filter((id) => !isRouteMode(id));
+        if (ratingParents.length) {
+            const owner = ratingParents[0];
+            const base = copyOf(owner);
+            out.push({
+                ...base,
+                properties: {
+                    ...base.properties,
+                    route_id: owner,
+                    color_key: wayRating(base.properties.imba_difficulty),
+                    reverses_by_day: reverses,
+                },
+            });
+        }
+        for (const id of parents) {
+            if (!isRouteMode(id)) continue;
+            // The route's own copy, so its lane runs in the relation's
+            // direction; a missing copy borrows the run's geometry.
+            const base = copyOf(id);
+            out.push({
+                ...base,
+                properties: {
+                    ...base.properties,
+                    route_id: id,
+                    color_key: String(id),
+                    reverses_by_day: reverses,
+                },
+            });
+        }
     }
     return out;
 }
@@ -7099,11 +7106,13 @@ function refreshLaneGraph() {
         seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
         next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
     } else {
-        // Difficulty map: one lane per edge leaves nothing to order or
-        // to hold in place, so no seed. The lane's route is the way's
-        // color key (laneKeyMeta says why); the way's owner relation
-        // and the popup's reverses_by_day ride along as way facts.
-        difficultyVisibleFeatures = difficultyLaneFeatures();
+        // Rating lanes: the lane's route is its color key (laneKeyMeta
+        // says why); the rating feature's owner relation and the
+        // popup's reverses_by_day ride along as way facts. Every key is
+        // stable across passes ("3", "6157604"), so the snapshot seeds
+        // a mixed bundle's order through the rebuild.
+        seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
+        difficultyVisibleFeatures = laneFeaturesByMode();
         next = L.buildLineGraph(difficultyVisibleFeatures, {
             routeProperty: "color_key",
             routes: laneKeyMeta(difficultyVisibleFeatures),
@@ -7298,10 +7307,11 @@ function computeTrailsSourceData() {
                 // so ownership follows route toggles. Hidden-route
                 // features get false (position is -1).
                 chevron_owner: position === 0,
-                // Difficulty maps: the way's color key under the same
-                // visibility, for a key highlight's chevron filter
-                // (ratingIdentityMatch).
-                ...(isDifficultyMap() && { color_key: featureColorKey(props) }),
+                // The way's rating lane key under the same visibility,
+                // for a rating highlight's chevron filter
+                // (ratingIdentityMatch); false when the way has no
+                // rating lane, as for the labels.
+                ...(hasRatingLanes() && { color_key: featureColorKey(props) ?? false }),
             },
         };
     });
@@ -7608,9 +7618,9 @@ function highlightDimActive() {
 // route-level concept.
 // The continuation arrows narrow to the highlight while the map is
 // dimmed, and the ones that stay are part of it: the lifted route's
-// (or, on a difficulty map, the lifted key's: a styled relation's own
-// layer, or every visible route's layer cut down to the endpoints
-// whose way carries the rating), so they show the lift's yellow rim
+// (or, for a lifted rating, every visible difficulty-mode relation's
+// layer cut down to the endpoints whose way carries the rating), so
+// they show the lift's yellow rim
 // (the clip-arrow-glow twin under each arrow) and the arrow reads as
 // the lifted line leaving the map. Without a highlight every arrow
 // follows its route's bucket visibility and the rim is hidden. Also
@@ -7620,7 +7630,7 @@ function updateClipArrowsDim() {
     const dim = highlightDimActive();
     const kind = dim ? highlight.kind : null;
     const key = dim ? highlight.key : null;
-    const byRating = kind === "rating" && !isStyledKey(key);
+    const byRating = kind === "rating" && !isRouteKey(key);
     const halo = clipArrowHaloExpr();
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `clip-arrow-${routeId}`;
@@ -7629,9 +7639,7 @@ function updateClipArrowsDim() {
         // Baseline: clip-arrows follow the route's bucket visibility.
         let vis = visibleRoutes.has(routeId);
         if (vis && dim) {
-            vis = byRating
-                ? !isStyledRelation(CONFIG.routes[routeId]) || key !== ""
-                : routeId === key;
+            vis = byRating ? !isRouteMode(routeId) : routeId === key;
         }
         const routeFilter = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
         const filter = byRating
@@ -7743,14 +7751,14 @@ function ratingMatchExpr(pick, unrated) {
 }
 
 // ["match", color_key, ...] with `pick(key)` for each rating and each
-// styled relation, and pick("") (unrated) as the fallback, which also
+// route key, and pick("") (unrated) as the fallback, which also
 // covers a feature with no color key. Lane pieces carry the way's
 // color_key (uniformProperties), so this works on the highlight source.
 function colorKeyMatchExpr(pick) {
     const expr = ["match", ["coalesce", ["get", "color_key"], ""]];
     IMBA_RATINGS.forEach((_, i) => expr.push(String(i), pick(String(i))));
     for (const id of Object.keys(CONFIG.routes)) {
-        if (isStyledKey(id)) expr.push(id, pick(id));
+        if (isRouteKey(id)) expr.push(id, pick(id));
     }
     expr.push(pick(""));
     return expr;
@@ -7935,8 +7943,8 @@ function trailEntry(trailName) {
 }
 
 
-// Every visible way with one color key (a rating, a styled relation's
-// unrated ways, or unrated), from a difficulty key row or a share link.
+// Every visible way with one color key (a rating, a route key's
+// lanes, or unrated), from a difficulty key row or a share link.
 // On a difficulty map a lane's route IS its color key (laneKeyMeta), so
 // the plugin lifts the whole key exactly as it lifts a route on a
 // routes map (syncLaneHighlight): the ways as drawn, a yellow halo,
@@ -7970,7 +7978,7 @@ function highlightRating(rating) {
 }
 
 // A color key's distance for its key row and chip, in the rider's units;
-// "" when the map does not show distances. A styled relation that
+// "" when the map does not show distances. A route key's relation that
 // leaves the map at a clip endpoint (isTruncatedRoute) gets " shown"
 // appended: the number is the map's window onto the relation, not its
 // full length. A rating is never truncated (it names a bucket of ways,
@@ -7980,7 +7988,7 @@ function ratingStatsText(rating) {
     const meters = ratingLengths().get(rating);
     if (!meters) return "";
     const text = formatDistance(meters);
-    return (isStyledKey(rating) && isTruncatedRoute(rating)) ? `${text} shown` : text;
+    return (isRouteKey(rating) && isTruncatedRoute(rating)) ? `${text} shown` : text;
 }
 
 // The highlighted rating's chip distance, after the rider changes units
@@ -8913,7 +8921,7 @@ function rebuildRoutePanel() {
 // (keyRatings), so a season toggle that hides every blue way drops the
 // blue row. Each row pairs the key's mark (ratingMarkEl: a rating's
 // glyph, the canvas the map's own symbols and the Options key strip
-// use, so nothing can drift; a styled relation's or unrated line
+// use, so nothing can drift; a route key's or the unrated line
 // swatch otherwise) with its name and, where the map shows distances,
 // its visible length. Tapping a row toggles that key's highlight, as a
 // route row toggles its route.
@@ -9145,7 +9153,7 @@ function buildTrailIndex() {
 //   ratings         those keys in the key's order (sortColorKeys)
 //   rating          the key most of the visible length carries (the
 //                   finder mark and the chip); a tie goes to a rating
-//                   over a styled relation over unrated, and to the
+//                   over a route key over unrated, and to the
 //                   harder of two ratings
 //   lengthM         the trail's visible length
 // Reads the lane plugin's input for the current visibility pass, as
@@ -9180,11 +9188,11 @@ function refreshTrailRatings() {
         t.lengthM = 0;
         t.rating = "";
         let best = -1;
-        // Unrated first, then the styled relations, then easiest to
+        // Unrated first, then the route keys, then easiest to
         // hardest, so `>=` hands a tie to the harder rating, a rating
         // beats a relation's look, and nothing ties over to unrated.
         const byPrecedence = [""].concat(
-            t.ratings.filter(isStyledKey).reverse(),
+            t.ratings.filter(isRouteKey).reverse(),
             t.ratings.filter((k) => isRatedDifficulty(k)));
         for (const k of byPrecedence) {
             const len = lengths.get(k);
@@ -9202,7 +9210,7 @@ function refreshTrailRatings() {
 // shared way under each parent route it belongs to (identical
 // geometry), so summing every copy by name would count a shared
 // stretch once per route running it instead of once. Dedupe into runs
-// keyed the way difficultyLaneFeatures keys a lane (way ids as a
+// keyed the way laneFeaturesByMode keys a lane (way ids as a
 // sorted set plus the run's two endpoints, or the coordinates for a
 // custom route with no way ids), then count a run once when at least
 // one of its parents (shared_routes, else route_id) is visible.
@@ -11979,7 +11987,7 @@ function makeTrailRow(t, visibleRouteIds) {
 
 // A difficulty map's trail row: the mark is the trail's main color key,
 // as a rider sees it on the map and in the key (a rating's symbol, or
-// a styled relation's or the unrated line), and the meta names every
+// a route key's or the unrated line), and the meta names every
 // key the trail carries, since a mixed trail shows only its main one
 // in the mark. The parent routes a
 // routes map lists here mean nothing on a difficulty map. Reads the
@@ -12010,7 +12018,7 @@ function appendDifficultyTrailRowContent(row, t) {
 
 // A color key's mark in a list row: a rating's glyph
 // (difficultyIconDataUrl, the canvas the map symbols use) in
-// `glyphClass`, or for a styled relation or unrated, which have no
+// `glyphClass`, or for a route key or unrated, which have no
 // glyph, the key's line swatch (keyLook) in `swatchClass`.
 function ratingMarkEl(rating, glyphClass, swatchClass) {
     if (!isRatedDifficulty(rating)) return routeSwatchEl(keyLook(rating), swatchClass);
@@ -12374,7 +12382,7 @@ function trailPopupHtml(laneHit) {
         // reverse_days and the Options help ("Some reverse by day").
         // On a difficulty map the hit names only the way's owner, so
         // the way carries the any-visible-parent answer itself (see
-        // difficultyLaneFeatures).
+        // laneFeaturesByMode).
         const schedules = CONFIG.directionSchedules || {};
         const reverses = isDifficultyMap()
             ? laneProps.reverses_by_day === true
