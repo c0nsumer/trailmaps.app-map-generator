@@ -12687,8 +12687,14 @@ function trailPopupHtml(laneHit) {
     } else {
         // A fixed string, not OSM data, so nothing to escape. Every
         // tap on a lane answers with a popup, so an unnamed way
-        // still gets a title rather than rows with no subject.
-        html += `<div class="popup-title">Unnamed trail</div>`;
+        // still gets a title rather than rows with no subject. Just
+        // "Unnamed": the trail GeoJSON carries no highway tag, so
+        // the map cannot tell a path from a track or a road, and
+        // "trail" claimed more than it knew. Normal weight and
+        // muted so it reads as a placeholder, not as a way whose
+        // name is literally "Unnamed". Inline for the same
+        // stale-stylesheet reason as the rows below.
+        html += `<div class="popup-title" style="font-weight:400;opacity:0.7;">Unnamed</div>`;
     }
     if (trailName && CONFIG.showDistance) {
         // The tapped trail's whole visible length, deduped by way,

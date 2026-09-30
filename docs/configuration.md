@@ -666,7 +666,8 @@ off the map. Nothing else changes:
 no dimming, no selection, and the map does not move. With
 `show_distance` on, the popup adds a row for the trail's visible
 length.
-If the tapped way has no name, the popup is titled "Unnamed trail".
+If the tapped way has no name, the popup is titled "Unnamed".
+The title is muted, since the map does not know what kind of way it is.
 It then measures and lifts only the tapped segment, which runs from
 junction to junction. This works the same way on a routes map.
 
