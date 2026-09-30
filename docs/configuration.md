@@ -128,7 +128,7 @@ into the same folder, and reference them by bare filename in the config.
 |-----|----------|---------|-------------|
 | `relations` | Conditional | : | Non-empty list of OSM relation IDs to render as routes. **Required unless the map supplies geometry via `custom_routes` or `event_mode.routes`**; a route-only or event map can omit it. **Each entry may be a leaf route relation or a super-relation.** A super-relation is auto-expanded into its child routes one level deep at fetch time. The parent itself is dropped since it has no ways. Order doesn't matter. Multi-system maps list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its Length row "Length shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its row "Length shown:" or "Section shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
 | `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. Also carries `gpx:`, downloadable course files offered via a download FAB. See [Event mode](event-mode.md) for the schema and worked examples ([GPX downloads](event-mode.md#gpx-downloads)). |
 
 ### Route buckets
@@ -222,7 +222,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
-| `show_distance` | No | `false` | When true, computes distance at build time. For route-mode relations this shows per-route distance in the Finder rows and highlight chip. For difficulty-mode relations it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The trail popup and the finder's trail rows show each named trail's visible length in both color modes. For an unnamed way, the popup shows the length of the tapped segment. |
+| `show_distance` | No | `false` | When true, computes distance at build time. For route-mode relations this shows per-route distance in the Finder rows and highlight chip. For difficulty-mode relations it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The finder's trail rows show each named trail's visible length in both color modes. The trail popup shows the same length after a finder pick. After a tap on the map, it shows the length of the tapped section of the trail. For an unnamed way, the popup shows the length of the tapped segment. |
 | `show_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. Per route only; ignored for difficulty-mode relations, with a build warning when no relation is in route mode. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
@@ -588,9 +588,14 @@ This example is a routes map. Difficulty-mode relations differ as described in
   collapses the sheet, and shows a floating chip at the top of the map. Tap
   the chip to clear.
 - **Tapping a trail row** fits the map to the trail and collapses the sheet.
-  The trail's popup then opens on the middle of the trail, the same popup a tap
-  on the trail opens. A soft yellow glow lifts the trail off the map. The popup closes on the next tap elsewhere. A trail pick clears any
-  highlighted route or place first.
+  The trail's popup then opens on the middle of the trail. A soft yellow glow
+  lifts the trail off the map. The finder lists each name once, so a finder
+  pick lifts and measures every stretch of that name. A tap on the map is
+  narrower: it lifts and measures only the contiguous section of the named
+  road or trail under the tap. If the name has more than one section on the
+  map, the popup's row reads "Section:" instead of "Length:". It reads
+  "Section shown:" if the map edge cuts that section. The popup closes on the
+  next tap elsewhere. A trail pick clears any highlighted route or place first.
 - **One thing at a time.** Picking a new route, trail or place replaces the
   previous one. Everything else stays visible; the highlight only adds
   emphasis.
@@ -684,7 +689,8 @@ visible. The finder has a Routes section and a Routes filter chip when any
 relation is in route mode. Labels show trail names, and the `"routes"` label
 mode is offered when any relation is in route mode. The tap popup lists the
 way's route-mode parents. The popup's yellow glow lifts the trail it describes and
-changes nothing else. If the tapped way has no name, the popup is titled
+changes nothing else. On a map tap, that is the tapped section of the trail,
+as described under [Trail finder](#trail-finder). If the tapped way has no name, the popup is titled
 "Unnamed". The title is muted, since the map does not know what kind of way it
 is.
 
@@ -698,7 +704,7 @@ Several config keys depend on the color modes:
 | `show_trails` | Rejected if `false` when no relation is in route mode. The map then lists trails only. |
 | `show_elevation` | Computed for route-mode relations. The build warns only when no relation is in route mode. |
 | `relation_colors` / `dashed_relations` | Apply to route-mode relations. On a difficulty-mode relation the entry is ignored, and the build warns. |
-| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
+| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:" or "Section shown:". |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
 | `show_distance` | Gates per-route distances for route-mode relations, per-rating distances for difficulty-mode relations, and per-trail distances. |
 

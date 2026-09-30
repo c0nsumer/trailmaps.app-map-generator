@@ -1157,12 +1157,14 @@ const _popupIconCache = {};
 // gone by then. Closing is the honest move.
 let _trailPopup = null;
 
-// The laneHit and anchor last passed to openTrailPopup for the popup
-// above, so setDistanceUnits can re-render its Length row (see
-// trailPopupHtml) without a fresh map hit test. Cleared alongside
+// The laneHit, anchor and scope last passed to openTrailPopup for the
+// popup above, so setDistanceUnits can re-render its Length row (see
+// trailPopupHtml) without a fresh map hit test, measuring the same
+// section or whole trail it measured before. Cleared alongside
 // _trailPopup so a units change after close has nothing stale to redraw.
 let _trailPopupHit = null;
 let _trailPopupAnchor = null;
+let _trailPopupScope = "section";
 
 // Also closed when a new highlight replaces the view (route key, finder,
 // share link): those fly or fit the camera elsewhere, and MapLibre's
@@ -1180,7 +1182,7 @@ function closeTrailPopup() {
     _trailPopupAnchor = null;
 }
 
-// While a trail popup is open, the named trail it describes is lifted
+// While a trail popup is open, the trail it describes is lifted
 // off the page by a soft highlighter-yellow glow beneath its lanes
 // (TAP_GLOW_LAYER). Steve's call (2026-09-29): a tap that ran the
 // finder's full selection (dim wash, chip) felt too heavy. The popup
@@ -1197,6 +1199,12 @@ function closeTrailPopup() {
 // same popup and lift after a camera fit (showTrail). On a routes map
 // the lift also shows where a named trail starts and ends inside a
 // same-color route.
+// What is lifted follows what the popup measures. A map tap lifts the
+// contiguous section of the named trail under the finger (trailSection):
+// a name can run in stretches that never meet, like DRvG's Casey Road,
+// and lighting a stretch across the map answered for more than the tap
+// touched. A finder pick or a /t/ link asks for the name itself, so it
+// lifts every feature with that trail_name.
 // The geometry is the trail's lanes, not its raw ways: on a routes map
 // a way's lanes are offset into a parallel bundle, and a centerline
 // would not hug them. A whole-graph layout rather than the built
@@ -1207,18 +1215,21 @@ function closeTrailPopup() {
 // edge under the tap instead: a junction-to-junction run with uniform
 // way facts, the unit the plugin already draws and the one the
 // popup's Length row measures, so the lit stretch and the number agree.
+// A section and an unnamed edge are both a set of edge ids, which wins
+// over the name for the lift; the name is still kept for a section,
+// because sharedTrailName shares the open popup by it.
 // An edge id is an index into one graph, so the lift remembers which
-// graph it came from and drops out rather than light a different
-// edge once that graph is replaced. (A visibility change, the one
+// graph it came from and drops out rather than light different
+// edges once that graph is replaced. (A visibility change, the one
 // thing that swaps the graph under an open popup, closes the popup
 // first anyway.)
 let tapLiftTrail = null;
-let tapLiftEdge = null;  // { id, graph } for an unnamed way
+let tapLiftEdges = null;  // { ids: Set<number>, graph } for a section or an unnamed way
 let tapLiftToken = 0;
 
-function showTapLift({ trailName = null, edge = null } = {}) {
+function showTapLift({ trailName = null, edges = null } = {}) {
     tapLiftTrail = trailName || null;
-    tapLiftEdge = edge === null ? null : { id: edge, graph: laneGraph };
+    tapLiftEdges = edges && edges.size ? { ids: edges, graph: laneGraph } : null;
     refreshTapLift();
 }
 
@@ -1226,7 +1237,7 @@ function showTapLift({ trailName = null, edge = null } = {}) {
 // elsewhere, closeTrailPopup, a replacing tap) takes the lift with it.
 function clearTapLift() {
     tapLiftTrail = null;
-    tapLiftEdge = null;
+    tapLiftEdges = null;
     refreshTapLift();
 }
 
@@ -1237,15 +1248,17 @@ function refreshTapLift() {
     // newer popup or a clear has replaced.
     const token = ++tapLiftToken;
     const name = tapLiftTrail;
-    if (tapLiftEdge && tapLiftEdge.graph !== laneGraph) tapLiftEdge = null;
-    const edgeId = tapLiftEdge ? tapLiftEdge.id : null;
-    if ((!name && edgeId === null) || !laneLayer) {
+    // A section whose graph was replaced lights nothing rather than
+    // falling back to the whole name it was never asked for.
+    const edgeIds = tapLiftEdges ? tapLiftEdges.ids : null;
+    if ((!name && !edgeIds) || !laneLayer
+        || (tapLiftEdges && tapLiftEdges.graph !== laneGraph)) {
         src.setData({ type: "FeatureCollection", features: [] });
         return;
     }
-    const keep = name
-        ? (f) => f.properties.trail_name === name
-        : (f) => f.properties.edge === edgeId;
+    const keep = edgeIds
+        ? (f) => edgeIds.has(f.properties.edge)
+        : (f) => f.properties.trail_name === name;
     laneFeatureCollectionAsync({ extent: "full" }).then((all) => {
         if (token !== tapLiftToken) return;
         src.setData({
@@ -5776,6 +5789,89 @@ function edgeLengthMeters(edge) {
     return lineLengthMeters(coords);
 }
 
+// The edges of one name's connected run through `graph` that holds
+// edgeId, stepping through nodes onto edges with the same trail_name.
+// The graph splits a way wherever its lanes or uniform facts change, so
+// one named stretch is often several edges; a shared way is one edge
+// whatever its lanes, so a sum over the set counts each way once.
+function sameNameEdges(graph, edgeId, name) {
+    const edges = new Set([edgeId]);
+    const stack = [edgeId];
+    while (stack.length) {
+        const e = graph.edges[stack.pop()];
+        for (const n of [e.a, e.b]) {
+            for (const p of graph.nodes[n].ports) {
+                if (edges.has(p.edge)) continue;
+                const props = graph.edges[p.edge].properties || {};
+                if ((props.trail_name || "") !== name) continue;
+                edges.add(p.edge);
+                stack.push(p.edge);
+            }
+        }
+    }
+    return edges;
+}
+
+// The contiguous section of the named trail under a tap: what the tap
+// popup measures and its lift lights. A name can run in stretches that
+// never meet (DRvG's Casey Road), and the rider touched one of them.
+// Null for an unnamed edge or a missing graph.
+function trailSection(edgeId, graph = laneGraph) {
+    const start = graph && graph.edges[edgeId];
+    const name = start ? ((start.properties || {}).trail_name || "") : "";
+    if (!name) return null;
+    const edges = sameNameEdges(graph, edgeId, name);
+    let lengthM = 0;
+    for (const id of edges) lengthM += edgeLengthMeters(graph.edges[id]);
+    return { name, edges, lengthM };
+}
+
+// How many separate sections a name has in `graph`. One means a tap's
+// section is the whole trail, so the popup keeps calling it Length.
+function trailSectionCount(name, graph = laneGraph) {
+    if (!graph || !name) return 0;
+    const seen = new Set();
+    let count = 0;
+    graph.edges.forEach((e, id) => {
+        if (seen.has(id) || ((e.properties || {}).trail_name || "") !== name) return;
+        count++;
+        for (const s of sameNameEdges(graph, id, name)) seen.add(s);
+    });
+    return count;
+}
+
+// Whether the map's edge cut this section short, the per-section twin
+// of isTruncatedTrail. A clip endpoint is the first or last vertex of a
+// clipped trail feature (stampClipEndpointWays), and a feature's end is
+// always a graph node, so a cut lands on a node where the section
+// stops: a node holding exactly one of the section's edge ends. Only
+// those ends are checked, because the name continuing through a node
+// means nothing was cut from this section there. The endpoint and the
+// node agree to a few centimeters (6 to 25 mm on NTN Marquette,
+// measured 2026-09-30), rounding in the plugin's 1e-7 degree node snap
+// and the Mercator round trip, so the 2 m tolerance absorbs that with
+// room to spare.
+const SECTION_CLIP_TOLERANCE_M = 2;
+function isTruncatedSection(section, graph = laneGraph) {
+    if (!section || !graph || !isTruncatedTrail(section.name)) return false;
+    const ends = new Map();
+    for (const id of section.edges) {
+        const e = graph.edges[id];
+        for (const n of [e.a, e.b]) ends.set(n, (ends.get(n) || 0) + 1);
+    }
+    const L = window.maplibreLanes;
+    const cuts = clipEndpointsData.features
+        .filter((ep) => ep.properties.trail_name === section.name)
+        .map((ep) => ep.geometry.coordinates);
+    for (const [n, k] of ends) {
+        if (k !== 1) continue;
+        const node = graph.nodes[n];
+        const at = L.mercatorToLngLat(node.x, node.y);
+        if (cuts.some((c) => lineLengthMeters([at, c]) <= SECTION_CLIP_TOLERANCE_M)) return true;
+    }
+    return false;
+}
+
 // Maps with rating lanes: rating key -> meters of visible way under a
 // visible difficulty-mode parent, each shared way counted once, so the
 // rating rows sum to the visible difficulty-mode network. The route
@@ -7953,7 +8049,7 @@ function openTrailPopupOnRun(trailName, run) {
             || named(laneLayer.queryLane(map.project(run.mid), tolerancePx));
     }
     if (hit) {
-        openTrailPopup(hit, hit.lngLat || run.mid);
+        openTrailPopup(hit, hit.lngLat || run.mid, { scope: "trail" });
         return;
     }
     // Not expected: the lanes draw every visible way. If the lane layer
@@ -7968,7 +8064,7 @@ function openTrailPopupOnRun(trailName, run) {
         routes: p.shared_routes || [route],
         edge: null,
         properties: p,
-    }, run.mid);
+    }, run.mid, { scope: "trail" });
 }
 
 // A trail's index entry, stamped for the current visibility pass:
@@ -12317,7 +12413,9 @@ function setupInteractions() {
 // so a units change (setDistanceUnits) can re-render just this markup
 // into an already-open popup via _trailPopup.setHTML, without moving
 // the popup or re-laying out the tap lift (see the comment there).
-function trailPopupHtml(laneHit) {
+// `scope` is openTrailPopup's: "section" measures the named stretch
+// under the tap, "trail" the whole name.
+function trailPopupHtml(laneHit, scope = "section") {
     const laneProps = laneHit.properties || {};
     const routeIds = [laneHit.route,
         ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
@@ -12387,13 +12485,28 @@ function trailPopupHtml(laneHit) {
         // stale-stylesheet reason as the rows below.
         html += `<div class="popup-title" style="font-weight:400;opacity:0.7;">Unnamed</div>`;
     }
-    if (trailName && CONFIG.showDistance) {
-        // The tapped trail's whole visible length, deduped by way,
-        // the same number the finder row shows: it is
-        // the length of the trail the tap lift marks (showTapLift),
-        // not the length of the single way under the tap. Same row
-        // whatever the map's color modes (trailEntry stamps it the
-        // same way) so the popup feels the same either way.
+    const section = trailName && scope === "section" && Number.isInteger(laneHit.edge)
+        ? trailSection(laneHit.edge) : null;
+    if (section && CONFIG.showDistance) {
+        // A tap measures the section under it, the stretch its lift
+        // marks (showTapLift), deduped by way like the finder row.
+        // While the name has only that one section the number is the
+        // finder's and the label stays "Length:", so nothing changes
+        // for the rider; with more, "Section:" says why it is shorter
+        // than the finder's. The " shown" qualifier asks whether THIS
+        // section was cut at the map's edge (isTruncatedSection): a
+        // stretch well inside the map is whole even when another
+        // stretch of the name leaves it.
+        const distanceText = formatDistance(section.lengthM);
+        const base = trailSectionCount(trailName) === 1 ? "Length" : "Section";
+        const lengthLabel = isTruncatedSection(section) ? `${base} shown:` : `${base}:`;
+        html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
+    } else if (trailName && CONFIG.showDistance) {
+        // A finder pick or a /t/ link (scope "trail"), or a hit with
+        // no edge to walk from: the trail's whole visible length,
+        // deduped by way, the same number the finder row shows and
+        // the name the lift marks. Same row whatever the map's color
+        // modes (trailEntry stamps it the same way).
         // trailStatsText already gates on CONFIG.showDistance; the
         // check here is just to skip the entry lookup when it would
         // be "". bare: true so the qualifier lives in the label
@@ -12416,8 +12529,9 @@ function trailPopupHtml(laneHit) {
         // (showTapLift below), from junction to junction. It is
         // never "Length shown:": the segment is the whole answer to
         // the tap, and an edge the map cut simply ends at the map's
-        // edge. Telling that apart would mean matching clip
-        // endpoints to graph nodes, which do not coincide exactly.
+        // edge. A clip endpoint does land on a graph node (see
+        // isTruncatedSection), but a clip endpoint only carries the
+        // name of the way it cuts, and an unnamed way has none.
         const distanceText = formatDistance(edgeLengthMeters(laneHit.edge));
         html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
     }
@@ -12464,13 +12578,25 @@ function trailPopupHtml(laneHit) {
 
 // Opens the popup and the lift for one lane hit (laneLayer.queryLane or
 // queryLaneAt), anchored at `anchor`. Shared by a map tap and a finder
-// trail result (showTrail) so the two can never answer differently.
-function openTrailPopup(laneHit, anchor) {
+// trail result (showTrail) so the two build the same card. They differ
+// only in `scope`: a tap ("section") answers for the contiguous stretch
+// of a named trail under the finger, a finder pick or /t/ link
+// ("trail") for every stretch of the name, which is what was asked for.
+// An unnamed way answers for its one edge either way.
+function openTrailPopup(laneHit, anchor, { scope = "section" } = {}) {
     // Whatever opens a popup supersedes a finder popup still waiting
     // for its camera, which would otherwise land on top of this one.
     cancelPendingTrailPopup();
-    const html = trailPopupHtml(laneHit);
+    const html = trailPopupHtml(laneHit, scope);
     const trailName = (laneHit.properties || {}).trail_name || "";
+    const hasEdge = Number.isInteger(laneHit.edge);
+    let liftEdges = null;
+    if (!trailName && hasEdge) {
+        liftEdges = new Set([laneHit.edge]);
+    } else if (trailName && scope === "section" && hasEdge) {
+        const section = trailSection(laneHit.edge);
+        if (section) liftEdges = section.edges;
+    }
 
     // The old popup's close clears its lift, so the new lift is
     // set only after the old popup is gone.
@@ -12488,12 +12614,13 @@ function openTrailPopup(laneHit, anchor) {
     // stale hit never outlives its popup.
     _trailPopupHit = laneHit;
     _trailPopupAnchor = anchor;
+    _trailPopupScope = scope;
     _trailPopup.on("close", () => {
         clearTapLift();
         _trailPopupHit = null;
         _trailPopupAnchor = null;
     });
-    showTapLift(trailName ? { trailName } : { edge: laneHit.edge });
+    showTapLift({ trailName: trailName || null, edges: liftEdges });
 }
 
 // ============================================================
@@ -13590,7 +13717,8 @@ function setDistanceUnits(units) {
         // DOM swap, so there's nothing to flicker, and re-asserting the
         // anchor (itself unchanged) keeps the popup pinned exactly
         // where it was.
-        _trailPopup.setHTML(trailPopupHtml(_trailPopupHit)).setLngLat(_trailPopupAnchor);
+        _trailPopup.setHTML(trailPopupHtml(_trailPopupHit, _trailPopupScope))
+            .setLngLat(_trailPopupAnchor);
     }
     updateLocationIndicator();
     applyContourUnits();
