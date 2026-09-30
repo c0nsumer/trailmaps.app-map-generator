@@ -6421,6 +6421,57 @@ async function loadTrails() {
                     : effectiveRouteColor(routeInfo),
             ];
             const haloCol = clipArrowHaloExpr();
+            const layout = {
+                "icon-image": "clip-arrow",
+                "icon-rotate": ["get", "bearing"],
+                "icon-rotation-alignment": "map",
+                "icon-anchor": "bottom",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+            };
+            // Clip-continuation arrows use the same arrowhead-with-notch
+            // shape as on-trail direction arrows (drawArrow in this file)
+            // so the visual vocabulary stays consistent. The SDF asset's
+            // gradient (radius=2/3) leaves room for a thin halo without
+            // eroding too much of the body. Sized so the visible filled
+            // arrowhead reads slightly larger than an on-trail direction
+            // arrow: clip-continuation indicators benefit from extra
+            // visual weight since they signal "trail leaves the map"
+            // rather than ongoing direction.
+            const size = (scale) => ["interpolate", ["linear"], ["zoom"],
+                12, 1.2 * scale, 14, 1.65 * scale, 18, 2.4 * scale];
+            // The lift's glow for this arrow: the same icon in the lift's
+            // yellow, CLIP_ARROW_GLOW_SCALE times the size, drawn under
+            // the arrow so it shows as a yellow rim all round it, the
+            // arrow's twin of the lane halo. A thin blurred halo of its
+            // own softens the rim's edge. The SDF's gradient zone is too
+            // narrow for a halo that wide on the arrow itself. Shown
+            // only while the arrow is the lift's (updateClipArrowsDim).
+            // Anchored at the bottom like the arrow, so the offset
+            // re-centers the larger icon on the smaller: with H the
+            // icon's height in icon pixels and k the scale, the arrow's
+            // center sits (2 + H/2) sizes above the anchor, the glow's
+            // (H k / 2 - o k), and o = (H (k - 1) / 2 - 2) / k makes them
+            // equal (offsets are in icon pixels, times the size).
+            const k = CLIP_ARROW_GLOW_SCALE;
+            map.addLayer({
+                id: `clip-arrow-glow-${routeId}`,
+                type: "symbol",
+                source: "clip-endpoints",
+                filter: ["in", `|${routeId}|`, ["get", "route_ids_str"]],
+                layout: {
+                    ...layout,
+                    "visibility": "none",
+                    "icon-size": size(k),
+                    "icon-offset": [0, (16 * (k - 1) / 2 - 2) / k],
+                },
+                paint: {
+                    "icon-color": TAP_GLOW_COLOR,
+                    "icon-halo-color": TAP_GLOW_COLOR,
+                    "icon-halo-width": 1.2,
+                    "icon-halo-blur": 1.2,
+                },
+            });
             map.addLayer({
                 id: `clip-arrow-${routeId}`,
                 type: "symbol",
@@ -6429,26 +6480,8 @@ async function loadTrails() {
                 // prevents 38467 from matching 384670.
                 filter: ["in", `|${routeId}|`, ["get", "route_ids_str"]],
                 layout: {
-                    "icon-image": "clip-arrow",
-                    "icon-rotate": ["get", "bearing"],
-                    "icon-rotation-alignment": "map",
-                    "icon-anchor": "bottom",
-                    "icon-allow-overlap": true,
-                    "icon-ignore-placement": true,
-                    // Clip-continuation arrows now use the same
-                    // arrowhead-with-notch shape as on-trail direction
-                    // arrows (drawArrow in this file) so the visual
-                    // vocabulary stays consistent. The SDF asset's
-                    // gradient (radius=2/3) leaves room for a thin
-                    // halo without eroding too much of the body.
-                    // Sized so the visible filled arrowhead reads
-                    // slightly larger than an on-trail direction
-                    // arrow, clip-continuation indicators benefit
-                    // from extra visual weight since they signal
-                    // "trail leaves the map" rather than ongoing
-                    // direction.
-                    "icon-size": ["interpolate", ["linear"], ["zoom"],
-                        12, 1.2, 14, 1.65, 18, 2.4],
+                    ...layout,
+                    "icon-size": size(1),
                     // Push the arrowhead away from the trail's
                     // clipped end so it doesn't crowd the line where
                     // it meets the bbox edge. Offset is in pre-
@@ -6847,10 +6880,12 @@ const TAP_GLOW_COLOR = "#FFEC00";
 // halo.
 const ROUTE_LIFT_HALO_WIDTH = 5;
 const ROUTE_LIFT_HALO_BLUR = 3;
-// The continuation arrows of a lifted route take the same yellow as an
-// icon halo; the SDF's gradient zone caps how wide that can go before
-// it eats the arrowhead (1.2 px is the everyday contrasting halo).
-const CLIP_ARROW_LIFT_HALO_PX = 2.2;
+// The continuation arrows of a lifted route get a yellow rim from a
+// second copy of the icon drawn under them at this scale (see the
+// clip-arrow-glow layers): about 5 px past the arrowhead at z14, the
+// lane halo's reach. The SDF's gradient zone is too narrow to draw
+// that as an icon halo.
+const CLIP_ARROW_GLOW_SCALE = 1.4;
 
 // Tell the lane layer which route or key is lifted and how hard to dim
 // the rest, from the highlight state and the wash state. Called
@@ -7576,19 +7611,21 @@ function highlightDimActive() {
 // dimmed, and the ones that stay are part of it: the lifted route's
 // (or, on a difficulty map, the lifted key's: a styled relation's own
 // layer, or every visible route's layer cut down to the endpoints
-// whose way carries the rating), so they take the lift's yellow halo
-// and the arrow reads as the lifted line leaving the map. Without a
-// highlight every arrow follows its route's bucket visibility with the
-// scheme's contrasting halo. Owns the halo color, so a scheme toggle
-// mid-highlight keeps the yellow (applyMapPaintForScheme calls here).
+// whose way carries the rating), so they show the lift's yellow rim
+// (the clip-arrow-glow twin under each arrow) and the arrow reads as
+// the lifted line leaving the map. Without a highlight every arrow
+// follows its route's bucket visibility and the rim is hidden. Also
+// re-applies the arrow's scheme-contrasting halo, so a scheme toggle
+// lands here (applyMapPaintForScheme).
 function updateClipArrowsDim() {
     const dim = highlightDimActive();
     const kind = dim ? highlight.kind : null;
     const key = dim ? highlight.key : null;
     const byRating = kind === "rating" && !isStyledKey(key);
-    const halo = dim ? TAP_GLOW_COLOR : clipArrowHaloExpr();
+    const halo = clipArrowHaloExpr();
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `clip-arrow-${routeId}`;
+        const glowId = `clip-arrow-glow-${routeId}`;
         if (!map.getLayer(layerId)) continue;
         // Baseline: clip-arrows follow the route's bucket visibility.
         let vis = visibleRoutes.has(routeId);
@@ -7598,12 +7635,16 @@ function updateClipArrowsDim() {
                 : routeId === key;
         }
         const routeFilter = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
-        map.setFilter(layerId, byRating
+        const filter = byRating
             ? ["all", routeFilter, ["==", ["get", "imba_difficulty"], key]]
-            : routeFilter);
+            : routeFilter;
+        map.setFilter(layerId, filter);
         map.setPaintProperty(layerId, "icon-halo-color", halo);
-        map.setPaintProperty(layerId, "icon-halo-width", dim ? CLIP_ARROW_LIFT_HALO_PX : 1.2);
         map.setLayoutProperty(layerId, "visibility", vis ? "visible" : "none");
+        if (map.getLayer(glowId)) {
+            map.setFilter(glowId, filter);
+            map.setLayoutProperty(glowId, "visibility", vis && dim ? "visible" : "none");
+        }
     }
 }
 
@@ -12441,8 +12482,9 @@ function promoteBasemapLabels() {
 function placeClipArrowsAboveLanes() {
     if (!map.getLayer("decor-chevron-fwd")) return;
     for (const routeId of Object.keys(CONFIG.routes)) {
-        const id = `clip-arrow-${routeId}`;
-        if (map.getLayer(id)) map.moveLayer(id, "decor-chevron-fwd");
+        for (const id of [`clip-arrow-glow-${routeId}`, `clip-arrow-${routeId}`]) {
+            if (map.getLayer(id)) map.moveLayer(id, "decor-chevron-fwd");
+        }
     }
 }
 
