@@ -650,26 +650,16 @@ function applyMapPaintForScheme(scheme) {
     // The lane casing is one color on the lane layer, not a layer per
     // route, so it is swapped through the layer's setter.
     if (laneLayer) laneLayer.setCasingColor(laneCasingColor());
-    // Highlight silhouettes. The TRAIL outline is a constant scheme-
+    // Highlight silhouette. The trail outline is a constant scheme-
     // contrasting silhouette (black on the light basemap, white on dark),
     // except under a rating highlight, which shares the trail layers and
     // matches its outline to the rating's color (see highlightRating).
-    // The ROUTE outline is luminance-matched to the highlighted route's
-    // own color, or the scheme silhouette for single-color dashed routes
-    // (see routeHighlightOutlineColor); re-applied here so a scheme
-    // toggle mid-highlight recomputes it (the dashed case follows the
-    // scheme, the rest keep their stroke-contrast pick).
+    // A route highlight lives inside the lane layer (syncLaneHighlight)
+    // and has no scheme-dependent color.
     if (map.getLayer("trail-highlight-outline")) {
         map.setPaintProperty("trail-highlight-outline", "line-color",
             highlight && highlight.kind === "rating"
                 ? ratingHighlightOutlineColor(highlight.key)
-                : t.highlightOutline);
-    }
-    if (map.getLayer("route-highlight-outline")) {
-        const routeInfo = highlight && highlight.kind === "route"
-            ? CONFIG.routes[highlight.key] : null;
-        map.setPaintProperty("route-highlight-outline", "line-color",
-            routeInfo ? routeHighlightOutlineColor(routeInfo)
                 : t.highlightOutline);
     }
     if (map.getLayer("decor-chevron-fwd")) {
@@ -6505,146 +6495,51 @@ async function loadTrails() {
     }
 
     // ----- Highlight layers (above trail fills, below labels + arrows) -----
-    // Two layers per ribbon (route / trail): outline + stroke.
-    // Rendered above the fills so they read as a "highlighted ribbon",
-    // but below labels + difficulty + arrows so those stay readable /
-    // visible when a route or rating is highlighted. All start with a
-    // no-match filter; highlightRoute()/highlightRating() swap in the
-    // real filter and set the dynamic color.
+    // The trail ribbon: outline + stroke over an optional glow, rendered
+    // above the fills so it reads as a "highlighted ribbon", but below
+    // labels + difficulty + arrows so those stay readable / visible
+    // while a rating is highlighted. It starts with a no-match filter;
+    // highlightRating() swaps in the real filter and sets the color.
+    //
+    // A ROUTE highlight is not a ribbon any more. It used to redraw the
+    // route above the wash as a scheme-contrasting outline under the
+    // route's color at twice the width, with MapLibre's own dashes, and
+    // a dotted or dashed relation came out as fat dots on a white band,
+    // nothing like the route on the map (Steve, 2026-09-30). The lane
+    // plugin lifts the route inside its own layer instead
+    // (syncLaneHighlight): the lanes as drawn, with a yellow halo, above
+    // the other routes, which it dims by the wash's own strength. On a
+    // routes map the wash therefore sits UNDER the lanes
+    // (promoteBasemapLabels), so the lift is never washed. A rating spans
+    // routes, which the plugin cannot lift, so difficulty maps keep the
+    // wash over the lanes and the ribbon above it.
     //
     // History: this used to be a four-layer sandwich (outline, blurred
     // glow, stroke, white core). The glow was removed first, its
-    // additive alpha created bright spikes at sharp switchback bends.
-    // The white core was dropped when the route stroke switched to the
-    // route's NATIVE color (was amber), with native color, the white
-    // core blurred into light-colored routes (yellow, cream) and its
-    // zoom-dependent width meant the inner-stripe effect was visible
-    // only at high zoom. The remaining outline + color-stroke pair
-    // gets the structural emphasis from sheer thickness (~2× the
-    // unhighlighted fill width) plus the always-on scheme-contrasting
-    // silhouette (black on the light basemap, white on the dark);
-    // the spotlight dim (mapDimOnHighlight) does the rest of the
-    // visibility work by receding everything else.
-    const NONE_FILTER_ROUTE = ["==", ["get", "route_id"], "___NONE___"];
-    const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
-    // The route ribbon traces the highlighted route's own lane, laid
-    // out over the whole graph (see refreshLaneHighlight), which is
-    // already in lane position, so it takes no line-offset.
-
-    // Route highlight ribbon (bottom → top), over an optional amber glow:
-    //   outline:  thick silhouette around the highlight ribbon. Color
-    //             is bidirectional (black for light routes, white for
-    //             dark), set by highlightRoute() to mirror the
-    //             unhighlighted casing's edge direction so the route's
-    //             "edge" reads consistently in both states. Initial
-    //             #000 here is a fail-safe; real highlights overwrite
-    //             on every selection.
-    //   underlay: same width as the stroke, invisible (opacity 0) for
-    //             most routes. For a two-color dashed route (`colors:
-    //             [A, B]`) highlightRoute() paints it B and raises the
-    //             opacity so the dash gaps show B, mirroring the
-    //             trail-fill2 underlay in the unhighlighted rendering.
-    //   stroke:   opaque, painted with the route's native color by
-    //             highlightRoute(). Width ~2× the unhighlighted fill so
-    //             the highlight reads as "this route, scaled up."
-    //             Dashed routes keep their dash pattern here (set per
-    //             selection by highlightRoute()); single-color dash
-    //             gaps show the outline silhouette beneath, so the
-    //             ribbon stays a continuous selected band with the
-    //             dash identity riding on top. The outline itself
-    //             can't be dashed: line-dasharray is measured in
-    //             line-widths, so the wider outline can't keep its
-    //             dashes aligned with the stroke (same reason the
-    //             casing suppresses dashes, see the casing comment).
+    // additive alpha created bright spikes at sharp switchback bends,
+    // and came back as an opaque core + line-blur (see the glow layer).
+    // The white core was dropped when the stroke switched to the
+    // key's NATIVE color; with native color the white core blurred into
+    // light-colored keys and its zoom-dependent width meant the
+    // inner-stripe effect was visible only at high zoom. The remaining
+    // outline + color-stroke pair gets the structural emphasis from
+    // sheer thickness (~2× the unhighlighted fill width) plus the
+    // silhouette; the spotlight dim (mapDimOnHighlight) does the rest of
+    // the visibility work by receding everything else.
     // line-color-transition: { duration: 0 } on every highlight layer.
     // MapLibre's default line-color transition is 300ms; without
     // overriding it, every setPaintProperty('line-color', ...) on a
     // highlight layer animates from its previous value to the new
     // one over 300ms. When the filter then activates the layer, the
     // user sees the color mid-animation, that's the "flash" from
-    // amber (or the previous route's color) to the target. Setting
-    // duration: 0 makes the color change instantaneous, so by the
-    // time the filter exposes the layer it's already at the target.
-    //
-    // Optional selection glow (highlight_glow, default on): a soft amber
-    // aura BENEATH the ribbon so any route, a black one included, reads
-    // unmistakably as selected against the dimmed map. Rendered as an
-    // OPAQUE core + line-blur, not a translucent wide stroke: the earlier
-    // translucent glow was removed because its alpha doubled where a line
-    // self-overlaps at a tight switchback, spiking bright at hairpins. An
-    // opaque core can't double; the blur supplies the soft outer falloff.
-    // Amber matches the highlight-chip accent (--highlight-amber).
-    if (CONFIG.highlightGlow !== false) {
-        map.addLayer({
-            id: "route-highlight-glow",
-            type: "line",
-            source: LANE_HIGHLIGHT_SOURCE,
-            filter: NONE_FILTER_ROUTE,
-            paint: {
-                "line-color": "#ffb700",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 17, 18, 28],
-                "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 5, 18, 7],
-                "line-opacity": 1,
-            },
-            layout: { "line-cap": "round", "line-join": "round" },
-        });
-    }
-    map.addLayer({
-        id: "route-highlight-outline",
-        type: "line",
-        source: LANE_HIGHLIGHT_SOURCE,
-        filter: NONE_FILTER_ROUTE,
-        paint: {
-            "line-color": "#000",
-            "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
-            "line-opacity": 1,
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
-    map.addLayer({
-        id: "route-highlight-underlay",
-        type: "line",
-        source: LANE_HIGHLIGHT_SOURCE,
-        filter: NONE_FILTER_ROUTE,
-        paint: {
-            "line-color": "#000",
-            "line-color-transition": { duration: 0 },
-            // Hidden by default; highlightRoute() raises the opacity
-            // only for two-color dashed routes. Transition duration 0
-            // for the same flash-avoidance reason as line-color.
-            "line-opacity": 0,
-            "line-opacity-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
-    map.addLayer({
-        id: "route-highlight-stroke",
-        type: "line",
-        source: LANE_HIGHLIGHT_SOURCE,
-        filter: NONE_FILTER_ROUTE,
-        paint: {
-            // Initial fill is amber as a fail-safe in case the dynamic
-            // setPaintProperty in highlightRoute() never fires (e.g.,
-            // a CONFIG.routes lookup miss). Real highlights overwrite
-            // this with effectiveRouteColor(info) on every selection.
-            "line-color": "#ffb700",
-            "line-color-transition": { duration: 0 },
-            // line-dasharray is a cross-faded property with a default
-            // 300ms transition: without this override, switching from a
-            // dashed selection to a solid one (or between dash patterns)
-            // crossfades the old pattern into the new over 300ms, and
-            // since the new route's filter lands immediately, the new
-            // route renders with the OLD dashes fading out (e.g. a solid
-            // route flashing dashed for a beat). Duration 0 snaps the
-            // pattern so the filter only ever exposes the target dash.
-            "line-dasharray-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
-            "line-opacity": 1,
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
+    // the previous key's color to the target. Setting duration: 0
+    // makes the color change instantaneous, so by the time the filter
+    // exposes the layer it's already at the target.
+    const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
+    // The ribbon traces the lit ways' lanes, laid out over the whole
+    // graph (see refreshLaneHighlight), which are already in lane
+    // position, so it takes no line-offset.
+
     // Trail ribbon (bottom → top), over an optional amber glow: a set
     // of ways that crosses routes, which today is a difficulty map's
     // color key (highlightRating). A trail itself is a look, not a
@@ -6654,8 +6549,14 @@ async function loadTrails() {
     //             until one is set
     //   stroke:   the key's own color, painted per selection; the
     //             initial color never shows under the no-match filter
-    // Optional selection glow, see the route glow above for why it's an
-    // opaque core + blur rather than a translucent stroke.
+    // Optional selection glow (highlight_glow, default on): a soft amber
+    // aura BENEATH the ribbon so any key, a black one included, reads
+    // unmistakably as selected against the dimmed map. Rendered as an
+    // OPAQUE core + line-blur, not a translucent wide stroke: the earlier
+    // translucent glow was removed because its alpha doubled where a line
+    // self-overlaps at a tight switchback, spiking bright at hairpins. An
+    // opaque core can't double; the blur supplies the soft outer falloff.
+    // Amber matches the highlight-chip accent (--highlight-amber).
     // The trail ribbon shares the route ribbon's source, which
     // refreshLaneHighlight fills with the key's lanes, so it sits on the
     // lanes and survives pans the same way.
@@ -7059,6 +6960,38 @@ const TAP_LIFT_SOURCE = "trail-tap-lift";
 const TAP_GLOW_LAYER = "trail-tap-glow";
 const TAP_GLOW_COLOR = "#FFEC00";
 
+// A route highlight is the plugin's own lift: the route's lanes drawn
+// last, above the others, with a halo in the tap lift's yellow and no
+// outline, while the other routes dim by the wash's strength. The halo
+// reaches 5 px past the casing with a 3 px fade, a little less than the
+// tap glow: the plugin paints the halo OVER the neighboring lanes, so a
+// reach wider than the lane spacing (5 px at z14) would hide a bundle
+// mate outright. `highlight_glow: false` keeps the lift and drops the
+// halo, as it drops the ribbon glow.
+const ROUTE_LIFT_HALO_WIDTH = 5;
+const ROUTE_LIFT_HALO_BLUR = 3;
+
+// Tell the lane layer which route is lifted and how hard to dim the
+// rest, from the highlight state and the wash state. Called wherever
+// either changes and when the layer first exists.
+function syncLaneHighlight() {
+    if (!laneLayer) return;
+    const routeId = highlight && highlight.kind === "route" ? highlight.key : null;
+    if (routeId === null) {
+        laneLayer.setHighlight(null);
+        return;
+    }
+    const washed = highlightDimActive() && !anyModalOpen();
+    laneLayer.setHighlight(routeId, {
+        halo: CONFIG.highlightGlow !== false ? TAP_GLOW_COLOR : null,
+        haloWidth: ROUTE_LIFT_HALO_WIDTH,
+        haloBlur: ROUTE_LIFT_HALO_BLUR,
+        outline: null,
+        outlineWidth: 0,
+        dim: washed ? 1 - SCRIM_OPACITY : 1,
+    });
+}
+
 // Lane geometry per zoom, in px. The fill width follows
 // TRAIL_WIDTH_STOPS.fill exactly, the spacing exceeds it by 1 px so
 // adjacent lanes keep a seam, and the casing is the per-side excess of
@@ -7280,11 +7213,13 @@ function refreshLaneGraph() {
                 laneStyle: isDifficultyMap() ? laneTrailStyle : undefined,
                 onBuild: onLaneBuild,
             });
-            map.addLayer(laneLayer, map.getLayer("dim-tint") ? "dim-tint" : undefined);
+            map.addLayer(laneLayer, laneLayerAnchor());
             // promoteBasemapLabels ran before the lanes existed and put
-            // the labels between the tap lift and dim-tint, where the
+            // the labels between the tap lift and the anchor, where the
             // lanes just landed; the lift belongs directly under them.
             moveTapLiftUnderLanes();
+            // A share link can select a route before the lanes exist.
+            syncLaneHighlight();
         }
     }).catch((e) => console.error("lanes: ordering failed", e));
 }
@@ -7393,19 +7328,19 @@ function refreshLaneFeatures() {
     src.setData(laneFeatureCollection());
 }
 
-// The highlighted route's lanes for the route ribbon layers, laid out
+// The highlighted rating's lanes for the trail ribbon layers, laid out
 // over the WHOLE graph rather than the culled build area. The ribbon
 // cannot share the symbol layers' source: that one is empty beyond
 // the build area, so after a pan the ribbon had nothing to draw until
 // moveend refilled it and the worker re-tiled it, about half a second
-// with no ribbon on every pan. A full layout of one route is cheap
-// (15-30 ms for RAMBA, cached per zoom by the plugin) and stays valid
-// while the map pans, so this source refreshes on zoomend, on the
-// highlight paths, and after every graph swap. During a zoom animation
-// the ribbon slides off its lane and snaps back at zoomend; that is
-// inherent to geometry laid out for one zoom, and the plugin's
-// in-layer highlight (LaneLayer.setHighlight) is the way out if it
-// ever matters.
+// with no ribbon on every pan. A full layout is cheap (15-30 ms for
+// RAMBA, cached per zoom by the plugin) and stays valid while the map
+// pans, so this source refreshes on zoomend, on the highlight paths,
+// and after every graph swap. During a zoom animation the ribbon
+// slides off its lane and snaps back at zoomend; that is inherent to
+// geometry laid out for one zoom. A route highlight has no such
+// source: the plugin lifts it inside the lane layer (syncLaneHighlight),
+// where it stays on the lane through every zoom.
 let laneHighlightToken = 0;
 
 function refreshLaneHighlight() {
@@ -7419,20 +7354,17 @@ function refreshLaneHighlight() {
     // It runs in the worker now. Clearing stays synchronous, and the
     // token drops an answer that a newer highlight has replaced.
     const token = ++laneHighlightToken;
-    const kind = highlight && highlight.kind;
-    const key = highlight && highlight.key;
-    if (kind !== "route" && kind !== "rating") {
+    if (!highlight || highlight.kind !== "rating") {
         src.setData({ type: "FeatureCollection", features: [] });
         return;
     }
     // A color key spans routes, so it lays the whole graph out (cached
     // per zoom by the plugin) and cuts it down to the key's ways.
-    const wanted = kind === "route"
-        ? laneFeatureCollectionAsync({ extent: "full", routes: [key] })
-        : laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
-            type: "FeatureCollection",
-            features: all.features.filter((f) => f.properties.color_key === key),
-        }));
+    const key = highlight.key;
+    const wanted = laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
+        type: "FeatureCollection",
+        features: all.features.filter((f) => f.properties.color_key === key),
+    }));
     wanted.then((fc) => {
         if (token === laneHighlightToken) src.setData(fc);
     }).catch((e) => console.error("lanes: highlight layout failed", e));
@@ -7754,50 +7686,38 @@ function updateTrailDisplay() {
 // ============================================================
 // Highlight system
 // ============================================================
-// Layer groups, per highlight kind the ribbon is up to four stacked
-// line layers that share one filter (set / cleared together):
+// Two highlight kinds, two mechanisms. A ROUTE is lifted inside the
+// lane layer by the plugin (syncLaneHighlight): its own lanes, drawn
+// last with a yellow halo, the other routes dimmed. A RATING is a set of
+// ways across routes, which the plugin cannot lift, so it is a ribbon:
+// up to three stacked line layers over the lit ways' lanes that share
+// one filter (set / cleared together):
 //   glow (optional): soft amber aura beneath everything; constant
 //            color, opaque core + blur. Gated by highlight_glow, the
-//            id stays in the arrays below and the getLayer() guards in
-//            highlightRoute/Rating skip it when the layer wasn't created.
-//   outline: thick silhouette. For routes it's luminance-matched to the
-//            route's own color (white for a dark route, black for a
-//            light one, see highlightOutlineForColor) so the ribbon
-//            keeps a readable edge under the wash; a rating gets the
-//            same luminance match to its own color.
-//   underlay (routes only): stroke-width layer that highlightRoute()
-//            paints with a two-color dashed route's second color so
-//            dash gaps show it, hidden (opacity 0) otherwise.
-//   stroke:  recolored per highlight via setPaintProperty, the route's
-//            native color (chip + ribbon agree on identity), or a
-//            rating's color on the trail ribbon. Dashed
-//            routes carry their dash pattern + cap here too, set per
-//            selection by highlightRoute().
+//            id stays in the array below and the getLayer() guards in
+//            highlightRating skip it when the layer wasn't created.
+//   outline: thick silhouette, luminance-matched to the key's own
+//            color (white for a dark key, black for a light one, see
+//            highlightOutlineForColor) so the ribbon keeps a readable
+//            edge under the wash.
+//   stroke:  recolored per highlight via setPaintProperty with the
+//            key's color, so chip and ribbon agree on identity.
 //
 // History: an earlier four-layer sandwich (outline + blurred glow +
 // stroke + white core) lived here. The white core was dropped for good
 // (zoom-dependent visibility; blurred into light routes). The glow was
 // removed once too, its TRANSLUCENT wide stroke spiked bright where a
 // line self-overlaps at switchbacks, and is now back in a spike-safe
-// form (opaque core + line-blur; see the layer definition).
-const ROUTE_HIGHLIGHT_LAYERS = [
-    "route-highlight-glow",
-    "route-highlight-outline",
-    "route-highlight-underlay",
-    "route-highlight-stroke",
-];
+// form (opaque core + line-blur; see the layer definition). Routes had
+// the same ribbon, with a dash underlay, until 2026-09-30.
 const TRAIL_HIGHLIGHT_LAYERS = [
     "trail-highlight-glow",
     "trail-highlight-outline",
     "trail-highlight-stroke",
 ];
-const ROUTE_TINTED_HIGHLIGHT_LAYERS = [
-    "route-highlight-stroke",
-];
 const TRAIL_TINTED_HIGHLIGHT_LAYERS = [
     "trail-highlight-stroke",
 ];
-const ROUTE_NONE_FILTER = ["==", ["get", "route_id"], "___NONE___"];
 const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 
 // ============================================================
@@ -7911,6 +7831,10 @@ function refreshSpotlightDim() {
     if (map.getLayer("dim-tint")) {
         map.setPaintProperty("dim-tint", "background-opacity", on ? SCRIM_OPACITY : 0);
     }
+    // The lane plugin dims the other routes for a lifted route, at the
+    // wash's strength while the wash is up and not at all when a modal
+    // takes over, so the two never double up.
+    syncLaneHighlight();
     document.body.classList.toggle("has-spotlight", on);
 }
 
@@ -7962,9 +7886,6 @@ function parseColorRgb(cssColor) {
 // the white silhouette instead, so a grey route reads as grey riding a
 // bright band. Saturated colors keep the plain luminance split.
 //
-// isGreyFamilyColor is split out because routeHighlightOutlineColor
-// applies the same exception to its scheme-silhouette pick for
-// single-color dashed routes.
 function isGreyFamilyColor(color) {
     const [r, g, b] = parseColorRgb(color);
     const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
@@ -7977,35 +7898,6 @@ function highlightOutlineForColor(color) {
     const [r, g, b] = parseColorRgb(color);
     const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     return lum < 0.5 ? "#ffffff" : "#000000";
-}
-
-// Outline silhouette for a highlighted ROUTE. Normally the stroke-
-// contrast pick above, with one exception: single-color dashed routes.
-// Their dash gaps expose the outline, so it doubles as the dash
-// BACKGROUND; stroke-contrast would flip that background light/dark
-// per route color (dark-blue dashes on white, yellow dashes on black),
-// reading as inconsistent styling between routes. Those routes use the
-// constant scheme-contrasting silhouette instead (black on the light
-// basemap, white on dark, same token as the trail outline), so every
-// single-color dashed highlight shares one background per scheme.
-// Two-color dashes fill their gaps with the underlay and solid strokes
-// cover the outline's interior entirely, both keep stroke-contrast.
-// Grey-family strokes (isGreyFamilyColor) override the scheme pick and
-// always take white: the light scheme's black silhouette put grey
-// dashes on a black band under the black spotlight wash, murky, the
-// same failure the grey special case exists to fix. Grey connectors
-// are by far the common single-color dashed case, so in practice
-// these routes read consistently anyway.
-// Callers: highlightRoute() on selection, applyMapPaintForScheme() on
-// a scheme toggle mid-highlight.
-function routeHighlightOutlineColor(info) {
-    const dashColors = getDashColors(info);
-    if (isDashed(info) && !(dashColors && dashColors.length >= 2)) {
-        if (isGreyFamilyColor(effectiveRouteColor(info))) return "#ffffff";
-        const t = mapPaintTokens();
-        return t.highlightOutline;
-    }
-    return highlightOutlineForColor(effectiveRouteColor(info));
 }
 
 // ["match", imba_difficulty, ...] with `pick(rating)` as each branch and
@@ -8048,80 +7940,15 @@ function highlightRoute(routeId) {
     closeTrailPopup();
     highlight = { kind: "route", key: routeId };
 
-    // Highlight the route in its OWN color, not a non-native accent
-    // color. Routes have an identity (a chip swatch, an Options-row
-    // color, OSM's `colour` tag); the highlight inherits that
-    // identity by coloring the stroke with effectiveRouteColor().
-    // Structural emphasis comes from the layered architecture: a
-    // thick scheme-contrasting outline beneath (black on the light
-    // basemap, white on dark), the route-colored stroke at ~2x the
-    // unhighlighted fill width, and the spotlight dim receding
-    // every other layer. Together they unmistakably signal "this
-    // route is selected" without recoloring the route itself.
+    // The route stays exactly as drawn, dashes and all: the lane plugin
+    // lifts it above the other routes with a yellow halo, the tap lift's
+    // color, and dims the rest (syncLaneHighlight). The chip carries the
+    // route's own color and dash.
     const color = effectiveRouteColor(info);
-    const routeFilter = ["==", ["get", "route_id"], routeId];
-    // Set paint BEFORE flipping the filter. setFilter activates the
-    // layer (or switches it to a new route's geometry); whatever
-    // line-color is currently set paints for one frame before any
-    // subsequent setPaintProperty takes effect. That produced a
-    // visible "flash" of either the hardcoded fail-safe color (first
-    // highlight) or the previous route's color (when switching
-    // between routes) before the new color landed. Setting paint
-    // first means the filter activation already finds the right
-    // color in place. (The outline isn't set here, it's a constant
-    // scheme-contrasting silhouette owned by applyMapPaintForScheme.)
-    for (const layerId of ROUTE_TINTED_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, "line-color", color);
-        }
-    }
-    // Outline silhouette: luminance-matched to this route's color so a
-    // dark/black route keeps a readable light edge under the wash, or
-    // the scheme silhouette for single-color dashed routes whose gaps
-    // expose it as the dash background (see routeHighlightOutlineColor).
-    // Set before the filter activates the layer, same flash-prevention
-    // ordering as the stroke above.
-    if (map.getLayer("route-highlight-outline")) {
-        map.setPaintProperty("route-highlight-outline", "line-color",
-            routeHighlightOutlineColor(info));
-    }
-    // Dash identity: the stroke mirrors the route's own dash pattern
-    // and cap so a dashed relation still reads as dashed while
-    // highlighted. getDashPattern returns [1, 0] (solid) for
-    // non-dashed routes, so switching from a dashed selection to a
-    // solid one resets cleanly. Dash units are line-widths, so at the
-    // stroke's ~2× width the dashes render ~2× longer than the
-    // unhighlighted fill: "this route, scaled up." Gaps show the
-    // outline silhouette (or the two-color underlay below), keeping
-    // the ribbon a continuous selected band.
-    if (map.getLayer("route-highlight-stroke")) {
-        const dashCap = isDashed(info) ? getDashCap(info) : "round";
-        map.setPaintProperty("route-highlight-stroke", "line-dasharray",
-            getDashPattern(info));
-        map.setLayoutProperty("route-highlight-stroke", "line-cap", dashCap);
-        map.setLayoutProperty("route-highlight-stroke", "line-join",
-            dashCap === "square" ? "miter" : "round");
-    }
-    // Two-color dash underlay: paint the second color into the dash
-    // gaps, mirroring the trail-fill2 underlay in the unhighlighted
-    // rendering. Hidden (opacity 0) for everything else.
-    if (map.getLayer("route-highlight-underlay")) {
-        const dashColors = getDashColors(info);
-        const hasUnderlay = !!(dashColors && dashColors.length >= 2);
-        map.setPaintProperty("route-highlight-underlay", "line-color",
-            hasUnderlay ? dashColors[1] : "#000");
-        map.setPaintProperty("route-highlight-underlay", "line-opacity",
-            hasUnderlay ? 1 : 0);
-    }
-    // The ribbon source holds only the highlighted route, filled here
-    // before the filters expose the layers.
+    syncLaneHighlight();
+    // Clear the trail ribbon (single-highlight invariant); its source
+    // empties for a route.
     refreshLaneHighlight();
-    for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, routeFilter);
-        }
-    }
-    // Clear the trail ribbon (single-highlight invariant)
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
@@ -8285,9 +8112,8 @@ function trailEntry(trailName) {
 }
 
 // Outline of a color key highlight: luminance-matched to the key's
-// color, the rule route highlights follow (highlightOutlineForColor),
-// so a black diamond keeps a light edge under the dark spotlight wash
-// instead of vanishing into it.
+// color (highlightOutlineForColor), so a black diamond keeps a light
+// edge under the dark spotlight wash instead of vanishing into it.
 function ratingHighlightOutlineColor(key) {
     return highlightOutlineForColor(keyLook(key).color);
 }
@@ -8325,11 +8151,7 @@ function highlightRating(rating) {
             map.setFilter(layerId, ratingFilter);
         }
     }
-    for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, ROUTE_NONE_FILTER);
-        }
-    }
+    syncLaneHighlight();
 
     fitToRouteOrTrail({ colorKey: rating });
 
@@ -9007,11 +8829,7 @@ function clearPoiHighlight() {
 // reconcile for flicker-free POI→POI switches.
 function clearRouteTrailHighlight() {
     highlight = null;
-    for (const layerId of ROUTE_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, ROUTE_NONE_FILTER);
-        }
-    }
+    syncLaneHighlight();
     for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
         if (map.getLayer(layerId)) {
             map.setFilter(layerId, TRAIL_NONE_FILTER);
@@ -12838,19 +12656,40 @@ function promoteBasemapLabels() {
     // The hillshade is no anchor any more: it sits under the water now
     // (terrainBeforeLayer), and anchoring on it buried every label
     // under the water and road fills.
-    const firstTrailLayer = style.layers.find(
-        (l) => l.id === "dim-tint" || l.id === "route-highlight-outline");
-    const beforeId = map.getLayer(LANE_LAYER_ID)
-        ? LANE_LAYER_ID
-        : (firstTrailLayer ? firstTrailLayer.id : undefined);
+    const beforeId = map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : laneLayerAnchor();
 
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
+    }
+    // On a routes map the wash goes under the lanes, and under the
+    // basemap labels so they still recede: a route highlight is the
+    // plugin's lift inside the lane layer, and the plugin dims the
+    // other routes itself; a wash over the lanes would dim the lift too.
+    // A difficulty map keeps the wash over the lanes, its rating ribbon
+    // draws above it. Re-established after every basemap rebuild, since
+    // the setStyle diff can reorder the wash.
+    if (!isDifficultyMap() && map.getLayer("dim-tint")) {
+        // Under the contour labels too, which sit with the basemap
+        // labels: whichever symbol layer comes first in the stack.
+        const symbols = new Set([...basemapSymbolIds, "contour-labels"]);
+        const first = map.getStyle().layers.find((l) => symbols.has(l.id));
+        map.moveLayer("dim-tint", first ? first.id : TAP_GLOW_LAYER);
     }
     // The labels just landed between the tap lift and the lanes (or,
     // after a basemap rebuild, the setStyle diff may have shuffled the
     // lift); keep it directly beneath the lanes, labels under it.
     moveTapLiftUnderLanes();
+}
+
+// Where the lane layer inserts: under the wash on a difficulty map,
+// under the trail ribbon on a routes map, where the wash sits below the
+// lanes (see promoteBasemapLabels).
+function laneLayerAnchor() {
+    if (isDifficultyMap()) return map.getLayer("dim-tint") ? "dim-tint" : undefined;
+    for (const id of TRAIL_HIGHLIGHT_LAYERS) {
+        if (map.getLayer(id)) return id;
+    }
+    return map.getLayer("dim-tint") ? "dim-tint" : undefined;
 }
 
 // The glow, then the lanes. No-op until both exist.
