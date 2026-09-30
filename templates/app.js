@@ -793,15 +793,6 @@ function isDefaultVisible(name) {
     return (CONFIG.defaultVisible || []).includes(name);
 }
 
-// The map model, fixed at build time by `color_by`. A routes map (the
-// default) colors each relation and bundles the routes sharing a way
-// into parallel lanes; a difficulty map colors each way by its IMBA
-// rating and draws it once, so everything a rider sees there is keyed
-// on the way (its name and rating) rather than on relations.
-function isDifficultyMap() {
-    return CONFIG.colorBy === "difficulty";
-}
-
 // Each relation (and custom route) renders in its own color mode,
 // resolved at build time into CONFIG.routes[id].colorBy: a route-mode
 // relation draws a lane of its own, keyed by its id, and a
@@ -821,6 +812,14 @@ function hasRouteLanes() {
 // builds its lane graph per visibility pass (initLaneRenderer).
 function hasRatingLanes() {
     return Object.values(CONFIG.routes).some((info) => info.colorBy === "difficulty");
+}
+
+// What the key's rows are, for its header, its chip and its welcome
+// row: "Routes" or "Difficulty" when every relation shares one color
+// mode, "Key" when route rows and rating rows share the panel.
+function keyTitle() {
+    if (!hasRatingLanes()) return "Routes";
+    return hasRouteLanes() ? "Key" : "Difficulty";
 }
 
 // Curator-forced visibility: when a layer name appears in
@@ -1988,10 +1987,11 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 // per-route shared-way label layers, which are only created for
 // featured routes (see the trail-label-<id> addLayer loop).
 //
-// Difficulty maps have no route labels at all, so nothing is emitted
+// A difficulty-mode relation has no route label (its ways are labeled
+// by trail name and read by their rating), so nothing is emitted for it
 // and no footprint is reserved for a label that could never show.
 function routeLabelAllowed(rid) {
-    if (isDifficultyMap()) return false;
+    if (!isRouteMode(rid)) return false;
     if (!CONFIG.eventModeActive) return true;
     return !!(CONFIG.routes[rid] && CONFIG.routes[rid].featured);
 }
@@ -2288,8 +2288,9 @@ function addDecorationLayers() {
         },
     });
 
-    // No route-name labels on a difficulty map (see routeLabelAllowed).
-    if (!isDifficultyMap()) {
+    // No route-name labels without a route-mode relation (see
+    // routeLabelAllowed).
+    if (hasRouteLanes()) {
         map.addLayer({
             id: "decor-route-name",
             type: "symbol",
@@ -2365,7 +2366,7 @@ function addDecorationLayers() {
     // where curve text can't fit yet (see the OVERVIEW_LABEL_MAX_ZOOM
     // comment). symbol-sort-key (negative length) makes the longest names win
     // MapLibre's overlap drop among themselves.
-    if (!isDifficultyMap()) {
+    if (hasRouteLanes()) {
         map.addLayer({
             id: "decor-route-name-pt",
             type: "symbol",
@@ -2599,11 +2600,12 @@ let labelMode = CONFIG.eventModeActive
     : (CONFIG.forcedLabels
         ? CONFIG.forcedLabels
         : LS.get("mtb.labels", CONFIG.defaultLabels || "none"));
-// A difficulty map has no route labels. A stored "routes" (the map was
-// a routes map on an earlier visit) reads as the trail names, the
-// nearest thing it still offers; the layers below are created from
-// this value, before the Labels control gets its own chance to coerce.
-if (isDifficultyMap() && labelMode === "routes") labelMode = "trails";
+// A map with no route-mode relation has no route labels. A stored
+// "routes" (the map drew route lanes on an earlier visit) reads as the
+// trail names, the nearest thing it still offers; the layers below are
+// created from this value, before the Labels control gets its own
+// chance to coerce.
+if (!hasRouteLanes() && labelMode === "routes") labelMode = "trails";
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
@@ -2997,8 +2999,9 @@ function applyPendingShareHighlight() {
     if (!h || !h.kind || !highlightHasKey(h)) return;
     if (h.kind === "route") {
         // h.key is the OSM relation ID (or custom-route ID), matching
-        // the keys of CONFIG.routes. Verify before calling.
-        if (CONFIG.routes && CONFIG.routes[h.key]) {
+        // the keys of CONFIG.routes. Verify before calling: only a
+        // route-mode relation has lanes of its own to lift.
+        if (isRouteMode(h.key)) {
             highlightRoute(h.key);
         }
     } else if (h.kind === "trail") {
@@ -3011,11 +3014,10 @@ function applyPendingShareHighlight() {
             showTrail(h.key);
         }
     } else if (h.kind === "rating") {
-        // h.key is a color key ("2", a route key, or "" for
-        // unrated). Applied only while the key would list it, so a link
-        // to a key this map no longer shows (or a routes map) opens
-        // plain.
-        if (isDifficultyMap() && keyRatings().includes(h.key)) {
+        // h.key is a rating ("2", or "" for unrated). Applied only
+        // while the key lists it, so a link to a rating this map no
+        // longer shows (or a map with no rating lanes) opens plain.
+        if (keyRatings().includes(h.key)) {
             highlightRating(h.key);
         }
     } else if (h.kind === "poi") {
@@ -3050,8 +3052,8 @@ function buildShareUrl() {
         // Unrated ("") travels as a word: an empty last segment would
         // be lost to any client that trims a trailing slash, and
         // consumeShareHash would then see too few parts and drop the
-        // highlight. The other keys are ratings "0".."5" and relation
-        // ids, so the word cannot collide with one.
+        // highlight. The other keys are ratings "0".."5", so the word
+        // cannot collide with one.
         path += `/d/${highlight.key === "" ? "unrated" : encodeURIComponent(highlight.key)}`;
     } else if (_poiHighlightRef) {
         // POI highlight (single, name-group, or category). The ref is the
@@ -3212,9 +3214,10 @@ function consumeShareHash() {
             // Malformed escape - ignore the highlight portion.
         }
         if (key !== null) {
-            // A difficulty map has no route highlight (see
-            // highlightRoute), so an "r" link opens it plain.
-            if (kindCode === "r" && !isDifficultyMap()) highlight = { kind: "route", key };
+            // Only a route-mode relation has a route highlight (see
+            // highlightRoute), so an "r" link to any other id opens
+            // plain.
+            if (kindCode === "r" && isRouteMode(key)) highlight = { kind: "route", key };
             else if (kindCode === "t") highlight = { kind: "trail", key };
             else if (kindCode === "d") {
                 highlight = { kind: "rating", key: key === "unrated" ? "" : key };
@@ -4545,9 +4548,9 @@ function _joinHumanList(items) {
 // Avoids the previous claim that every map has "(parking, water,
 // toilets, trailheads)" regardless of reality.
 function _welcomeSearchDescription() {
-    // A difficulty map offers no routes to look up, only its trails
-    // (which the validator keeps on there).
-    const targets = isDifficultyMap() ? [] : ["routes"];
+    // With no route-mode relation there are no routes to look up, only
+    // trails (which the validator keeps on there).
+    const targets = hasRouteLanes() ? ["routes"] : [];
     if (CONFIG.showTrails !== false) targets.push("trails");
 
     // Specific POI types, order roughly follows the rhythm of a
@@ -4581,13 +4584,13 @@ function _welcomeSearchDescription() {
 
 // Build the list of categories the search box actually returns,
 // based on the same gates renderResults() uses (CONFIG.showTrails,
-// CONFIG.poiCounts; routes are always present on a routes map and
-// never listed on a difficulty map). Returns an array of
+// CONFIG.poiCounts; routes are listed whenever a relation is in route
+// mode). Returns an array of
 // human labels (e.g. ["routes", "trails", "places"]) so callers can
 // compose either the comma-form used by the placeholder or the
 // human-list form used by aria-labels.
 function _searchTargets() {
-    const targets = isDifficultyMap() ? [] : ["routes"];
+    const targets = hasRouteLanes() ? ["routes"] : [];
     if (CONFIG.showTrails !== false) targets.push("trails");
     const counts = CONFIG.poiCounts || {};
     const hasPois = !!(counts.parking || counts.trailhead || counts.hub
@@ -4623,9 +4626,9 @@ function _welcomeOptionsDescription() {
     // Labels clause only when the segmented control is interactive
     // (not event-mode/forced) AND offers the routes-vs-trails choice;
     // a Routes/None-only row is adequately covered by the lead clause,
-    // and so is a difficulty map's Trails/None.
+    // and so is the Trails/None row of a map with no route labels.
     if (!CONFIG.eventModeActive && !CONFIG.forcedLabels
-            && CONFIG.showTrails !== false && !isDifficultyMap()) {
+            && CONFIG.showTrails !== false && hasRouteLanes()) {
         items.push("switch labels between routes and trails");
     }
     if (anyRouteHas("winter")) {
@@ -4652,6 +4655,28 @@ function _welcomeOptionsDescription() {
     // it reads as a sentence; final period anchors it.
     const joined = _joinHumanList(items);
     return joined.charAt(0).toUpperCase() + joined.slice(1) + ".";
+}
+
+// The key's welcome row, named like the key panel's header (keyTitle).
+// A map that mixes route rows with rating rows says both, briefly.
+function _welcomeKeyRow() {
+    const name = keyTitle();
+    if (name === "Difficulty") {
+        return { icon: _WELCOME_ICON_ROUTES, name,
+            desc: "Each trail's color is its difficulty."
+                + " Tap a level to highlight those trails"
+                + " or collapse the panel." };
+    }
+    if (name === "Key") {
+        return { icon: _WELCOME_ICON_ROUTES, name,
+            desc: "Each route's color and name, and each trail's"
+                + " difficulty. Tap a row to highlight it on the map"
+                + " or collapse the panel." };
+    }
+    return { icon: _WELCOME_ICON_ROUTES, name,
+        desc: "Each route's color and name."
+            + " Tap a route to highlight it on the map"
+            + " or collapse the panel." };
 }
 
 function buildWelcomeControlsHint() {
@@ -4691,15 +4716,7 @@ function buildWelcomeControlsHint() {
             desc: "Reset the map to its starting view." },
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
-        isDifficultyMap()
-            ? { icon: _WELCOME_ICON_ROUTES, name: "Difficulty",
-                desc: "Each trail's color is its difficulty."
-                    + " Tap a level to highlight those trails"
-                    + " or collapse the panel." }
-            : { icon: _WELCOME_ICON_ROUTES,     name: "Routes",
-                desc: "Each route's color and name."
-                    + " Tap a route to highlight it on the map"
-                    + " or collapse the panel." },
+        _welcomeKeyRow(),
         { icon: _WELCOME_ICON_SEARCH,     name: "Search",
             desc: _welcomeSearchDescription() },
     ];
@@ -5667,44 +5684,35 @@ function featureColorKey(props) {
     return wayRating(props.imba_difficulty);
 }
 
-// Whether a color key names a route-mode relation, whose lanes it
-// keys. A share link can name a relation that is not in route mode,
-// or none at all; such a key reads as unrated everywhere rather than
-// throwing.
-function isRouteKey(key) {
-    return typeof key === "string" && key !== "" && !isRatedDifficulty(key)
-        && Object.prototype.hasOwnProperty.call(CONFIG.routes, key)
-        && isRouteMode(key);
+// Whether a lane's color key is a rating lane's ("0".."5", or "" for
+// unrated) rather than a route-mode relation's id.
+function isRatingKey(key) {
+    return key === "" || isRatedDifficulty(key);
 }
 
-// The look of a color key's ways as a routeSwatchModel-shaped object,
-// so the key row, the chip, the finder mark and the popup all draw a
-// key the way laneKeyMeta draws its lanes: a rating in the IMBA
-// palette, a route key as its route's row draws it, anything else in
-// the unrated look.
+// The look of a rating's ways as a routeSwatchModel-shaped object, so
+// the key row, the chip, the finder mark and the popup all draw a
+// rating the way laneKeyMeta draws its lanes: the IMBA palette, or the
+// unrated look.
 function keyLook(key) {
     if (isRatedDifficulty(key)) {
         return { color: difficultyColor(key), dashed: null, dashCap: null, dashColors: null };
     }
-    return isRouteKey(key) ? routeSwatchModel(CONFIG.routes[key]) : unratedSwatchModel();
+    return unratedSwatchModel();
 }
 
-// The name a rider reads for a color key: the rating's name, the
-// relation's display name (relation_names honored), or "Unrated".
+// The name a rider reads for a rating key: the rating's name, or
+// "Unrated".
 function keyName(key) {
-    if (isRatedDifficulty(key)) return ratingName(key);
-    return isRouteKey(key) ? CONFIG.routes[key].name : "Unrated";
+    return isRatedDifficulty(key) ? ratingName(key) : "Unrated";
 }
 
-// Color keys in the key's order: ratings easiest first, then route
-// keys by name, then unrated last, where a curator reads it as the
-// data still to tag.
+// Rating keys in the key's order: easiest first, then unrated last,
+// where a curator reads it as the data still to tag.
 function sortColorKeys(keys) {
     const list = [...keys];
     const ratings = IMBA_RATINGS.map((_, i) => String(i)).filter((r) => list.includes(r));
-    const routeKeys = list.filter(isRouteKey)
-        .sort((a, b) => keyName(a).localeCompare(keyName(b)));
-    return ratings.concat(routeKeys, list.includes("") ? [""] : []);
+    return ratings.concat(list.includes("") ? [""] : []);
 }
 
 // Length of a LineString in meters, by the equirectangular
@@ -5734,8 +5742,11 @@ function edgeLengthMeters(edge) {
     return lineLengthMeters(coords);
 }
 
-// Difficulty maps: color key -> meters of visible way, each shared way
-// counted once, so the rows sum to the visible total. Reads the lane plugin's input for the current
+// Maps with rating lanes: rating key -> meters of visible way under a
+// visible difficulty-mode parent, each shared way counted once, so the
+// rating rows sum to the visible difficulty-mode network. The route
+// lanes' features are skipped: a route row sums its own relation
+// (routeStatsText). Reads the lane plugin's input for the current
 // visibility pass (difficultyVisibleFeatures), so the key, the chip and
 // the map agree on what is visible. That input exists before anything
 // asks: init awaits loadTrails, which starts the lane renderer, before
@@ -5751,17 +5762,18 @@ function ratingLengths() {
     }
     const lengths = new Map();
     for (const f of features) {
+        const key = f.properties.color_key;
+        if (!isRatingKey(key)) continue;
         const len = lineLengthMeters(f.geometry.coordinates);
         if (!(len > 0)) continue;
-        const key = f.properties.color_key;
         lengths.set(key, (lengths.get(key) || 0) + len);
     }
     _ratingLengthsCache = { features, lengths };
     return lengths;
 }
 
-// The color keys a difficulty key lists right now: every key with
-// visible length, in sortColorKeys order.
+// The rating keys the key lists right now: every rating with visible
+// length, in sortColorKeys order. Empty on a map with no rating lanes.
 function keyRatings() {
     return sortColorKeys(ratingLengths().keys());
 }
@@ -6534,12 +6546,12 @@ async function loadTrails() {
     // of bug where a hidden segmented-control click could surface
     // background labels.
     //
-    // Difficulty maps label trails only (the Labels control offers
-    // Trails / None), so no route gets one.
+    // A difficulty-mode relation draws no lanes of its own, so it gets
+    // no route-name layer.
     for (let li = 0; li < sortedRoutes.length; li++) {
         const [routeId, routeInfo] = sortedRoutes[li];
         if (CONFIG.eventModeActive && !routeInfo.featured) continue;
-        if (isDifficultyMap()) continue;
+        if (!isRouteMode(routeId)) continue;
 
         // Stagger labels along the line so shared-segment route names
         // don't stack up. With symbol-placement "line", text-offset x
@@ -6655,8 +6667,12 @@ function labelDimExpr(normal, matchExprFn) {
 // label layer below so a highlight dims the whole label set (route
 // mode AND trail mode) the same way, not just whichever mode happens
 // to be on screen.
+// A route name never belongs to a rating: route-name labels ride
+// route-mode lanes, which a rating highlight dims like any other lane.
+// Read through ratingIdentityMatch they would carry no rating and light
+// up under an Unrated highlight.
 function routeIdentityMatch() {
-    if (highlight.kind === "rating") return ratingIdentityMatch();
+    if (highlight.kind === "rating") return false;
     return ["==", ["get", "solo_route_id"], highlight.key];
 }
 function trailIdentityMatch() {
@@ -6668,8 +6684,7 @@ function trailIdentityMatch() {
 // a way with no visible difficulty-mode parent); features without it,
 // the diamonds among them, fall back to their rating, read through
 // ratingMatchExpr so an off-scale value matches unrated, as the map
-// draws it. A feature with no rating at all (a route name) reads as
-// unrated too. Only difficulty maps have these highlights.
+// draws it. Only maps with rating lanes have these highlights.
 function ratingIdentityMatch() {
     return ["==", ["coalesce", ["get", "color_key"], ratingMatchExpr((r) => r)],
         highlight.key];
@@ -6936,7 +6951,7 @@ function laneKeyMeta(features) {
         if (key === undefined || meta[key]) continue;
         if (isRatedDifficulty(key)) {
             meta[key] = { color: difficultyColor(key), name: keyName(key) };
-        } else if (isRouteKey(key)) {
+        } else if (!isRatingKey(key)) {
             meta[key] = laneRouteMeta()[key];
         } else {
             const m = { color: CONFIG.defaultTrailColor, name: keyName(key) };
@@ -7630,7 +7645,7 @@ function updateClipArrowsDim() {
     const dim = highlightDimActive();
     const kind = dim ? highlight.kind : null;
     const key = dim ? highlight.key : null;
-    const byRating = kind === "rating" && !isRouteKey(key);
+    const byRating = kind === "rating";
     const halo = clipArrowHaloExpr();
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `clip-arrow-${routeId}`;
@@ -7750,28 +7765,13 @@ function ratingMatchExpr(pick, unrated) {
     return expr;
 }
 
-// ["match", color_key, ...] with `pick(key)` for each rating and each
-// route key, and pick("") (unrated) as the fallback, which also
-// covers a feature with no color key. Lane pieces carry the way's
-// color_key (uniformProperties), so this works on the highlight source.
-function colorKeyMatchExpr(pick) {
-    const expr = ["match", ["coalesce", ["get", "color_key"], ""]];
-    IMBA_RATINGS.forEach((_, i) => expr.push(String(i), pick(String(i))));
-    for (const id of Object.keys(CONFIG.routes)) {
-        if (isRouteKey(id)) expr.push(id, pick(id));
-    }
-    expr.push(pick(""));
-    return expr;
-}
-
 function highlightRoute(routeId) {
     const info = CONFIG.routes[routeId];
     if (!info) return;
-    // A difficulty map draws each way once, by its color key, so a
-    // route is not a thing its lanes know; its key rows call
-    // highlightRating. An old route share link lands here and is
-    // ignored.
-    if (isDifficultyMap()) return;
+    // A difficulty-mode relation draws no lanes of its own (its ways
+    // draw their rating's lanes), so there is nothing to lift; its
+    // ways answer to the rating rows instead.
+    if (!isRouteMode(routeId)) return;
     // Single-highlight invariant across kinds: drop any POI highlight
     // (rings, force-mounted markers, open popup) before lighting a
     // route.
@@ -7859,12 +7859,12 @@ function showTrail(trailName) {
 // The popup anchor for a trail: the middle, by length, of its longest
 // visible run. A single run rather than the whole trail's middle, which
 // for a trail in pieces could fall between them, off every lane.
-// Difficulty maps read the lane plugin's input for the current
-// visibility pass; routes maps read the ways with a visible parent, the
+// Maps with rating lanes read the lane plugin's input for the current
+// visibility pass; the others read the ways with a visible parent, the
 // ones the lanes draw. Returns { mid, properties } or null.
 function longestVisibleTrailRun(trailName) {
     let candidates;
-    if (isDifficultyMap()) {
+    if (hasRatingLanes()) {
         candidates = difficultyVisibleFeatures || [];
     } else {
         candidates = routesData ? routesData.features.filter((f) => {
@@ -7932,27 +7932,26 @@ function openTrailPopupOnRun(trailName, run) {
 }
 
 // A trail's index entry, stamped for the current visibility pass:
-// refreshTrailRatings on a difficulty map (ratings + length),
-// refreshTrailLengths on a routes map (length only). Model-agnostic so
-// the popup and the finder row can read it the same way on
-// either map. Undefined for a name the index does not hold.
+// refreshTrailLengths (length, every map) and refreshTrailRatings
+// (ratings, maps with rating lanes). Model-agnostic so the popup and
+// the finder row read it the same way on any map. Undefined for a
+// name the index does not hold.
 function trailEntry(trailName) {
-    if (isDifficultyMap()) refreshTrailRatings();
-    else refreshTrailLengths();
+    refreshTrailRatings();
+    refreshTrailLengths();
     return trailIndex.find((t) => t.name === trailName);
 }
 
 
-// Every visible way with one color key (a rating, a route key's
-// lanes, or unrated), from a difficulty key row or a share link.
-// On a difficulty map a lane's route IS its color key (laneKeyMeta), so
-// the plugin lifts the whole key exactly as it lifts a route on a
-// routes map (syncLaneHighlight): the ways as drawn, a yellow halo,
-// the rest dimmed. The camera fits to the lit ways, as a route row
-// does, so every key row answers a tap the same way on either map
-// model even when a rating spans most of the map.
+// Every visible way with one rating (or unrated), from a rating key row
+// or a share link. On a map with rating lanes a lane's route IS its
+// color key (laneKeyMeta), so the plugin lifts the whole rating exactly
+// as it lifts a route (syncLaneHighlight): the ways as drawn, a yellow
+// halo, the rest dimmed. The camera fits to the lit ways, as a route
+// row does, so every key row answers a tap the same way even when a
+// rating spans most of the map.
 function highlightRating(rating) {
-    if (!isDifficultyMap()) return;
+    if (!hasRatingLanes()) return;
     clearPoiHighlight();
     closeTrailPopup();
     highlight = { kind: "rating", key: rating };
@@ -7977,18 +7976,14 @@ function highlightRating(rating) {
     syncRoutePanelActiveRow();
 }
 
-// A color key's distance for its key row and chip, in the rider's units;
-// "" when the map does not show distances. A route key's relation that
-// leaves the map at a clip endpoint (isTruncatedRoute) gets " shown"
-// appended: the number is the map's window onto the relation, not its
-// full length. A rating is never truncated (it names a bucket of ways,
-// not one thing with a full length), so ratings skip the check.
+// A rating's distance for its key row and chip, in the rider's units;
+// "" when the map does not show distances. Never " shown": a rating
+// names a bucket of ways, not one thing with a full length that the
+// map could cut.
 function ratingStatsText(rating) {
     if (!CONFIG.showDistance) return "";
     const meters = ratingLengths().get(rating);
-    if (!meters) return "";
-    const text = formatDistance(meters);
-    return (isRouteKey(rating) && isTruncatedRoute(rating)) ? `${text} shown` : text;
+    return meters ? formatDistance(meters) : "";
 }
 
 // The highlighted rating's chip distance, after the rider changes units
@@ -8814,14 +8809,16 @@ function hideHighlightChip() {
 // search.
 const PANEL_MAX_VIEWPORT_FRACTION = 1 / 3;
 
-// The rows the key would show right now: routes visible under the
-// rider's current season/emergency toggles (visibleRoutes, same
-// gate the map itself renders by), minus non-featured routes on
-// event maps (matching the label restriction in
-// labelsVisibleForRoute). routeIndex is already sorted by name.
+// The route rows the key would show right now: route-mode relations
+// visible under the rider's current season/emergency toggles
+// (visibleRoutes, same gate the map itself renders by), minus
+// non-featured routes on event maps (matching the label restriction in
+// labelsVisibleForRoute). A difficulty-mode relation has no row of its
+// own; its ways are in the rating rows. routeIndex is already sorted by
+// name.
 function panelListableRoutes() {
     return routeIndex.filter((r) => {
-        if (!visibleRoutes.has(r.id)) return false;
+        if (!visibleRoutes.has(r.id) || !isRouteMode(r.id)) return false;
         if (CONFIG.eventModeActive && !r.featured) return false;
         return true;
     });
@@ -8863,13 +8860,28 @@ function rebuildRoutePanel() {
     // next season flip repopulates it.
     wrap.classList.remove("hidden");
 
-    if (isDifficultyMap()) {
-        rebuildRatingRows(list);
-        return;
-    }
-
-    const rows = panelListableRoutes();
+    // Rows of the map's default color mode come first and the
+    // exceptions after them (Steve, 2026-09-30), so a difficulty map
+    // with a few route-mode relations still reads as a difficulty key.
+    // Unrated closes the list either way, where a curator reads it as
+    // the data still to tag.
     list.textContent = "";
+    const ratings = keyRatings();
+    const rated = ratings.filter((k) => k !== "");
+    if (CONFIG.colorBy === "difficulty") {
+        appendRatingRows(list, rated);
+        appendRouteRows(list, panelListableRoutes());
+    } else {
+        appendRouteRows(list, panelListableRoutes());
+        appendRatingRows(list, rated);
+    }
+    if (ratings.includes("")) appendRatingRows(list, [""]);
+    syncRoutePanelActiveRow();
+}
+
+// One key row per route: its swatch, name and stats. Tapping a row
+// toggles that route's highlight.
+function appendRouteRows(list, rows) {
     for (const r of rows) {
         const li = document.createElement("li");
         const btn = document.createElement("button");
@@ -8914,20 +8926,18 @@ function rebuildRoutePanel() {
         li.appendChild(btn);
         list.appendChild(li);
     }
-    syncRoutePanelActiveRow();
 }
 
-// A difficulty map's key rows: one per color key on the map right now
-// (keyRatings), so a season toggle that hides every blue way drops the
-// blue row. Each row pairs the key's mark (ratingMarkEl: a rating's
-// glyph, the canvas the map's own symbols and the Options key strip
-// use, so nothing can drift; a route key's or the unrated line
-// swatch otherwise) with its name and, where the map shows distances,
-// its visible length. Tapping a row toggles that key's highlight, as a
+// One key row per rating in `ratings`, drawn from the ratings on the
+// map right now (keyRatings), so a season toggle that hides every blue
+// way drops the blue row. Each row pairs the rating's mark
+// (ratingMarkEl: its glyph, the canvas the map's own symbols and the
+// Options key strip use, so nothing can drift; the unrated line swatch
+// otherwise) with its name and, where the map shows distances, its
+// visible length. Tapping a row toggles that rating's highlight, as a
 // route row toggles its route.
-function rebuildRatingRows(list) {
-    list.textContent = "";
-    for (const rating of keyRatings()) {
+function appendRatingRows(list, ratings) {
+    for (const rating of ratings) {
         const li = document.createElement("li");
         const btn = document.createElement("button");
         btn.type = "button";
@@ -8960,7 +8970,6 @@ function rebuildRatingRows(list) {
         li.appendChild(btn);
         list.appendChild(li);
     }
-    syncRoutePanelActiveRow();
 }
 
 // Mark the currently-highlighted route's key row (accent stripe via
@@ -8975,8 +8984,8 @@ function syncRoutePanelActiveRow() {
     if (!list) return;
     const activeId = (highlight && highlight.kind === "route")
         ? String(highlight.key) : null;
-    // Key rows (difficulty maps) carry data-rating instead, holding the
-    // color key, "" for unrated, hence the explicit null.
+    // Rating rows carry data-rating instead, holding the rating, ""
+    // for unrated, hence the explicit null.
     const activeRating = (highlight && highlight.kind === "rating")
         ? highlight.key : null;
     for (const btn of list.querySelectorAll(".route-panel-row")) {
@@ -9002,7 +9011,7 @@ function initRoutePanel() {
     // .no-key form); a stored preference from a key this map used to
     // have must not pull the chip back.
     if (CONFIG.routeKey === false) return;
-    if (isDifficultyMap()) labelDifficultyKey(chip, collapseBtn);
+    if (hasRatingLanes()) labelRatingKey(chip, collapseBtn);
 
     const applyCollapsed = (collapsed) => {
         wrap.classList.toggle("is-collapsed", collapsed);
@@ -9048,15 +9057,17 @@ function initRoutePanel() {
     });
 }
 
-// index.html names the panel for the routes model, which both models
-// share, so a difficulty map renames its key once at boot.
-function labelDifficultyKey(chip, collapseBtn) {
+// index.html names the panel for route rows, so a map with rating rows
+// renames its key once at boot (keyTitle).
+function labelRatingKey(chip, collapseBtn) {
+    const name = keyTitle();
+    const noun = name === "Difficulty" ? "difficulty key" : "key";
     const card = document.getElementById("route-panel-card");
     const title = card && card.querySelector(".route-panel-title");
-    if (title) title.textContent = "Difficulty";
-    if (card) card.setAttribute("aria-label", "Difficulty");
-    collapseBtn.setAttribute("aria-label", "Collapse difficulty key");
-    chip.setAttribute("aria-label", "Show difficulty key");
+    if (title) title.textContent = name;
+    if (card) card.setAttribute("aria-label", name);
+    collapseBtn.setAttribute("aria-label", `Collapse ${noun}`);
+    chip.setAttribute("aria-label", `Show ${noun}`);
 }
 
 // Viewport-aware boot default when the rider has no stored preference.
@@ -9146,24 +9157,26 @@ function buildTrailIndex() {
         .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// Difficulty maps: stamp each trailIndex entry with its color keys over
-// the ways on the map right now, since a season toggle can hide the
-// only blue stretch of a trail:
-//   ratingLengthsM  color key -> meters of visible way ("" for unrated)
-//   ratings         those keys in the key's order (sortColorKeys)
-//   rating          the key most of the visible length carries (the
-//                   finder mark and the chip); a tie goes to a rating
-//                   over a route key over unrated, and to the
-//                   harder of two ratings
-//   lengthM         the trail's visible length
-// Reads the lane plugin's input for the current visibility pass, as
-// ratingLengths does (and like it, only once the lane renderer has
-// started), so the finder, the popup and the map agree. The stamp is
-// redone only when that input or the index is replaced, so a keystroke
-// in the finder costs nothing.
+// Maps with rating lanes: stamp each trailIndex entry with its ratings
+// over the ways on the map right now, since a season toggle can hide
+// the only blue stretch of a trail:
+//   ratings         the rating keys ("" for unrated) of its ways under
+//                   a visible difficulty-mode parent, in the key's
+//                   order (sortColorKeys)
+//   rating          the key most of that length carries (the finder
+//                   mark); a tie goes to a rating over unrated, and to
+//                   the harder of two ratings
+// Only the rating lanes' features count: a way under a route-mode
+// parent is in the input once per such parent, and its trail length
+// comes from refreshTrailLengths, which counts each way once whatever
+// draws it. Reads the lane plugin's input for the current visibility
+// pass, as ratingLengths does (and like it, only once the lane renderer
+// has started), so the finder, the popup and the map agree. The stamp
+// is redone only when that input or the index is replaced, so a
+// keystroke in the finder costs nothing.
 let _trailRatingsStamp = null;  // { features, index }
 function refreshTrailRatings() {
-    if (!isDifficultyMap()) return;
+    if (!hasRatingLanes()) return;
     const features = difficultyVisibleFeatures;
     if (!features) return;
     if (_trailRatingsStamp && _trailRatingsStamp.features === features
@@ -9173,40 +9186,33 @@ function refreshTrailRatings() {
     const byName = new Map();  // trail name -> rating -> meters
     for (const f of features) {
         const name = f.properties.trail_name;
-        if (!name) continue;
+        const key = f.properties.color_key;
+        if (!name || !isRatingKey(key)) continue;
         const len = lineLengthMeters(f.geometry.coordinates);
         if (!(len > 0)) continue;
-        const key = f.properties.color_key;
         let lengths = byName.get(name);
         if (!lengths) byName.set(name, (lengths = new Map()));
         lengths.set(key, (lengths.get(key) || 0) + len);
     }
     for (const t of trailIndex) {
         const lengths = byName.get(t.name) || new Map();
-        t.ratingLengthsM = lengths;
         t.ratings = sortColorKeys(lengths.keys());
-        t.lengthM = 0;
         t.rating = "";
         let best = -1;
-        // Unrated first, then the route keys, then easiest to
-        // hardest, so `>=` hands a tie to the harder rating, a rating
-        // beats a relation's look, and nothing ties over to unrated.
-        const byPrecedence = [""].concat(
-            t.ratings.filter(isRouteKey).reverse(),
-            t.ratings.filter((k) => isRatedDifficulty(k)));
+        // Unrated first, then easiest to hardest, so `>=` hands a tie
+        // to the harder rating and nothing ties over to unrated.
+        const byPrecedence = [""].concat(t.ratings.filter((k) => isRatedDifficulty(k)));
         for (const k of byPrecedence) {
             const len = lengths.get(k);
             if (len === undefined) continue;
-            t.lengthM += len;
             if (len >= best) { best = len; t.rating = k; }
         }
     }
     _trailRatingsStamp = { features, index: trailIndex };
 }
 
-// Routes maps: stamp each trailIndex entry's lengthM with the trail's
-// visible length. The routes-map twin of refreshTrailRatings above,
-// same shape, different source data: routesData carries one copy of a
+// Every map: stamp each trailIndex entry's lengthM with the trail's
+// visible length. routesData carries one copy of a
 // shared way under each parent route it belongs to (identical
 // geometry), so summing every copy by name would count a shared
 // stretch once per route running it instead of once. Dedupe into runs
@@ -9222,7 +9228,6 @@ function refreshTrailRatings() {
 // compare against.
 let _trailLengthsStamp = null;  // { version, index }
 function refreshTrailLengths() {
-    if (isDifficultyMap()) return;
     if (!routesData) return;
     if (_trailLengthsStamp && _trailLengthsStamp.version === visibleRoutesVersion
             && _trailLengthsStamp.index === trailIndex) {
@@ -9257,8 +9262,8 @@ function refreshTrailLengths() {
 
 // A trail's visible length for its finder row and popup, in the rider's
 // units; "" when the map does not show distances. Both map models:
-// refreshTrailRatings/refreshTrailLengths (via trailEntry) stamp
-// lengthM either way, this just formats it. Appends " shown" when the
+// refreshTrailLengths (via trailEntry or rebuildFinderList) stamps
+// lengthM, this just formats it. Appends " shown" when the
 // trail is truncated at the map edge (isTruncatedTrail): the length is
 // the map's window onto the trail, not the trail's full length. Pass
 // `{ bare: true }` for the number alone (the popup carries the
@@ -10042,8 +10047,10 @@ function setupFabLabels() {
     const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
+        const title = keyTitle();
         label.textContent = noKey ? "Search"
-            : isDifficultyMap() ? "Difficulty key" : "Route key";
+            : title === "Routes" ? "Route key"
+            : title === "Difficulty" ? "Difficulty key" : "Key";
         label.setAttribute("aria-hidden", "true");
         (noKey ? document.getElementById("route-panel-search") : panelChip).appendChild(label);
         mounted.push({ btn: panel, label });
@@ -10256,9 +10263,9 @@ function setupFloatingChrome() {
             }
             if (searchBtn) searchBtn.setAttribute("aria-label", ariaLabel);
             if (searchOverlay) searchOverlay.setAttribute("aria-label", ariaLabel);
-            // The list's static label names routes, which a difficulty
-            // map never lists ("Trails and places" there).
-            if (isDifficultyMap()) {
+            // The list's static label names routes, which a map with no
+            // route-mode relation never lists ("Trails and places" there).
+            if (!hasRouteLanes()) {
                 const finderList = document.getElementById("finder-list");
                 const listLabel = _joinHumanList(targets);
                 if (finderList) {
@@ -10416,14 +10423,14 @@ function setupFloatingChrome() {
     // the result list. Default is "all" set at module scope. The
     // "Trails" chip is hidden when the map has no trails configured;
     // the "Places" chip is hidden when no POIs exist. The "Routes"
-    // chip shows on every routes map (every map has routes). "All"
+    // chip shows whenever a relation is in route mode. "All"
     // stays visible whenever ≥1 of the others does.
     const searchFiltersEl = document.getElementById("search-filters");
     if (searchFiltersEl) {
-        // A difficulty map lists no routes, so it drops the Routes
-        // chip before the chips are wired, as the Labels control drops
-        // its Routes button.
-        if (isDifficultyMap()) {
+        // A map with no route-mode relation lists no routes, so it
+        // drops the Routes chip before the chips are wired, as the
+        // Labels control drops its Routes button.
+        if (!hasRouteLanes()) {
             const routeChip = searchFiltersEl
                 .querySelector('.search-filter-chip[data-filter="route"]');
             if (routeChip) routeChip.remove();
@@ -11185,9 +11192,10 @@ function setupFloatingChrome() {
             const btn = labelGroup.querySelector('[data-value="trails"]');
             if (btn) btn.remove();
         }
-        // A difficulty map has no route labels (the validator keeps
-        // show_trails on there), so its row is Trails / None.
-        if (isDifficultyMap()) {
+        // With no route-mode relation there are no route labels (the
+        // validator keeps show_trails on there), so the row is
+        // Trails / None.
+        if (!hasRouteLanes()) {
             const btn = labelGroup.querySelector('[data-value="routes"]');
             if (btn) btn.remove();
         }
@@ -11480,10 +11488,10 @@ function rebuildFinderList() {
     // is the default and includes every kind. Per-kind chip
     // restricts to just that kind.
     const filter = currentSearchFilter || "all";
-    // A difficulty map lists trails and places only: its relations are
-    // how the data is fetched, not something a rider follows.
+    // Routes are route-mode relations only: a difficulty-mode relation
+    // is how the data is fetched, not something a rider follows.
     const includeRoutes = (filter === "all" || filter === "route")
-        && !isDifficultyMap();
+        && hasRouteLanes();
     const includeTrails = (filter === "all" || filter === "trail") && showTrails;
     const includePois = (filter === "all" || filter === "poi");
 
@@ -11497,13 +11505,14 @@ function rebuildFinderList() {
     // query. Routes hidden by season/emergency toggles are still
     // searchable, selecting one force-shows it (rider toggle is the
     // explicit choice, search lets them work around it).
-    const routes = routeIndex.filter((r) => visibleRoutes.has(r.id));
-    const visibleRouteIds = new Set(routes.map((r) => r.id));
+    const visibleRouteIds = new Set(routeIndex
+        .filter((r) => visibleRoutes.has(r.id)).map((r) => r.id));
+    const routes = routeIndex.filter((r) => visibleRouteIds.has(r.id) && isRouteMode(r.id));
     const trails = trailIndex.filter((t) =>
         t.routeIds.some((rid) => visibleRouteIds.has(rid)));
-    // A difficulty map's trail rows show their ratings, a routes map's
-    // show their length; either way each stamps trailIndex against the
-    // visible set (each is a no-op on the other map model).
+    // Every trail row shows its length and, on a map with rating lanes,
+    // its ratings; each stamps trailIndex against the visible set
+    // (refreshTrailRatings is a no-op with no rating lanes).
     refreshTrailRatings();
     refreshTrailLengths();
 
@@ -11929,8 +11938,21 @@ function makeTrailRow(t, visibleRouteIds) {
     row.setAttribute("role", "option");
     row.dataset.trailName = t.name;
 
-    if (isDifficultyMap()) {
-        appendDifficultyTrailRowContent(row, t);
+    // Parent route names (only those currently visible, and only
+    // route-mode relations: a difficulty-mode relation is not something
+    // a rider follows, and on NTN it would name the network on every
+    // row).
+    const parents = t.routeIds
+        .filter((rid) => visibleRouteIds.has(rid) && isRouteMode(rid))
+        .map((rid) => CONFIG.routes[rid].name)
+        .filter(Boolean);
+
+    // A trail with rating lanes leads with its ratings. One that only
+    // route-mode relations draw reads as on a routes map, rather than
+    // wearing the Unrated mark, which means a difficulty-mode way with
+    // no rating.
+    if (hasRatingLanes() && ((t.ratings || []).length || !parents.length)) {
+        appendDifficultyTrailRowContent(row, t, parents);
         row.addEventListener("click", () => {
             showTrail(t.name);
             if (window.__closeSearchOverlay) window.__closeSearchOverlay();
@@ -11948,20 +11970,10 @@ function makeTrailRow(t, visibleRouteIds) {
     name.textContent = t.name;
     row.appendChild(name);
 
-    // Parent route names (only those currently visible). Truncate to 2 plus
-    // an "+N more" tail for readability.
-    const parents = t.routeIds
-        .filter((rid) => visibleRouteIds.has(rid))
-        .map((rid) => CONFIG.routes[rid] && CONFIG.routes[rid].name)
-        .filter(Boolean);
     if (parents.length > 0) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";
-        if (parents.length <= 2) {
-            meta.textContent = parents.join(", ");
-        } else {
-            meta.textContent = `${parents[0]}, ${parents[1]} +${parents.length - 2} more`;
-        }
+        meta.textContent = routeParentsText(parents);
         row.appendChild(meta);
     }
 
@@ -11985,14 +11997,20 @@ function makeTrailRow(t, visibleRouteIds) {
     return row;
 }
 
-// A difficulty map's trail row: the mark is the trail's main color key,
-// as a rider sees it on the map and in the key (a rating's symbol, or
-// a route key's or the unrated line), and the meta names every
-// key the trail carries, since a mixed trail shows only its main one
-// in the mark. The parent routes a
-// routes map lists here mean nothing on a difficulty map. Reads the
-// entry's refreshTrailRatings stamp.
-function appendDifficultyTrailRowContent(row, t) {
+// A finder trail row's route names, cut to two plus an "+N more" tail
+// for readability.
+function routeParentsText(parents) {
+    return parents.length <= 2 ? parents.join(", ")
+        : `${parents[0]}, ${parents[1]} +${parents.length - 2} more`;
+}
+
+// A trail row on a map with rating lanes: the mark is the trail's main
+// rating, as a rider sees it on the map and in the key (a rating's
+// symbol, or the unrated line), and the meta names every rating the
+// trail carries, since a mixed trail shows only its main one in the
+// mark, then its visible route-mode parents (`parents`), as a routes
+// map lists them. Reads the entry's refreshTrailRatings stamp.
+function appendDifficultyTrailRowContent(row, t, parents) {
     row.appendChild(ratingMarkEl(t.rating || "", "finder-row-glyph", "finder-row-swatch"));
 
     const name = document.createElement("span");
@@ -12000,10 +12018,12 @@ function appendDifficultyTrailRowContent(row, t) {
     name.textContent = t.name;
     row.appendChild(name);
 
-    if (t.ratings && t.ratings.length) {
+    const metaParts = (t.ratings || []).map(keyName);
+    if (parents.length) metaParts.push(routeParentsText(parents));
+    if (metaParts.length) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";
-        meta.textContent = t.ratings.map(keyName).join(", ");
+        meta.textContent = metaParts.join(", ");
         row.appendChild(meta);
     }
 
@@ -12277,12 +12297,14 @@ function trailPopupHtml(laneHit) {
     // trail itself is visible, so its name/difficulty/one-way
     // rows remain useful; only the "Part of" section drops.
     //
-    // A difficulty map lists no routes at all: the relations there
-    // are the unit of fetching, not something a rider follows, and
-    // the rows only repeated the title (Copper Harbor) or named the
-    // one network relation on every tap (NTN).
-    const matchedRoutes = isDifficultyMap() ? [] : routeIds
-        .filter((id) => visibleRoutes.has(id))
+    // Only route-mode relations are listed. A difficulty-mode relation
+    // is the unit of fetching, not something a rider follows, and its
+    // row only repeated the title (Copper Harbor) or named the one
+    // network relation on every tap (NTN). On a map with rating lanes
+    // the hit's routes are its edge's color keys, so a rating key
+    // drops out here too.
+    const matchedRoutes = routeIds
+        .filter((id) => visibleRoutes.has(id) && isRouteMode(id))
         .map((id) => CONFIG.routes[id])
         .filter(Boolean);
     const routeItems = matchedRoutes
@@ -12368,10 +12390,9 @@ function trailPopupHtml(laneHit) {
         // a trail name above).
         html += `<div class="popup-difficulty" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
     }
-    // A styled relation's unrated way gets no row: naming the
-    // relation here read as "part of a route", which a difficulty
-    // map does not say (Steve, 2026-09-29). Its key row already
-    // explains the color.
+    // An unrated way gets no difficulty row: its lane already reads
+    // as Unrated in the key, and a route-mode parent names itself
+    // under "Part of" below.
     if (oneway === "yes" || oneway === "reversible") {
         // The qualifier follows the config's direction_schedule, the
         // same thing that flips the arrows, not the OSM tag: a
@@ -12380,12 +12401,13 @@ function trailPopupHtml(laneHit) {
         // reverses too. CONFIG.directionSchedules holds only routes
         // with non-empty reverse_days. The wording matches
         // reverse_days and the Options help ("Some reverse by day").
-        // On a difficulty map the hit names only the way's owner, so
-        // the way carries the any-visible-parent answer itself (see
-        // laneFeaturesByMode).
+        // With rating lanes the hit names color keys, not relations,
+        // so the way carries the any-visible-parent answer itself (see
+        // laneFeaturesByMode); without them the hit's routes are the
+        // relations.
         const schedules = CONFIG.directionSchedules || {};
-        const reverses = isDifficultyMap()
-            ? laneProps.reverses_by_day === true
+        const reverses = typeof laneProps.reverses_by_day === "boolean"
+            ? laneProps.reverses_by_day
             : routeIds.some((id) => schedules[id]);
         const text = reverses
             ? "One-way (reverses by day)" : "One-way";

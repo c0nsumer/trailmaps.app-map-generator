@@ -516,10 +516,12 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
 For [difficulty-mode relations](#color-modes), the panel adds a difficulty key
 headed **Difficulty**. It lists one row per rating on the map, easiest first.
 Each row shows the rating's symbol and name. An **Unrated** row follows when
-unrated difficulty-mode ways are visible. On a map with both modes, the rows of
-the default mode come first. If `show_distance` is on, each row shows that rating's
+unrated difficulty-mode ways are visible. On a map with both modes, the panel
+is headed **Key**. The rows of the default mode come first, then the other
+mode's rows, and **Unrated** comes last. If `show_distance` is on, each row shows that rating's
 visible length. Tapping a row highlights every visible way with that rating.
-The map does not move. The first-visit chip label reads **Difficulty key**.
+The map fits to those ways. The first-visit chip label reads **Difficulty key**,
+or **Key** on a map with both modes.
 
 ## Units
 
