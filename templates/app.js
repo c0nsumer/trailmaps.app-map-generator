@@ -7868,6 +7868,12 @@ function cancelPendingTrailPopup() {
 }
 
 function showTrail(trailName) {
+    // A finder pick shows one thing: whatever was highlighted before
+    // (a route, a rating, a place) goes, as a route pick clears a trail
+    // popup. A trail carries no chip, so without this the old chip and
+    // its dim would sit under the new popup with nothing to say the
+    // two are unrelated.
+    clearHighlight();
     closeTrailPopup();
     fitToRouteOrTrail({ trailName });
     const run = longestVisibleTrailRun(trailName);
@@ -7981,7 +7987,6 @@ function highlightRating(rating) {
     closeTrailPopup();
     highlight = { kind: "rating", key: rating };
 
-    const color = keyLook(rating).color;
     syncLaneHighlight();
 
     fitToRouteOrTrail({ colorKey: rating });

@@ -589,10 +589,10 @@ This example is a routes map. Difficulty-mode relations differ as described in
   the chip to clear.
 - **Tapping a trail row** fits the map to the trail and collapses the sheet.
   The trail's popup then opens on the middle of the trail, the same popup a tap
-  on the trail opens. A soft yellow glow lifts the trail off the map. The popup closes on the next tap elsewhere. A trail pick leaves any
-  highlighted route or place as it is.
-- **One thing highlighted at a time.** Picking a new route or place replaces the
-  previous highlight. Everything else stays visible; the highlight only adds
+  on the trail opens. A soft yellow glow lifts the trail off the map. The popup closes on the next tap elsewhere. A trail pick clears any
+  highlighted route or place first.
+- **One thing at a time.** Picking a new route, trail or place replaces the
+  previous one. Everything else stays visible; the highlight only adds
   emphasis.
 
 If no relation is in route mode, the finder lists trails and places only. It
