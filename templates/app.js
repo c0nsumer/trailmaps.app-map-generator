@@ -153,7 +153,6 @@ const MAP_PAINT_TOKENS = {
         // outline around a colored core that shows up past ~0.6.
         trailCasing:      "rgba(0,0,0,1)",
         arrowHalo:        "rgba(0,0,0,0.85)",
-        highlightOutline: "#000000",
         // Contour lines: warm brown at moderate alpha so they read
         // as terrain annotation under the trail network, not as
         // routes. Labels keep full contrast in both schemes; a
@@ -183,7 +182,6 @@ const MAP_PAINT_TOKENS = {
         // already separate cleanly.
         trailCasing:      "rgba(255,255,255,0.6)",
         arrowHalo:        "rgba(255,255,255,0.85)",
-        highlightOutline: "#ffffff",
         // Lower alpha than light: pale lines on a dark ground gain
         // apparent contrast, and 0.25 was judged right on-device
         // during Session D.
@@ -650,18 +648,8 @@ function applyMapPaintForScheme(scheme) {
     // The lane casing is one color on the lane layer, not a layer per
     // route, so it is swapped through the layer's setter.
     if (laneLayer) laneLayer.setCasingColor(laneCasingColor());
-    // Highlight silhouette. The trail outline is a constant scheme-
-    // contrasting silhouette (black on the light basemap, white on dark),
-    // except under a rating highlight, which shares the trail layers and
-    // matches its outline to the rating's color (see highlightRating).
-    // A route highlight lives inside the lane layer (syncLaneHighlight)
-    // and has no scheme-dependent color.
-    if (map.getLayer("trail-highlight-outline")) {
-        map.setPaintProperty("trail-highlight-outline", "line-color",
-            highlight && highlight.kind === "rating"
-                ? ratingHighlightOutlineColor(highlight.key)
-                : t.highlightOutline);
-    }
+    // A highlight lives inside the lane layer (syncLaneHighlight) and
+    // has no scheme-dependent color.
     if (map.getLayer("decor-chevron-fwd")) {
         map.setLayoutProperty("decor-chevron-fwd", "icon-image", t.chevronFwd);
     }
@@ -1183,10 +1171,9 @@ function closeTrailPopup() {
 // same-color route.
 // The geometry is the trail's lanes, not its raw ways: on a routes map
 // a way's lanes are offset into a parallel bundle, and a centerline
-// would not hug them. The same whole-graph layout as the highlight
-// ribbon (refreshLaneHighlight), and for the same reason: it stays
-// valid while the map pans. It is laid out for one zoom, so it
-// refreshes where the ribbon does, on zoomend and after a graph swap.
+// would not hug them. A whole-graph layout rather than the built
+// area, so it stays valid while the map pans. It is laid out for one
+// zoom, so it refreshes on zoomend and after a graph swap.
 //
 // An unnamed way has no trail to lift, so its popup lifts the graph
 // edge under the tap instead: a junction-to-junction run with uniform
@@ -2140,7 +2127,7 @@ function computeDecorations() {
             }
         }
         // The rating is the one under the label (its longest way), so
-        // on a rating highlight a bright name sits on a bright ribbon.
+        // on a rating highlight a bright name sits on a lifted lane.
         for (const [tname, way] of trailLongest) {
             emitOverviewLabel(tname, way,
                 { kind: KIND.TRAIL_LABEL_PT, trail_name: tname,
@@ -5543,8 +5530,8 @@ async function addContourLayers(beforeLayer) {
 //   1. dashed_relations[id].colors[0], explicit dash colors beat anything
 //   2. routeInfo.colour, from OSM `colour` tag or relation_colors override
 //   3. CONFIG.defaultTrailColor
-// A difficulty map draws no route colors (laneTrailStyle colors each
-// way), and no route row, highlight or swatch appears there.
+// A difficulty map draws no route colors (laneKeyMeta colors each
+// way by its key), and no route row, highlight or swatch appears there.
 function effectiveRouteColor(routeInfo) {
     if (!routeInfo) return CONFIG.defaultTrailColor;
     if (Array.isArray(routeInfo.dashColors) && routeInfo.dashColors.length > 0) {
@@ -5606,8 +5593,8 @@ function sharedArrowColor() {
     ];
 }
 
-// imba_difficulty → IMBA color, for the lane layer's per-way color
-// callback (laneTrailStyle).
+// imba_difficulty → IMBA color, for the lane layer's per-key look
+// (laneKeyMeta).
 function isRatedDifficulty(value) {
     // Test the value, never compare it: unrated ways carry an empty
     // string, and "" >= 0 is true, so a range check reads them as rating 0.
@@ -5621,7 +5608,7 @@ function difficultyColor(value) {
 
 // A way's rating as the difficulty model keys it: "0".."5", or "" for
 // an unrated way. A value off the IMBA scale counts as unrated, since
-// that is how the map draws it (laneTrailStyle, ratingMatchExpr).
+// that is how the map draws it (laneKeyMeta, ratingMatchExpr).
 function wayRating(value) {
     return isRatedDifficulty(value) ? String(Number(value)) : "";
 }
@@ -5633,7 +5620,7 @@ function ratingName(rating) {
 }
 
 // The unrated look as a routeSwatchModel-shaped object, so a key row or
-// the chip draws unrated ways the way the lanes do (laneTrailStyle's
+// the chip draws unrated ways the way the lanes do (laneKeyMeta's
 // default_trail_color, dash and cap).
 function unratedSwatchModel() {
     return {
@@ -5692,8 +5679,8 @@ function isStyledKey(key) {
 }
 
 // The look of a color key's ways as a routeSwatchModel-shaped object,
-// so the key row, the chip, the finder mark, the popup and the ribbon
-// all draw a key the way laneTrailStyle draws its lanes. A relation's
+// so the key row, the chip, the finder mark and the popup all draw a
+// key the way laneKeyMeta draws its lanes. A relation's
 // own color comes first, then its first dash color; only its dash
 // makes it dashed.
 function keyLook(key) {
@@ -6297,17 +6284,12 @@ async function loadTrails() {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
-    map.addSource(LANE_HIGHLIGHT_SOURCE, {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-    });
     map.addSource(TAP_LIFT_SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
     });
     map.on("moveend", refreshLaneSymbols);
     map.on("zoom", onLaneZoom);
-    map.on("zoomend", refreshLaneHighlight);
     map.on("zoomend", refreshTapLift);
 
     // Decoration source, pre-deconflicted Point features (trail
@@ -6378,12 +6360,14 @@ async function loadTrails() {
     initLaneRenderer();
 
     // Dim-tint, full-viewport black wash, transparent by default.
-    // Rendered above the basemap and the lane layer but below the
-    // clip-arrows, highlights, labels, difficulty, and arrows. When
+    // Added here above the lanes, and moved by promoteBasemapLabels to
+    // sit above the basemap but under its labels and the lanes: a
+    // highlight is a lift inside the lane layer, which dims the other
+    // lanes itself, so the wash must never cover the lanes. When
     // `CONFIG.mapDimOnHighlight` is true AND a route or rating is highlighted,
     // refreshSpotlightDim() sets its opacity to SCRIM_OPACITY so the
-    // basemap + non-highlighted trail lines recede behind the wash and
-    // the highlighted ribbon reads as a spotlight. It stays steady while
+    // basemap recedes behind the wash and the lifted lanes read as a
+    // spotlight. It stays steady while
     // a menu opens over it (the menu suppresses its own scrim instead,
     // see .has-spotlight in style.css), so the dim never animates against
     // a menu's scrim.
@@ -6493,114 +6477,6 @@ async function loadTrails() {
             });
         }
     }
-
-    // ----- Highlight layers (above trail fills, below labels + arrows) -----
-    // The trail ribbon: outline + stroke over an optional glow, rendered
-    // above the fills so it reads as a "highlighted ribbon", but below
-    // labels + difficulty + arrows so those stay readable / visible
-    // while a rating is highlighted. It starts with a no-match filter;
-    // highlightRating() swaps in the real filter and sets the color.
-    //
-    // A ROUTE highlight is not a ribbon any more. It used to redraw the
-    // route above the wash as a scheme-contrasting outline under the
-    // route's color at twice the width, with MapLibre's own dashes, and
-    // a dotted or dashed relation came out as fat dots on a white band,
-    // nothing like the route on the map (Steve, 2026-09-30). The lane
-    // plugin lifts the route inside its own layer instead
-    // (syncLaneHighlight): the lanes as drawn, with a yellow halo, above
-    // the other routes, which it dims by the wash's own strength. On a
-    // routes map the wash therefore sits UNDER the lanes
-    // (promoteBasemapLabels), so the lift is never washed. A rating spans
-    // routes, which the plugin cannot lift, so difficulty maps keep the
-    // wash over the lanes and the ribbon above it.
-    //
-    // History: this used to be a four-layer sandwich (outline, blurred
-    // glow, stroke, white core). The glow was removed first, its
-    // additive alpha created bright spikes at sharp switchback bends,
-    // and came back as an opaque core + line-blur (see the glow layer).
-    // The white core was dropped when the stroke switched to the
-    // key's NATIVE color; with native color the white core blurred into
-    // light-colored keys and its zoom-dependent width meant the
-    // inner-stripe effect was visible only at high zoom. The remaining
-    // outline + color-stroke pair gets the structural emphasis from
-    // sheer thickness (~2× the unhighlighted fill width) plus the
-    // silhouette; the spotlight dim (mapDimOnHighlight) does the rest of
-    // the visibility work by receding everything else.
-    // line-color-transition: { duration: 0 } on every highlight layer.
-    // MapLibre's default line-color transition is 300ms; without
-    // overriding it, every setPaintProperty('line-color', ...) on a
-    // highlight layer animates from its previous value to the new
-    // one over 300ms. When the filter then activates the layer, the
-    // user sees the color mid-animation, that's the "flash" from
-    // the previous key's color to the target. Setting duration: 0
-    // makes the color change instantaneous, so by the time the filter
-    // exposes the layer it's already at the target.
-    const NONE_FILTER_TRAIL = ["==", ["get", "trail_name"], "___NONE___"];
-    // The ribbon traces the lit ways' lanes, laid out over the whole
-    // graph (see refreshLaneHighlight), which are already in lane
-    // position, so it takes no line-offset.
-
-    // Trail ribbon (bottom → top), over an optional amber glow: a set
-    // of ways that crosses routes, which today is a difficulty map's
-    // color key (highlightRating). A trail itself is a look, not a
-    // selection (showTrail), so it never lights this ribbon.
-    //   outline:  the key color's luminance match
-    //             (ratingHighlightOutlineColor), the scheme silhouette
-    //             until one is set
-    //   stroke:   the key's own color, painted per selection; the
-    //             initial color never shows under the no-match filter
-    // Optional selection glow (highlight_glow, default on): a soft amber
-    // aura BENEATH the ribbon so any key, a black one included, reads
-    // unmistakably as selected against the dimmed map. Rendered as an
-    // OPAQUE core + line-blur, not a translucent wide stroke: the earlier
-    // translucent glow was removed because its alpha doubled where a line
-    // self-overlaps at a tight switchback, spiking bright at hairpins. An
-    // opaque core can't double; the blur supplies the soft outer falloff.
-    // Amber matches the highlight-chip accent (--highlight-amber).
-    // The trail ribbon shares the route ribbon's source, which
-    // refreshLaneHighlight fills with the key's lanes, so it sits on the
-    // lanes and survives pans the same way.
-    if (CONFIG.highlightGlow !== false) {
-        map.addLayer({
-            id: "trail-highlight-glow",
-            type: "line",
-            source: LANE_HIGHLIGHT_SOURCE,
-            filter: NONE_FILTER_TRAIL,
-            paint: {
-                "line-color": "#ffb700",
-                "line-width": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 17, 18, 28],
-                "line-blur": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 5, 18, 7],
-                "line-opacity": 1,
-            },
-            layout: { "line-cap": "round", "line-join": "round" },
-        });
-    }
-    map.addLayer({
-        id: "trail-highlight-outline",
-        type: "line",
-        source: LANE_HIGHLIGHT_SOURCE,
-        filter: NONE_FILTER_TRAIL,
-        paint: {
-            "line-color": "#000",
-            "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 6, 14, 11, 18, 18],
-            "line-opacity": 1,
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
-    map.addLayer({
-        id: "trail-highlight-stroke",
-        type: "line",
-        source: LANE_HIGHLIGHT_SOURCE,
-        filter: NONE_FILTER_TRAIL,
-        paint: {
-            "line-color": "#FFEC00",
-            "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 4, 14, 8, 18, 13],
-            "line-opacity": 1,
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    });
 
     // Tap lift (showTapLift): one soft glow directly BENEATH the lane
     // layer, the same spike-safe opaque core + line-blur as the
@@ -6936,8 +6812,9 @@ function smoothLineCached(geometry) {
 // ships canonical features (one per route per run of way) and
 // loadTrails hands them to maplibreLanes, whose LaneLayer is the only
 // thing that draws a route. What needs lane geometry or way facts
-// (route-name labels on corridors, both highlight ribbons, the tap
-// popup, the desktop cursor) reads the lane features and queryLane.
+// (route-name labels on corridors, the tap lift, the tap popup, the
+// desktop cursor) reads the lane features and queryLane; a highlight
+// is the layer's own lift (syncLaneHighlight).
 // The "trails" source stays for the one-way chevrons, which ride the
 // center of the bundle on purpose (see addChevronLayers), and the
 // decorations keep their own placement pass. There is no other
@@ -6953,36 +6830,38 @@ let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
 let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
-const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
 // Source and layer of the popup's tap lift (showTapLift). The glow is
 // the route highlight stroke's yellow, one value for both schemes.
 const TAP_LIFT_SOURCE = "trail-tap-lift";
 const TAP_GLOW_LAYER = "trail-tap-glow";
 const TAP_GLOW_COLOR = "#FFEC00";
 
-// A route highlight is the plugin's own lift: the route's lanes drawn
-// last, above the others, with a halo in the tap lift's yellow and no
-// outline, while the other routes dim by the wash's strength. The halo
+// A highlight, a route on a routes map or a color key on a difficulty
+// map (where a lane's route is its key, see laneKeyMeta), is the
+// plugin's own lift: the lanes drawn last, above the others, with a halo
+// in the tap lift's yellow and no outline, while the other lanes dim by
+// the wash's strength. One look on both map models. The halo
 // reaches 5 px past the casing with a 3 px fade, a little less than the
 // tap glow: the plugin paints the halo OVER the neighboring lanes, so a
 // reach wider than the lane spacing (5 px at z14) would hide a bundle
 // mate outright. `highlight_glow: false` keeps the lift and drops the
-// halo, as it drops the ribbon glow.
+// halo.
 const ROUTE_LIFT_HALO_WIDTH = 5;
 const ROUTE_LIFT_HALO_BLUR = 3;
 
-// Tell the lane layer which route is lifted and how hard to dim the
-// rest, from the highlight state and the wash state. Called wherever
-// either changes and when the layer first exists.
+// Tell the lane layer which route or key is lifted and how hard to dim
+// the rest, from the highlight state and the wash state. Called
+// wherever either changes and when the layer first exists.
 function syncLaneHighlight() {
     if (!laneLayer) return;
-    const routeId = highlight && highlight.kind === "route" ? highlight.key : null;
-    if (routeId === null) {
+    const lifted = highlight && (highlight.kind === "route" || highlight.kind === "rating")
+        ? highlight.key : null;
+    if (lifted === null) {
         laneLayer.setHighlight(null);
         return;
     }
     const washed = highlightDimActive() && !anyModalOpen();
-    laneLayer.setHighlight(routeId, {
+    laneLayer.setHighlight(lifted, {
         halo: CONFIG.highlightGlow !== false ? TAP_GLOW_COLOR : null,
         haloWidth: ROUTE_LIFT_HALO_WIDTH,
         haloBlur: ROUTE_LIFT_HALO_BLUR,
@@ -7021,36 +6900,35 @@ function laneCasingColor() {
     return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
 }
 
-// color_by: difficulty, per way rather than per route, by the way's
-// color key (wayColorKey): rated ways solid in the IMBA palette, a
-// styled relation's unrated ways in that relation's look (keyLook), and
-// the rest in default_trail_color with its own dash and cap. The lane
-// layer asks per (edge, route), and each field this does not return
-// falls back to the route's own, so a rated way on a dashed route keeps
-// that route's dash. Connectors take the arriving edge's look, which is
-// the plugin's rule and keeps a way-level dash from flickering through
-// junctions. Only the first dash/gap pair carries over, as for routes.
-// On a difficulty map each way has one lane, and its route is the owner
-// difficultyLaneFeatures picked, which also stamped the key.
-function laneTrailStyle(edge, route) {
-    const key = edge.properties.color_key
-        ?? wayColorKey(wayRating(edge.properties.imba_difficulty), route);
-    if (isRatedDifficulty(key)) return { color: difficultyColor(key) };
-    if (isStyledKey(key)) {
-        const look = keyLook(key);
-        const style = { color: look.color };
-        if (look.dashed) {
-            style.dash = [look.dashed[0], look.dashed[1]];
-            style.dashCap = look.dashCap || "round";
+// color_by: difficulty: on a difficulty map each way has one lane and
+// the lane's ROUTE is its color key (refreshLaneGraph), not the
+// relation that owns the way, so that the plugin can lift a whole key
+// the way it lifts a route (syncLaneHighlight) and so that connectors
+// join same-colored lanes through a junction. This is the per-key
+// metadata for buildLineGraph: rated keys solid in the IMBA palette, a
+// styled relation's key in that relation's look (as laneRouteMeta
+// would give it), and unrated in default_trail_color with its own dash
+// and cap. Only the first dash/gap pair carries over, as for routes.
+// A rated way is always solid, whichever relation owns it.
+function laneKeyMeta(features) {
+    const meta = {};
+    for (const f of features) {
+        const key = f.properties.color_key;
+        if (key === undefined || meta[key]) continue;
+        if (isRatedDifficulty(key)) {
+            meta[key] = { color: difficultyColor(key), name: keyName(key) };
+        } else if (isStyledKey(key)) {
+            meta[key] = laneRouteMeta()[key];
+        } else {
+            const m = { color: CONFIG.defaultTrailColor, name: keyName(key) };
+            if (CONFIG.defaultTrailDash) {
+                m.dash = [CONFIG.defaultTrailDash[0], CONFIG.defaultTrailDash[1]];
+                m.dashCap = CONFIG.defaultTrailCap || "round";
+            }
+            meta[key] = m;
         }
-        return style;
     }
-    const look = { color: CONFIG.defaultTrailColor };
-    if (CONFIG.defaultTrailDash) {
-        look.dash = [CONFIG.defaultTrailDash[0], CONFIG.defaultTrailDash[1]];
-        look.dashCap = CONFIG.defaultTrailCap || "round";
-    }
-    return look;
+    return meta;
 }
 
 // Per-route metadata for buildLineGraph, read from CONFIG.routes. The
@@ -7185,16 +7063,15 @@ function refreshLaneGraph() {
         next = L.filterGraph(laneGraphFull, (id) => visibleRoutes.has(id));
     } else {
         // Difficulty map: one lane per edge leaves nothing to order or
-        // to hold in place, so no seed. Same options as the full graph,
-        // plus each way's color_key and the popup's reverses_by_day.
+        // to hold in place, so no seed. The lane's route is the way's
+        // color key (laneKeyMeta says why); the way's owner relation
+        // and the popup's reverses_by_day ride along as way facts.
         difficultyVisibleFeatures = difficultyLaneFeatures();
         next = L.buildLineGraph(difficultyVisibleFeatures, {
-            routeProperty: "route_id",
-            colorProperty: "route_colour",
-            nameProperty: "route_name",
-            routes: laneRouteMeta(),
+            routeProperty: "color_key",
+            routes: laneKeyMeta(difficultyVisibleFeatures),
             uniformProperties: ["oneway", "trail_name", "imba_difficulty",
-                "color_key", "reverses_by_day"],
+                "route_id", "reverses_by_day"],
         });
     }
     const token = ++laneOrderToken;
@@ -7210,7 +7087,6 @@ function refreshLaneGraph() {
                 graph: next,
                 sizes: laneStyleAt,
                 casingColor: laneCasingColor(),
-                laneStyle: isDifficultyMap() ? laneTrailStyle : undefined,
                 onBuild: onLaneBuild,
             });
             map.addLayer(laneLayer, laneLayerAnchor());
@@ -7238,7 +7114,7 @@ function refreshLaneGraph() {
 // refresh per rebuild would mean a laneFeatures() conversion and a
 // setData re-tile on each of the dozens a pan can trigger.
 //
-// The ribbon reads the whole graph rather than the built area, so it
+// The tap lift reads the whole graph rather than the built area, so it
 // only cares about a graph swap, not about where the map moved.
 let laneSwapPending = false;
 
@@ -7272,7 +7148,6 @@ function refreshLaneSymbols() {
     refreshLaneFeatures();
     if (laneSwapPending) {
         laneSwapPending = false;
-        refreshLaneHighlight();
         refreshTapLift();
     }
 }
@@ -7326,48 +7201,6 @@ function refreshLaneFeatures() {
     laneSymbolsBuild = build;
     laneSymbolsZoom = zoom;
     src.setData(laneFeatureCollection());
-}
-
-// The highlighted rating's lanes for the trail ribbon layers, laid out
-// over the WHOLE graph rather than the culled build area. The ribbon
-// cannot share the symbol layers' source: that one is empty beyond
-// the build area, so after a pan the ribbon had nothing to draw until
-// moveend refilled it and the worker re-tiled it, about half a second
-// with no ribbon on every pan. A full layout is cheap (15-30 ms for
-// RAMBA, cached per zoom by the plugin) and stays valid while the map
-// pans, so this source refreshes on zoomend, on the highlight paths,
-// and after every graph swap. During a zoom animation the ribbon
-// slides off its lane and snaps back at zoomend; that is inherent to
-// geometry laid out for one zoom. A route highlight has no such
-// source: the plugin lifts it inside the lane layer (syncLaneHighlight),
-// where it stays on the lane through every zoom.
-let laneHighlightToken = 0;
-
-function refreshLaneHighlight() {
-    const src = map.getSource(LANE_HIGHLIGHT_SOURCE);
-    if (!src || !laneLayer) return;
-    // Laying the whole graph out for one route was the plugin's
-    // longest main-thread task on Steve's Pixel 8 trace: 24 of the 25
-    // tasks carrying more than 8 ms of plugin work, up to 54 ms each,
-    // most of them with a finger on the glass, because a pinch ends at
-    // a new zoom every time and the layout is cached per exact zoom.
-    // It runs in the worker now. Clearing stays synchronous, and the
-    // token drops an answer that a newer highlight has replaced.
-    const token = ++laneHighlightToken;
-    if (!highlight || highlight.kind !== "rating") {
-        src.setData({ type: "FeatureCollection", features: [] });
-        return;
-    }
-    // A color key spans routes, so it lays the whole graph out (cached
-    // per zoom by the plugin) and cuts it down to the key's ways.
-    const key = highlight.key;
-    const wanted = laneFeatureCollectionAsync({ extent: "full" }).then((all) => ({
-        type: "FeatureCollection",
-        features: all.features.filter((f) => f.properties.color_key === key),
-    }));
-    wanted.then((fc) => {
-        if (token === laneHighlightToken) src.setData(fc);
-    }).catch((e) => console.error("lanes: highlight layout failed", e));
 }
 
 // ============================================================
@@ -7683,42 +7516,6 @@ function updateTrailDisplay() {
     applyDimState();
 }
 
-// ============================================================
-// Highlight system
-// ============================================================
-// Two highlight kinds, two mechanisms. A ROUTE is lifted inside the
-// lane layer by the plugin (syncLaneHighlight): its own lanes, drawn
-// last with a yellow halo, the other routes dimmed. A RATING is a set of
-// ways across routes, which the plugin cannot lift, so it is a ribbon:
-// up to three stacked line layers over the lit ways' lanes that share
-// one filter (set / cleared together):
-//   glow (optional): soft amber aura beneath everything; constant
-//            color, opaque core + blur. Gated by highlight_glow, the
-//            id stays in the array below and the getLayer() guards in
-//            highlightRating skip it when the layer wasn't created.
-//   outline: thick silhouette, luminance-matched to the key's own
-//            color (white for a dark key, black for a light one, see
-//            highlightOutlineForColor) so the ribbon keeps a readable
-//            edge under the wash.
-//   stroke:  recolored per highlight via setPaintProperty with the
-//            key's color, so chip and ribbon agree on identity.
-//
-// History: an earlier four-layer sandwich (outline + blurred glow +
-// stroke + white core) lived here. The white core was dropped for good
-// (zoom-dependent visibility; blurred into light routes). The glow was
-// removed once too, its TRANSLUCENT wide stroke spiked bright where a
-// line self-overlaps at switchbacks, and is now back in a spike-safe
-// form (opaque core + line-blur; see the layer definition). Routes had
-// the same ribbon, with a dash underlay, until 2026-09-30.
-const TRAIL_HIGHLIGHT_LAYERS = [
-    "trail-highlight-glow",
-    "trail-highlight-outline",
-    "trail-highlight-stroke",
-];
-const TRAIL_TINTED_HIGHLIGHT_LAYERS = [
-    "trail-highlight-stroke",
-];
-const TRAIL_NONE_FILTER = ["==", ["get", "trail_name"], "___NONE___"];
 
 // ============================================================
 // Spotlight dim
@@ -7869,36 +7666,6 @@ function parseColorRgb(cssColor) {
     return [r, g, b];
 }
 
-// Highlight-outline color for a route painted in `color`. The ribbon is
-// outline (wide) + the route's own-color stroke (narrow); the outline
-// frames that stroke so the route reads as selected. Keying it to the
-// STROKE's luminance (dark route → white silhouette, light route →
-// black) is what keeps a black/dark route visible: under the spotlight
-// wash the dimmed background is dark, so the old basemap-contrasting
-// black outline vanished into it along with the black stroke. Contrast
-// against the stroke instead and the ribbon always has a readable edge,
-// on either basemap and at any wash level.
-//
-// Greys are special-cased. `gray` (#808080) has luminance 0.502, just
-// over the binary threshold, so it used to draw a BLACK outline: a grey
-// stroke framed in black on the black spotlight wash, nothing popped.
-// Low-chroma colors in the middle luminance band (the grey family) get
-// the white silhouette instead, so a grey route reads as grey riding a
-// bright band. Saturated colors keep the plain luminance split.
-//
-function isGreyFamilyColor(color) {
-    const [r, g, b] = parseColorRgb(color);
-    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    const chroma = (Math.max(r, g, b) - Math.min(r, g, b)) / 255;
-    return chroma < 0.15 && lum >= 0.35 && lum <= 0.65;
-}
-
-function highlightOutlineForColor(color) {
-    if (isGreyFamilyColor(color)) return "#ffffff";
-    const [r, g, b] = parseColorRgb(color);
-    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    return lum < 0.5 ? "#ffffff" : "#000000";
-}
 
 // ["match", imba_difficulty, ...] with `pick(rating)` as each branch and
 // `unrated` as the fallback, pick("") unless given. For features that
@@ -7928,14 +7695,14 @@ function colorKeyMatchExpr(pick) {
 function highlightRoute(routeId) {
     const info = CONFIG.routes[routeId];
     if (!info) return;
-    // A difficulty map draws each way once, under one owner route, so
-    // the lane highlight source cannot hold a whole route there; an old
-    // route share link or a stale caller would draw part of one.
+    // A difficulty map draws each way once, by its color key, so a
+    // route is not a thing its lanes know; its key rows call
+    // highlightRating. An old route share link lands here and is
+    // ignored.
     if (isDifficultyMap()) return;
     // Single-highlight invariant across kinds: drop any POI highlight
     // (rings, force-mounted markers, open popup) before lighting a
-    // route. The route and trail ribbon filters clear each other
-    // inline below.
+    // route.
     clearPoiHighlight();
     closeTrailPopup();
     highlight = { kind: "route", key: routeId };
@@ -7946,14 +7713,6 @@ function highlightRoute(routeId) {
     // route's own color and dash.
     const color = effectiveRouteColor(info);
     syncLaneHighlight();
-    // Clear the trail ribbon (single-highlight invariant); its source
-    // empties for a route.
-    refreshLaneHighlight();
-    for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, TRAIL_NONE_FILTER);
-        }
-    }
 
     // Fit bounds to the route
     fitToRouteOrTrail({ routeId });
@@ -7962,7 +7721,7 @@ function highlightRoute(routeId) {
     // distance/elevation values as the Finder rows; routeStatsText
     // returns "" when neither stat is enabled or available, in which
     // case the chip just shows label + color (current behavior).
-    // Chip and ribbon now share the same color by construction.
+    // Chip and route share the same color by construction.
     const indexEntry = routeIndex.find((r) => r.id === routeId);
     showHighlightChip({
         label: info.name,
@@ -7986,7 +7745,7 @@ function highlightRoute(routeId) {
 // selection (Steve, 2026-09-29): the camera fits the trail, then the
 // popup a tap opens appears on it, with its lift. A trail is found
 // once and then ridden by eye, like a place, so it gets no chip,
-// ribbon or wash, and a KEEP selection (a route, a rating, a place)
+// lift or wash, and a KEEP selection (a route, a rating, a place)
 // stays exactly as it was, the way a tap on a lane leaves it.
 //
 // The popup waits for the camera: lane positions are laid out per
@@ -8111,46 +7870,22 @@ function trailEntry(trailName) {
     return trailIndex.find((t) => t.name === trailName);
 }
 
-// Outline of a color key highlight: luminance-matched to the key's
-// color (highlightOutlineForColor), so a black diamond keeps a light
-// edge under the dark spotlight wash instead of vanishing into it.
-function ratingHighlightOutlineColor(key) {
-    return highlightOutlineForColor(keyLook(key).color);
-}
 
 // Every visible way with one color key (a rating, a styled relation's
 // unrated ways, or unrated), from a difficulty key row or a share link.
-// The ribbon is the trail ribbon layers (a key is a set of ways that
-// crosses routes, and the lane highlight source is cut down to it in
-// refreshLaneHighlight) in the key's own color, so the selection reads
-// as the unselected look, thicker, with an outline. The camera fits to
-// the lit ways, as a route row does, so every key row answers a tap the
-// same way on either map model even when a rating spans most of the map.
+// On a difficulty map a lane's route IS its color key (laneKeyMeta), so
+// the plugin lifts the whole key exactly as it lifts a route on a
+// routes map (syncLaneHighlight): the ways as drawn, a yellow halo,
+// the rest dimmed. The camera fits to the lit ways, as a route row
+// does, so every key row answers a tap the same way on either map
+// model even when a rating spans most of the map.
 function highlightRating(rating) {
     if (!isDifficultyMap()) return;
     clearPoiHighlight();
     closeTrailPopup();
     highlight = { kind: "rating", key: rating };
 
-    // Paint before filter, the flash-prevention order highlightRoute
-    // explains.
     const color = keyLook(rating).color;
-    for (const layerId of TRAIL_TINTED_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, "line-color", color);
-        }
-    }
-    if (map.getLayer("trail-highlight-outline")) {
-        map.setPaintProperty("trail-highlight-outline", "line-color",
-            ratingHighlightOutlineColor(rating));
-    }
-    refreshLaneHighlight();
-    const ratingFilter = ["==", ["coalesce", ["get", "color_key"], ""], rating];
-    for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, ratingFilter);
-        }
-    }
     syncLaneHighlight();
 
     fitToRouteOrTrail({ colorKey: rating });
@@ -8719,7 +8454,7 @@ function highlightPoiSet(pois, label) {
     closeHighlightedPoiPopups();
     closeTrailPopup();
     // Drop any route/trail highlight so the POI outlines don't sit on top
-    // of a stale ribbon, then resync the spotlight dim / dimmed labels /
+    // of a stale lift, then resync the spotlight dim / dimmed labels /
     // narrowed decorations that key off `highlight` (POIs never dim).
     clearRouteTrailHighlight();
     applyDimState();
@@ -8830,12 +8565,6 @@ function clearPoiHighlight() {
 function clearRouteTrailHighlight() {
     highlight = null;
     syncLaneHighlight();
-    for (const layerId of TRAIL_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(layerId)) {
-            map.setFilter(layerId, TRAIL_NONE_FILTER);
-        }
-    }
-    refreshLaneHighlight();
     // Panel active-row mark follows the highlight lifecycle. Synced
     // here (not in clearHighlight) so POI highlights, which route
     // through this teardown, not clearHighlight, also unmark the row.
@@ -12661,14 +12390,12 @@ function promoteBasemapLabels() {
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
     }
-    // On a routes map the wash goes under the lanes, and under the
-    // basemap labels so they still recede: a route highlight is the
-    // plugin's lift inside the lane layer, and the plugin dims the
-    // other routes itself; a wash over the lanes would dim the lift too.
-    // A difficulty map keeps the wash over the lanes, its rating ribbon
-    // draws above it. Re-established after every basemap rebuild, since
-    // the setStyle diff can reorder the wash.
-    if (!isDifficultyMap() && map.getLayer("dim-tint")) {
+    // The wash goes under the lanes, and under the basemap labels so
+    // they still recede: a highlight is the plugin's lift inside the
+    // lane layer, and the plugin dims the other lanes itself; a wash
+    // over the lanes would dim the lift too. Re-established after every
+    // basemap rebuild, since the setStyle diff can reorder the wash.
+    if (map.getLayer("dim-tint")) {
         // Under the contour labels too, which sit with the basemap
         // labels: whichever symbol layer comes first in the stack.
         const symbols = new Set([...basemapSymbolIds, "contour-labels"]);
@@ -12681,15 +12408,11 @@ function promoteBasemapLabels() {
     moveTapLiftUnderLanes();
 }
 
-// Where the lane layer inserts: under the wash on a difficulty map,
-// under the trail ribbon on a routes map, where the wash sits below the
-// lanes (see promoteBasemapLabels).
+// Where the lane layer inserts: under the one-way chevrons, the first
+// overlay above the lanes, since the wash sits below the lanes (see
+// promoteBasemapLabels).
 function laneLayerAnchor() {
-    if (isDifficultyMap()) return map.getLayer("dim-tint") ? "dim-tint" : undefined;
-    for (const id of TRAIL_HIGHLIGHT_LAYERS) {
-        if (map.getLayer(id)) return id;
-    }
-    return map.getLayer("dim-tint") ? "dim-tint" : undefined;
+    return map.getLayer("decor-chevron-fwd") ? "decor-chevron-fwd" : undefined;
 }
 
 // The glow, then the lanes. No-op until both exist.

@@ -241,9 +241,8 @@ relations:
 # legible for wayfinding, higher is a stronger dim. Default 0.40.
 # scrim_opacity: 0.40
 
-# Glow under the highlighted route or rating (a yellow halo around a
-# route's own lanes, an amber aura under a rating's ribbon), which helps
-# dark ones read as selected. Set false for no glow.
+# Yellow halo around the highlighted route's or rating's own lanes,
+# which helps dark ones read as selected. Set false for no halo.
 # highlight_glow: true
 
 # Write #zoom/lat/lon to the URL hash as the rider moves and restore it on load.
