@@ -222,7 +222,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
 | `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
-| `show_distance` | No | `false` | When true, computes distance at build time. On a routes map this shows per-route distance in the Finder rows and highlight chip. For difficulty-mode relations it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The trail popup and the finder's trail rows show each named trail's visible length in both color modes. For an unnamed way, the popup shows the length of the tapped segment. |
+| `show_distance` | No | `false` | When true, computes distance at build time. For route-mode relations this shows per-route distance in the Finder rows and highlight chip. For difficulty-mode relations it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The trail popup and the finder's trail rows show each named trail's visible length in both color modes. For an unnamed way, the popup shows the length of the tapped segment. |
 | `show_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. Per route only; ignored for difficulty-mode relations, with a build warning when no relation is in route mode. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
@@ -634,7 +634,7 @@ hiding a trail (e.g. by switching season) also hides its difficulty symbols.
 ### Difficulty is a way-level tag
 
 The `mtb:scale:imba` tag is read from individual **ways** only. Tags on the
-parent **relation** are ignored, including for `color_by: difficulty` coloring.
+parent **relation** are ignored, including for difficulty-mode coloring.
 
 This matches OpenStreetMap's tagging convention (`mtb:scale:imba` is a per-way
 tag) and reflects the reality that real trails often vary in difficulty along
@@ -643,7 +643,7 @@ their length:
 | Way tag | Relation tag | What renders |
 |---|---|---|
 | `4` | `2` | Black diamond (4): way value wins |
-| (none) | `2` | Nothing: segment is unrated; in `color_by: difficulty` it falls back to `default_trail_color` |
+| (none) | `2` | Nothing: segment is unrated; in difficulty mode it falls back to `default_trail_color` |
 | `4` | (none) | Black diamond (4) |
 
 ### Color modes

@@ -34,6 +34,7 @@ clipped_relations:
 # show_features: true
 # show_parking: true
 # show_trailheads: true
+# show_hubs: true
 # show_toilets: true
 # show_drinking_water: true
 # show_bicycle_repair_stations: true
@@ -56,6 +57,9 @@ dashed_relations:
     cap: round
     colors: [gray]
 # color_by: route
+# color_by_route: []
+# color_by_difficulty: []
+# route_key: true
 # default_trail_color: "#808080"
 
 # --- Direction schedules ---
@@ -74,7 +78,7 @@ invert_logo_dark: false
 # url_hash: false
 # share_button: true
 
-# --- Marker and accent colours ---
+# --- Marker and accent colors ---
 # marker_color: "#795548"
 # marker_text_color: "white"
 # marker_border_color: "white"
@@ -85,6 +89,9 @@ invert_logo_dark: false
 # trailhead_color: "#27ae60"
 # trailhead_text_color: "white"
 # trailhead_border_color: "white"
+# hub_color: "#f39c12"
+# hub_text_color: "white"
+# hub_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
 # accent_color: "#2980b9"
@@ -95,6 +102,9 @@ invert_logo_dark: false
 # --- Branding ---
 logo: example_logo.png
 icon: example_icon.png
+# additional_logos:
+#   - path: sponsor.webp
+#     invert_dark: false
 
 # --- User-supplied points ---
 trailheads:
@@ -109,6 +119,7 @@ trailheads:
 parking:
 - name: Main Lot
   coordinates: [-83.1649362, 42.8033279]
+# hubs: []
 
 # --- PWA ---
 # pwa: true

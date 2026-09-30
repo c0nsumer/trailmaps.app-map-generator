@@ -98,7 +98,8 @@ changed bbox re-extracts tiles.
   you want to refresh trail geometry or pick up an OSM edit.
   YAML-only changes never need it: per-route style overrides
   (`dashed_relations`, `relation_colors`, `winter_relations`,
-  `summer_relations`, `custom_routes`, `event_mode.routes`,
+  `summer_relations`, `color_by_route`, `color_by_difficulty`,
+  `custom_routes`, `event_mode.routes`,
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
 - `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
