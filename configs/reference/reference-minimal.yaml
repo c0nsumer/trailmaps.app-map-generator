@@ -53,6 +53,8 @@ relations:
 # relation_names: {}
 # dashed_relations: {}
 # color_by: route
+# color_by_route: []
+# color_by_difficulty: []
 # route_key: true
 # default_trail_color: "#808080"
 

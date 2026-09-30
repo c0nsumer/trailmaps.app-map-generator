@@ -89,6 +89,7 @@ import time
 import cache_manifest
 import console
 import requests
+from enrichment import resolve_color_modes
 from geodesy import haversine_m as _haversine_m
 
 
@@ -699,7 +700,7 @@ def _gain_loss_from_samples(elevations):
     return round(gain), round(loss)
 
 
-def compute_elevations(trails_geojson, cache_dir):
+def compute_elevations(trails_geojson, cache_dir, route_ids=None):
     """Return ``{route_id: (gain_m_int, loss_m_int)}`` (sparse - missing
     entries for routes whose elevation couldn't be computed).
 
@@ -713,6 +714,9 @@ def compute_elevations(trails_geojson, cache_dir):
 
     On unrecoverable API failure, logs a warning and stops trying to
     fetch - already-cached results still flow through.
+
+    ``route_ids`` (a set of id strings) limits the walk to those routes;
+    None means every route.
     """
     metadata = trails_geojson.get("metadata") or {}
     routes = metadata.get("routes") or {}
@@ -724,6 +728,8 @@ def compute_elevations(trails_geojson, cache_dir):
 
     for route_id in routes.keys():
         rid_str = str(route_id)
+        if route_ids is not None and rid_str not in route_ids:
+            continue
         coord_lines = _chain_segments(_coords_for_route(features, rid_str))
         if not coord_lines:
             continue
@@ -829,10 +835,11 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     engine still must not be measured. Guarded below.
     """
     want_distance = bool(config.get("show_distance"))
-    # A difficulty map shows no per-route stats, so its build must not
-    # spend minutes on 3DEP samples nothing reads (the validator warns
-    # about the key; this is what makes the warning true).
-    want_elevation = bool(config.get("show_elevation")) and config.get("color_by") != "difficulty"
+    # A difficulty-mode relation shows no per-route stats, so the build
+    # must not spend minutes on 3DEP samples nothing reads (the validator
+    # warns about the key when no route-mode relation exists; this is what
+    # makes the warning true).
+    want_elevation = bool(config.get("show_elevation"))
 
     for f in trails_geojson.get("features") or []:
         props = f.get("properties") or {}
@@ -879,9 +886,16 @@ def compute_and_attach(trails_geojson, config, cache_dir):
                 del info["distance_m"]
                 changed = True
 
-    if want_elevation:
+    route_mode_ids = {
+        rid
+        for rid, mode in resolve_color_modes(
+            config, routes.keys(), metadata.get("super_relation_expansions")
+        ).items()
+        if mode == "route"
+    }
+    if want_elevation and route_mode_ids:
         console.info("computing per-route elevation gain + loss (via USGS 3DEP)...")
-        elevations = compute_elevations(trails_geojson, cache_dir)
+        elevations = compute_elevations(trails_geojson, cache_dir, route_mode_ids)
         # Strip stale entries on routes whose computation failed this
         # run so the runtime doesn't keep showing yesterday's
         # elevation when today's value is unknown. Both gain and loss

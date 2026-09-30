@@ -34,8 +34,8 @@ Oaks Map as of 2026-Jul-05*
     install the PWA; open About.
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
-    routes, trails, and POIs on the map. On a difficulty map (`color_by:
-    difficulty`) the key lists IMBA ratings instead, and a row highlights
+    routes, trails, and POIs on the map. For difficulty-mode relations (`color_by:
+    difficulty`) the key lists IMBA ratings, and a row highlights
     every trail of that rating.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
 - Trail markers, trailheads, parking, features, toilets, drinking water, and

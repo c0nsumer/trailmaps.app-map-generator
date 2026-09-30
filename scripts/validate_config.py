@@ -76,6 +76,8 @@ KNOWN_KEYS = {
     "winter_relations": list,
     "summer_relations": list,
     "emergency_access_relations": list,
+    "color_by_route": list,
+    "color_by_difficulty": list,
     "custom_routes": list,
     # Per-relation overrides (dicts keyed by integer relation IDs)
     "relation_colors": dict,
@@ -190,6 +192,10 @@ BUILD_ONLY_KEYS = {
     "relation_colors",
     "dashed_relations",
     "direction_schedule",
+    # Color-mode exception lists, resolved (super-relation fan-out
+    # included) into a per-route `colorBy` by inject_config_into_template.
+    "color_by_route",
+    "color_by_difficulty",
     # Display-name overrides folded into per-route metadata + feature
     # route_name properties by _enrich_trails_geojson (post-cache).
     "relation_names",
@@ -1783,44 +1789,120 @@ def _validate_event_gpx(report, gpx):
             seen_basenames[base] = i
 
 
-def _validate_difficulty_map(report, config):
-    """Validate config keys that only make sense on a difficulty map.
+def _color_mode_lists(config):
+    """Return (route_ids, difficulty_ids) as sets of stringified ids from
+    the two color-mode exception lists. Non-list values are skipped;
+    _validate_types reports them."""
+    out = []
+    for key in ("color_by_route", "color_by_difficulty"):
+        lst = config.get(key)
+        out.append({str(x) for x in lst} if isinstance(lst, list) else set())
+    return out[0], out[1]
 
-    `color_by: difficulty` colors every way by its own IMBA rating, so
-    some config keys that describe routes (event mode, a routes label
-    mode, per-route elevation, the Trails section itself) stop applying
-    or start meaning something the map can't render. `relation_colors`
-    is the one exception: it still styles a relation's unrated ways
-    (styled-relations-and-tap-select.md). See difficulty-model.md
-    section 3.6 for the rest of the table.
+
+def _validate_color_mode_lists(report, config):
+    """Validate `color_by_route` / `color_by_difficulty`.
+
+    Each entry is an OSM relation id (leaf or super-relation) or a
+    custom-route id (string). Config alone cannot tell whether an integer
+    is a leaf or a super-relation (that needs the fetched trails), so
+    the checks here compare literal ids only; a super-relation that fans
+    out to a relation in the other list is not detectable before the
+    fetch.
     """
-    if config.get("color_by") != "difficulty":
-        return
+    for key in ("color_by_route", "color_by_difficulty"):
+        lst = config.get(key)
+        if not isinstance(lst, list):
+            continue
+        for i, rid in enumerate(lst):
+            if isinstance(rid, bool) or not isinstance(rid, (int, str)):
+                report.err(
+                    f"{key}[{i}]",
+                    f"must be an OSM relation ID (int) or a custom-route id (string), got {rid!r}",
+                )
 
-    if "event_mode" in config:
+    route_ids, diff_ids = _color_mode_lists(config)
+    for rid in sorted(route_ids & diff_ids):
+        report.err(
+            "color_by_route",
+            f"{rid} is also in color_by_difficulty; a relation has one color mode",
+        )
+
+    default = config.get("color_by", "route")
+    redundant_key = "color_by_route" if default == "route" else "color_by_difficulty"
+    redundant = route_ids if default == "route" else diff_ids
+    for rid in sorted(redundant):
+        report.warn(
+            redundant_key,
+            f"{rid} is redundant: color_by: {default} already draws every relation that way",
+        )
+
+    # relation_colors and dashed_relations style route-mode lanes only.
+    # Only literal ids are checkable here; ids that reach difficulty mode
+    # through a super-relation fan-out are not.
+    for key in ("relation_colors", "dashed_relations"):
+        d = config.get(key)
+        if not isinstance(d, dict):
+            continue
+        for rid in d:
+            srid = str(rid)
+            if srid in route_ids:
+                in_difficulty = False
+            elif srid in diff_ids:
+                in_difficulty = True
+            else:
+                in_difficulty = default == "difficulty"
+            if in_difficulty:
+                report.warn(
+                    key,
+                    f"{rid} draws in difficulty mode, so this entry is ignored; "
+                    "add the relation to color_by_route to style it",
+                )
+
+
+def _validate_difficulty_map(report, config):
+    """Validate config keys that depend on the map's color modes.
+
+    A difficulty-mode relation colors every way by its own IMBA rating.
+    `event_mode` is rejected while any relation is in difficulty mode
+    (`color_by: difficulty` or a non-empty `color_by_difficulty`). The
+    routes label mode, the hidden Trails section and per-route elevation
+    only make sense when some relation is in route mode, so those checks
+    fire when `color_by: difficulty` leaves `color_by_route` empty.
+    """
+    route_ids, diff_ids = _color_mode_lists(config)
+    default_difficulty = config.get("color_by") == "difficulty"
+
+    if (default_difficulty or diff_ids) and "event_mode" in config:
         report.err(
             "event_mode",
-            "event maps are routes maps; set color_by: route or remove event_mode",
+            "event maps are routes maps; set color_by: route and empty "
+            "color_by_difficulty, or remove event_mode",
         )
+
+    if not default_difficulty or route_ids:
+        return
 
     for key in ("default_labels", "forced_labels"):
         if config.get(key) == "routes":
             report.err(
                 key,
-                "a difficulty map labels trails only; must be 'trails' or 'none'",
+                "no relation is in route mode; must be 'trails' or 'none' "
+                "(or list a relation in color_by_route)",
             )
 
     if config.get("show_trails") is False:
         report.err(
             "show_trails",
-            "a difficulty map lists trails only; the Trails section can't "
-            "be hidden - remove show_trails or set color_by: route",
+            "no relation is in route mode, so the map lists trails only; the Trails "
+            "section can't be hidden - remove show_trails or list a relation in "
+            "color_by_route",
         )
 
     if config.get("show_elevation") is True:
         report.warn(
             "show_elevation",
-            "elevation is per route and is not shown on a difficulty map",
+            "elevation is per route and no relation is in route mode",
         )
 
 
@@ -1978,6 +2060,7 @@ def validate_config(config, *, config_path=None):
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_event_mode(report, config)
+    _validate_color_mode_lists(report, config)
     _validate_difficulty_map(report, config)
     _validate_about(report, config)
     _validate_welcome(report, config)

@@ -16,6 +16,7 @@ import urllib.parse
 from datetime import datetime
 
 import console
+from enrichment import resolve_color_modes
 from event_mode import _apply_event_mode_to_relations
 from font_trimmer import (
     check_webfont_coverage,
@@ -547,17 +548,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
         route_id = int(route_id_str)
 
-        # On a difficulty map a line color is a rating, so a route's
-        # color there is only ever the curator's explicit opt-in for
-        # that relation's unrated ways (a bike path with no
-        # mtb:scale:imba tag), never the OSM `colour` tag: an
-        # untouched relation must fall back to the default unrated
-        # look, not whatever colour OSM happens to carry. Drop it
-        # before the override below applies, so the runtime's
-        # `!!info.colour` styled check reads only curator intent.
-        if config.get("color_by") == "difficulty":
-            route_info["colour"] = None
-
         # Color override
         color_override = relation_colors.get(route_id)
         if color_override:
@@ -592,10 +582,24 @@ def inject_config_into_template(template_content, config, trails_geojson):
         else:
             config_obj[js_key] = config.get(yaml_key, default)
 
-    # On a difficulty map the trail name is the only name there is (no
-    # route to label instead), so an unset default_labels shows it on a
-    # first visit. A routes map keeps the "none" default set above.
-    if config.get("color_by") == "difficulty" and "default_labels" not in config:
+    # Each route (custom routes included) carries its resolved color mode,
+    # so the runtime reads CONFIG.routes[id].colorBy and never resolves
+    # lists or super-relations itself.
+    modes = resolve_color_modes(
+        config,
+        routes.keys(),
+        trails_geojson.get("metadata", {}).get("super_relation_expansions") if trails_geojson else None,
+    )
+    for rid, info in routes.items():
+        info["colorBy"] = modes[str(rid)]
+
+    # With no route-mode relation the trail name is the only name there
+    # is (no route to label instead), so an unset default_labels shows it
+    # on a first visit. A map with any route-mode relation keeps the
+    # "none" default set above. A map with no routes at all reads its
+    # default mode, so a config-only test sees the same rule.
+    has_route_mode = "route" in modes.values() if routes else config.get("color_by", "route") == "route"
+    if not has_route_mode and "default_labels" not in config:
         config_obj["defaultLabels"] = "trails"
 
     # Keys with custom logic

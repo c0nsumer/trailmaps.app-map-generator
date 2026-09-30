@@ -71,12 +71,9 @@ def test_show_distance_reaches_the_runtime():
 
 # ----- relation_colors on a difficulty map -----
 #
-# On a difficulty map a line color is a rating, so a route's color there
-# is only ever the curator's explicit relation_colors opt-in for that
-# relation's unrated ways. An OSM colour= tag must not leak in: a
-# relation with cached OSM colour metadata but no override ends with no
-# colour, the same "absent" shape osm_parser.relation_info uses when OSM
-# never carried a colour tag.
+# The injector no longer drops OSM colour= on a difficulty default: a
+# route-mode relation honors it, and the runtime ignores the colour of a
+# difficulty-mode relation through its colorBy stamp.
 
 STYLED_TRAILS = {
     "metadata": {
@@ -84,7 +81,7 @@ STYLED_TRAILS = {
             # Has both an OSM colour tag and a curator override: the
             # override should win.
             "1": {"name": "Overridden Trail", "colour": "#ff0000", "ref": "", "seasonal": ""},
-            # Has an OSM colour tag but no override: colour must drop.
+            # Has an OSM colour tag but no override: colour passes through.
             "2": {"name": "Untouched Trail", "colour": "#00ff00", "ref": "", "seasonal": ""},
             # No OSM colour tag and no override: stays colourless.
             "3": {"name": "Plain Trail", "colour": None, "ref": "", "seasonal": ""},
@@ -104,14 +101,15 @@ def test_relation_colors_honored_on_a_difficulty_map():
     assert routes["1"]["colour"] == "#0000ff"
 
 
-def test_osm_colour_does_not_leak_in_on_a_difficulty_map():
+def test_osm_colour_is_no_longer_dropped_on_a_difficulty_default_map():
+    # The runtime decides per relation (CONFIG.routes[id].colorBy) whether
+    # the colour is read, so the injector passes OSM colours through.
     config = dict(BASE, color_by="difficulty", relation_colors={1: "#0000ff"})
     obj_trails = json.loads(json.dumps(STYLED_TRAILS))
     out = inject_config_into_template("/*__CONFIG__*/", config, obj_trails)
     routes = json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))["routes"]
 
-    # No override: the OSM colour tag must not survive injection.
-    assert routes["2"]["colour"] is None
+    assert routes["2"]["colour"] == "#00ff00"
     assert routes["3"]["colour"] is None
 
 
@@ -150,3 +148,63 @@ def test_custom_route_colour_is_untouched_on_a_difficulty_map():
     routes = json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))["routes"]
 
     assert routes["custom-1"]["colour"] == "#abcdef"
+
+
+# ----- per-route colorBy stamp -----
+
+
+def _config_obj_with_routes(config, routes, expansions=None):
+    trails = {
+        "metadata": {"routes": routes, "super_relation_expansions": expansions or {}},
+        "features": [],
+    }
+    out = inject_config_into_template("/*__CONFIG__*/", config, trails)
+    return json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))
+
+
+def _routes():
+    return {
+        "1": {"name": "A", "colour": "#111111"},
+        "2": {"name": "B"},
+        "3": {"name": "C"},
+        "my-route": {"name": "Mine", "isCustom": True},
+    }
+
+
+def test_every_route_is_stamped_with_the_default_mode():
+    obj = _config_obj_with_routes(dict(BASE), _routes())
+    assert {r["colorBy"] for r in obj["routes"].values()} == {"route"}
+    obj = _config_obj_with_routes(dict(BASE, color_by="difficulty"), _routes())
+    assert {r["colorBy"] for r in obj["routes"].values()} == {"difficulty"}
+
+
+def test_color_by_route_list_overrides_the_default_including_custom_routes():
+    config = dict(BASE, color_by="difficulty", color_by_route=[1, "my-route"])
+    modes = {k: r["colorBy"] for k, r in _config_obj_with_routes(config, _routes())["routes"].items()}
+    assert modes == {"1": "route", "2": "difficulty", "3": "difficulty", "my-route": "route"}
+
+
+def test_super_relation_in_a_list_fans_out_and_a_listed_leaf_wins():
+    config = dict(BASE, color_by_difficulty=[99, 3], color_by_route=[3])
+    routes = _routes()
+    obj = _config_obj_with_routes(config, routes, {"99": ["1", "2", "3"]})
+    modes = {k: r["colorBy"] for k, r in obj["routes"].items()}
+    assert modes["1"] == modes["2"] == "difficulty"
+    # 3 is listed directly in color_by_route, which beats the fan-out.
+    assert modes["3"] == "route"
+    assert modes["my-route"] == "route"
+
+
+def test_osm_colour_is_kept_in_difficulty_default_for_route_mode_relation():
+    config = dict(BASE, color_by="difficulty", color_by_route=[1])
+    obj = _config_obj_with_routes(config, _routes())
+    assert obj["routes"]["1"]["colour"] == "#111111"
+
+
+def test_default_labels_follows_whether_any_route_is_in_route_mode():
+    routes = _routes()
+    assert _config_obj_with_routes(dict(BASE, color_by="difficulty"), routes)[
+        "defaultLabels"
+    ] == "trails"
+    config = dict(BASE, color_by="difficulty", color_by_route=[1])
+    assert _config_obj_with_routes(config, routes)["defaultLabels"] == "none"

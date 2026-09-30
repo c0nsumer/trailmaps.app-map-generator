@@ -15,6 +15,50 @@ import sys
 import console
 
 
+def resolve_color_modes(config, route_ids, super_expansions=None):
+    """Return {route_id_str: "route" | "difficulty"} for every id given.
+
+    `color_by` is the default mode; `color_by_route` and
+    `color_by_difficulty` are the exceptions. Both lists accept leaf ids,
+    super-relation ids and custom-route ids. A super-relation fans out
+    through the same `super_relation_expansions` table the season buckets
+    use, and an id listed directly beats a fan-out from a super-relation
+    so one child can differ from the rest of its system. An id in both
+    lists is a validator error; route wins here so a build never crashes
+    on it.
+    """
+    super_expansions = super_expansions or {}
+    default = config.get("color_by", "route")
+
+    def _split(key):
+        leaves, fanned = set(), set()
+        for x in config.get(key) or []:
+            sx = str(x)
+            if sx in super_expansions:
+                fanned.update(str(c) for c in super_expansions[sx])
+            else:
+                leaves.add(sx)
+        return leaves, fanned
+
+    route_leaf, route_fan = _split("color_by_route")
+    diff_leaf, diff_fan = _split("color_by_difficulty")
+
+    modes = {}
+    for rid in route_ids:
+        r = str(rid)
+        if r in route_leaf:
+            modes[r] = "route"
+        elif r in diff_leaf:
+            modes[r] = "difficulty"
+        elif r in route_fan:
+            modes[r] = "route"
+        elif r in diff_fan:
+            modes[r] = "difficulty"
+        else:
+            modes[r] = default
+    return modes
+
+
 def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None):
     """Enrich trails.geojson in-place with bucket flags + custom routes.
 

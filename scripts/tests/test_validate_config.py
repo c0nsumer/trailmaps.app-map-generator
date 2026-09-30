@@ -481,13 +481,7 @@ def test_routes_map_allows_show_trails_false():
     assert _errors(show_trails=False) == []
 
 
-def test_difficulty_map_does_not_warn_on_relation_colors():
-    # relation_colors is honored on a difficulty map (styles a relation's
-    # unrated ways; a rated way keeps its rating), so it never warns
-    # there, populated or empty.
-    warnings = _warnings(color_by="difficulty", relation_colors={12345678: "#ff0000"})
-    assert not any("relation_colors" in w for w in warnings), warnings
-
+def test_difficulty_map_empty_relation_colors_does_not_warn():
     warnings = _warnings(color_by="difficulty", relation_colors={})
     assert not any("relation_colors" in w for w in warnings), warnings
 
@@ -504,4 +498,68 @@ def test_difficulty_map_warns_on_show_elevation():
 
 def test_routes_map_show_elevation_no_difficulty_warning():
     warnings = _warnings(show_elevation=True)
+    assert not any("show_elevation" in w for w in warnings), warnings
+
+
+# --- color_by_route / color_by_difficulty ------------------------------------
+
+
+def test_color_mode_lists_are_valid_keys():
+    assert _errors(color_by="difficulty", color_by_route=[12345678, "my-route"]) == []
+    assert _errors(color_by_difficulty=[12345678]) == []
+
+
+def test_color_mode_lists_reject_non_list():
+    assert any("color_by_route" in e for e in _errors(color_by_route=12345678))
+
+
+def test_id_in_both_color_mode_lists_is_an_error():
+    errors = _errors(color_by_route=[12345678], color_by_difficulty=[12345678])
+    assert any("12345678" in e and "color_by" in e for e in errors), errors
+
+
+def test_id_in_default_mode_list_is_redundant_warning():
+    warnings = _warnings(color_by="difficulty", color_by_difficulty=[12345678])
+    assert any("color_by_difficulty" in w and "redundant" in w for w in warnings), warnings
+    warnings = _warnings(color_by_route=[12345678])
+    assert any("color_by_route" in w and "redundant" in w for w in warnings), warnings
+
+
+def test_exception_list_entry_is_not_redundant():
+    warnings = _warnings(color_by="difficulty", color_by_route=[12345678])
+    assert not any("redundant" in w for w in warnings), warnings
+
+
+def test_relation_colors_on_difficulty_mode_relation_warns():
+    warnings = _warnings(color_by="difficulty", relation_colors={12345678: "#ff0000"})
+    assert any("relation_colors" in w and "ignored" in w for w in warnings), warnings
+    warnings = _warnings(color_by_difficulty=[12345678], dashed_relations={12345678: [2, 2]})
+    assert any("dashed_relations" in w and "ignored" in w for w in warnings), warnings
+
+
+def test_relation_colors_on_route_mode_exception_does_not_warn():
+    warnings = _warnings(
+        color_by="difficulty",
+        color_by_route=[12345678],
+        relation_colors={12345678: "#ff0000"},
+    )
+    assert not any("relation_colors" in w for w in warnings), warnings
+
+
+def test_event_mode_rejected_with_difficulty_exception_list():
+    errors = _errors(color_by_difficulty=[12345678], event_mode={"featured": [12345678]})
+    assert any("event_mode" in e for e in errors), errors
+
+
+def test_route_mode_relation_lifts_the_no_route_mode_checks():
+    kwargs = dict(
+        color_by="difficulty",
+        color_by_route=[12345678],
+        default_labels="routes",
+        forced_labels="routes",
+        show_trails=False,
+        show_elevation=True,
+    )
+    assert _errors(**kwargs) == []
+    warnings = _warnings(**kwargs)
     assert not any("show_elevation" in w for w in warnings), warnings

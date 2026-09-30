@@ -157,12 +157,12 @@ relations:
 # suppress_basemap_oneway_arrows: false
 
 # Compute per-route distance at build time; show it in the Finder + chip.
-# On a difficulty map (color_by: difficulty) this also gates the per-rating
-# and per-trail distances shown in the key, the finder, and the tap popup.
+# For difficulty-mode relations this also gates the per-rating and per-trail
+# distances shown in the key, the finder, and the tap popup.
 # show_distance: false
 
 # Sample USGS 3DEP for per-route gain / loss (US only). See docs/elevation.md.
-# Per route only; ignored on a difficulty map.
+# Per route only; ignored for difficulty-mode relations.
 # show_elevation: false
 
 # Max distance (m) from a visible trail for a feature / marker POI to render.
@@ -173,8 +173,7 @@ relations:
 # ============================================================
 
 # Map of relation ID to CSS color; overrides the OSM colour= tag on a
-# route map. On a difficulty map it colors that relation's unrated ways
-# instead. A rated way always keeps its rating color.
+# route-mode relation. Ignored, with a warning, on a difficulty-mode relation.
 # relation_colors: {}
 
 # Map of relation ID to display name; overrides the OSM name tag everywhere
@@ -184,11 +183,20 @@ relations:
 # Map of relation ID to dash config. See docs/configuration.md (Dash patterns).
 # dashed_relations: {}
 
-# Which map this is: "route" (the default) colors lines by route, with
-# parallel lanes where routes share a trail. "difficulty" colors each
-# way by its own IMBA rating instead, one line per way; event_mode is
-# rejected. See docs/configuration.md (Difficulty maps).
+# Default color mode for every relation. "route" (the default) colors a
+# relation's lanes by route, with parallel lanes where routes share a trail.
+# "difficulty" colors ways by their own IMBA rating, one lane per way.
+# The two lists below give the exceptions. See docs/configuration.md
+# (Color modes).
 # color_by: route
+
+# Relations drawn as routes when color_by is difficulty. Takes relation IDs,
+# super-relation IDs (fan out to their children) and custom-route IDs.
+# color_by_route: []
+
+# Relations drawn by rating when color_by is route. Same kinds of IDs.
+# event_mode is rejected while any relation is in difficulty mode.
+# color_by_difficulty: []
 
 # Route key (the bottom-right panel). On a route map it lists routes; on
 # a difficulty map it lists ratings instead. false replaces it with a

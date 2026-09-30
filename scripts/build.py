@@ -1041,9 +1041,13 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- Route stats ----
     want_dist = bool(config.get("show_distance"))
-    # Mirrors compute_and_attach: elevation is per route and skipped on
-    # a difficulty map.
-    want_elev = bool(config.get("show_elevation")) and config.get("color_by") != "difficulty"
+    # Mirrors compute_and_attach: elevation is per route and skipped for
+    # difficulty-mode relations. Only the default is knowable before the
+    # fetch, so with a difficulty default a route-mode exception list
+    # is what keeps the step on.
+    want_elev = bool(config.get("show_elevation")) and (
+        config.get("color_by", "route") == "route" or bool(config.get("color_by_route"))
+    )
     if want_dist or want_elev:
         console.step("Per-route stats:")
         if want_dist:
