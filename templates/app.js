@@ -271,21 +271,79 @@ const BASEMAP_WETLAND = {
     dark: { tint: "#324240", mark: "#5b7a8b", pattern: "wetland-marks-dark" },
 };
 
-// One pattern cell holds two tufts on staggered rows so the repeat
-// reads as scattered marks rather than a grid. Registered by the map's
-// missing-image resolver: the basemap references the pattern from the
-// first style, before anything else could add it. MapLibre 6 awaits
-// the resolver before deciding an image is missing; its
-// styleimagemissing event fires only after that decision and the
-// console warning is logged regardless, so the event cannot stand in.
-// Like every fill pattern, the marks grow with the map through a zoom
-// level and return to size at the next one (the pattern is fixed to
-// the tile, not the screen); that is MapLibre's behavior and was seen
-// and accepted in the lab.
-function registerWetlandPattern(id) {
-    const scheme = Object.values(BASEMAP_WETLAND).find((s) => s.pattern === id);
+// Bare rock (landuse kind "bare_rock"), the other ground the flavor
+// leaves undrawn that a rider wants to know about: slabs and outcrops
+// (44 polygons around NTN Marquette, 2026-09-30). Same recipe as the
+// wetlands: a tint a step greyer than the earth, and sparse outcrop
+// marks (small angular stones) in the contour brown from z13, where
+// OsmAnd and the topo sheets start showing rock. Sand and beach keep
+// their own warmer tint, so the two stay apart.
+const BASEMAP_BARE_ROCK = {
+    light: { tint: "#e6e3dd", mark: "#a79e91", pattern: "bare-rock-marks-light" },
+    dark: { tint: "#3a3934", mark: "#6e685e", pattern: "bare-rock-marks-dark" },
+};
+
+// Mark drawers, one per ground kind, over a cell whose marks sit on
+// staggered rows or scattered positions so the repeat reads as
+// scattered marks rather than a grid. Wetlands are large, so their
+// cell is wide with two marks (the round-13 spacing). Outcrops are
+// often a few tens of meters across and at that spacing most caught no
+// mark at all, but two marks in a small cell repeat as a visible
+// lattice at z16, so rock scatters five over the wide cell instead:
+// two and a half times the wetland density, no rows.
+const WETLAND_CELL = { w: 64, h: 42, at: [[14, 14], [46, 35]] };
+const BARE_ROCK_CELL = { w: 64, h: 42, at: [[9, 8], [39, 5], [55, 21], [21, 27], [42, 35]] };
+
+function drawWetlandMarks(ctx) {
+    for (const [x, y] of WETLAND_CELL.at) {
+        ctx.moveTo(x - 3.5, y); ctx.lineTo(x + 3.5, y);
+        ctx.moveTo(x, y - 0.4); ctx.lineTo(x, y - 3.4);
+        ctx.moveTo(x - 1.1, y - 0.4); ctx.lineTo(x - 2.5, y - 2.6);
+        ctx.moveTo(x + 1.1, y - 0.4); ctx.lineTo(x + 2.5, y - 2.6);
+    }
+}
+
+// A small boulder: a lopsided four-sided outline with one facet line,
+// the topo rock-outcrop sign at the tuft's size. Each mark in the cell
+// is turned a little so no two read as the same stamp.
+function drawBareRockMarks(ctx) {
+    const shape = [[-3, 1.5], [-2, -1.6], [1.6, -2.1], [3, 1]];
+    BARE_ROCK_CELL.at.forEach(([x, y], i) => {
+        const a = [0, 0.5, -0.4, 0.9, -0.8][i];
+        const cos = Math.cos(a), sin = Math.sin(a);
+        const pt = ([px, py]) => [x + px * cos - py * sin, y + px * sin + py * cos];
+        shape.forEach((p, j) => {
+            const [qx, qy] = pt(p);
+            if (j === 0) ctx.moveTo(qx, qy); else ctx.lineTo(qx, qy);
+        });
+        ctx.closePath();
+        const [fx, fy] = pt([-2, -1.6]), [gx, gy] = pt([0.3, 1.5]);
+        ctx.moveTo(fx, fy); ctx.lineTo(gx, gy);
+    });
+}
+
+const GROUND_PATTERNS = [
+    { schemes: BASEMAP_WETLAND, cell: WETLAND_CELL, draw: drawWetlandMarks },
+    { schemes: BASEMAP_BARE_ROCK, cell: BARE_ROCK_CELL, draw: drawBareRockMarks },
+];
+
+// Registered by the map's missing-image resolver: the basemap
+// references the patterns from the first style, before anything else
+// could add them. MapLibre 6 awaits the resolver before deciding an
+// image is missing; its styleimagemissing event fires only after that
+// decision and the console warning is logged regardless, so the event
+// cannot stand in. Like every fill pattern, the marks grow with the
+// map through a zoom level and return to size at the next one (the
+// pattern is fixed to the tile, not the screen); that is MapLibre's
+// behavior and was seen and accepted in the lab.
+function registerGroundPattern(id) {
+    let scheme = null, ground = null;
+    for (const kind of GROUND_PATTERNS) {
+        scheme = Object.values(kind.schemes).find((s) => s.pattern === id);
+        if (scheme) { ground = kind; break; }
+    }
     if (!scheme || map.hasImage(id)) return;
-    const ratio = 2, w = 64, h = 42;
+    const ratio = 2, { w, h } = ground.cell;
     const canvas = document.createElement("canvas");
     canvas.width = w * ratio;
     canvas.height = h * ratio;
@@ -294,13 +352,9 @@ function registerWetlandPattern(id) {
     ctx.strokeStyle = scheme.mark;
     ctx.lineWidth = 0.8;
     ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    for (const [x, y] of [[14, 14], [46, 35]]) {
-        ctx.moveTo(x - 3.5, y); ctx.lineTo(x + 3.5, y);
-        ctx.moveTo(x, y - 0.4); ctx.lineTo(x, y - 3.4);
-        ctx.moveTo(x - 1.1, y - 0.4); ctx.lineTo(x - 2.5, y - 2.6);
-        ctx.moveTo(x + 1.1, y - 0.4); ctx.lineTo(x + 2.5, y - 2.6);
-    }
+    ground.draw(ctx);
     ctx.stroke();
     map.addImage(id, {
         width: w * ratio,
@@ -468,29 +522,37 @@ function styleBasemapLayers(layers, scheme) {
             });
     }
 
-    // Wetlands go after the landuse fills and just before water, so
-    // hillshade, contours, water, and roads all draw over them.
+    // Bare rock and wetlands go after the landuse fills and just before
+    // water, so hillshade, contours, water, and roads all draw over
+    // them. Each is a tint plus a marks layer; the marks fade in over
+    // one zoom level from `from`.
     const water = byId("water");
     const park = byId("landuse_park");
     if (water && park) {
-        const wet = BASEMAP_WETLAND[scheme === "dark" ? "dark" : "light"];
-        const base = { source: park.source, "source-layer": "landuse", filter: ["==", "kind", "wetland"] };
-        layers.splice(layers.indexOf(water), 0, {
-            ...base,
-            id: "landuse_wetland",
+        const dark = scheme === "dark";
+        const ground = (id, kind, look, from) => [{
+            id,
             type: "fill",
+            source: park.source,
+            "source-layer": "landuse",
+            filter: ["==", "kind", kind],
             // same fade-in as the park fill under it
-            paint: { "fill-color": wet.tint, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 11, 1] },
+            paint: { "fill-color": look.tint, "fill-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0, 11, 1] },
         }, {
-            ...base,
-            id: "landuse_wetland_marks",
+            id: `${id}_marks`,
             type: "fill",
-            minzoom: 11.5,
+            source: park.source,
+            "source-layer": "landuse",
+            filter: ["==", "kind", kind],
+            minzoom: from,
             paint: {
-                "fill-pattern": wet.pattern,
-                "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11.5, 0, 12.5, 0.7],
+                "fill-pattern": look.pattern,
+                "fill-opacity": ["interpolate", ["linear"], ["zoom"], from, 0, from + 1, 0.7],
             },
-        });
+        }];
+        layers.splice(layers.indexOf(water), 0,
+            ...ground("landuse_bare_rock", "bare_rock", BASEMAP_BARE_ROCK[dark ? "dark" : "light"], 13),
+            ...ground("landuse_wetland", "wetland", BASEMAP_WETLAND[dark ? "dark" : "light"], 11.5));
     }
 
     // A way nobody may use (access=private|no) keeps the full path line
@@ -3609,7 +3671,7 @@ async function init() {
         return;
     }
 
-    map.setMissingStyleImageResolver(registerWetlandPattern);
+    map.setMissingStyleImageResolver(registerGroundPattern);
     initMapScale();
 
     // Disable two-finger twist rotation on touch devices.
