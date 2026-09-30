@@ -584,8 +584,7 @@ of this section.
   the chip to clear.
 - **Tapping a trail row** fits the map to the trail and collapses the sheet.
   The trail's popup then opens on the middle of the trail, the same popup a tap
-  on the trail opens. A thin outline and a soft shadow lift the trail off the
-  map. The popup closes on the next tap elsewhere. A trail pick leaves any
+  on the trail opens. A soft yellow glow lifts the trail off the map. The popup closes on the next tap elsewhere. A trail pick leaves any
   highlighted route or place as it is.
 - **One thing highlighted at a time.** Picking a new route or place replaces the
   previous highlight. Everything else stays visible; the highlight only adds
@@ -661,8 +660,7 @@ the trail's popup.
 Labels show trail names, since there is no route name to show instead.
 Tapping a trail opens a popup with its name and, where tagged, its
 rating and one-way status. The popup lists no routes. While the popup
-is open, a thin outline and a soft shadow lift the trail it describes
-off the map. Nothing else changes:
+is open, a soft yellow glow lifts the trail it describes off the map. Nothing else changes:
 no dimming, no selection, and the map does not move. With
 `show_distance` on, the popup adds a row for the trail's visible
 length.

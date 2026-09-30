@@ -154,14 +154,6 @@ const MAP_PAINT_TOKENS = {
         trailCasing:      "rgba(0,0,0,1)",
         arrowHalo:        "rgba(0,0,0,0.85)",
         highlightOutline: "#000000",
-        // Tap lift (showTapLift): the popup's trail stands off the page
-        // on a white hairline over a dark shadow, inverted on the dark
-        // basemap. Neutral on purpose, so it reads on every lane color
-        // and never passes for a route color. The shadow core is a dark
-        // grey rather than black so its blurred fringe reads as a
-        // shadow, not a black halo.
-        tapHairline:      "#ffffff",
-        tapShadow:        "#111111",
         // Contour lines: warm brown at moderate alpha so they read
         // as terrain annotation under the trail network, not as
         // routes. Labels keep full contrast in both schemes; a
@@ -192,9 +184,6 @@ const MAP_PAINT_TOKENS = {
         trailCasing:      "rgba(255,255,255,0.6)",
         arrowHalo:        "rgba(255,255,255,0.85)",
         highlightOutline: "#ffffff",
-        // The light lift inverted: a dark hairline over a pale glow.
-        tapHairline:      "#111111",
-        tapShadow:        "#e8e8e8",
         // Lower alpha than light: pale lines on a dark ground gain
         // apparent contrast, and 0.25 was judged right on-device
         // during Session D.
@@ -620,10 +609,6 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("route-highlight-outline", "line-color",
             routeInfo ? routeHighlightOutlineColor(routeInfo)
                 : t.highlightOutline);
-    }
-    if (map.getLayer(TAP_HAIRLINE_LAYER)) {
-        map.setPaintProperty(TAP_HAIRLINE_LAYER, "line-color", t.tapHairline);
-        map.setPaintProperty(TAP_SHADOW_LAYER, "line-color", t.tapShadow);
     }
     if (map.getLayer("decor-chevron-fwd")) {
         map.setLayoutProperty("decor-chevron-fwd", "icon-image", t.chevronFwd);
@@ -1128,16 +1113,19 @@ function closeTrailPopup() {
 }
 
 // While a trail popup is open, the named trail it describes is lifted
-// off the page: a sharp hairline just outside its lane casing over a
-// soft shadow, both beneath the lanes, contrasting the basemap (see
-// the tapHairline / tapShadow tokens). Steve's call (2026-09-29): a
-// tap that ran the finder's full selection (dim wash, chip) felt too
-// heavy, and a colored glow collided with route colors (magenta with a
-// future Snow Bike Route, amber sinking under green), whereas a neutral
-// lift reads on every lane color. The popup is a note, the lift only
-// says which trail the note is about, and routes, ratings and places
-// stay the selection tools, so `highlight`, the wash, the chip and the
-// camera are left exactly as they are. A finder trail result opens the
+// off the page by a soft highlighter-yellow glow beneath its lanes
+// (TAP_GLOW_LAYER). Steve's call (2026-09-29): a tap that ran the
+// finder's full selection (dim wash, chip) felt too heavy. The popup
+// is a note, the lift only says which trail the note is about, and
+// routes, ratings and places stay the selection tools, so `highlight`,
+// the wash, the chip and the camera are left exactly as they are. The
+// glow started neutral (a white hairline over a dark shadow, inverted
+// in dark mode) so it could never pass for a route color, but on the
+// light basemap the dark blur read as a smudge; a lab of 29 variants
+// (hollow ink rings, bundle outlines, cast shadows) ended on the app's
+// own highlight yellow, the same color as the route highlight stroke,
+// which reads the same on both basemaps. Tune the width and blur
+// below if it ever needs it. A finder trail result opens the
 // same popup and lift after a camera fit (showTrail). On a routes map
 // the lift also shows where a named trail starts and ends inside a
 // same-color route.
@@ -6651,49 +6639,30 @@ async function loadTrails() {
         layout: { "line-cap": "round", "line-join": "round" },
     });
 
-    // Tap lift (showTapLift), bottom to top: a soft shadow, then a
-    // sharp 1 px hairline just outside the lane casing
-    // (TRAIL_WIDTH_STOPS.casingVisible + 2), so the trail an open popup
-    // describes stands off the page without touching the lane or its
-    // casing. Colors contrast the basemap per scheme (tapShadow /
-    // tapHairline, applyMapPaintForScheme). The shadow is the same
-    // spike-safe opaque core + line-blur as the selection glow above,
-    // never a translucent stroke: in a bundle every lane of the trail
-    // draws it, and translucent strokes would stack. Its core is 8 px
-    // wider than the hairline and the blur 4 px, so the opaque part
-    // ends under the hairline and only the gradient shows. Steve tunes
-    // the numbers on a device. Both sit directly BENEATH the lane
-    // layer; the lane layer is custom and not yet added here, so
-    // refreshLaneGraph and promoteBasemapLabels put them back under
-    // the lanes each time the stack changes. Anchored on dim-tint
-    // until then so they never paint over the wash.
-    const tapLiftBefore = map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : "dim-tint";
-    const tapTokens = mapPaintTokens();
+    // Tap lift (showTapLift): one soft glow directly BENEATH the lane
+    // layer, the same spike-safe opaque core + line-blur as the
+    // selection glow above, never a translucent stroke: in a bundle
+    // every lane of the trail draws it, and translucent strokes would
+    // stack. The core is wide enough that only its blurred fringe shows
+    // past the lane casing. Same color in both schemes, so nothing for
+    // applyMapPaintForScheme to swap. The lane layer is custom and not
+    // yet added here, so refreshLaneGraph and promoteBasemapLabels put
+    // the glow back under the lanes each time the stack changes
+    // (moveTapLiftUnderLanes). Anchored on dim-tint until then so it
+    // never paints over the wash.
     map.addLayer({
-        id: TAP_SHADOW_LAYER,
+        id: TAP_GLOW_LAYER,
         type: "line",
         source: TAP_LIFT_SOURCE,
         paint: {
-            "line-color": tapTokens.tapShadow,
+            "line-color": TAP_GLOW_COLOR,
             "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 15, 14, 18, 18, 22],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 19, 14, 22, 18, 26],
             "line-blur": 5,
             "line-opacity": 1,
         },
         layout: { "line-cap": "round", "line-join": "round" },
-    }, tapLiftBefore);
-    map.addLayer({
-        id: TAP_HAIRLINE_LAYER,
-        type: "line",
-        source: TAP_LIFT_SOURCE,
-        paint: {
-            "line-color": tapTokens.tapHairline,
-            "line-color-transition": { duration: 0 },
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 5, 14, 8, 18, 12],
-            "line-opacity": 1,
-        },
-        layout: { "line-cap": "round", "line-join": "round" },
-    }, tapLiftBefore);
+    }, map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : "dim-tint");
 
     // One-way chevron layers go here: above the lanes and every
     // highlight line added before this point, below EVERY text layer
@@ -7022,10 +6991,11 @@ let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
 const LANE_HIGHLIGHT_SOURCE = "trail-lanes-highlight";
-// Source and layers of the popup's tap lift (showTapLift).
+// Source and layer of the popup's tap lift (showTapLift). The glow is
+// the route highlight stroke's yellow, one value for both schemes.
 const TAP_LIFT_SOURCE = "trail-tap-lift";
-const TAP_SHADOW_LAYER = "trail-tap-shadow";
-const TAP_HAIRLINE_LAYER = "trail-tap-hairline";
+const TAP_GLOW_LAYER = "trail-tap-glow";
+const TAP_GLOW_COLOR = "#FFEC00";
 
 // Lane geometry per zoom, in px. The fill width follows
 // TRAIL_WIDTH_STOPS.fill exactly, the spacing exceeds it by 1 px so
@@ -12840,12 +12810,10 @@ function promoteBasemapLabels() {
     moveTapLiftUnderLanes();
 }
 
-// Shadow, then hairline, then the lanes. No-op until both the lanes
-// and the lift layers exist.
+// The glow, then the lanes. No-op until both exist.
 function moveTapLiftUnderLanes() {
-    if (!map.getLayer(LANE_LAYER_ID)) return;
-    for (const id of [TAP_SHADOW_LAYER, TAP_HAIRLINE_LAYER]) {
-        if (map.getLayer(id)) map.moveLayer(id, LANE_LAYER_ID);
+    if (map.getLayer(LANE_LAYER_ID) && map.getLayer(TAP_GLOW_LAYER)) {
+        map.moveLayer(TAP_GLOW_LAYER, LANE_LAYER_ID);
     }
 }
 
