@@ -600,7 +600,8 @@ has no Routes section and no Routes chip. On a map with difficulty-mode
 relations, a trail row shows the symbol
 of the rating that most of the trail's visible length carries. An unrated trail
 shows the unrated line instead. The row names every rating on the trail, such
-as "Easy, More Difficult". If `show_distance` is on, the row also shows the
+as "Easy, More Difficult", then the trail's visible route-mode parents, if
+any. If `show_distance` is on, the row also shows the
 trail's visible length. Tapping a trail row fits the map to the trail and
 opens the trail's popup, as on a routes map.
 
@@ -612,12 +613,12 @@ on individual ways. Segments without this tag show no symbols.
 
 | Rating | Symbol | Color |
 |--------|--------|-------|
-| 0 | Circle | White (easiest) |
-| 1 | Circle | Green (easy) |
-| 2 | Square | Blue (intermediate) |
-| 3 | Diamond | Black (difficult) |
-| 4 | Double diamond | Black (expert) |
-| 5 | Double diamond | Orange (pro) |
+| 0 | Circle | White (Easiest) |
+| 1 | Circle | Green (Easy) |
+| 2 | Square | Blue (More Difficult) |
+| 3 | Diamond | Black (Very Difficult) |
+| 4 | Double diamond | Black (Extremely Difficult) |
+| 5 | Double diamond | Orange (Pro-Only) |
 
 The symbols use ski-trail-style iconography. They are always oriented
 vertically (not rotated to follow the trail line) and include a white halo for
@@ -682,7 +683,7 @@ each rating. An **Unrated** row follows when unrated difficulty-mode ways are
 visible. The finder has a Routes section and a Routes filter chip when any
 relation is in route mode. Labels show trail names, and the `"routes"` label
 mode is offered when any relation is in route mode. The tap popup lists the
-way's route-mode parents. The popup's yellow glow lifts the tapped segment and
+way's route-mode parents. The popup's yellow glow lifts the trail it describes and
 changes nothing else. If the tapped way has no name, the popup is titled
 "Unnamed". The title is muted, since the map does not know what kind of way it
 is.

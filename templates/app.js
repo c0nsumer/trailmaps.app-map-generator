@@ -1708,8 +1708,8 @@ function collectCanonicalWays() {
             sharedRoutes: shared,
             soloRouteName,
             soloRouteId,
-            // Difficulty maps: the way's color key, for the labels a
-            // key highlight keeps bright (ratingIdentityMatch).
+            // Maps with rating lanes: the way's rating key, for the
+            // labels a rating highlight keeps bright (ratingIdentityMatch).
             // The false stand-in marks a way with no rating lane, so a
             // rating highlight does not fall back to its rating.
             colorKey: hasRatingLanes() ? (featureColorKey(props) ?? false) : null,
@@ -2201,6 +2201,11 @@ function computeDecorations() {
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
                         shared_routes: way.sharedRoutes,
+                        // Bucketed as the lanes are, so a rated way whose
+                        // only visible parents are route-mode (no rating
+                        // lane) dims with its lane under a rating
+                        // highlight instead of falling back to its tag.
+                        ...(way.colorKey != null && { color_key: way.colorKey }),
                     }));
             }
         }
@@ -2221,6 +2226,11 @@ function computeDecorations() {
                         imba_difficulty: way.imba,
                         trail_name: way.trailName,
                         shared_routes: way.sharedRoutes,
+                        // Bucketed as the lanes are, so a rated way whose
+                        // only visible parents are route-mode (no rating
+                        // lane) dims with its lane under a rating
+                        // highlight instead of falling back to its tag.
+                        ...(way.colorKey != null && { color_key: way.colorKey }),
                     }));
             }
         }
@@ -6887,11 +6897,10 @@ const TAP_LIFT_SOURCE = "trail-tap-lift";
 const TAP_GLOW_LAYER = "trail-tap-glow";
 const TAP_GLOW_COLOR = "#FFEC00";
 
-// A highlight, a route on a routes map or a color key on a difficulty
-// map (where a lane's route is its key, see laneKeyMeta), is the
-// plugin's own lift: the lanes drawn last, above the others, with a halo
+// A highlight, a route or a rating (a lane's route is its color key,
+// see laneKeyMeta), is the plugin's own lift: the lanes drawn last, above the others, with a halo
 // in the tap lift's yellow and no outline, while the other lanes dim by
-// the wash's strength. One look on both map models. The halo
+// the wash's strength. One look for both kinds. The halo
 // reaches 5 px past the casing with a 3 px fade, a little less than the
 // tap glow: the plugin paints the halo OVER the neighboring lanes, so a
 // reach wider than the lane spacing (5 px at z14) would hide a bundle
@@ -8843,7 +8852,7 @@ const PANEL_MAX_VIEWPORT_FRACTION = 1 / 3;
 // visible under the rider's current season/emergency toggles
 // (visibleRoutes, same gate the map itself renders by), minus
 // non-featured routes on event maps (matching the label restriction in
-// labelsVisibleForRoute). A difficulty-mode relation has no row of its
+// routeLabelAllowed). A difficulty-mode relation has no row of its
 // own; its ways are in the rating rows. routeIndex is already sorted by
 // name.
 function panelListableRoutes() {
@@ -11530,9 +11539,9 @@ function rebuildFinderList() {
     }
 
     // Filter routes/trails to the currently-visible bucket, then by
-    // query. Routes hidden by season/emergency toggles are still
-    // searchable, selecting one force-shows it (rider toggle is the
-    // explicit choice, search lets them work around it).
+    // query: the finder mirrors the map, so a route hidden by the
+    // season or emergency toggle is not offered (the rider's toggle is
+    // the explicit choice; the finder does not work around it).
     const visibleRouteIds = new Set(routeIndex
         .filter((r) => visibleRoutes.has(r.id)).map((r) => r.id));
     const routes = routeIndex.filter((r) => visibleRouteIds.has(r.id) && isRouteMode(r.id));
@@ -12066,8 +12075,8 @@ function appendDifficultyTrailRowContent(row, t, parents) {
 
 // A color key's mark in a list row: a rating's glyph
 // (difficultyIconDataUrl, the canvas the map symbols use) in
-// `glyphClass`, or for a route key or unrated, which have no
-// glyph, the key's line swatch (keyLook) in `swatchClass`.
+// `glyphClass`, or for unrated, which has no glyph, the unrated line
+// swatch (keyLook) in `swatchClass`.
 function ratingMarkEl(rating, glyphClass, swatchClass) {
     if (!isRatedDifficulty(rating)) return routeSwatchEl(keyLook(rating), swatchClass);
     const glyph = document.createElement("img");
@@ -12383,8 +12392,8 @@ function trailPopupHtml(laneHit) {
         // the same number the finder row shows: it is
         // the length of the trail the tap lift marks (showTapLift),
         // not the length of the single way under the tap. Same row
-        // on both map models (trailEntry reads whichever stamp
-        // applies) so the popup feels the same either way.
+        // whatever the map's color modes (trailEntry stamps it the
+        // same way) so the popup feels the same either way.
         // trailStatsText already gates on CONFIG.showDistance; the
         // check here is just to skip the entry lookup when it would
         // be "". bare: true so the qualifier lives in the label

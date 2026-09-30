@@ -1837,6 +1837,28 @@ def _validate_color_mode_lists(report, config):
                     f"must be an OSM relation ID (int) or a custom-route id (string), got {rid!r}",
                 )
 
+    # A string entry can only be a custom-route id (top-level
+    # custom_routes or inline event_mode.routes); anything else is a
+    # typo that would otherwise sit inert in the list.
+    custom_ids = set()
+    for entry in config.get("custom_routes") or []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+            custom_ids.add(entry["id"])
+    em = config.get("event_mode")
+    for entry in (em.get("routes") or []) if isinstance(em, dict) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+            custom_ids.add(entry["id"])
+    for key in ("color_by_route", "color_by_difficulty"):
+        lst = config.get(key)
+        if not isinstance(lst, list):
+            continue
+        for i, rid in enumerate(lst):
+            if isinstance(rid, str) and rid not in custom_ids:
+                report.err(
+                    f"{key}[{i}]",
+                    f"{rid!r} is not a custom_routes or event_mode.routes id",
+                )
+
     route_ids, diff_ids = _color_mode_lists(config)
     for rid in sorted(route_ids & diff_ids):
         report.err(

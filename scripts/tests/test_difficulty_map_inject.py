@@ -91,14 +91,18 @@ STYLED_TRAILS = {
 }
 
 
-def test_relation_colors_honored_on_a_difficulty_map():
-    config = dict(BASE, color_by="difficulty", relation_colors={1: "#0000ff"})
+def test_relation_colors_override_a_route_mode_relation_on_a_difficulty_default():
+    config = dict(
+        BASE, color_by="difficulty", color_by_route=[1], relation_colors={1: "#0000ff"}
+    )
     obj_trails = json.loads(json.dumps(STYLED_TRAILS))  # deep copy per call
     out = inject_config_into_template("/*__CONFIG__*/", config, obj_trails)
     routes = json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))["routes"]
 
-    # The curator's override wins, not the OSM colour tag.
+    # The curator's override wins over the OSM colour tag, and the
+    # relation resolves to route mode, where the runtime reads it.
     assert routes["1"]["colour"] == "#0000ff"
+    assert routes["1"]["colorBy"] == "route"
 
 
 def test_osm_colour_is_no_longer_dropped_on_a_difficulty_default_map():

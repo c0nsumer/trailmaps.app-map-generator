@@ -505,8 +505,20 @@ def test_routes_map_show_elevation_no_difficulty_warning():
 
 
 def test_color_mode_lists_are_valid_keys():
-    assert _errors(color_by="difficulty", color_by_route=[12345678, "my-route"]) == []
+    custom = [{"id": "my-route", "name": "Mine", "color": "#888888", "geometry": "mine.geojson"}]
+    errors = _errors(color_by="difficulty", color_by_route=[12345678, "my-route"],
+                     custom_routes=custom)
+    assert not any("color_by_route" in e for e in errors), errors
     assert _errors(color_by_difficulty=[12345678]) == []
+
+
+def test_color_mode_list_string_must_name_a_custom_route():
+    errors = _errors(color_by="difficulty", color_by_route=["paved"])
+    assert any("not a custom_routes" in e for e in errors), errors
+    inline = {"routes": [{"id": "paved", "name": "Paved", "color": "#888888",
+                          "geometry": "paved.geojson"}]}
+    errors = _errors(color_by="difficulty", color_by_route=["paved"], event_mode=inline)
+    assert not any("not a custom_routes" in e for e in errors), errors
 
 
 def test_color_mode_lists_reject_non_list():

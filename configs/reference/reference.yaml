@@ -198,15 +198,15 @@ relations:
 # event_mode is rejected while any relation is in difficulty mode.
 # color_by_difficulty: []
 
-# Route key (the bottom-right panel). On a route map it lists routes; on
-# a difficulty map it lists ratings instead. false replaces it with a
+# Route key (the bottom-right panel). It lists a row per route-mode
+# relation and a row per rating on the map. false replaces it with a
 # Search button alone: for a trail system whose relations are the trails
 # themselves, a key listing every one is a wall. See docs/configuration.md.
 # route_key: true
 
 # Fallback trail color, or an object with color / pattern / cap for dashed
-# uncolored trails. Used for relations with no colour= tag on a route map,
-# or ways with no mtb:scale:imba tag on a difficulty map.
+# uncolored trails. Used for route-mode relations with no colour= tag,
+# and for difficulty-mode ways with no mtb:scale:imba tag.
 # default_trail_color: "#808080"
 
 # ============================================================
