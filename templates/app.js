@@ -6431,29 +6431,35 @@ async function loadTrails() {
             };
             // Clip-continuation arrows use the same arrowhead-with-notch
             // shape as on-trail direction arrows (drawArrow in this file)
-            // so the visual vocabulary stays consistent. The SDF asset's
-            // gradient (radius=2/3) leaves room for a thin halo without
-            // eroding too much of the body. Sized so the visible filled
-            // arrowhead reads slightly larger than an on-trail direction
-            // arrow: clip-continuation indicators benefit from extra
-            // visual weight since they signal "trail leaves the map"
-            // rather than ongoing direction.
-            const size = (scale) => ["interpolate", ["linear"], ["zoom"],
-                12, 1.2 * scale, 14, 1.65 * scale, 18, 2.4 * scale];
+            // so the visual vocabulary stays consistent. Sized so the
+            // visible filled arrowhead reads slightly larger than an
+            // on-trail direction arrow: clip-continuation indicators
+            // benefit from extra visual weight since they signal "trail
+            // leaves the map" rather than ongoing direction. The icon is
+            // a signed-distance field (assets/extras/generate_clip_arrow.py)
+            // whose 16 px arrowhead sits centered on a 40 px canvas with
+            // twice MapLibre's assumed field radius, so every halo width
+            // and blur here is HALF its rendered width.
+            const size = ["interpolate", ["linear"], ["zoom"], 12, 1.2, 14, 1.65, 18, 2.4];
+            // Push the arrowhead away from the trail's clipped end so it
+            // doesn't crowd the line where it meets the bbox edge. The
+            // offset is in icon pixels, times icon-size, in pre-rotation
+            // icon space (Y is "up" in the asset's tip-up frame), then
+            // rotates with the bearing, so the arrow ends up shifted
+            // "outward" along the trail's continuation direction. The
+            // anchor is the canvas bottom, 14.24 icon px below the
+            // arrowhead's back, and this puts the back 4.24 icon px past
+            // the endpoint, where the old 16 px icon's [0, -2] put it
+            // (measured against it at z13 and z15).
+            const offset = [0, 10.8];
             // The lift's glow for this arrow: the same icon in the lift's
-            // yellow, CLIP_ARROW_GLOW_SCALE times the size, drawn under
-            // the arrow so it shows as a yellow rim all round it, the
-            // arrow's twin of the lane halo. A thin blurred halo of its
-            // own softens the rim's edge. The SDF's gradient zone is too
-            // narrow for a halo that wide on the arrow itself. Shown
-            // only while the arrow is the lift's (updateClipArrowsDim).
-            // Anchored at the bottom like the arrow, so the offset
-            // re-centers the larger icon on the smaller: with H the
-            // icon's height in icon pixels and k the scale, the arrow's
-            // center sits (2 + H/2) sizes above the anchor, the glow's
-            // (H k / 2 - o k), and o = (H (k - 1) / 2 - 2) / k makes them
-            // equal (offsets are in icon pixels, times the size).
-            const k = CLIP_ARROW_GLOW_SCALE;
+            // yellow under the arrow, with a halo as wide as the lane
+            // halo's reach and a blur for its soft edge, the arrow's twin
+            // of the lane halo. Shown only while the arrow is the lift's
+            // (updateClipArrowsDim). A halo can reach 0.75 of the field
+            // radius times icon-size before the field clamps and the
+            // whole icon box tints, which is why the field is twice
+            // MapLibre's: 14 rendered px at z12, against 8 used.
             map.addLayer({
                 id: `clip-arrow-glow-${routeId}`,
                 type: "symbol",
@@ -6462,14 +6468,14 @@ async function loadTrails() {
                 layout: {
                     ...layout,
                     "visibility": "none",
-                    "icon-size": size(k),
-                    "icon-offset": [0, (16 * (k - 1) / 2 - 2) / k],
+                    "icon-size": size,
+                    "icon-offset": offset,
                 },
                 paint: {
                     "icon-color": TAP_GLOW_COLOR,
                     "icon-halo-color": TAP_GLOW_COLOR,
-                    "icon-halo-width": 1.2,
-                    "icon-halo-blur": 1.2,
+                    "icon-halo-width": CLIP_ARROW_GLOW_HALO,
+                    "icon-halo-blur": CLIP_ARROW_GLOW_BLUR,
                 },
             });
             map.addLayer({
@@ -6481,16 +6487,8 @@ async function loadTrails() {
                 filter: ["in", `|${routeId}|`, ["get", "route_ids_str"]],
                 layout: {
                     ...layout,
-                    "icon-size": size(1),
-                    // Push the arrowhead away from the trail's
-                    // clipped end so it doesn't crowd the line where
-                    // it meets the bbox edge. Offset is in pre-
-                    // rotation icon space (Y is "up" in the asset's
-                    // tip-up frame), then rotates with the bearing,
-                    // so the arrow ends up shifted "outward" along
-                    // the trail's continuation direction. Scales with
-                    // icon-size.
-                    "icon-offset": [0, -2],
+                    "icon-size": size,
+                    "icon-offset": offset,
                 },
                 paint: {
                     "icon-color": iconCol,
@@ -6499,11 +6497,10 @@ async function loadTrails() {
                     // against busy basemap/terrain backgrounds, and
                     // (more critically) so dark-colored routes have a
                     // light edge instead of disappearing into similar
-                    // dark surroundings. Halo width is in logical
-                    // pixels and renders within the SDF's gradient
-                    // zone outside the filled body.
+                    // dark surroundings. 1.2 rendered px (see the
+                    // field's radius above).
                     "icon-halo-color": haloCol,
-                    "icon-halo-width": 1.2,
+                    "icon-halo-width": 0.6,
                     "icon-halo-blur": 0,
                 },
             });
@@ -6881,11 +6878,13 @@ const TAP_GLOW_COLOR = "#FFEC00";
 const ROUTE_LIFT_HALO_WIDTH = 5;
 const ROUTE_LIFT_HALO_BLUR = 3;
 // The continuation arrows of a lifted route get a yellow rim from a
-// second copy of the icon drawn under them at this scale (see the
-// clip-arrow-glow layers): about 5 px past the arrowhead at z14, the
-// lane halo's reach. The SDF's gradient zone is too narrow to draw
-// that as an icon halo.
-const CLIP_ARROW_GLOW_SCALE = 1.4;
+// second copy of the icon drawn under them with a wide halo (the
+// clip-arrow-glow layers). The icon's field has twice MapLibre's
+// assumed radius, so these are HALF the rendered widths: the halo
+// reaches 5 px past the arrowhead with a 3 px soft edge, the lane
+// halo's own reach and fade (ROUTE_LIFT_HALO_WIDTH, ROUTE_LIFT_HALO_BLUR).
+const CLIP_ARROW_GLOW_HALO = 2.5;
+const CLIP_ARROW_GLOW_BLUR = 1.5;
 
 // Tell the lane layer which route or key is lifted and how hard to dim
 // the rest, from the highlight state and the wash state. Called

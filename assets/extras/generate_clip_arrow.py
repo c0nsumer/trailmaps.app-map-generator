@@ -14,8 +14,8 @@ back edge so the head reads as a solid arrow rather than a thin
 chevron. Using the same shape for both on-trail direction arrows and
 clip-continuation arrowheads keeps the visual vocabulary consistent.
 
-MapLibre interprets pixel values such that 128 = the boundary of the
-shape, < 128 = outside, > 128 = inside, with the unit being "distance
+MapLibre interprets pixel values such that 191 (0.75) = the boundary of
+the shape, < 191 = outside, > 191 = inside, with the unit being "distance
 from edge in pixels at the sprite's native resolution." That lets
 MapLibre's `icon-color` cleanly tint the shape at any size without
 rasterisation artefacts; `icon-halo-color` + `icon-halo-width` then
@@ -117,30 +117,39 @@ def _arrowhead_verts(size):
     ]
 
 
-def generate_sdf(size, radius=8):
+def generate_sdf(shape, canvas, radius, inset):
     """Generate an SDF PNG of an upward-pointing arrowhead-with-notch.
 
-    Args:
-        size: Output edge length in pixels (square image).
-        radius: SDF falloff radius in output pixels. MapLibre's standard
-            buffer is 8 - at the boundary pixel value is 128, and
-            ±`radius` pixels away the value reaches 0 or 255.
+    The arrowhead is `shape` pixels tall and wide, centered on a
+    `canvas` pixel square, and the field follows MapLibre's glyph
+    convention: 191 (0.75) at the visible edge, 255 two eighths of
+    `radius` inside it, 0 six eighths of `radius` outside it. MapLibre
+    assumes `radius` is 8 icon pixels, so a field with a larger radius
+    renders every halo width and blur `radius / 8` times wider than
+    nominal, and lets a halo reach that much further before the field
+    clamps. The canvas must leave at least 0.75 * radius around the
+    shape, or the clamp lands inside the icon box and a wide halo tints
+    the whole box.
+
+    `inset` (pixels) moves the visible edge inside the drawn polygon.
+    The earlier field put the polygon edge at 128, so MapLibre's 0.75
+    threshold ate half the old radius per side; the inset reproduces
+    that visible shape, which is the one the maps were tuned with.
 
     Returns:
-        PIL.Image (mode 'L', size×size).
+        PIL.Image (mode 'L', canvas x canvas).
     """
-    verts = _arrowhead_verts(size)
+    margin = (canvas - shape) / 2.0
+    verts = [(x + margin, y + margin) for x, y in _arrowhead_verts(shape)]
 
     # Pixel centres at (x+0.5, y+0.5)
-    yy, xx = np.indices((size, size), dtype=np.float64)
+    yy, xx = np.indices((canvas, canvas), dtype=np.float64)
     xx += 0.5
     yy += 0.5
 
     signed = _signed_distance_to_polygon(xx, yy, verts)
 
-    # Map to MapLibre's SDF byte range: 128 = boundary, +radius → 255,
-    # -radius → 0, clamped at the extremes.
-    out = 128.0 + signed * (127.0 / radius)
+    out = 191.0 + (signed - inset) * (256.0 / radius)
     out = np.clip(out, 0, 255).astype(np.uint8)
 
     return Image.fromarray(out, mode="L")
@@ -149,31 +158,18 @@ def generate_sdf(size, radius=8):
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
 
-    # SDF radius controls how wide the falloff zone is. Larger radius
-    # gives smoother edges at very large icon-size values AND leaves
-    # room for icon-halo-width to render a visible outline outside the
-    # filled arrowhead, but eats interior pixels - at MapLibre's
-    # default render threshold (~alpha 192/255) the visible filled
-    # area ends up smaller than the icon footprint as radius grows.
-    # radius=4/6 strikes a balance: enough gradient zone for a
-    # 1-1.5 logical-px halo to render cleanly, while leaving most of
-    # the arrowhead body visible.
-
-    # 1x: 16×16 - close to the size of existing sprites (most are 19×19).
-    # Smaller radius (2) than the 2x asset's because the arrowhead body
-    # is so thin at this resolution that a larger gradient erodes the
-    # visible interior to almost nothing. The trade-off is less halo
-    # room at 1x - but most users hit the @2x branch on modern
-    # high-DPI displays.
-    one_x = generate_sdf(16, radius=2)
+    # Twice MapLibre's assumed radius (8 icon px): halos and blurs on
+    # this icon render at twice their nominal width and can reach twice
+    # as far, which the lift's yellow rim needs (templates/app.js,
+    # clip-arrow-glow layers). The shape is the 16 px arrowhead the
+    # maps were tuned with, on a 40 px canvas (12 px margin, at least
+    # 0.75 * radius). The inset keeps the visible arrowhead at the size
+    # the old field gave it: half its radius per side (1 px at 1x,
+    # 1.5 px at 2x, as those fields differed).
+    one_x = generate_sdf(shape=16, canvas=40, radius=16, inset=1.0)
     one_x.save(os.path.join(here, "clip-arrow.sdf.png"))
     print(f"Wrote clip-arrow.sdf.png ({one_x.size})")
 
-    # 2x: 32×32 retina. radius=3 keeps enough gradient zone for a thin
-    # halo without eroding so much of the arrowhead body that the
-    # filled fill becomes a sliver - important because the arrowhead
-    # shape's inscribed circle is small (the body is thin compared to
-    # the bbox), so larger radii leave very few pixels above threshold.
-    two_x = generate_sdf(32, radius=3)
+    two_x = generate_sdf(shape=32, canvas=80, radius=32, inset=1.5)
     two_x.save(os.path.join(here, "clip-arrow.sdf@2x.png"))
     print(f"Wrote clip-arrow.sdf@2x.png ({two_x.size})")
