@@ -3,24 +3,8 @@
 // the background after install, and everything else the rider
 // touches at runtime is cached on-fetch by the handler below.
 //
-// Config is injected at build time by build.py:
-//   SW_CONFIG.CACHE_SCOPE    - the map's slug. Cache Storage is
-//                              per-ORIGIN, not per-SW-scope, and
-//                              multiple maps are served as paths on
-//                              one origin, so every cache name must
-//                              carry the slug or one map's cleanup
-//                              deletes its neighbors' offline caches
-//   SW_CONFIG.CACHE_VERSION  - hash-based cache version string,
-//                              computed over EVERY file in the
-//                              build (not just precached ones)
-//   SW_CONFIG.PRECACHE_URLS  - priority list for background fill
-//                              (omits most glyph PBFs - those flow
-//                              through cache-on-fetch)
-//   SW_CONFIG.PRECACHE_BYTES - {url: size} for the above, so the page
-//                              can weight offline progress by bytes
-//                              instead of by file count
-//   SW_CONFIG.PMTILES_FILES  - list of .pmtiles filenames for
-//                              Range request handling
+// SW_CONFIG is injected at build time; build.py generate_service_worker
+// documents its fields.
 
 /*__SW_CONFIG__*/
 
@@ -32,29 +16,22 @@ const CACHE_PREFIX = `trail-map-${SW_CONFIG.CACHE_SCOPE}-`;
 const CACHE_NAME = `${CACHE_PREFIX}${SW_CONFIG.CACHE_VERSION}`;
 
 // Pre-slug cache names were `trail-map-<12 hex chars>` with no map
-// identity. They can't be attributed to a map, so the first slugged
-// version to clean up deletes them all - a one-time migration cost
-// (the affected maps re-precache on their next online visit), versus
-// the old behavior which cross-deleted on EVERY cleanup. Anchored so
-// slugged names can never match.
+// identity, so they can't be attributed to a map. Cleanup deletes them
+// all; the affected maps re-precache on their next online visit.
+// Anchored so slugged names can never match.
 const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 
 // ============================================================
 // Install - complete immediately, precache in background
 // ============================================================
-// Install used to block on cache.addAll(PRECACHE_URLS), which on
-// first visit pulled ~20 MB across hundreds of files (full PMTiles,
-// every glyph PBF, sprites, etc.) in parallel with MapLibre's own
-// foreground rendering requests. On constrained connections this
-// produced a long tail of "blocked" HTTP/3 streams contending with
-// the critical-path resources and degraded first paint badly.
-//
-// New design: install completes essentially immediately, then a
-// background precache trickles through PRECACHE_URLS one request
-// at a time. The fetch handler below also writes runtime fetches
-// to the cache, so any asset the rider actually touches becomes
-// available offline as a side effect of normal use. Combined, this
-// means first paint is unblocked, and offline coverage grows
+// Blocking install on cache.addAll(PRECACHE_URLS) would pull ~20 MB
+// across hundreds of files in parallel with MapLibre's own foreground
+// requests, and on constrained connections that starves first paint.
+// So install completes essentially immediately, then a background
+// precache trickles through PRECACHE_URLS one request at a time. The
+// fetch handler below also writes runtime fetches to the cache, so any
+// asset the rider actually touches becomes available offline as a side
+// effect of normal use. First paint is unblocked, and offline coverage grows
 // progressively (visited areas immediately via cache-on-fetch;
 // unvisited areas as the background precache catches up, typically
 // within tens of seconds to a couple of minutes depending on
@@ -86,7 +63,7 @@ const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 // backgroundPrecache() still runs at install time, filling the NEW
 // cache alongside the old one, so by the time the rider reloads the
 // new version is already warm.
-self.addEventListener("install", (event) => {
+self.addEventListener("install", () => {
     // Fire-and-forget. Intentionally NOT inside event.waitUntil so
     // it cannot delay install completion.
     backgroundPrecache();
@@ -111,14 +88,11 @@ async function backgroundPrecache() {
     // revalidation against the server via conditional GET - Caddy
     // serves most assets with max-age=86400, so the default fetch
     // could blindly cache yesterday's HTTP-cached bytes for up to
-    // 24 h post-deploy. Revalidation gives the same freshness
-    // guarantee as the old cache: "reload" but lets UNCHANGED files
-    // answer 304 and fill from the browser's HTTP cache instead of
-    // re-downloading: a new CACHE_VERSION re-precaches everything,
-    // and before this only a one-line app.js change made every
-    // installed rider re-pull the full ~20-35 MB build (PMTiles
-    // included) over the network on each deploy. Same posture as the
-    // fetch handler below.
+    // 24 h post-deploy. Unlike cache: "reload", UNCHANGED files answer
+    // 304 and fill from the browser's HTTP cache, so a new
+    // CACHE_VERSION does not re-download the full ~20-35 MB build
+    // (PMTiles included) for every installed rider. Same posture as
+    // the fetch handler below.
     //
     // RESUMABLE: the browser is free to terminate this worker while
     // the fire-and-forget loop is still trickling (Chrome ~30 s idle,
@@ -185,9 +159,8 @@ async function backgroundPrecache() {
 // "Not yet active" is detected via the registration slots, NOT an
 // identity compare against `self`: registration.active holds a
 // ServiceWorker handle while `self` is the global scope, so
-// `reg.active !== self` is always true and silently blocked every
-// cleanup (the two-caches-forever bug). A worker that isn't active
-// occupies reg.installing or reg.waiting itself, so the null checks
+// `reg.active !== self` is always true and would block every cleanup.
+// A worker that isn't active occupies reg.installing or reg.waiting itself, so the null checks
 // below cover (a), and they also keep an active worker from deleting
 // a SUCCESSOR's half-filled cache when a RESUME_PRECACHE ping
 // arrives while a newer version installs alongside. The state check
@@ -217,7 +190,7 @@ async function cleanupOldCaches() {
 }
 
 // ============================================================
-// Message handler - silent update swap + B.7 "Reload" toast
+// Message handler - silent update swap + "Reload" toast
 // ============================================================
 // SKIP_WAITING is posted to this worker (the waiting one) by two
 // paths in app.js: the silent swap (after CORE_STATUS confirms this
@@ -271,9 +244,9 @@ async function reportCoreStatus(port) {
             // Full precache verified - core is a subset.
             coreComplete = true;
         } else {
-            const pmtiles = new Set(SW_CONFIG.PMTILES_FILES || []);
+            const pmtiles = new Set(SW_CONFIG.PMTILES_FILES);
             coreComplete = true;
-            for (const url of SW_CONFIG.PRECACHE_URLS || []) {
+            for (const url of SW_CONFIG.PRECACHE_URLS) {
                 if (pmtiles.has(url)) continue;
                 if (!(await cache.match(url))) {
                     coreComplete = false;
@@ -302,8 +275,8 @@ async function reportCoreStatus(port) {
 // which is exactly why a rider can have a fully painted map and no
 // offline coverage at all.
 async function reportPrecacheStatus(port) {
-    const urls = SW_CONFIG.PRECACHE_URLS || [];
-    const sizes = SW_CONFIG.PRECACHE_BYTES || {};
+    const urls = SW_CONFIG.PRECACHE_URLS;
+    const sizes = SW_CONFIG.PRECACHE_BYTES;
     let totalBytes = 0;
     for (const url of urls) totalBytes += sizes[url] || 0;
 
@@ -339,10 +312,9 @@ async function reportPrecacheStatus(port) {
 // ============================================================
 // Activate - claim clients; old-cache cleanup is deferred
 // ============================================================
-// Old caches are deliberately NOT deleted here (they were, until the
-// silent-swap flow landed). They are what makes an early skipWaiting
-// safe: at swap time the new cache holds only the core files, and the
-// previous version's .pmtiles archives keep serving Range requests
+// Old caches are deliberately NOT deleted here. They are what makes
+// the silent swap safe: at swap time the new cache holds only the core
+// files, and the previous version's .pmtiles archives keep serving Range requests
 // (see handleRangeRequest) while the new precache trickles in. So a
 // rider who auto-updated in the parking lot and immediately lost
 // signal still has full offline tile coverage, just briefly from
@@ -367,6 +339,12 @@ self.addEventListener("fetch", (event) => {
     // Only handle same-origin requests
     if (url.origin !== self.location.origin) return;
 
+    // The handlers below are GET/HEAD only. Cache.match and cache.put
+    // are keyed for GET, so any other method (POST, etc.) goes straight
+    // to the network. HEAD stays in because of the terrain precheck
+    // handled below.
+    if (event.request.method !== "GET" && event.request.method !== "HEAD") return;
+
     // Check if this is a Range request for a PMTiles file
     const isPMTiles = SW_CONFIG.PMTILES_FILES.some((f) =>
         url.pathname.endsWith(f)
@@ -376,19 +354,16 @@ self.addEventListener("fetch", (event) => {
         return;
     }
 
-    // HEAD requests: satisfy from the GET cache. cache.match by
-    // default is method-aware, so a cached GET won't match a HEAD
-    // lookup. addTerrainLayers in app.js does a HEAD precheck on
-    // terrain.pmtiles before adding the source - offline, the GET
-    // is cached but a strict match would miss, the fetch would
-    // fall through to network, fail, and the terrain layer would
-    // never be added. Synthesize a 200 with no body (HEAD has no
-    // body anyway) from the GET cache entry so the precheck passes
-    // and the subsequent Range requests find their cached blob.
-    // Current cache first, then any older cache: right after a
-    // silent swap the new cache may not hold terrain.pmtiles yet,
-    // but the previous version's copy can answer the precheck (the
-    // Range handler falls back to it the same way).
+    // HEAD requests: satisfy from the GET cache. cache.match is
+    // method-aware, so a cached GET won't match a HEAD lookup, and
+    // addTerrainLayers in app.js does a HEAD precheck on
+    // terrain.pmtiles before adding the source. Offline, a strict
+    // match would miss, the fetch would fail, and the terrain layer
+    // would never be added. So answer with a body-less response built
+    // from the GET entry. Current cache first, then any older cache:
+    // right after a silent swap the new cache may not hold
+    // terrain.pmtiles yet, but the previous version's copy can answer
+    // the precheck (the Range handler falls back the same way).
     if (event.request.method === "HEAD") {
         event.respondWith(
             (async () => {
@@ -432,13 +407,13 @@ self.addEventListener("fetch", (event) => {
     // `cache: "no-cache"` posture as backgroundPrecache above.
     //
     // Lookups are scoped to the CURRENT cache (cache.match, not the
-    // global caches.match this used to call). Old caches now outlive
-    // activation until the new precache verifies complete, and the
-    // global lookup searches caches oldest-first, which would pin a
-    // freshly swapped rider to the oldest surviving version. Old
-    // caches are consulted only as a last resort when the network
-    // fetch itself fails: a slightly stale asset beats a dead page
-    // for a rider who updated moments before losing signal.
+    // global caches.match). Old caches outlive activation until the
+    // new precache verifies complete, and the global lookup searches
+    // caches oldest-first, which would pin a freshly swapped rider to
+    // the oldest surviving version. Old caches are consulted only as a
+    // last resort when the network fetch itself fails: a slightly
+    // stale asset beats a dead page for a rider who updated moments
+    // before losing signal.
     event.respondWith(
         (async () => {
             const cache = await caches.open(CACHE_NAME);
@@ -521,8 +496,12 @@ async function handleRangeRequest(request) {
         });
     }
 
-    const start = parseInt(match[1]);
-    const end = match[2] ? parseInt(match[2]) : blob.size - 1;
+    const start = parseInt(match[1], 10);
+    // Clamp: a range past EOF must not claim bytes the blob lacks.
+    const end = Math.min(
+        match[2] ? parseInt(match[2], 10) : blob.size - 1,
+        blob.size - 1
+    );
 
     // Forward the cached response's validators. The pmtiles client
     // reads the archive's header/root directory once and caches it in

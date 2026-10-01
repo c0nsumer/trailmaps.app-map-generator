@@ -18,7 +18,7 @@
     <!-- Open Graph + Twitter Card metadata for rich share-link previews.
          Values substituted at build time (copy_templates). Always-on,
          no config gate - these are harmless metadata that benefit
-         search engines as well as the Share button (B.3) flow. URLs
+         search engines as well as the Share button flow. URLs
          are relative; OG-tag scrapers (Facebook, WhatsApp, Telegram,
          iMessage, Twitter) resolve them against the page URL they
          fetched, and default og:url to the fetched URL when omitted -
@@ -85,15 +85,13 @@
     __COLOR_SCHEME_BOOTSTRAP__
 
     <!-- Vendor libraries (bundled locally for offline support).
-         All four runtime scripts (these three plus app.js at end of
-         body) carry `defer` so they don't block HTML parsing or
-         first paint. Defer preserves execution order across all
-         deferred scripts in document order, so app.js still sees
-         maplibregl / pmtiles / basemaps on the global by the time it
-         runs. The SW precaches and intercepts these requests
-         identically regardless of attribute (cache-list is built by
-         filesystem walk in build.py, not by parsing this template),
-         so PWA offline behavior is unchanged. -->
+         Every classic runtime script (these plus app.js at end of
+         body) carries `defer` so it doesn't block HTML parsing or
+         first paint. Deferred scripts run in document order, so
+         app.js still sees maplibregl / pmtiles / basemaps on the
+         global by the time it runs. The SW cache list is built by a
+         filesystem walk in build.py, not by parsing this template,
+         so the attribute does not affect offline behavior. -->
     <link rel="stylesheet" href="vendor/maplibre-gl.css">
     <!-- MapLibre GL JS 6 is ESM only. This module script puts it on
          window.maplibregl for the classic scripts below, which still
@@ -107,11 +105,11 @@
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
     <!-- Isolines from the shipped terrain raster-dem; loaded
-         unconditionally (31 KB) but only exercised when this map
+         unconditionally but only exercised when this map
          has terrain (addContourLayers gates on the terrain source
          and degrades to no contours if this script is missing). -->
     <script src="vendor/maplibre-contour.js" defer></script>
-    <!-- maplibre-gl-lanes (50 KB): draws every route. Without it the
+    <!-- maplibre-gl-lanes: draws every route. Without it the
          page says it cannot start (app.js init) instead of showing a
          basemap with no trails. -->
     <script src="vendor/maplibre-gl-lanes.js" defer></script>
@@ -121,10 +119,9 @@
          loadTrails(), which consumes this request instead of issuing
          its own. An early fetch() rather than <link rel="preload">:
          Safari never matches an as=fetch preload to a later fetch()
-         (with or without `crossorigin`), so it downloaded the file
-         twice, in parallel, with no speedup; profiled 2026-09-15 on
-         Safari 27. Chromium dedupes the preload, but a shared request
-         is one download in every engine. The 20s abort matches
+         (with or without `crossorigin`), so it downloads the file
+         twice in parallel. Chromium dedupes the preload, but a shared
+         request is one download in every engine. The 20s abort matches
          fetchWithTimeout's default and, like it, covers only the wait
          for response headers. The rejection handler marks a failure
          as handled here; loadTrails() still sees it and shows the
@@ -258,9 +255,9 @@
            ratio before image bytes arrive). Empty string when dims
            can't be determined (Pillow missing, SVG without viewBox,
            etc.) - accept the small CLS risk over emitting wrong dims.
-         - fetchpriority="high" is unconditional in the template - it
+         - fetchpriority="high" is unconditional in the template: it
            tells the browser to prioritize the LCP image over deferred
-           scripts. Browsers without the hint ignore it (no regression).
+           scripts, and browsers without the hint ignore it.
          When the img is shown, the title span is visually hidden via
          CSS but stays in the DOM for screen readers + as a fallback if
          the image fails to load. -->
@@ -282,22 +279,18 @@
          from assistive tech. -->
     <div id="map-scale" aria-hidden="true"></div>
 
-    <!-- Off-screen location indicator (managed by app.js) -->
-    <!-- Off-screen location indicator. Static markup, not rebuilt per
+    <!-- Off-screen location indicator (managed by app.js). Static
+         markup, not rebuilt per
          frame: updateLocationIndicator (app.js) runs on every pan/zoom
          frame while Locate is active and only touches the arrow's
          rotate transform, the distance pill's text, and the container's
          left/top - an innerHTML rebuild here forced style+layout work
          on every frame of a ride-long interaction.
 
-         The arrow is mdi:arrow-up-bold (Apache 2.0, Pictogrammers), a
-         chunky shafted arrow that reads as a directional pointer rather
-         than a location marker. Its predecessor, the Unicode triangle ▲
-         (U+25B2), had a 3-fold rotational symmetry problem: at rotations
-         like 60° / 120° / 180° the base corners read as visually equal
-         to the apex, making the pointing direction ambiguous at small
-         sizes. The shafted arrow's clear head + tail kills that
-         ambiguity. Apex is at the top of the 24×24 viewBox so app.js's
+         The arrow is mdi:arrow-up-bold (Apache 2.0, Pictogrammers). A
+         shafted arrow keeps its pointing direction unambiguous at every
+         rotation, which a plain triangle does not at small sizes. Apex
+         is at the top of the 24×24 viewBox so app.js's
          bearing-to-rotation math (0° = north = up) maps directly. -->
     <div id="off-screen-indicator" class="off-screen-indicator hidden" aria-hidden="true">
         <span class="off-screen-indicator-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,20H10V11L6.5,14.5L4.08,12.08L12,4.16L19.92,12.08L17.5,14.5L14,11V20Z"/></svg></span>
@@ -322,24 +315,13 @@
         </svg>
     </button>
 
-    <!-- Floating button stack - one corner-anchored group, top-right:
-         Locate (top, most-used - frequently checked while riding),
-         Reset View, and Options (below). It respects the same 12 px
-         corner inset as the brand element on the left. Bottom-right
-         belongs to the routes panel (see #route-panel below), which
-         absorbed the old Search FAB; the MapLibre attribution sits at
-         bottom-LEFT (separate corner, no conflict).
-
-         Z-INDEX vs OVERLAYS: FABs (and the routes panel) sit BELOW an
-         open overlay (overlay z=6/7, FAB/panel z=5) so the overlay
-         panel and its close-X cleanly cover them at the same corner -
-         no visual overlap at the close button. The trade-off is that
-         while one overlay is open, tapping another launcher to switch
-         doesn't work (it's hidden by the overlay's backdrop). The
-         rider has to close the current overlay first. That's an
-         acceptable two-tap switch given how rarely overlays are used
-         together. -->
-    <div id="fab-stack-top" class="fab-stack fab-stack-top" role="group" aria-label="Map controls: locate, reset view, and options">
+    <!-- Floating button stack, top-right, 12 px corner inset like the
+         brand on the left. Locate stays on top because riders check it
+         most. Bottom-right belongs to the routes panel (#route-panel
+         below); the MapLibre attribution sits bottom-left. The FABs sit
+         below open overlays: the z-index rationale lives with the
+         values in style.css. -->
+    <div id="fab-stack-top" class="fab-stack fab-stack-top" role="group" aria-label="Map controls">
         <button id="toggle-locate" class="fab" type="button" aria-pressed="false" aria-label="Locate me">
             <!-- mdi:crosshairs-gps (Apache 2.0, Pictogrammers) - inner dot
                  split into a separate <circle class="locate-dot"> so CSS can
@@ -351,7 +333,7 @@
                 <path d="M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z"/>
             </svg>
         </button>
-        <button id="toggle-reset-view" class="fab fab-reset-view" type="button" aria-label="Reset view">
+        <button id="toggle-reset-view" class="fab" type="button" aria-label="Reset view">
             <!-- mdi:image-filter-center-focus (Apache 2.0, Pictogrammers).
                  Four corner brackets + a center dot - the universal
                  viewfinder / "frame this content" pattern. Chosen over
@@ -393,21 +375,14 @@
         <!-- GPX end -->
     </div>
     <!-- Routes panel - the map's ONE routes surface, docked bottom-right
-         (the old Search FAB's corner, kept for one-handed thumb reach).
-         Progressive disclosure over the rider's intent ladder:
-           chip (round list-icon button)  →  key card  →  find (search overlay)
-         The key card pairs each visible route's color with its name so
-         same-shaped colored loops are tellable apart at a glance; rows
-         tap through to highlightRoute. The Search row pinned at the
-         card's bottom expands into the full search overlay - the finder
-         is the panel's expanded state, not a separate destination.
-         The panel is the map's key and always shows - only two docked
-         forms exist, a .is-collapsed class flip (both live in the DOM):
-         key card or round list-icon chip. The boot form is decided by
-         initRoutePanel() (rider's stored boolean, else a viewport-aware
-         default). The `hidden` class below only suppresses an empty
-         card during the boot data load; rebuildRoutePanel() clears it
-         once the rows are ready. -->
+         for one-handed thumb reach. It has two docked forms, a round
+         list-icon chip and the key card, both live in the DOM and
+         switched by an .is-collapsed class flip. initRoutePanel()
+         picks the boot form (rider's stored boolean, else a
+         viewport-aware default). The Search row at the card's bottom
+         opens the finder overlay. The `hidden` class below only
+         suppresses an empty card during the boot data load;
+         rebuildRoutePanel() clears it once the rows are ready. -->
     <div id="route-panel" class="route-panel hidden">
         <!-- Collapsed state: a round icon-only FAB matching the
              top-right stack (shared .fab class keeps the chrome in
@@ -438,7 +413,7 @@
                  real input greets the rider inside the overlay. The
                  aria-label is rewritten at boot with the map's actual
                  search targets; aria-pressed is maintained by the
-                 shared setOverlayOpen() plumbing, like the old FAB. -->
+                 shared setOverlayOpen() plumbing. -->
             <button id="route-panel-search" class="route-panel-search" type="button" aria-label="Search routes, trails, and places" aria-pressed="false" aria-controls="search-overlay">
                 <!-- mdi:magnify (Apache 2.0, Pictogrammers) -->
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
@@ -450,14 +425,13 @@
     </div>
 
     <!-- Search overlay - full-viewport layer with a panel inside.
-         The outer .search-overlay is the backdrop dim + click-outside
-         target. The inner .search-overlay-panel is the actual visible
-         chrome (half-sheet on mobile, centered card on desktop).
-         Triggered by the routes panel's Search row; dismissed by
-         Cancel button, Esc, tap on the backdrop (anywhere outside
-         the panel), or result selection. aria-modal="true": the
-         backdrop covers the map and the FABs / routes panel fade out
-         under it, and Tab is trapped inside (dialogFocusIn in app.js). -->
+         The outer overlay is the backdrop dim + click-outside target;
+         the inner panel is the visible chrome (half-sheet on mobile,
+         centered card on desktop). The GPX and Options overlays below
+         share this pattern. Triggered by the routes panel's Search row;
+         dismissed by Cancel, Esc, a backdrop tap, or result selection.
+         aria-modal="true": Tab is trapped inside (dialogFocusIn in
+         app.js). -->
     <div id="search-overlay" class="search-overlay" role="dialog" aria-modal="true" aria-label="Search routes, trails, and places" hidden>
         <div class="search-overlay-panel">
             <div class="search-overlay-header">
@@ -499,14 +473,12 @@
          configured event GPX file (CONFIG.gpxDownloads; rows rendered
          by app.js). Only present on maps with event_mode.gpx - the
          whole GPX-start/end block is stripped at build time otherwise.
-         Same outer-backdrop / inner-panel pattern as the Search
-         overlay. Opens via the GPX FAB - ALWAYS, even for a single
-         file, so a curiosity tap shows a dismissible sheet instead of
-         instantly dropping a file. Stays open across row taps so a
-         rider can grab several routes; dismissed by Close X, Esc, tap
-         on the backdrop, or tapping the GPX FAB again. Modal for the
-         same reasons as Search; the panel's tabindex="-1" is the
-         initial focus target, as in Options. -->
+         Same backdrop/panel pattern as the Search overlay. Opens via
+         the GPX FAB - ALWAYS, even for a single file, so a curiosity
+         tap shows a dismissible sheet instead of instantly dropping a
+         file. Stays open across row taps so a rider can grab several
+         routes. The panel's tabindex="-1" is the initial focus target,
+         as in Options. -->
     <div id="gpx-overlay" class="gpx-overlay" role="dialog" aria-modal="true" aria-labelledby="gpx-overlay-title" hidden>
         <div class="gpx-overlay-panel" tabindex="-1">
             <div class="gpx-overlay-header">
@@ -525,14 +497,10 @@
     </div>
     <!-- GPX end -->
 
-    <!-- Options overlay - full-viewport layer with a panel inside.
-         Same outer-backdrop / inner-panel pattern as the Search
-         overlay so dimming + dismissal behave consistently. On
-         mobile the panel fills the viewport (dim is hidden behind
-         the panel); on desktop the panel is a centered card with the
-         dim visible around it. Triggered by the Options FAB;
-         dismissed by Close X, Esc, tap on the backdrop, or tapping
-         the Options FAB again. -->
+    <!-- Options overlay - same backdrop/panel pattern as the Search
+         overlay. On mobile the panel fills the viewport and hides the
+         dim; on desktop it is a centered card with the dim visible
+         around it. -->
     <div id="options-overlay" class="options-overlay" role="dialog" aria-modal="true" aria-labelledby="options-overlay-title" hidden>
         <!-- tabindex="-1": initial focus target on open, so the
              labelled dialog is announced and Tab starts inside it
@@ -550,9 +518,9 @@
             <div class="options-overlay-body">
             <!-- What to show - collapsible accordion (default open).
                  Holds every layer-visibility toggle, the Labels segmented
-                 control, Season cycle, Emergency Access toggle, and (Phase 2)
-                 Toilets + Drinking Water - one unified group of "what's
-                 painted on the map." -->
+                 control, Season cycle, Emergency Access toggle, Toilets and
+                 Drinking Water - one unified group of "what's painted on
+                 the map." -->
             <section class="opt-section">
                 <h3 class="opt-section-header">
                     <span class="opt-section-title">What to show</span>
@@ -589,18 +557,16 @@
                              only once a glyph lands.
 
                              INSIDE the row, wrapping onto a second line via
-                             .opt-toggle-row-haskey. An earlier version made it a
-                             sibling to stop taps from flipping the toggle, but
-                             that cost the row its hover wash and its tap target
-                             over the key area, so the key read as a dead region.
-                             Being part of the row is the correct behaviour: one
-                             hover target, one tap target. -->
+                             .opt-toggle-row-haskey, so the key shares the row's
+                             hover wash and tap target instead of reading as a
+                             dead region. -->
                         <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty ratings"></ul>
                     </div>
 
                     <!-- Direction arrows - controls visibility of the
-                         decor-arrow MapLibre layer (chevrons placed
-                         along one-way / reversible trails). Hidden
+                         decor-chevron-fwd / decor-chevron-rev MapLibre
+                         layers (chevrons placed along one-way /
+                         reversible trails). Hidden
                          entirely when the build emitted no arrows
                          (set by app.js after the layer renders). -->
                     <div class="opt-row opt-toggle-row hidden" id="toggle-direction-arrows" data-poi="direction_arrows" data-on="true">
@@ -831,13 +797,8 @@
                  entries sharing one anatomy (icon badge + title + help
                  line). Three are buttons; the offline row is the
                  non-interactive .is-static variant.
-                 No section header: these rows are visually distinct
-                 from the toggle rows above (full-row buttons with icons +
-                 descriptions vs. toggle chips with segmented controls),
-                 so a generic "More" label adds noise without information.
-                 The .opt-section's existing border-top hairline still
-                 provides the visual break between layer toggles and
-                 actions. -->
+                 No section header: the .opt-section border-top hairline
+                 is the only break from the toggle rows above. -->
             <section class="opt-section">
                 <div class="opt-section-body">
                     <!-- Share start -->
@@ -898,10 +859,8 @@
                     <button id="about-btn" class="opt-action-row" type="button">
                         <span class="opt-action-icon" aria-hidden="true">
                             <!-- mdi:information-outline (Apache 2.0, Pictogrammers).
-                                 Replaces the previous Unicode &#9432; (ⓘ) which
-                                 rendered small/thin/inconsistently across
-                                 platforms compared to the SVG icons in the
-                                 sibling Share / Install rows. -->
+                                 Matches the SVG icons in the sibling Share /
+                                 Install rows. -->
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                 <path d="M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z"/>
                             </svg>
