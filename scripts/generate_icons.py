@@ -292,49 +292,39 @@ def generate_safari_pinned_tab(source_img, output_dir):
 def generate_manifest(config, output_dir, bg_color=None):
     """Generate a PWA web manifest with app name from config.
 
-    The manifest drives Chrome's WebAPK install on Android - Android's
-    uninstall toast and home-screen label both come from these fields.
-    Notably:
+    The manifest drives Chrome's WebAPK install on Android: the uninstall
+    toast and home-screen label come from these fields.
 
-    - `name` (full app name) shows in the install prompt and the
-      uninstall confirmation toast.
+    - `name` shows in the install prompt and the uninstall toast.
     - `short_name` shows under the home-screen icon.
     - `id` is omitted intentionally, and adding one is a trap. Chrome
       falls back to start_url as the identity, which resolves to
-      `/<slug>/` from this manifest's location. Two ways of pinning it
-      explicitly have been considered; both are wrong:
+      `/<slug>/`. Two ways of pinning it explicitly are wrong:
 
-      1. `"id": "/<slug>/"` (slug-rooted absolute path). Shipped once,
-         back when maps deployed under `/test/<slug>/`, anticipating a
-         later move to `/<slug>/`. That put the id OUTSIDE the
-         manifest's scope (`../` resolved to `/test/<slug>/`). Per
-         Chrome's installability docs an id outside scope "may report
-         an installability warning", and a field test on a Pixel 8
-         confirmed Chrome was suppressing install prompts entirely.
-         Maps now deploy at `/<slug>/` (see the website repo's
-         deploy.sh), so that specific conflict is gone. The failure
-         mode is not: a wrong id produces no build error, only riders
-         who quietly stop seeing the install prompt.
+      1. `"id": "/<slug>/"` is outside the manifest's scope when the
+         manifest is served from a different path. Per Chrome's
+         installability docs an id outside scope "may report an
+         installability warning", and a field test on a Pixel 8 showed
+         Chrome suppressing install prompts entirely. A wrong id
+         produces no build error, only riders who quietly stop seeing
+         the install prompt.
       2. `"id": "../"` looks like it would echo start_url. It does not.
          Per the manifest spec a relative id is parsed against the
-         ORIGIN of start_url, not against the manifest URL, so `../`
-         resolves to the origin root: shared by every map, and
-         different from today's default. It would fork every existing
-         install and collide all maps onto one identity.
+         ORIGIN of start_url, so `../` resolves to the origin root:
+         shared by every map, and different from the default. It would
+         fork every existing install and collide all maps onto one
+         identity.
          https://www.w3.org/TR/appmanifest/#id-member
 
-      Leaving id absent keeps identity pinned to start_url, which is
-      already stable at `/<slug>/`. Nothing is lost by waiting: if
-      start_url or this manifest's own path ever moves, that same
-      commit must add `"id"` set to the OLD resolved start_url (e.g.
-      `"/<slug>/"`) and verify the value lands inside the resolved
-      scope. Adding it then preserves existing installs exactly as
-      well as adding it now would have, which is precisely what the
-      id member exists for.
+      Leaving id absent keeps identity pinned to start_url. If start_url
+      or this manifest's own path ever moves, that same commit must add
+      `"id"` set to the OLD resolved start_url (e.g. `"/<slug>/"`) and
+      verify it lands inside the resolved scope; that preserves existing
+      installs.
     - The 192 + 512 icon pair is required for a real WebAPK install.
       Without 512, Chrome silently degrades to a bare home-screen
       shortcut and Android shows the package name in the uninstall
-      toast (the "Uninstalled com.android..." behavior).
+      toast.
     """
     name = config.get("name", "Map")
     title = config.get("title", "Trail Map")
@@ -414,13 +404,10 @@ def generate_icons(source_path, output_dir, config):
         console.info("         Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
         return False
 
-    # Non-square sources used to error out, forcing the curator to
-    # crop or pad by hand. We now auto-pad to square (centered on a
-    # transparent canvas of side = max(w, h)) so any logo aspect
-    # ratio can flow through icon generation. The print line is the
-    # curator's signal that padding happened - if they want a tighter
-    # crop or a colored background, they can pre-process the source
-    # themselves; otherwise this is "good enough" for every variant.
+    # Auto-pad non-square sources to a transparent square (side = max(w, h))
+    # so any aspect ratio flows through. The print line tells the curator
+    # padding happened; a tighter crop or colored background means
+    # pre-processing the source.
     if img.width != img.height:
         side = max(img.width, img.height)
         console.info(

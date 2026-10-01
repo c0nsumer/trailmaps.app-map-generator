@@ -14,11 +14,9 @@ import console
 
 def _bbox_signature(bbox, maxzoom, minzoom=0):
     """Stable text signature for a (bbox, minzoom, maxzoom) extraction
-    request. minzoom joined the signature when extraction gained a
-    --minzoom bound; pre-existing sidecars lack the field and so
-    mismatch, which is the point: a min_zoom config edit (or the
-    upgrade itself) must re-extract, or the archive keeps carrying
-    unreachable low-zoom tiles."""
+    request. A sidecar written without the minzoom field mismatches,
+    which is intended: a min_zoom edit must re-extract, or the archive
+    keeps carrying unreachable low-zoom tiles."""
     sig = f"bbox={','.join(f'{v:.4f}' for v in bbox)};maxzoom={maxzoom}"
     return sig + f";minzoom={minzoom}"
 

@@ -4,9 +4,8 @@
 Queries the Overpass API for six POI categories within the configured
 bounding box (guideposts, emergency access points, attractions, toilets,
 drinking water, bicycle repair stations - see fetch_pois_from_osm),
-merges in the config-specified
-POIs (parking, trailheads, hubs, event-mode POIs), and outputs a GeoJSON
-file.
+merges in the config-specified POIs (parking, trailheads, hubs,
+event-mode POIs), and outputs a GeoJSON file.
 
 Parking areas are defined entirely in the YAML config, not fetched from OSM.
 
@@ -20,21 +19,14 @@ import os
 
 import cli
 import console
-
-# Shared narrow-resolution loader (handles ``osm_file:`` only - the
-# full path-resolution path lives in build.py for the standard
-# pipeline).
 from config_io import load_config_for_fetch
 from geodesy import haversine_m
 from osm_parser import POI_TAG_FILTERS
 from overpass import query as overpass_query
 
 # Every show_* flag that gates a POI category in build_pois_geojson.
-# build.py iterates this same tuple for its skip-the-fetch-entirely
-# gate and the dry-run summary, so a POI type added here is reflected
-# there automatically. (The gate previously hand-listed five of the
-# seven flags: a config with only show_toilets or show_drinking_water
-# enabled wrote an empty pois.geojson and never fetched.)
+# build.py iterates this same tuple for its skip-the-fetch gate and the
+# dry-run summary, so a POI type added here is reflected there.
 POI_SHOW_FLAGS = (
     "show_markers",
     "show_features",
@@ -87,43 +79,30 @@ def _dedup_osm_pois(features):
     """Collapse OSM-derived POIs of the same type within ~10m of each
     other into a single feature.
 
-    Catches the common OSM modeling pattern where the same physical
-    amenity is tagged twice - once as a way (building=yes +
-    amenity=toilets, the building footprint, whose Overpass-computed
-    center coord we use) AND once as a node (a separate
-    amenity=toilets node at or near the entrance). These represent
-    the same real-world facility but the Overpass query returns both,
-    and without dedup the search overlay reports the doubled count
-    while only one marker visually appears on the map (the second
-    stacks on top of the first). Same logic catches the rarer
-    pure-mapper-error case of two coincident nodes.
+    OSM often tags one amenity twice: a way (the building footprint,
+    whose Overpass center we use) and a node at the entrance. Overpass
+    returns both, so without dedup the search overlay reports a doubled
+    count while only one marker is visible, the second stacking on the
+    first.
 
-    Two POIs are duplicates iff they share the same poi_type, the type
-    is one where the double-tagging pattern actually occurs (toilets /
-    drinking_water / bicycle_repair_station - the building-footprint
-    amenities), AND their
-    coordinates are within 10m haversine distance. Other types are
-    never collapsed: distinct guideposts genuinely stand <10m apart at
-    junction clusters, and merging them dropped their individual ref
-    numbers. Different types at the same location are also NOT
-    collapsed (a parking + trailhead at the same coords is a
-    legitimate pattern). When collapsing, the surviving feature
-    inherits the first non-empty value seen for each property (so a
-    tagged-once name doesn't get lost to its untagged twin).
+    Two POIs are duplicates iff they share a poi_type, the type is one of
+    the building-footprint amenities (toilet / drinking_water /
+    bicycle_repair_station), and they lie within 10m. Other types never
+    collapse: distinct guideposts stand <10m apart at junction clusters,
+    and merging dropped their ref numbers. The survivor inherits the
+    first non-empty value of each property, so a tagged-once name
+    survives its untagged twin.
 
-    The 10m threshold catches the building-center-vs-node-coord
-    offset (typically 0-5m) without merging genuinely-distinct
-    same-type facilities (e.g., two outhouses at a trailhead are
-    usually 15m+ apart). Cost is O(n²) per type but n is small
-    (typically 5-50 POIs of each type per map), so well under 1ms.
+    10m catches the center-vs-node offset (typically 0-5m) without
+    merging distinct facilities (two outhouses at a trailhead are
+    usually 15m+ apart). The O(n²) cost is negligible at 5-50 POIs per
+    type.
 
-    Logs a one-line summary of how many duplicates collapsed so the
-    curator sees the OSM data structure surfacing up.
+    Logs a one-line count of collapsed duplicates.
     """
     DEDUP_M = 10.0
-    # Only the building-footprint amenities exhibit the way+node
-    # double-tagging pattern. Everything else (trail_marker, feature)
-    # can legitimately have distinct instances <10m apart.
+    # Everything else (trail_marker, feature) can legitimately have
+    # distinct instances <10m apart.
     DEDUP_TYPES = {"toilet", "drinking_water", "bicycle_repair_station"}
     out = []
     collapsed = 0
@@ -279,16 +258,8 @@ def build_pois_geojson(
                 }
             )
 
-    # Collapse OSM-side duplicates of the same type within ~10m of
-    # each other. OSM commonly tags the same amenity twice (once as
-    # a building way + once as a node at/near the entrance - both
-    # come back from the Overpass query as separate elements). Without
-    # this pass, the search overlay reports the doubled raw count
-    # ("Toilets × 12") while the map renders only the visible distinct
-    # markers (8) because the second stacks on top of the first.
-    # See _dedup_osm_pois for the threshold rationale.
-    # Curator-supplied POIs (parking, trailheads, event) are added
-    # below this pass - they're hand-entered and don't need it.
+    # See _dedup_osm_pois. Curator-supplied POIs are added below this
+    # pass; they're hand-entered and don't need it.
     features = _dedup_osm_pois(features)
 
     # Parking from YAML config

@@ -61,29 +61,12 @@ def resolve_color_modes(config, route_ids, super_expansions=None):
 def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
     """Enrich trails.geojson in-place with bucket flags + custom routes.
 
-    Runs after trails have been fetched (or loaded from cache). It:
-
-    - Strips any previously-appended custom-route features and metadata
-      entries so re-runs are idempotent.
-    - Computes three non-exclusive bucket booleans (``summer``, ``winter``,
-      ``emergency``) for every OSM-sourced route in metadata.routes. Rules:
-        winter    = (seasonal=winter in OSM)  OR  id in winter_relations
-        emergency = id in emergency_access_relations
-        summer    = id in summer_relations
-                    OR  (not winter AND not emergency)
-      "Summer is the default" - a plain OSM route with no seasonal tag and
-      no inclusion in any of the three lists is summer-only.
-      ``summer_relations`` is the opt-back-in list for year-round routes
-      (the RAMBA SBR pattern: ridden in summer AND groomed in winter).
-    - Applies ``relation_names`` display-name overrides to both
-      metadata.routes and the per-feature ``route_name`` property, and
-      warns about relation_names / relation_colors keys that match no
-      fetched route (typo guard).
-    - Loads each ``custom_routes`` entry's GeoJSON file, validates geometry
-      type (LineString / MultiLineString only), normalizes features into
-      the shape fetch_trails.py emits (one LineString per feature), and
-      appends them to ``features``. Custom-route metadata entries are added
-      to metadata.routes with bucket flags declared inline in the config.
+    Runs after trails have been fetched or loaded from cache, and is
+    idempotent: previously appended custom-route features and metadata
+    entries are stripped first. The bucket rules are in the comment at
+    the flag loop below. Also applies ``relation_names`` overrides,
+    warns about override keys that match no route, and appends each
+    ``custom_routes`` GeoJSON file in the shape fetch_trails.py emits.
 
     Returns True if anything was changed (caller writes back to disk).
     """
@@ -102,16 +85,17 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
     changed = stripped_count > 0
 
     # ----- Bucket flags on OSM routes -----
-    # Config lists are ints (OSM relation ids); metadata.routes is keyed
-    # by string. Stringify config values for lookup.
+    # Three non-exclusive booleans per route:
+    #   winter    = (seasonal=winter in OSM) OR id in winter_relations
+    #   emergency = id in emergency_access_relations
+    #   summer    = id in summer_relations OR (not winter AND not emergency)
+    # Summer is the default. ``summer_relations`` is the opt-back-in list
+    # for year-round routes (ridden in summer AND groomed in winter).
     #
-    # Super-relation expansion: if the curator listed a super-relation
-    # ID in any of these config keys, fetch_trails.py expanded it into
-    # the child route IDs and persisted the parent→children map to
-    # trails.geojson metadata. We replay that expansion here so each
-    # child route inherits the parent's bucket assignment (winter /
-    # summer / emergency) without the curator having to enumerate the
-    # children individually in YAML.
+    # Config lists are ints (OSM relation ids); metadata.routes is keyed
+    # by string. A super-relation listed in any of these keys was expanded
+    # by fetch_trails.py and its parent→children map persisted to
+    # metadata; replaying it here lets each child inherit the bucket.
     super_expansions = trails_geojson.get("metadata", {}).get("super_relation_expansions", {}) or {}
 
     def _expand(config_ids):
@@ -144,24 +128,17 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         info["winter"] = is_winter
         info["emergency"] = is_emergency
         info["isCustom"] = False
-        # Keep the OSM-source `seasonal` field as-is. It's the upstream
-        # input that `is_winter` reads above, so deleting it would make
-        # this function non-idempotent: a rebuild that reuses an existing
-        # trails.geojson (no --refresh-trails) would see `seasonal`
-        # already gone from the previous enrichment pass and miscompute
-        # `is_winter` for every OSM-tagged winter relation.
+        # Keep `seasonal`: `is_winter` reads it, so deleting it would break
+        # idempotence on a rebuild that reuses an existing trails.geojson.
 
         if prior != (is_summer, is_winter, is_emergency, False):
             changed = True
 
     # ----- Per-route display-name overrides (relation_names) -----
-    # Applied here, post-cache, so a YAML edit takes effect on a plain
-    # rebuild: the expanded trails.geojson is regenerated from the
-    # pristine trails.src.geojson base (which keeps the OSM names) on
-    # every build, so adding, changing, or REMOVING an override never
-    # needs a --refresh-trails refetch. Runs before the subway-style pass so
-    # stub features inherit the overridden route_name. Custom routes
-    # are unaffected (string IDs; they name themselves in YAML).
+    # Applied post-cache: trails.geojson is regenerated from the pristine
+    # trails.src.geojson base on every build, so adding, changing or
+    # REMOVING an override never needs a --refresh-trails refetch. Custom
+    # routes are unaffected (string IDs; they name themselves in YAML).
     relation_names = {str(k): v for k, v in (config.get("relation_names") or {}).items()}
     if relation_names:
         for rid_str, new_name in relation_names.items():
@@ -342,12 +319,8 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
             "isCustom": True,
         }
         if c_dashed:
-            # Pattern: explicit list-form on the entry takes precedence;
-            # otherwise [4, 4] (framework default for `dashed: true`).
-            # Users who need a specific pattern can either use the
-            # list form directly OR add a matching dashed_relations
-            # entry keyed by the custom id (the runtime filter treats
-            # the route id opaquely).
+            # An explicit list-form pattern on the entry wins; otherwise
+            # [4, 4], the default for `dashed: true`.
             info["dashed"] = c_dashed_pattern
             if c_dash_cap:
                 info["dashCap"] = c_dash_cap

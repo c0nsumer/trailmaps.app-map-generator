@@ -46,11 +46,9 @@ def extract_from_mapterhorn(bbox, output_path, maxzoom=12, minzoom=0):
 
     terrain_url = os.environ.get("MAPTERHORN_URL", MAPTERHORN_URL)
 
-    # Atomic (via pmtiles_util.extract): a failed/interrupted extract
-    # can't leave a partial terrain.pmtiles at the deploy path. That
-    # matters more here than for the basemap - terrain failure is
-    # NON-fatal (build.py continues without hillshade), so a partial
-    # file wouldn't stop the build and would be precached and shipped.
+    # Atomicity matters more here than for the basemap: terrain failure
+    # is NON-fatal, so a partial file would not stop the build and would
+    # be precached and shipped.
     return extract(pmtiles_cli, terrain_url, output_path, padded, maxzoom, minzoom)
 
 

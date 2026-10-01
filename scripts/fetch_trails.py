@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fetch trail data from OpenStreetMap via Overpass API.
 
-Queries the Overpass API for a super-relation and its member relations,
-fetches all member ways with geometry, merges consecutive ways that share
-the same set of relations, and outputs a GeoJSON file.
+Queries the Overpass API for the configured relations (any mix of leaf
+routes and super-relations), fetches all member ways with geometry,
+merges consecutive ways that share the same set of relations, and
+outputs a GeoJSON file.
 
 Internal build sub-stage: build.py imports and calls fetch_trails()
 directly; the ``__main__`` CLI exists only for standalone debugging and
@@ -69,16 +70,9 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     """Fetch relation metadata for every entry in `relation_ids` and
     `clipped_ids` in a single Overpass query.
 
-    Each input ID may be a leaf route relation OR a super-relation
-    (whose child relations become routes). Super-relations are
-    auto-expanded one level deep: the parent itself is dropped from
-    the result, and its children take its slot. Leaf relations pass
-    through unchanged. A super-relation whose member is itself a
-    super treats the inner one as a leaf (still one level deep).
-
-    A relation ID with no resolvable children AND no own ways is
-    treated as a leaf and returned directly (the "single-relation map"
-    fallback: the relation IS the route).
+    Each input ID may be a leaf route or a super-relation, expanded one
+    level deep (see osm_parser.detect_super_expansions): the parent is
+    dropped and its children take its slot.
 
     Returns (members, clipped, expansions, osm_base):
         members:    {rel_id: info} for every leaf route resolved from
@@ -94,10 +88,9 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
                     summer / emergency tagging) from parent slot to
                     children.
         osm_base:   the response's osm3s.timestamp_osm_base ("...Z" UTC
-                    string), "" when absent. The OSM snapshot the data
-                    came from - durable across rebuilds because it
-                    lives inside the (cached) response body, unlike a
-                    file mtime.
+                    string), "" when absent. Unlike a file mtime, it is
+                    durable across rebuilds because it lives inside the
+                    cached response body.
     """
     relation_ids = list(relation_ids or [])
     clipped_ids = list(clipped_ids or [])
@@ -112,10 +105,8 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     # union members of the outer `({...})`.
     union = ";".join(f"(relation({rid});rel(r);)" for rid in all_input_ids) + ";"
 
-    # `out body;` instead of `out tags;` so member lists come back too.
-    # Super-relation detection below needs to see type=relation members.
-    # The size delta is small (members are 3 fields each) and we already
-    # cache the response.
+    # `out body;` rather than `out tags;`, because super-relation
+    # detection below needs the type=relation members.
     query = f"""
 [out:json][timeout:120];
 ({union});
@@ -125,11 +116,9 @@ out body;
     osm_base = data.get("osm3s", {}).get("timestamp_osm_base") or ""
     all_rels = _parse_relations(data)
 
-    # Surface input IDs the response didn't contain. Without this, a
-    # route relation deleted upstream in OSM (or a typo'd ID) silently
-    # vanished from the map on the next refetch - the only signal was
-    # the aggregate "Found N relation(s)" count. The local-file path
-    # warns per missing ID (osm_parser.py); keep the two in lockstep.
+    # Warn per missing input ID, or a relation deleted upstream (or a
+    # typo'd ID) would vanish silently. osm_parser.py does the same for
+    # local files; keep the two in lockstep.
     for rid in all_input_ids:
         if rid not in all_rels:
             console.warn(
@@ -138,18 +127,13 @@ out body;
                 f"missing from the map."
             )
 
-    # Detect super-relations among the inputs (shared rule with the
-    # local-.osm path). A super-relation has type=relation members that
-    # we ALSO fetched (via rel(r)). If a parent has no fetched relation
-    # children, it's treated as a leaf.
+    # Super-relation detection is shared with the local-.osm path.
     expansions = detect_super_expansions(all_input_ids, all_rels)
 
-    # Resolve each input list: replace super-parents with their
-    # children, leave leaves alone. A relation that appears in BOTH
-    # lists ends up in the source set (clipped is "in addition to,
-    # but clip me at bbox"), but in practice the lists shouldn't
-    # overlap: clipped_relations exists for routes you DON'T want in
-    # the core trails geometry.
+    # Replace super-parents with their children. A relation in BOTH lists
+    # lands in the source set, though the lists shouldn't overlap:
+    # clipped_relations exists for routes you DON'T want in the core
+    # trails geometry.
     def _resolve(ids):
         out = []
         seen = set()
@@ -175,11 +159,7 @@ out body;
             clipped[rel_id] = info
         elif rel_id in relation_set:
             members[rel_id] = info
-        # Anything else can't happen in normal operation: every
-        # fetched leaf came in via either an explicit input ID or a
-        # super-relation expansion, and the case above handles both.
-        # If it ever does happen we silently drop the orphan rather
-        # than emitting a route the curator didn't ask for.
+        # Anything else is an orphan the curator didn't ask for; drop it.
 
     return members, clipped, expansions, osm_base
 
@@ -936,14 +916,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": g["coord"]},
                 "properties": {
-                    # Stringify route IDs to match the runtime
-                    # convention (visibleRoutes uses strings, as does
-                    # CONFIG.routes' keying). Without this, the
-                    # runtime's visible_count loop in app.js sees
-                    # ints here but compares against a Set of
-                    # strings - every match fails, every shared
-                    # endpoint reads as visible_count=0, and the
-                    # multi-route "fill black" branch never fires.
+                    # Strings, because the runtime compares against a Set of
+                    # string ids; ints would never match.
                     "route_ids": [str(r) for r in g["route_ids"]],
                     "route_ids_str": "|" + "|".join(str(r) for r in g["route_ids"]) + "|",
                     "bearing": g["bearing"],

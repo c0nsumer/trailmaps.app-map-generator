@@ -27,58 +27,26 @@ Caching:
   change route geometry hits the cache and skips the network entirely.
   Distance is cheap and not cached (it'd just add bookkeeping cost).
 
-Why USGS 3DEP (replaced opentopodata.org SRTM30m, 2026-04):
-  Side-by-side comparison across nine maps and 71 comparable routes
-  showed SRTM30m systematically over-reports elevation gain in
-  forested terrain - its C-band radar penetrates only the top of
-  forest canopy, not bare ground, so canopy-height variation is read
-  as terrain change. 3DEP serves bare-earth data (vegetation removed
-  by lidar processing) at 1m resolution everywhere this framework's
-  primary maps live, with graceful 10m / 30m fallback elsewhere in
-  the US.
+Why USGS 3DEP: SRTM30m over-reports gain in forested terrain, because
+its radar reads canopy height as terrain. 3DEP serves lidar bare-earth
+data at 1m where this framework's maps live, with a 10m / 30m fallback
+elsewhere in the US. It needs no API key and has no daily quota.
+Out-of-coverage (non-US) points return ``NoData`` and count as missing
+samples, so non-US trails omit ``elevation_*_m`` and the runtime renders
+the route without stats.
 
-  3DEP has no API key, no daily quota, supports up to 2000 points
-  per request, and the only real failure mode is occasional HTTP 502
-  under service load (handled by retry-with-backoff). Out-of-coverage
-  (non-US) points return ``NoData`` and are treated as missing
-  samples - non-US trails get ``elevation_*_m`` omitted from
-  trails.geojson, and the runtime renders the route without stats.
-
-Gain/loss algorithm - anchor-based hysteresis (the "total ascent"
-scheme GPS head units use):
-  - Track an anchor elevation; when the smoothed profile moves ≥1m
-    away from the anchor in either direction, commit the ENTIRE
-    movement to gain or loss and re-anchor. Sub-band noise
-    oscillation never commits; a long gentle grade accumulates and
-    commits once it clears the band - so any detectable grade is
-    counted regardless of sampling density, and closed loops
-    converge to gain ≈ loss (they're the same terrain). The
-    previous per-delta threshold DISCARDED sub-threshold movement,
-    which made gain/loss diverge on loops whenever one direction
-    was steep and the other gentle.
-  - Route segments are chained end-to-end (oriented and joined at
-    shared OSM nodes) before sampling, so a closed loop is measured
-    as one continuous traversal instead of dozens of disconnected
-    pieces - elevation change hidden across segment breaks was the
-    other source of gain/loss divergence on loops.
-  - 3-point centered moving average (75m window at 25m spacing)
-    flattens lidar's residual noise without smoothing real climbs
-    (which are typically ≥100m horizontal). The window never reaches
-    across a segment-break marker.
-  - 1m hysteresis band matches lidar bare-earth's actual vertical
-    accuracy (σ ≈ 0.3-0.5m). Was 2m for SRTM30m's noisier output.
+The gain/loss algorithm is documented in ``_gain_loss_from_samples``;
+the segment-chaining rationale is in ``_chain_segments``.
 
 Failure modes (all non-fatal):
   - 3DEP API error / timeout              → log warning, skip
-    elevation for that route; trails.geojson omits elevation_gain_m.
-  - Out-of-coverage (non-US) point        → API returns NoData;
-    treated like a missing sample.
+    elevation for that route.
+  - Out-of-coverage (non-US) point        → treated as a missing sample.
   - Empty route (no coords)               → skip; both stats omitted.
-  - HTTP 502/503 (transient overload)     → automatic retry with
-    backoff (RETRY_BACKOFF_SECONDS: 5s, 15s, 60s, 120s) per batch.
-    After all retries are
-    exhausted on a single batch, the build stops trying for the rest
-    of the routes and lets cache fill in on a later run.
+  - HTTP 502/503 (transient overload)     → retry with backoff
+    (RETRY_BACKOFF_SECONDS) per batch. After all retries fail on one
+    batch, the build stops trying for the remaining routes and lets the
+    cache fill in on a later run.
 """
 
 import hashlib
@@ -96,29 +64,17 @@ from geodesy import haversine_m as _haversine_m
 def _coords_for_route(features, route_id):
     """Concatenate every segment's coords for one route, in feature order.
 
-    Filters features by ``route_id`` only - NOT by ``shared_routes``.
+    Filters by ``route_id`` only, NOT by ``shared_routes``. When a way
+    belongs to several relations, build_geojson emits one feature per
+    parent relation, each carrying its own ``route_id``, so the
+    ``route_id`` filter already finds every way of a route exactly once.
+    Also matching ``shared_routes`` would double-count shared geometry:
+    RAMBA's Ranger Loop reported 4.31 mi against 1.74 mi measured in
+    JOSM.
 
-    This is critical for correctness: when a way is a member of
-    multiple OSM relations, build_geojson emits one feature *per
-    parent relation*, each with the appropriate ``route_id`` and a
-    ``shared_routes`` list naming all the parents. Including features
-    on the strength of ``shared_routes`` would double-count shared
-    geometry (counted once for the route that "owns" it via
-    ``route_id``, then again for every other relation it's shared
-    with). On RAMBA's Ranger Loop, this had the system reporting
-    4.31 mi for a route JOSM measured at 1.74 mi - a 2.5x inflation
-    because the loop's ways were typically shared with 2-3 other
-    relations.
-
-    The ``route_id`` filter is exhaustive on its own: build_geojson
-    iterates every parent relation's ways and emits a feature with
-    ``route_id`` set to that parent. Every way in route A appears
-    exactly once with ``route_id == A``.
-
-    Segments are returned in GeoJSON feature order - there's no
-    canonical traversal of a route through its junctions, and the
-    elevation-gain pipeline handles the resulting discontinuities by
-    inserting break markers between segments.
+    Segments come back in feature order, since a route has no canonical
+    traversal through its junctions; the elevation pipeline handles the
+    discontinuities with break markers.
     """
     target = str(route_id)
     out = []
@@ -167,14 +123,9 @@ USGS_3DEP_BATCH = 2000  # service hard limit per request
 USGS_3DEP_TIMEOUT = 60  # service can be slow under load
 
 # Horizontal sampling spacing. 25m resolves every terrain feature a
-# rider would notice while keeping API request counts modest.
-#
-# Under the anchor-based hysteresis accumulator (see
-# _gain_loss_from_samples) spacing and the noise band are DECOUPLED:
-# a gentle grade accumulates across samples until it clears the band,
-# so denser sampling no longer rejects mid-grade climbing signal the
-# way the old per-delta threshold did. Spacing now only trades API
-# cost against horizontal resolution.
+# rider would notice while keeping API request counts modest. Spacing
+# and the noise band are decoupled (see _gain_loss_from_samples), so it
+# only trades API cost against horizontal resolution.
 SAMPLE_INTERVAL_M = 25
 
 # Hard cap on samples per route - bounds API cost on long routes. At
@@ -184,55 +135,33 @@ SAMPLE_INTERVAL_M = 25
 # riders deciding whether to commit.
 MAX_SAMPLES_PER_ROUTE = 2000
 
-# Smoothing window for the elevation profile, applied as a centered
-# moving average before differencing. 3 points at 25m spacing = 75m
-# window, which flattens residual lidar noise without smoothing real
-# trail-scale climbs (which are typically ≥100m horizontal). Set to 1
-# to disable smoothing.
+# Centered moving-average window over the elevation profile. 3 points at
+# 25m spacing = 75m, which flattens residual lidar noise without
+# smoothing real climbs (typically ≥100m horizontal). 1 disables it.
 ELEVATION_SMOOTH_WINDOW = 3
 
-# Hysteresis band for the anchor-based gain/loss accumulator (see
-# _gain_loss_from_samples): the smoothed profile must move this far
-# from the current anchor before the movement commits to gain or
-# loss. Lidar bare-earth output has a vertical noise SD of ~0.3-0.5m
-# in good terrain; a 1m band rejects noise oscillation while letting
-# real grades of any steepness accumulate and commit. Was 2m for the
-# noisier SRTM30m source. Part of the elevation cache key - tuning it
-# invalidates cached results cleanly.
+# Hysteresis band for the gain/loss accumulator (see
+# _gain_loss_from_samples). Lidar bare-earth has a vertical noise SD of
+# ~0.3-0.5m, so a 1m band rejects noise while real grades still
+# accumulate. Part of the elevation cache key.
 ELEVATION_NOISE_THRESHOLD_M = 1.0
 
-# Inter-request delay across the entire build (not just within a single
-# route's batches). 3DEP doesn't publish a rate limit, but it's a
-# public ArcGIS service - be polite. We track _last_api_call at module
-# scope and sleep enough at the start of each request to guarantee the
-# spacing.
+# Minimum spacing between requests across the whole build. 3DEP publishes
+# no rate limit, but it is a public ArcGIS service.
 INTER_REQUEST_DELAY_S = 1.0
 
-# Backoff schedule for HTTP 5xx / transport-error retries. 3DEP's
-# typical failure mode is brief load-balancer 502 bursts that clear
-# in seconds, not extended outages. Start aggressive (5s, 15s) to
-# avoid stalling the build on transient blips, then escalate to
-# longer waits for genuine slow-recovery cases. After exhausting
-# all retries on a single batch, we accept the API is genuinely
-# unavailable for this build and stop trying for subsequent routes
-# (the build still completes; missing routes get picked up on the
-# next build via cache).
+# Backoff schedule for HTTP 5xx / transport-error retries. 3DEP's usual
+# failure is a brief 502 burst that clears in seconds, so the early waits
+# are short; the later ones cover slow recovery.
 RETRY_BACKOFF_SECONDS = [5, 15, 60, 120]
 
-# Module-scope timestamp of the last API call. Used by
-# _fetch_elevations_batched to enforce ≥INTER_REQUEST_DELAY_S between
-# any two requests (across routes), not just within one route's
-# batches. Reset to 0 means "no prior call" → no sleep on the first
-# request of a build.
+# Timestamp of the last API call, so INTER_REQUEST_DELAY_S holds across
+# routes. 0 means no prior call.
 _last_api_call = 0.0
 
 
 def _subsample_segment(line, target_interval_m, max_samples):
     """Subsample a single connected line at ~target_interval_m spacing.
-
-    Used by _subsample_route to handle each segment of a multi-segment
-    route independently - see that function's docstring for why
-    segment-aware sampling matters.
 
     Returns [] for degenerate (zero-length or single-point) input.
     """
@@ -273,16 +202,13 @@ def _chain_segments(coord_lines):
     """Orient and join segments whose endpoints touch into continuous
     chains, minimizing the number of segment-break markers downstream.
 
-    OSM relations don't order their member ways, so
-    ``_coords_for_route`` returns a route as tens of segments in
-    arbitrary order and arbitrary direction - a closed loop typically
-    arrives as many disconnected pieces. Every remaining break hides
-    the elevation change between two samples that ARE physically
-    connected on the ground, and those hidden deltas don't cancel
-    between gain and loss (they telescope only if segments happen to
-    chain in traversal order). Measured on RAMBA's Ranger Loop (a
-    closed loop, 9 segments): unchained gain/loss was 10/35 m -
-    chained, the loop closes and gain equals loss.
+    OSM relations don't order their member ways, so a closed loop
+    arrives as many disconnected pieces in arbitrary order and
+    direction. Every remaining break hides the elevation change between
+    two samples that ARE connected on the ground, and those hidden
+    deltas don't cancel between gain and loss. Measured on RAMBA's
+    Ranger Loop (9 segments): unchained gain/loss was 10/35 m; chained,
+    the loop closes and gain equals loss.
 
     Greedy: seed a chain from the first unused segment, then repeatedly
     absorb any unused segment one of whose endpoints coincides with
@@ -341,28 +267,16 @@ def _chain_segments(coord_lines):
 def _subsample_route(coord_lines, target_interval_m, max_samples):
     """Subsample a multi-segment route at ~target_interval_m spacing.
 
-    Each segment in ``coord_lines`` is sampled independently and the
-    results are concatenated with a ``None`` placeholder between
-    segments. The placeholder marks a discontinuity for the gain
-    computation: deltas across segment boundaries are dropped (a
-    rider doesn't actually climb the elevation difference between the
-    end of one segment and the start of the next, since those points
-    aren't physically connected).
+    Each segment is sampled independently, with a ``None`` marker between
+    segments so deltas across a gap are dropped: the end of one segment
+    and the start of the next are not connected terrain. Without the
+    markers, typical RAMBA routes (20-100 transitions) inflated gain
+    2-3x with phantom climbs.
 
-    This matters because OSM relations don't impose a traversal order
-    on their member ways. ``_coords_for_route`` returns segments in
-    GeoJSON feature order, which is rarely the order a rider would
-    actually link them on the ground. Without segment-aware sampling,
-    every transition between segments contributed a phantom positive
-    delta to the elevation gain - typical RAMBA routes had 20-100
-    such transitions, inflating the result by 2-3x.
+    The ``max_samples`` budget splits across segments by length. Segments
+    under one sample interval get just their endpoints.
 
-    Total sample budget is ``max_samples`` across all segments, split
-    proportionally by segment length. Very short segments (under one
-    sample interval) get just their endpoints.
-
-    Returns a list whose elements are either ``[lon, lat]`` pairs or
-    ``None`` (segment break markers). The None markers must be
+    Returns ``[lon, lat]`` pairs and ``None`` markers, which must be
     preserved through to ``_gain_loss_from_samples``.
     """
     if not coord_lines:
@@ -415,25 +329,11 @@ def _hash_coords(coords_with_breaks):
 
     Accepts the segment-aware shape from _subsample_route: a list of
     [lon, lat] pairs interspersed with None markers for segment breaks.
-    The hash includes the breaks (encoded as the literal "|BREAK|")
-    so that re-segmentation of a route changes the cache key - what
-    we cache is gain-given-this-exact-sampling, and segment breaks
-    affect the computed gain.
-
-    The hash ALSO includes every constant the computed result depends
-    on (SAMPLE_INTERVAL_M, MAX_SAMPLES_PER_ROUTE,
-    ELEVATION_SMOOTH_WINDOW, ELEVATION_NOISE_THRESHOLD_M) plus an
-    algorithm version token, so tuning any constant - or changing the
-    gain/loss algorithm itself - invalidates the cache cleanly. If an
-    input were missing from the key, a change to it would silently
-    keep returning old gain/loss numbers from cached files until the
-    next --refresh rebuild. (The noise threshold WAS missing once; the
-    2m → 1m retune only produced correct numbers because it coincided
-    with a spacing change.)
-
-    algo=2: anchor-based hysteresis accumulator + break-preserving
-    smoothing (replaced per-delta thresholding, which discarded
-    sub-threshold movement and made gain/loss diverge on loops).
+    The hash includes the breaks (the literal "|BREAK|"), because they
+    affect the computed gain. It also includes every constant the result
+    depends on plus an algorithm version token, so tuning a constant or
+    changing the algorithm invalidates the cache. A missing input would
+    silently keep returning old numbers until the next --refresh.
     """
     h = hashlib.sha1()
     h.update(
@@ -491,11 +391,8 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             }
         )
 
-        # Per-batch retry loop with exponential-ish backoff on transient
-        # failures (5xx / network errors). 3DEP throws occasional 502s
-        # under service load; a 60s wait usually clears it. After
-        # exhausting all retries on a single batch we raise so the
-        # caller can stop trying for the rest of the build.
+        # After the last retry on a batch we raise, so the caller can stop
+        # trying for the rest of the build.
         max_attempts = len(RETRY_BACKOFF_SECONDS) + 1
         result_data = None
         for attempt in range(max_attempts):
@@ -559,15 +456,10 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             break
 
         # Response shape: {"samples": [{"locationId": 0, "value":
-        # "287.5", "resolution": 1}, ...]}. Order may not match input
-        # order, and the service may OMIT a point entirely (it already
-        # returns "NoData" for out-of-coverage points, so an omission
-        # is an irregularity we defend against rather than a documented
-        # mode). Place each sample by its locationId - an enumeration
-        # index would silently shift every elevation after a gap onto
-        # the wrong coordinate, corrupting the whole profile. Omitted
-        # points simply stay None (missing sample). ``value`` is a
-        # STRING (or "NoData").
+        # "287.5", "resolution": 1}, ...]}, ``value`` a STRING or
+        # "NoData". The service may reorder or OMIT points, so place each
+        # sample by its locationId: an enumeration index would shift
+        # every elevation after a gap onto the wrong coordinate.
         for s in result_data.get("samples") or []:
             try:
                 local_idx = int(s.get("locationId"))
@@ -583,10 +475,6 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
             except (TypeError, ValueError):
                 pass  # unparseable value - leave point missing
 
-    # Splice the elevation results back in, preserving break-marker
-    # positions so the gain-from-samples computation sees both the
-    # within-segment delta chains and the explicit breaks between
-    # them.
     out = list(coords_with_breaks)  # length-matched template
     for idx, elev in zip(valid_indices, elev_for_valid):
         out[idx] = elev
@@ -596,22 +484,14 @@ def _fetch_elevations_batched(coords_with_breaks, log_prefix=""):
 def _smooth_elevations(elevations, window):
     """Centered moving average over the elevation profile.
 
-    Reduces lidar's residual noise (σ ≈ 0.3-0.5m on 1m bare-earth
-    output) before differencing, which is the single biggest source
-    of inflated elevation-gain numbers. A k-point average reduces
-    noise variance by ~1/k while preserving any signal that spans
-    more than `window` samples (~75 m at the default 25 m sampling ×
-    3-point window) - covers every real-world MTB feature.
+    Reduces residual lidar noise before differencing, the biggest source
+    of inflated gain. A k-point average cuts noise variance by ~1/k while
+    keeping any signal spanning more than `window` samples.
 
-    None values are hard boundaries, at any window size:
-      - A None stays None. Segment-break markers and unresolved
-        samples must survive smoothing, or _gain_loss_from_samples
-        computes a delta across two points that aren't physically
-        connected. (An earlier version filled a lone None with the
-        average of its neighbors, silently bridging every segment
-        break.)
-      - The window never reaches ACROSS a None: samples on opposite
-        sides of a break are disconnected terrain and must not blend.
+    None values are hard boundaries, at any window size. A None stays
+    None, or _gain_loss_from_samples would compute a delta across
+    disconnected points. The window never reaches ACROSS a None, because
+    samples on opposite sides of a break are disconnected terrain.
 
     Endpoints (of the array or of a segment) use whatever window fits.
     """
@@ -638,32 +518,23 @@ def _smooth_elevations(elevations, window):
 
 
 def _gain_loss_from_samples(elevations):
-    """Compute (gain, loss) with an anchor-based hysteresis accumulator
-    - the "total ascent" scheme GPS head units use.
+    """Compute (gain, loss) with an anchor-based hysteresis accumulator,
+    the "total ascent" scheme GPS head units use.
 
-    Pipeline: smooth → accumulate against an anchor. The anchor is the
-    last committed elevation; when the profile moves at least
-    ELEVATION_NOISE_THRESHOLD_M away from it in either direction, the
-    ENTIRE movement commits to gain or loss and the anchor jumps to
-    the current sample. Noise oscillating inside the band never
-    commits; a long gentle grade accumulates across samples and
-    commits once it clears the band - so gain/loss capture grades of
-    any steepness, independent of sampling density.
+    Pipeline: smooth, then accumulate against an anchor. The anchor is
+    the last committed elevation. When the profile moves at least
+    ELEVATION_NOISE_THRESHOLD_M away from it, the ENTIRE movement
+    commits to gain or loss and the anchor jumps to the current sample.
+    Noise inside the band never commits, and a long gentle grade
+    accumulates until it clears the band, so any grade counts
+    independent of sampling density. Hysteresis is symmetric, so closed
+    loops converge to gain ≈ loss. Thresholding each per-sample delta
+    instead discards sub-threshold descents and shows ↑big / ↓small on
+    a loop that climbs steeply and descends gently.
 
-    The previous algorithm thresholded each per-sample delta and
-    DISCARDED sub-threshold movement (the anchor still advanced every
-    sample). On a closed loop that climbs steeply and descends
-    gently, the climb deltas cleared the threshold while the descent
-    deltas individually fell under it and vanished - riders saw
-    ↑big / ↓small on a loop where true gain must equal true loss.
-    Hysteresis is symmetric by construction, so loops converge to
-    gain ≈ loss.
-
-    Why report both: for loops gain ≈ loss, but for one-way routes the
-    asymmetry tells the rider whether they're looking at mostly
-    climbing or mostly descending - without us having to claim we
-    know which direction the route is intended to be ridden (we
-    don't; OSM doesn't carry that signal for MTB relations).
+    Both are reported because OSM carries no ride direction for MTB
+    relations, and on one-way routes the asymmetry tells the rider
+    whether the route is mostly climbing or mostly descending.
 
     None samples (segment-break markers, and points 3DEP couldn't
     resolve) reset the anchor so no movement is committed across a
@@ -705,12 +576,9 @@ def compute_elevations(trails_geojson, cache_dir, route_ids=None):
     entries for routes whose elevation couldn't be computed).
 
     Uses USGS 3DEP getSamples. Per-route results are cached to
-    ``cache/route_stats/elev_<route_id>_<coord_hash>.json`` so a
-    rebuild that doesn't change route geometry hits the cache and
-    skips the network entirely. Cache files store BOTH gain and
-    loss; entries written by an older version (gain only) are
-    treated as cache misses and refetched so the runtime can
-    consistently render ``↑X / ↓Y``.
+    ``cache/route_stats/elev_<route_id>_<coord_hash>.json``. Entries
+    without both gain and loss count as cache misses, so the runtime can
+    always render ``↑X / ↓Y``.
 
     On unrecoverable API failure, logs a warning and stops trying to
     fetch - already-cached results still flow through.
@@ -747,12 +615,9 @@ def compute_elevations(trails_geojson, cache_dir, route_ids=None):
             try:
                 with open(cache_path, encoding="utf-8") as fh:
                     cached = json.load(fh)
-                # Require BOTH fields for a cache hit. Old-format
-                # entries (gain only) get treated as cache miss and
-                # refetched. A cached null gain marks a known no-data
-                # route (every sample NoData - e.g. non-US terrain):
-                # honor it by omitting stats, without re-asking the
-                # API on every build.
+                # A cached null gain marks a known no-data route (every
+                # sample NoData, e.g. non-US terrain): omit stats without
+                # re-asking the API on every build.
                 if (
                     isinstance(cached, dict)
                     and "elevation_gain_m" in cached
@@ -776,12 +641,9 @@ def compute_elevations(trails_geojson, cache_dir, route_ids=None):
             elevations = _fetch_elevations_batched(sampled, log_prefix=f"route {rid_str}: ")
             gain_loss = _gain_loss_from_samples(elevations)
             if gain_loss is None:
-                # No two connected valid samples (e.g. non-US route,
-                # every point NoData). Omit stats - the runtime renders
-                # the route without them - and cache the no-data marker
-                # so the next build doesn't re-ask the API. Attaching
-                # (0, 0) here would show "↑0 / ↓0" for a route we know
-                # nothing about.
+                # No two connected valid samples. Omit stats and cache the
+                # no-data marker; attaching (0, 0) would show "↑0 / ↓0"
+                # for a route we know nothing about.
                 console.warn(f"route {rid_str}: no usable elevation data; stats omitted")
                 gain, loss = None, None
             else:
@@ -841,12 +703,9 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     if not routes:
         return False
 
-    # Even with both gates off we still need to walk the cleanup
-    # branches below - a previous build may have left distance_m /
-    # elevation_*_m fields on the routes, and the runtime would keep
-    # rendering those stale values until they're explicitly removed.
-    # Return early ONLY when there's nothing to do AND nothing stale
-    # to clean up.
+    # With both gates off, stale distance_m / elevation_*_m fields from a
+    # previous build must still be removed, or the runtime keeps rendering
+    # them. Return early only when nothing is stale.
     if not (want_distance or want_elevation):
         has_stale = any(
             "distance_m" in info or "elevation_gain_m" in info or "elevation_loss_m" in info
@@ -881,11 +740,9 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     if want_elevation and route_mode_ids:
         console.info("computing per-route elevation gain + loss (via USGS 3DEP)...")
         elevations = compute_elevations(trails_geojson, cache_dir, route_mode_ids)
-        # Strip stale entries on routes whose computation failed this
-        # run so the runtime doesn't keep showing yesterday's
-        # elevation when today's value is unknown. Both gain and loss
-        # are written/cleared together - they're computed in one pass
-        # and a partial state would be confusing in the UI.
+        # Strip stale entries on routes whose computation failed this run.
+        # Gain and loss are written or cleared together; a partial state
+        # would confuse the UI.
         for rid, info in routes.items():
             new_val = elevations.get(rid)
             had_gain = "elevation_gain_m" in info

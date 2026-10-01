@@ -3,7 +3,6 @@
 Resamples a raster logo to ~2x its on-screen render size, or copies an SVG
 with an explicit intrinsic size, and derives the output filename. Pillow is
 imported lazily inside process_logo so the engine still runs without it.
-Extracted from build.py; consumed by the template/asset-copy step.
 """
 
 import os
@@ -12,18 +11,12 @@ import shutil
 
 import console
 
-# Logo render bounding box. The #brand-img CSS in templates/style.css
-# bounds it to max-width: 200px, max-height: 48px on the map overlay.
-# About modal uses the same image, similar bounds. We resample the source
-# to ~2× this on its longer side so retina displays render cleanly without
-# us shipping the original (often much larger) source.
-#
-# LOGO_DESKTOP_H was previously 80 - that left square icons (e.g. DTE's
-# icon-as-logo fallback) processed to 160×160 = ~12KB, but the actual
-# rendered size is 48×48. Lowered to 48 to match the CSS max-height,
-# which shrinks square-icon outputs to ~96×96 = ~1-2KB, a ~10× saving
-# (Lighthouse image-delivery-insight ~11KB savings on DTE). Wide
-# wordmarks unchanged - they remain width-bound at 200px.
+# Logo render bounding box, matching #brand-img in templates/style.css
+# (max-width 200px, max-height 48px); the About modal uses similar bounds.
+# The source is resampled to ~2× this on its longer side, so retina
+# displays render cleanly without shipping the often much larger
+# original. Height is 48, not more, so square icons come out ~96×96
+# (~1-2KB) rather than ~12KB; wide wordmarks stay width-bound at 200px.
 LOGO_DESKTOP_W = 200
 LOGO_DESKTOP_H = 48
 

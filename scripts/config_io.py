@@ -1,17 +1,9 @@
 """Shared YAML config loading for build.py and the standalone fetch stages.
 
-The fetch_* scripts can be run standalone (outside the full build.py
-pipeline) and need the same minimal path-resolution behavior for
-``osm_file:`` so a relative path in the YAML resolves against the
-config's directory. Previously copy-pasted across both scripts; now
-lives here as the single source of truth.
-
-The full build.py load_config is richer (resolves ``logo``,
-``icon``, ``osm_file``, and every
-``custom_routes[].geometry``) - that path is the standard one when
-running through ``build.py``. The trimmed version in this module is
-the one the fetch_* scripts use when invoked directly from
-the CLI for ad-hoc data refreshes.
+The fetch_* scripts can run standalone, outside build.py, and need a
+relative ``osm_file:`` to resolve against the config's directory.
+build.py keeps its richer load_config, which resolves every per-map
+asset path.
 """
 
 import os
@@ -45,11 +37,7 @@ def load_config_for_fetch(config_path):
     """Parse a YAML config and resolve ``osm_file:`` relative to the
     config's directory.
 
-    Equivalent to the narrow load_config previously duplicated in
-    fetch_trails.py and fetch_pois.py. Renamed to make it obvious
-    this is the *minimal* version (used by the standalone fetch
-    entry-points) - build.py keeps its own richer load_config that
-    resolves every per-map asset path.
+    The minimal version, for the standalone fetch entry points.
     """
     config = read_config_yaml(config_path)
     osm_file = config.get("osm_file")

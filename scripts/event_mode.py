@@ -2,7 +2,7 @@
 
 Applies "event mode" (feature a subset of routes, mute the rest) to the
 config and trail geometry: background styling, inline/featured route sets,
-and custom-route / relation / oneway rewrites. Extracted from build.py.
+and custom-route / relation / oneway rewrites.
 """
 
 import console
@@ -86,11 +86,7 @@ def _apply_event_mode_to_custom_routes(config):
     inline_routes = list(em.get("routes") or [])
     inline_ids = _event_mode_inline_route_ids(config)
 
-    # event_mode.direction_arrows: stamp `oneway: "yes"` on each inline
-    # route entry (so the custom-route bake-in carries it onto every
-    # emitted feature) and add `direction_arrows` to `forced_visible`
-    # so the runtime renders arrows always (no rider toggle to
-    # disable).
+    # direction_arrows: see the docstring.
     if em.get("direction_arrows"):
         for entry in inline_routes:
             if isinstance(entry, dict) and not entry.get("oneway"):
@@ -113,11 +109,8 @@ def _apply_event_mode_to_custom_routes(config):
         existing = list(config.get("custom_routes") or [])
         config["custom_routes"] = existing + inline_routes
 
-    # Featured set, less the OSM-int side (which we resolve later when
-    # super_expansions is available). For the custom-route mutation
-    # pass we only care about which custom-route string ids are
-    # featured, which is: every inline route id PLUS any string entry
-    # in event_mode.featured.
+    # Only custom-route string ids matter for this pass; the OSM-int side
+    # resolves later, once super_expansions is available.
     featured_strings = set(inline_ids)
     for ref in em.get("featured") or []:
         if isinstance(ref, str):

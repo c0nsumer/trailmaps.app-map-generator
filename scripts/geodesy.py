@@ -1,24 +1,18 @@
 """Shared geodesy + geometry-key primitives for the build pipeline.
 
-Single source of truth for the Earth-radius constant, the
-great-circle distance formula, and the numeric-aware sort key
-(natural_key). Previously duplicated across fetch_pois.py /
-compute_route_stats.py; consolidating here means one place to tune.
+The Earth-radius constant, the great-circle distance formula and the
+numeric-aware sort key (natural_key).
 
-The runtime (templates/app.js) carries its own haversine because
-JavaScript and Python don't share modules. It uses the WGS84
-equatorial radius (6378137 m) rather than the mean radius (6371000)
-this module uses; the two differ by ~0.1%, which is below the
-accuracy floor of any trail-scale measurement we care about.
+The runtime (templates/app.js) carries its own haversine. It uses the
+WGS84 equatorial radius (6378137 m) where this module uses the mean
+radius; the ~0.1% difference is below the accuracy floor of any
+trail-scale measurement.
 """
 
 import math
 import re
 
-# Mean Earth radius in meters. Matches the convention used by every
-# Python script in the build pipeline. Off by ~0.1% from the WGS84
-# equatorial radius (templates/app.js:EARTH_RADIUS_M = 6378137) - the
-# inconsistency is intentional and irrelevant at trail scales.
+# Mean Earth radius in meters.
 EARTH_R_M = 6371000.0
 
 # Equirectangular scale for short distances: meters per degree of

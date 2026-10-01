@@ -1,14 +1,9 @@
 """Shared helpers for the pmtiles CLI (basemap + terrain extraction).
 
-Previously fetch_basemap.py and fetch_terrain.py each carried their own
-copy of the CLI discovery and the extract-subprocess block - and both
-pointed ``pmtiles extract`` directly at the deploy-target path, so a
-failed or interrupted extract left a partial ``.pmtiles`` where
-generate_service_worker would sweep it into the precache list and ship
-it to riders. This module is the single home for both, with the
-write-atomicity fix built in: extraction goes to a ``.tmp`` sibling and
-is renamed into place only on success, so the deploy path only ever
-holds a complete archive (or nothing).
+Extraction goes to a ``.tmp`` sibling and is renamed into place only on
+success. A partial ``.pmtiles`` at the deploy path would be swept into
+the precache list and shipped to riders, so the path only ever holds a
+complete archive or nothing.
 """
 
 import math

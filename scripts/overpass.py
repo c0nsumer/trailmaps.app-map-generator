@@ -20,12 +20,9 @@ import requests
 # correctness-roulette.
 OVERPASS_API = "https://overpass-api.de/api/interpreter"
 
-# The front host's WAF rejects requests with `python-requests/*` style
-# User-Agents with 406 Not Acceptable. A descriptive UA gets through and
-# is also good Overpass etiquette (lets the operator contact us if a query
-# is misbehaving). The lz4/z backends don't have this filter, but going
-# through the LB is preferred so we benefit from whichever backend is
-# healthier at request time.
+# The front host's WAF rejects `python-requests/*` User-Agents with 406.
+# A descriptive UA gets through and lets the operator contact us about a
+# misbehaving query.
 USER_AGENT = "mtb-map-framework (+https://nuxx.net)"
 
 MAX_RETRIES = 10
@@ -38,44 +35,33 @@ MAX_RETRIES = 10
 # failed the build after ~35 minutes.
 REQUEST_TIMEOUT = 310  # seconds per HTTP request
 
-# Backoff schedule between retries, in seconds. Ramps up to ~2 min and
-# then plateaus, so a stuck server gets steady polling without the gap
-# growing unbounded. Length must be >= MAX_RETRIES - 1 (last attempt has
-# no following sleep). Total worst-case wait ≈ 14.5 minutes across 10
-# attempts, plus per-request timeouts.
+# Backoff between retries, in seconds: ramps to ~2 min, then plateaus.
+# Length must be >= MAX_RETRIES - 1 (the last attempt has no following
+# sleep). Worst-case wait is ≈ 14.5 minutes, plus per-request timeouts.
 RETRY_BACKOFF = [5, 10, 20, 40, 60, 90, 120, 120, 120]
 
-# How many empty responses we tolerate before treating the query result
-# as legitimately empty (e.g. a typo'd relation ID, or a relation that
-# really has no member ways). Empty-but-successful responses look like
-# transient server failures to the retry loop, so without a separate
-# limit a bad relation ID would burn the full MAX_RETRIES schedule (~14
-# min) before failing. Two attempts is enough to ride out a brief server
-# hiccup; after that, we accept the empty payload, log a warning, and
-# let the caller deal with it (typically: build an empty trails.geojson
-# the user notices is empty when they open the map).
+# Empty responses tolerated before accepting the result as legitimately
+# empty (a typo'd relation ID, say). An empty response looks like a
+# transient failure to the retry loop, so without this limit a bad ID
+# would burn the full MAX_RETRIES schedule (~14 min). Two attempts ride
+# out a brief hiccup.
 EMPTY_RETRY_LIMIT = 2
 
-# Maximum acceptable replication lag for an Overpass mirror's snapshot,
-# measured by the response's `osm3s.timestamp_osm_base` vs. wall clock.
-# Overpass instances replicate independently and can fall days behind
-# without raising any error - they'll cheerfully serve a stale snapshot. If
-# a response is older than this threshold, raise StaleSnapshotError and
-# retry the endpoint on the backoff schedule. 24h is generous; the endpoint
-# is usually within minutes of upstream. Applies to LIVE responses only - cached
-# responses are served regardless of age (re-querying is explicit, via
-# the --refresh flags).
+# Maximum replication lag of a response's `osm3s.timestamp_osm_base` vs.
+# wall clock. Overpass instances can fall days behind without raising an
+# error, so an older response raises StaleSnapshotError and retries on
+# the backoff schedule. 24h is generous. Applies to LIVE responses only;
+# cached responses are served regardless of age.
 MAX_OSM_BASE_LAG = timedelta(hours=24)
 
 
 def _write_cache(cache_path, data):
     """Write a cache file atomically (temp sibling + os.replace).
 
-    A plain json.dump straight onto the cache path meant a Ctrl-C or
-    crash mid-write left truncated JSON that crashed every subsequent
-    build until the file was hunted down and deleted by hand. The
-    rename makes the file either complete or absent, and the guarded
-    read in query() cleans up anything that predates this fix.
+    A Ctrl-C or crash mid-write would otherwise leave truncated JSON
+    that crashes every later build. The rename makes the file either
+    complete or absent, and the guarded read in query() cleans up any
+    truncated leftovers.
     """
     tmp = cache_path + ".tmp"
     try:
@@ -227,9 +213,8 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             # A runtime-error remark means Overpass aborted mid-query (timeout
             # or OOM) and returned a TRUNCATED element list with HTTP 200. That
             # partial payload passes the empty-check below and would otherwise
-            # be cached and frozen into the build's trails.geojson via its .sig
-            # fingerprint, silently dropping trail geometry. Treat it as a
-            # transient failure: retry on the backoff schedule, never cache.
+            # be cached, silently dropping trail geometry from every later
+            # build. Treat it as a transient failure: retry, never cache.
             remark = data.get("remark")
             if remark and "runtime error" in remark.lower():
                 raise PartialResponseError(remark.strip())

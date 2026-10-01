@@ -1,10 +1,9 @@
 """Color math and accent-color derivation for the build pipeline.
 
 Pure WCAG helpers (relative luminance, contrast ratio, hex<->rgb, HSL
-darken/lighten) plus the logo-derived accent resolution. Extracted from
-build.py so the color logic is independently testable and the
-orchestrator stays lean. ``resolve_accent_palette`` is the only entry
-point the build needs; the rest are internal helpers.
+darken/lighten) plus the logo-derived accent resolution.
+``resolve_accent_palette`` is the only entry point the build needs; the
+rest are internal helpers.
 """
 
 import colorsys
@@ -101,10 +100,8 @@ def derive_accent(image_path):
         console.warn(f"could not open {image_path} for accent derivation: {exc}")
         return None
     img.thumbnail((100, 100))
-    # Iterate raw RGBA bytes - Image.getdata() is deprecated in
-    # Pillow 11+ and slated for removal in Pillow 14. tobytes() returns
-    # a flat byte buffer in (R, G, B, A) order which we walk in groups
-    # of four. Faster too, no per-pixel tuple allocation.
+    # Raw RGBA bytes, walked in groups of four: Image.getdata() is
+    # deprecated in Pillow 11+ and slated for removal in Pillow 14.
     pixels = img.tobytes()
     counts = {}
     for i in range(0, len(pixels), 4):
@@ -145,13 +142,11 @@ _ON_ACCENT_DARK = "#14140F"
 # shade must read against. Matches --sheet-bg in style.css's dark block.
 _DARK_SHEET_BG = (28, 28, 30)
 
-# Vividness tuning, applied only on the "auto" light shade.
-# Deepen past the AA floor and gently saturate while darkening so an
-# auto-derived accent that would otherwise sit right at 4.5 reads vivid
-# rather than muddy-gray. Hues whose raw pick already clears the target
-# are returned unchanged, and explicit hex / framework default skip this
-# entirely (used verbatim). Tunable: raising the target deepens light
-# mode further; the sat boost keeps the deepened color from graying out.
+# Vividness tuning, applied only on the "auto" light shade: deepen past
+# the AA floor and gently saturate, so an accent that would sit right at
+# 4.5 reads vivid rather than muddy-gray. Raw picks that already clear
+# the target are unchanged; explicit hex and the framework default skip
+# this entirely.
 _LIGHT_TARGET_CONTRAST = 5.5   # vs white; deepen past the 4.5 AA floor
 _LIGHT_SAT_BOOST = 0.015       # saturation nudge per darken step
 
@@ -328,8 +323,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
             with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
             raw_pick = cached.get("raw")
-            # Old-format entries stored a darkened "hex" and no "raw" -
-            # treat those as a miss and re-derive (one-time migration).
+            # An entry without a "raw" list counts as a miss.
             if isinstance(raw_pick, list) and len(raw_pick) == 3:
                 return tuple(raw_pick)
         except (OSError, json.JSONDecodeError):

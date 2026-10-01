@@ -232,25 +232,16 @@ def _strip_html_comments(chunk):
 def _minify_assets(output_dir, targets=None):
     """Minify the given targets in-place, logging progress via console.
 
-    Used by main() unless --no-minify is passed (minification is on by
-    default). Defaults to MINIFY_TARGETS. Conservative pure-python
-    minifiers (rjsmin / rcssmin, plus _minify_html for the page itself,
-    which reuses both for its inline blocks): they preserve string literals
-    verbatim (so the embedded CONFIG JSON in app.js stays intact),
-    don't rewrite identifiers (no breaking changes for code that
-    hooks into named DOM ids / event handlers), and only strip
-    whitespace + comments + safe redundancies. ~30-50% file-size
-    reduction on each.
+    Defaults to MINIFY_TARGETS. The minifiers (rjsmin, rcssmin, and
+    _minify_html for the page) are conservative: they keep string literals
+    verbatim, so the embedded CONFIG JSON survives, and never rewrite
+    identifiers. Vendor libs are not minified, since upstream ships them
+    in production form.
 
-    Vendor libs (vendor/*.js) are NOT minified - upstream ships them
-    in production form already, and re-minifying risks breaking the
-    upstream's intended behavior.
-
-    Errors are logged but don't abort the build - the unminified file
-    stays in place, so the deploy still ships a working (just larger)
-    artifact. With Node on PATH, minified JavaScript must also pass
-    ``node --check``; a minifier bug that breaks the syntax would
-    otherwise kill the app at boot on every device.
+    A failure costs only size: the unminified file stays in place. With
+    Node on PATH, minified JavaScript must also pass ``node --check``; a
+    minifier bug that breaks the syntax would otherwise kill the app at
+    boot on every device.
     """
     node = shutil.which("node")
     for fname, lib in targets if targets is not None else MINIFY_TARGETS:
@@ -311,16 +302,12 @@ _SOURCE_MAP_COMMENT = re.compile(rb"\s*//[#@] ?sourceMappingURL=\S+\s*\Z")
 def _copy_vendor_script(src, dst):
     """Copy a vendored file into a build, minus its source map pointer.
 
-    Upstream builds end in `//# sourceMappingURL=<name>.js.map`, and a
-    build ships the script without the map, so an open browser inspector
-    logged a 404 per library on every load (four on a plugin map).
-    Shipping the maps is the wrong trade: they are several MB, only an
-    attached inspector ever asks for one, and the service worker sweep
-    would precache them onto every phone unless taught a new kind of
-    file. Debugging a deployed map is rare; for a profiling session,
-    drop the matching .map beside the script on a test map by hand.
-    The cached and the repo copies stay verbatim; only the build's copy
-    loses the comment.
+    Upstream builds end in `//# sourceMappingURL=<name>.js.map`. A build
+    ships no maps (several MB, and the service worker sweep would precache
+    them onto every phone), so an open inspector would log a 404 per
+    library. For a profiling session, drop the matching .map beside the
+    script on a test map by hand. Only the build's copy loses the
+    comment; the cached and repo copies stay verbatim.
     """
     with open(src, "rb") as f:
         data = f.read()
@@ -411,34 +398,20 @@ def generate_service_worker(config, output_dir):
     with open(sw_template, encoding="utf-8") as f:
         sw_content = f.read()
 
-    # Walk the build tree once to collect every DEPLOYED file (for the
-    # CACHE_VERSION hash - see comment below on why), then filter that
-    # down to PRECACHE_URLS by dropping all but the essential glyph
-    # PBFs. The trim keeps PRECACHE_URLS at ~30 entries for a typical
-    # map instead of ~537 (full glyph parade), which removed the
-    # parallel-glyph storm that competed with MapLibre's foreground
-    # rendering on first visit. Glyph ranges outside 0-255 flow through
-    # the SW's cache-on-fetch handler - whatever the rider's view
-    # actually needs gets pulled from the network on first use and
-    # cached for offline as a side effect of normal use. See sw.js
-    # install/fetch handlers for the runtime half of this design.
+    # Walk the build tree once to collect every deployed file (the
+    # CACHE_VERSION hash covers all of them), then filter that down to
+    # PRECACHE_URLS by keeping only the 0-255 glyph PBFs: about 30 entries
+    # instead of ~537, which avoids a parallel-glyph storm competing with
+    # MapLibre's first render. Other glyph ranges flow through the SW's
+    # cache-on-fetch handler.
     #
-    # Build-only cache artifacts (trails.src.geojson and every .sig
-    # sidecar) are dropped up front, before they reach either the hash
-    # or the precache list. The runtime never fetches them - app.js
-    # reads trails.geojson and the .pmtiles directly - and
-    # build_and_deploy.sh excludes them from the server tree. Leaving
-    # them in PRECACHE_URLS made the SW background-fetch each one on
-    # every install, logging a 404 per file against the (correctly)
-    # absent artifact; leaving them in the hash would needlessly bust
-    # every rider's cache when a base-cache fingerprint changed without
-    # any rider-visible output changing. (_is_build_only_artifact is a
-    # module-level helper so the precompress pass skips the same files.)
+    # Build-only artifacts (see _is_build_only_artifact) are dropped before
+    # the hash and the precache list. The SW would otherwise fetch each one
+    # on install and log a 404, and a base-cache fingerprint change would
+    # bust every rider's cache with no rider-visible difference.
 
     def _is_precachable_glyph(rel_url):
-        # rel_url uses forward slashes (normalized below). Non-glyph
-        # files always precache. For glyphs (fonts/*/N-M.pbf) only
-        # the Basic Latin baseline range is precached.
+        # Glyphs (fonts/*/N-M.pbf) precache only the Basic Latin range.
         if not rel_url.startswith("fonts/") or not rel_url.endswith(".pbf"):
             return True
         return rel_url.endswith("/0-255.pbf")
@@ -448,48 +421,35 @@ def generate_service_worker(config, output_dir):
         for fname in sorted(files):
             if fname == "sw.js":
                 continue
-            # Skip precompression sidecars: the runtime always requests the
-            # original URL and the server negotiates the encoded variant, so
-            # sidecars must never enter the precache list or the cache hash
-            # (the original's bytes are already hashed). precompress_assets
-            # runs last, but a rebuild over a prior build's output would
-            # otherwise see stale sidecars here.
+            # Sidecars never enter the precache list or the hash: the
+            # runtime requests the original URL and the server negotiates
+            # the encoding. A rebuild over a prior output would otherwise
+            # see stale ones here.
             if fname.endswith((".gz", ".br")):
                 continue
             path = os.path.join(root, fname)
             rel = os.path.relpath(path, output_dir)
-            # Normalize Windows separators for URL use + the glyph
-            # filter check (which expects forward slashes).
+            # URLs and the glyph filter expect forward slashes.
             rel_url = rel.replace(os.sep, "/")
-            # Drop build-only cache artifacts before they reach either
-            # the hash or the precache list (see comment above).
             if _is_build_only_artifact(rel_url):
                 continue
             all_files.append(rel_url)
 
     precache_urls = ["./"]
-    # Large archives, deferred to the precache tail (see below); the
-    # same list also feeds PMTILES_FILES in the SW config.
+    # Large archives go last in the precache list; the same list feeds
+    # PMTILES_FILES in the SW config.
     pmtiles_files = []
     for rel_url in all_files:
         if not _is_precachable_glyph(rel_url):
             continue
-        # og-image.png is the social-preview card, injected next to
-        # index.html by the trailmaps.app orchestrator. Only link
-        # scrapers fetch it; the app never renders it, so precaching
-        # pushed a ~580 KB download to every fresh install and cache
-        # bump. It stays in all_files, so the deploy set and the cache
-        # hash are unchanged.
+        # og-image.png is a ~580 KB social-preview card that only link
+        # scrapers fetch. It stays in all_files, so the hash covers it.
         if rel_url == "og-image.png":
             continue
-        # The document is already precached as the "./" seed above - the
-        # form every entry point actually navigates to (manifest
-        # start_url, homepage links). Also precaching the walked
-        # "index.html" stored the same ~60 KB twice, double-counted it
-        # in the readiness total, and fetched it twice per install. It
-        # stays in all_files so the cache hash still tracks its bytes;
-        # an explicit .../index.html visit is cached on first fetch by
-        # the SW's cache-on-fetch path.
+        # The "./" seed already precaches the document in the form every
+        # entry point navigates to. Adding "index.html" would store it
+        # twice and double-count it in the readiness total. It stays in
+        # all_files so the hash tracks its bytes.
         if rel_url == "index.html":
             continue
         if rel_url.endswith(".pmtiles"):
@@ -497,48 +457,27 @@ def generate_service_worker(config, output_dir):
         else:
             precache_urls.append(rel_url)
 
-    # Append the multi-MB .pmtiles archives (basemap ~2 MB, terrain up to
-    # ~30 MB) at the END of the precache list. backgroundPrecache() walks
-    # PRECACHE_URLS sequentially (one cache.add at a time), so whatever
-    # sits early monopolizes the link until it finishes. Alphabetical
-    # order put basemap.pmtiles 3rd and terrain.pmtiles mid-list, ahead of
-    # the lightweight UI assets (icons, sprites, glyph PBFs, vendor JS).
-    # On a slow first visit that meant tens of seconds of big-file download
-    # before the cheap chrome assets cached, needlessly contending with the
-    # foreground map's own fetches. Caching the small assets first gets the
-    # UI offline-ready fast and leaves the big sequential pull for last;
-    # the rider's actual viewport is served meanwhile via cache-on-fetch +
-    # Range passthrough, so deferring the full archives costs nothing.
-    # (PMTILES_FILES order is independent - it's only a suffix-match set for
-    # the Range handler. CACHE_VERSION hashes all_files, not this list, so
-    # reordering here does NOT bust any rider's cache.)
+    # The multi-MB .pmtiles archives (basemap ~2 MB, terrain up to ~30 MB)
+    # go at the END of the list. backgroundPrecache() fetches sequentially,
+    # so an early archive would monopolize the link for tens of seconds
+    # and contend with the foreground map. The viewport is served meanwhile
+    # via cache-on-fetch and Range passthrough.
     #
-    # The core-before-archives order is also load-bearing for the silent
-    # update swap: app.js auto-reloads onto a new version as soon as the
-    # non-.pmtiles subset ("core", per sw.js CORE_STATUS) is cached, so
-    # the small files must finish first for that gate to open within the
-    # swap's grace window.
+    # The order is also load-bearing for the silent update swap: app.js
+    # reloads onto a new version once the non-.pmtiles "core" subset (per
+    # sw.js CORE_STATUS) is cached, so the small files must finish within
+    # the swap's grace window. Reordering does not bust any cache, since
+    # CACHE_VERSION hashes all_files.
     precache_urls.extend(pmtiles_files)
 
-    # Compute cache version from actual file CONTENTS of every
-    # deployed file in the build (not just the precache subset). The earlier
-    # "filenames + data_date" approach missed the most common case:
-    # editing app.js / style.css / index.html without touching trails
-    # or POIs left the cache version unchanged, so the service worker
-    # happily served the stale cached JS/CSS to every previously-
-    # installed visitor - fixes "appeared to do nothing" until they
-    # manually cleared site data.
+    # CACHE_VERSION hashes the CONTENTS of every deployed file, so any
+    # change to code, data or assets makes the SW activate handler evict
+    # the old cache. Names plus data_date missed edits to app.js or
+    # style.css alone, and riders kept the stale JS/CSS.
     #
-    # CRITICAL: hash over all_files, not precache_urls. PRECACHE_URLS
-    # excludes most glyph PBFs (they cache-on-fetch instead) but those
-    # files are still part of the deploy. A change to a non-precached
-    # glyph must still bump CACHE_VERSION so the SW evicts the stale
-    # cache entry the next time a rider hits it.
-    #
-    # Hashing every file's bytes adds ~1-2 s for a typical 24 MB build
-    # and guarantees correctness: any change anywhere in the output
-    # tree (code, data, assets) produces a fresh CACHE_VERSION, which
-    # the SW activate handler uses to evict the old cache and reload.
+    # CRITICAL: hash all_files, not precache_urls. A change to a
+    # non-precached glyph must still bump the version so the stale
+    # cache-on-fetch entry is evicted. Cost is ~1-2 s per 24 MB build.
     hasher = hashlib.sha256()
     for url in sorted(all_files):
         path = os.path.join(output_dir, url)
@@ -553,19 +492,13 @@ def generate_service_worker(config, output_dir):
     hasher.update((config.get("_data_date", "") or "").encode())
     cache_version = hasher.hexdigest()[:12]
 
-    # Byte size of every precached URL, so the page can report offline
-    # readiness by WEIGHT instead of by file count. PRECACHE_URLS is only
-    # ~30 entries, but the .pmtiles archives at its tail are most of the
+    # Byte size of every precached URL, so the page reports offline
+    # readiness by weight, not file count: the .pmtiles tail is most of the
     # bytes (a ~2 MB basemap plus an 8-30 MB terrain against ~3 MB of
-    # everything else). A count-based percentage would therefore sit near
-    # 90% while the only files that actually matter at the trailhead were
-    # still missing, then jump to 100% - worse than no number at all.
-    #
-    # Keyed by URL rather than positional, so reordering precache_urls
-    # (as the .pmtiles tail-append above already does) can't silently
-    # mis-attribute sizes. Sizes are final here: minification has already
-    # run (stage 5.5) and the precompression sidecars this ignores are
-    # written later (stage 8), against URLs the runtime never requests.
+    # everything else), so a count would sit near 90% while the files
+    # that matter at the trailhead were still missing. Keyed by URL so
+    # reordering cannot mis-attribute sizes. Minification has already run,
+    # so the sizes are final.
     precache_bytes = {}
     for rel_url in precache_urls:
         # "./" is the page itself, which the server answers from index.html.
@@ -611,11 +544,9 @@ def generate_service_worker(config, output_dir):
 # original, so the build output stays host-agnostic. The runtime never
 # requests a sidecar by name; the server negotiates it via Accept-Encoding.
 #
-# Brotli replaced zstd (2026-08): Safari never sends `zstd` in
-# Accept-Encoding, so iOS riders fell back to gzip-9, while br-11
+# Brotli, not zstd: Safari never sends `zstd` in Accept-Encoding, br-11
 # measured ~2.5x smaller than gzip-9 on trails.geojson and 5-10% under
-# zstd-19 everywhere else. Every zstd-capable browser also accepts br,
-# which makes `.zst` dead weight once `.br` exists - swap, don't add.
+# zstd-19 elsewhere, and every zstd-capable browser also accepts br.
 #
 # Skipped: already-compressed media (png/webp/ico) where gzip only adds
 # bytes, and .pmtiles, which MUST stay uncompressed so HTTP Range slicing
@@ -739,10 +670,10 @@ def load_config(config_path):
     unchanged (useful for shared assets outside the repo).
 
     Resolved keys: ``logo``, ``icon``, ``osm_file``, every
-    ``custom_routes[].geometry``, and every ``additional_logos[].path``.
-    All other paths (``output_dir``,
-    ``base_layers[].url``, etc.) stay in their original form - they're
-    either repo-relative or external URLs.
+    ``custom_routes[].geometry``, ``additional_logos[].path``,
+    ``event_mode.routes[].geometry`` and ``event_mode.gpx.routes[].file``.
+    All other paths (``output_dir``, ``base_layers[].url``, etc.) stay in
+    their original form, since they are repo-relative or external URLs.
     """
     config = read_config_yaml(config_path)
 
@@ -768,31 +699,25 @@ def load_config(config_path):
         if isinstance(entry, dict) and "path" in entry:
             entry["path"] = _resolve(entry["path"])
 
-    # Inline event_mode.routes share the same path-resolution semantics
-    # as top-level custom_routes (relative to the config YAML). Resolve
-    # here so the build-time fold into config["custom_routes"]
-    # downstream sees absolute paths.
+    # Inline event_mode.routes resolve like top-level custom_routes, so the
+    # later fold into config["custom_routes"] sees absolute paths.
     em = config.get("event_mode")
     if isinstance(em, dict):
         for entry in em.get("routes") or []:
             if isinstance(entry, dict) and "geometry" in entry:
                 entry["geometry"] = _resolve(entry["geometry"])
-        # event_mode.gpx.routes[].file - curator-supplied .gpx assets,
-        # same semantics again.
+        # event_mode.gpx.routes[].file: curator-supplied .gpx assets.
         em_gpx = em.get("gpx")
         if isinstance(em_gpx, dict):
             for entry in em_gpx.get("routes") or []:
                 if isinstance(entry, dict) and "file" in entry:
                     entry["file"] = _resolve(entry["file"])
 
-    # Per-relation override dicts accept quoted YAML keys ("1234567") -
-    # the validator explicitly blesses int-coercible strings - but the
-    # injector looks routes up by INT key, so a quoted key used to
-    # produce a clean, warning-free build with the override silently
-    # dropped (and event mode's synthesized background entries could
-    # clobber a string-keyed explicit color). Coerce digit-string keys
-    # once, here, before anything consumes them. Non-coercible keys are
-    # left alone for validate_config to reject with a proper message.
+    # Per-relation override dicts accept quoted YAML keys ("1234567"), but
+    # the injector looks routes up by INT key. A string key would drop the
+    # override silently, and event mode's synthesized background entries
+    # could clobber a string-keyed explicit color. Coerce once, here.
+    # Non-coercible keys are left for validate_config to reject.
     for key in ("relation_colors", "dashed_relations", "relation_names"):
         d = config.get(key)
         if isinstance(d, dict):
@@ -801,28 +726,23 @@ def load_config(config_path):
                 for k, v in d.items()
             }
 
-    # Title derivation. `name` is the one authored identity string; the
-    # page / share / brand title is "{name} Map" unless the curator
-    # supplies an explicit `title` override (worth it only where the
-    # curated string carries information the derivation can't, e.g.
-    # "Custer's Last Stand Route Map"). Resolved once here so every
-    # downstream reader - template_inject's og:title and brand title,
-    # generate_icons' manifest name, build.py's own log lines - sees
-    # the same string without repeating the fallback.
+    # `name` is the one authored identity string; the title is
+    # "{name} Map" unless the curator overrides it (worth it only where
+    # the string carries information the derivation can't, e.g.
+    # "Custer's Last Stand Route Map"). Resolved once so every reader
+    # sees the same string.
     #
-    # A name already ending in " Map" would derive "… Map Map". The
-    # deploying orchestrator's pre-validate forbids such names; the
-    # engine does not second-guess a curator who wants that string.
+    # A name already ending in " Map" derives "... Map Map". The
+    # orchestrator's pre-validate forbids such names; the engine does not
+    # second-guess a curator who wants that string.
     if not config.get("title"):
         name = config.get("name")
         if isinstance(name, str) and name.strip():
             config["title"] = f"{name.strip()} Map"
 
-    # Stash the config's directory in case downstream code wants it
-    # (error messages, future relative-path fields), and the YAML's own
-    # path so template_inject can fold its mtime into buildDate (a YAML
-    # edit is an app change from the rider's perspective). Name-spaced
-    # with an underscore so they don't collide with user-supplied keys.
+    # The YAML's own path lets template_inject fold its mtime into
+    # buildDate (a YAML edit is an app change from the rider's
+    # perspective). The underscore keeps both keys clear of user keys.
     config["_config_dir"] = config_dir
     config["_config_path"] = os.path.abspath(config_path)
 
@@ -892,7 +812,7 @@ def expand_bbox_for_pan(bbox, pan_padding):
 
     `pan_padding=0.5` adds 50% of the greater dimension's extent to each
     side, roughly quadrupling the pannable area. `pan_padding=0` disables
-    the expansion entirely (maxBounds == bbox, the pre-knob behavior).
+    the expansion entirely (maxBounds == bbox).
 
     Applies symmetrically in lon/lat so the pan envelope keeps the same
     shape as the source bbox (consistent with `compute_bbox_from_trails`,
@@ -906,23 +826,6 @@ def expand_bbox_for_pan(bbox, pan_padding):
         round(bbox[2] + pad, 4),
         round(bbox[3] + pad, 4),
     ]
-
-
-# ---------------------------------------------------------------------
-# PMTiles cache invalidation
-# ---------------------------------------------------------------------
-# basemap.pmtiles and terrain.pmtiles are large (~5-30 MB each) and slow
-# to extract (Mapterhorn / Protomaps planet pulls). We previously cached
-# them by output-path existence only - change `pan_bbox`, `pan_padding`,
-# or `*_maxzoom` and the *old* PMTiles silently stayed because the file
-# was still there.
-#
-# Fix: write a small `<output_path>.sig` sidecar whenever a PMTiles is
-# generated, containing the (bbox, maxzoom) tuple that produced it. On
-# subsequent builds, regenerate when the sidecar is missing or doesn't
-# match the requested signature. `--refresh` still wipes everything; this
-# just turns "different bbox now" from a silent staleness bug into an
-# automatic rebuild.
 
 
 def print_summary(output_dir):
@@ -990,12 +893,10 @@ def _dry_run_elevation_line(config):
 
 
 def _print_dry_run_summary(config, args, output_dir, cache_dir):
-    """Print what the build WOULD do, then exit 0.
+    """Print what the build WOULD do.
 
     Runs after validate_config has accepted the YAML but before any
-    Overpass query / tile fetch / file write. Useful for catching
-    config errors and previewing the build's external footprint
-    without committing to a long run.
+    Overpass query, tile fetch or file write.
     """
     console.step(f"Dry run for: {config['title']}")
     console.info(f"slug:        {config['slug']}")
@@ -1003,10 +904,8 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.info(f"cache_dir:   {cache_dir}")
     console.blank()
 
-    # load_config resolves logo/icon/osm_file/custom_routes[].geometry
-    # to absolute paths. For display we want the bare filename (matches
-    # what the user wrote in the YAML) and only fall back to the full
-    # path if the file's missing.
+    # load_config made these paths absolute. Show the bare filename the
+    # user wrote, and the full path only when the file is missing.
     def _display_path(abs_path):
         return (
             os.path.basename(abs_path)
@@ -1356,12 +1255,9 @@ def main(argv=None):
                 trails_geojson = json.load(f)
         except (json.JSONDecodeError, UnicodeDecodeError):
             # A truncated base with no sidecar (a first build killed
-            # between the snapshot copy and the signature save) used to
-            # be an unrecoverable crash loop: the content-guard only
-            # fires when a sidecar exists, so every rerun died on this
-            # bare json.load until the user knew to pass --refresh-trails.
-            # Match the content-guard philosophy: a bad base is never
-            # reused - refetch.
+            # between the snapshot copy and the signature save) escapes
+            # the content guard, which only fires when a sidecar exists.
+            # A bad base is never reused: refetch.
             console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
             trails_geojson = _fetch_and_snapshot()
 
@@ -1526,13 +1422,10 @@ def main(argv=None):
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
         console.info(f"Computed bbox from trails: {config['bbox']}")
 
-    # Compute pan_bbox: the looser envelope that drives maxBounds at
-    # runtime and the basemap/terrain PMTiles extraction footprint. The
-    # tight `bbox` still frames the initial view; pan_bbox gives the user
-    # room to wander without falling off the edge of the covered map.
-    # If the YAML specifies pan_bbox explicitly it wins; otherwise we
-    # derive it from pan_padding (default 0.5 = add 50% of extent per
-    # side ≈ 4x the pannable area).
+    # pan_bbox drives maxBounds and the basemap/terrain extraction
+    # footprint; the tight `bbox` still frames the initial view. An
+    # explicit pan_bbox wins; otherwise derive it from pan_padding
+    # (default 0.5 = 50% of extent per side, about 4x the pannable area).
     if "pan_bbox" not in config:
         pan_padding = config.get("pan_padding", 0.5)
         config["pan_bbox"] = expand_bbox_for_pan(config["bbox"], pan_padding)
@@ -1543,12 +1436,10 @@ def main(argv=None):
     console.blank()
 
     # Step 2: Fetch POIs (skip when every POI category is disabled).
-    # Otherwise ALWAYS re-run fetch_pois - even on a no-flag rebuild -
-    # so config-defined POIs (parking, trailheads, event_mode.pois)
-    # take effect on the next build automatically. The OSM portion
-    # still hits the Overpass cache internally, so the cost of the
-    # always-on rebuild is sub-second on cached maps. Trails follow the
-    # same convention: `_enrich_trails_geojson` runs on every build.
+    # Otherwise fetch_pois runs on every build, so config-defined POIs
+    # (parking, trailheads, event_mode.pois) take effect without a
+    # refresh. The OSM portion hits the Overpass cache, so a cached map
+    # pays under a second.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
         console.step("POIs: Skipped (all POI layers disabled)")
@@ -1560,20 +1451,12 @@ def main(argv=None):
     overpass_pois_paths = cache_manifest.drain()
     console.blank()
 
-    # Count POI features by type so the runtime can render an
-    # accurate Welcome modal Search line (e.g. "Find ... places
-    # (parking, toilets)" instead of always claiming every POI
-    # type exists). Two sources: pois.geojson for OSM-fetched POIs
-    # (toilets, drinking water, bicycle repair stations, trail
-    # markers, OSM-tagged features
-    # and trailheads), AND the curator-supplied parking /
-    # trailheads YAML lists which the runtime renders as separate
-    # markers. Both are user-visible POIs from the rider's
-    # perspective, so both should count toward the Search line.
+    # Count POI features by type so the Welcome modal's Search line names
+    # only the POI types that exist. Sources are pois.geojson (OSM-fetched)
+    # plus the curator-supplied parking / trailheads YAML lists, which the
+    # runtime renders as separate markers.
     #
-    # MUST run below the fetch_pois call above - this block used to
-    # sit before Step 2, reading the PREVIOUS build's pois.geojson:
-    # zero counts on a first build, one-build-stale counts after.
+    # MUST run below the fetch_pois call: pois.geojson is read from disk.
     poi_counts = {}
     pois_data = None
     if os.path.exists(pois_path):
@@ -1809,13 +1692,10 @@ def main(argv=None):
     copy_templates(config, output_dir, trails_geojson)
     console.blank()
 
-    # Step 5.5: Minify app.js + style.css + index.html unless --no-minify
-    # was passed. Runs
-    # AFTER copy_templates (which writes the files we minify) and
-    # BEFORE generate_service_worker (which hashes file contents into
-    # CACHE_VERSION - so the SW's hash refers to the final minified
-    # bytes the rider downloads). Vendor libs (download_vendor_libs
-    # below) are NOT touched - we serve whatever upstream ships.
+    # Step 5.5: Minify app.js + style.css + index.html unless --no-minify.
+    # Runs after copy_templates (which writes them) and before
+    # generate_service_worker, so the SW hash covers the minified bytes
+    # the rider downloads.
     if args.minify:
         console.step("Minifying assets...")
         _minify_assets(output_dir)

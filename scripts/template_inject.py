@@ -131,29 +131,24 @@ def _engine_app_version():
 # `validate_config.HANDLED_SPECIALLY` lists those YAML keys so the
 # drift lint accepts the omission.
 #
-# The runtime persists user-facing toggle states (POI visibility,
-# season mode, Emergency, labels, Difficulty) in localStorage under
-# `mtb.*` keys - there are no `*_default_on` config knobs. House
-# defaults live in app.js. The `show_*` fields below gate *data
-# fetching* and *build-time asset generation* (e.g. show_markers:
-# false skips the Overpass query entirely; show_difficulty: false
-# skips IMBA sprite generation), not UI visibility.
+# The runtime persists toggle states in localStorage under `mtb.*` keys,
+# so there are no `*_default_on` knobs. The `show_*` fields gate data
+# fetching and build-time asset generation (show_markers: false skips
+# the Overpass query; show_difficulty: false skips sprite generation),
+# not UI visibility.
 CONFIG_SPEC = [
     # Identity
     ("name", "name", None),
     ("slug", "slug", None),
     ("title", "title", None),
-    # View geometry.
-    # `bbox` still frames the trails for the initial view fit.
-    # `pan_bbox` is the looser envelope used for maxBounds (the pan
-    # wall) and gets precomputed from `bbox` + `pan_padding` above.
+    # View geometry: `bbox` frames the initial view, `pan_bbox` (derived
+    # from `bbox` + `pan_padding`) drives maxBounds.
     ("bbox", "bbox", None),
     ("pan_bbox", "panBbox", None),
     ("min_zoom", "minZoom", 10),
     ("max_zoom", "maxZoom", 18),
-    # Build-time data gates (skip fetching / sprite-gen when False).
-    # `show_markers` merges guideposts + emergency access points into
-    # one "trail marker" category - they render identically now.
+    # Build-time data gates. `show_markers` covers guideposts and
+    # emergency access points, which render identically.
     ("show_markers", "showMarkers", True),
     ("show_features", "showFeatures", True),
     ("show_parking", "showParking", True),
@@ -164,112 +159,69 @@ CONFIG_SPEC = [
     ("show_bicycle_repair_stations", "showBicycleRepairStations", True),
     ("show_terrain", "showTerrain", True),
     ("show_difficulty", "showDifficulty", True),
-    # Distance (meters) from the nearest visible trail within which a
-    # trail-marker or feature POI is allowed to render. Tight values
-    # (~10 m) hide POIs that aren't directly on the trail; loose
-    # values (~75 m+) include nearby attractions but risk surfacing
-    # bbox-incidental POIs. Default 50 surfaces typical
-    # `tourism=attraction` features (often 10-50 m off-trail) while
-    # keeping the filter useful. The Features peek toggle auto-hides
-    # if no feature POI passes this check.
+    # Meters from the nearest visible trail within which a trail-marker
+    # or feature POI renders. 50 surfaces typical `tourism=attraction`
+    # features (often 10-50 m off-trail); ~75 m+ risks bbox-incidental
+    # POIs.
     ("poi_proximity_m", "poiProximityMeters", 50),
-    # UI gate for the Finder + Labels dropdown. Where routes and trails
-    # overlap so heavily that listing both adds noise, turning trails
-    # off hides the Trails Finder section and the Trails Labels option.
-    # (Routes are always surfaced - a geometry source is required, so
-    # every map has a key.)
+    # False hides the Trails Finder section and the Trails Labels option,
+    # for maps where routes and trails overlap heavily. Routes always
+    # show.
     ("show_trails", "showTrails", True),
-    # Build-time data gate for the direction-arrow layer. When False,
-    # no arrows are placed on any oneway trail and the Options toggle
-    # row is hidden - even if `direction_arrows` is in `forced_visible`
-    # (the show gate wins). Use for aesthetic maps that should never
-    # display directional indicators regardless of the underlying OSM
-    # tagging. Default True mirrors every other show_* gate's
-    # "show by default, opt out per-map" pattern.
+    # False places no arrows on any oneway trail and hides the Options
+    # toggle row, even if `direction_arrows` is in `forced_visible`
+    # (the show gate wins).
     ("show_direction_arrows", "showDirectionArrows", True),
     # Display
-    # Labels mode default. Was "routes" historically; now defaults to
-    # "none" so a fresh-LS visit produces a clean map with the rider
-    # opting into labels via the Labels segmented control.
+    # Default "none" gives a first visit a clean map; the rider opts into
+    # labels via the Labels control.
     ("default_labels", "defaultLabels", "none"),
-    # Labels mode lock. When set ("routes" / "trails" / "none"), the
-    # Labels segmented control is hidden in Options and the rider's
-    # persisted choice is ignored. Validated at build time against
-    # show_trails so the lock can't contradict a hidden section.
-    # Default "" (empty string) rather than None - None is the
-    # "required key" sentinel for inject_config_into_template's loop;
-    # the runtime check is `CONFIG.forcedLabels ? lock : free` which
-    # treats "" as the unset/free state.
+    # Labels mode lock ("routes" / "trails" / "none"): hides the Labels
+    # control and ignores the rider's persisted choice. Default "" rather
+    # than None, because None is the "required key" sentinel for
+    # inject_config_into_template's loop; the runtime treats "" as unset.
     ("forced_labels", "forcedLabels", ""),
-    # Initial color scheme for first-visit riders. "light" / "dark"
-    # / "auto" (auto resolves prefers-color-scheme). Default "light"
-    # preserves existing behavior for maps that don't opt in. The
-    # rider can override via the Options Appearance toggle; LS wins
-    # over this default on subsequent visits. The build also injects
-    # this value into the inline <head> bootstrap script so first
-    # paint already has the right scheme set on <html>.
+    # First-visit color scheme: "light" / "dark" / "auto" (resolves
+    # prefers-color-scheme). The rider's stored choice wins afterward.
+    # Also injected into the inline <head> bootstrap script so first
+    # paint already has the right scheme.
     ("default_color_scheme", "defaultColorScheme", "light"),
-    # Whether the brand-img logo should auto-invert in dark mode.
-    # Default true matches historical behavior; curators with
-    # colored logos that look bad inverted set false per-map.
+    # False for colored logos that look bad inverted in dark mode.
     ("invert_logo_dark", "invertLogoDark", True),
     ("color_by", "colorBy", "route"),
-    # false: the bottom-right panel is a Search button alone, no key
-    # card and no chip. For a trail system whose relations are the
-    # trails themselves (Copper Harbor: 75 of them), a key that lists
-    # every one is a wall, while search still finds any of them.
+    # False: the bottom-right panel is a Search button alone. For a trail
+    # system whose relations are the trails themselves (Copper Harbor:
+    # 75), a key that lists every one is a wall; search still finds them.
     ("route_key", "routeKey", True),
     # Also a build-time gate (compute_route_stats.py writes per-route
-    # distance_m for routes maps). A difficulty map sums its per-rating
-    # key distances at runtime from the visible ways, so the runtime
-    # needs the flag itself.
+    # distance_m). A difficulty map sums per-rating distances at runtime,
+    # so the runtime needs the flag itself.
     ("show_distance", "showDistance", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
-    # When true (the default), highlighting a route or trail dims
-    # everything else on the map (basemap tint + non-highlighted
-    # arrows/difficulty hidden + POI markers faded) so the highlighted
-    # feature reads as a spotlight. Name labels stay visible for
-    # wayfinding. Set false per-map to keep every route visible at full
-    # brightness behind the highlight ribbon.
+    # Highlighting dims everything else (basemap tint, other arrows and
+    # difficulty hidden, POI markers faded). Name labels stay visible for
+    # wayfinding. False keeps every route at full brightness.
     ("map_dim_on_highlight", "mapDimOnHighlight", True),
-    # Opacity (0..1) of the dark scrim used for BOTH the in-map spotlight
-    # wash while a route/trail is highlighted (only when
-    # map_dim_on_highlight is true) AND the Search / Options / About menu
-    # backdrops (via the --scrim-opacity CSS var, published in init()).
-    # One value so the in-map wash and the menu backdrops share a single
-    # density - moving between a highlight and an open menu reads as one
-    # continuous wash. Lower keeps the surrounding network legible (you
-    # can still trace the connecting trails needed to reach the
-    # highlighted one); higher is a stronger dim. Default 0.40.
+    # Opacity (0..1) of the dark scrim for BOTH the highlight wash (when
+    # map_dim_on_highlight is true) AND the menu backdrops (via the
+    # --scrim-opacity CSS var). One value, so moving between a highlight
+    # and an open menu reads as one continuous wash. Lower keeps the
+    # connecting trails legible.
     ("scrim_opacity", "scrimOpacity", 0.40),
-    # When true (the default), a highlighted route/trail gets a soft
-    # amber selection glow beneath the ribbon so it reads as "selected"
-    # at a glance - including dark/black routes that would otherwise be
-    # easy to lose. Set false to drop back to the outline + stroke ribbon
-    # with no glow.
+    # Soft amber glow beneath a highlighted route/trail, so dark/black
+    # routes do not get lost.
     ("highlight_glow", "highlightGlow", True),
-    # When true (the default), MapLibre writes `#zoom/lat/lon` to
-    # the URL hash as the user pans/zooms, and honors any hash on
-    # page load. Makes views shareable and survives reload, at the
-    # cost of leaking last-viewed location in the address bar /
-    # screenshots / screen-shares. Set false to drop the hash
-    # entirely (URL stays clean, no persistence across reload, no
-    # shareable deep-links).
+    # True makes MapLibre write and honor `#zoom/lat/lon`: shareable
+    # views that survive reload, at the cost of leaking the last-viewed
+    # location in the address bar and screenshots.
     ("url_hash", "urlHash", False),
-    # Share button in the expanded sheet (above Install). When true
-    # (default), generates a shareable URL of the current view +
-    # highlighted route/trail and surfaces it via the Web Share API
-    # (or clipboard fallback). When false, the entire share section
-    # is stripped from index.html at build time. Set false for maps
-    # where the curator wants no share affordance (e.g. private/
-    # family maps); leave true for community/public maps.
+    # Share button (Web Share API, clipboard fallback). False strips the
+    # whole share section from index.html at build time.
     ("share_button", "shareButton", True),
-    # Marker colors (kept per user request; some systems have
-    # branded marker palettes aligned with their trail colors).
-    # parking/trailhead/feature colors flow to CSS custom
-    # properties on :root so the peek-bar swatch, the on-map
-    # marker, and the popup badge all stay in lockstep.
+    # Marker colors flow to CSS custom properties on :root, so the
+    # peek-bar swatch, the on-map marker and the popup badge stay in
+    # lockstep.
     ("marker_color", "markerColor", "#795548"),
     ("marker_text_color", "markerTextColor", "white"),
     ("marker_border_color", "markerBorderColor", "white"),
@@ -287,14 +239,9 @@ CONFIG_SPEC = [
     ("feature_ring_color", "featureRingColor", "#ffffff"),
     # PWA
     ("pwa", "pwa", True),
-    # When true, surface PWA install affordances on platforms that
-    # support them (Chrome's mini-infobar + our custom Install button
-    # via beforeinstallprompt; iOS Safari Add-to-Home-Screen
-    # instructions). Default true; set false for maps that don't want
-    # install promotion (e.g. a personal/family map). When false, the
-    # beforeinstallprompt handler is not registered at all - silencing
-    # Chrome's "page must call prompt()" warning - and the custom
-    # Install button is hidden everywhere.
+    # False registers no beforeinstallprompt handler, which also silences
+    # Chrome's "page must call prompt()" warning, and hides the custom
+    # Install button everywhere.
     ("pwa_install_prompt", "pwaInstallPrompt", True),
 ]
 
@@ -635,37 +582,26 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["defaultTrailDash"] = False
         config_obj["defaultTrailCap"] = "round"
 
-    # buildDate answers "when did this map's app last change": the
-    # engine templates PLUS the map's own build inputs - the config YAML
-    # and the assets it references - so a curator editing a title or
-    # swapping a logo moves it even though no engine code changed. It is
-    # NOT displayed in the About modal (appVersion below replaced it
-    # there); it survives in CONFIG because the website repo's
-    # build-pages.py reads it (together with dataDate and
-    # appVersionDate) to compute each landing-page card's "Updated"
-    # date and the sitemap <lastmod>. OSM data is deliberately not an
-    # input here: that's dataDate's job (a refetch stamps
-    # metadata.data_timestamp into the src snapshot, which moves
-    # dataDate).
+    # buildDate answers "when did this map's app last change": the engine
+    # templates plus the map's own inputs (config YAML and referenced
+    # assets). It is not displayed in About; the website repo's
+    # build-pages.py reads it, with dataDate and appVersionDate, for each
+    # landing-page card's "Updated" date and the sitemap <lastmod>. OSM
+    # data is not an input; dataDate covers that.
     #
-    # Derived from input mtimes - NOT datetime.now(): a wall-clock
-    # stamp made every rebuild produce different app.js bytes, which
-    # bust the content-hashed CACHE_VERSION and forced every installed
-    # rider through full cache eviction + re-precache (up to ~30 MB)
-    # after deploys that changed nothing. With an input-derived stamp,
-    # a no-op rebuild is byte-identical.
+    # Derived from input mtimes, NOT datetime.now(): a wall-clock stamp
+    # would change app.js bytes on every rebuild, bust the content-hashed
+    # CACHE_VERSION and force a full re-precache (up to ~30 MB) on every
+    # rider after a no-op deploy.
     templates_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "templates")
     template_inputs = [
         os.path.join(templates_dir, name)
         for name in ("app.js", "index.html", "style.css", "sw.js")
     ]
-    # Map-side inputs: the config YAML plus every per-map asset it
-    # references. Stamped separately as configDate for the About
-    # modal's "Map config" row: curation moves independently of both
-    # the engine (App row) and the OSM fetch (Map data row), and
-    # before this a styling/schedule/asset edit updated the map with
-    # no visible change anywhere in About. Same mtime derivation (and
-    # the same fresh-clone caveat) as buildDate.
+    # Map-side inputs, stamped separately as configDate for About's "Map
+    # config" row: curation moves independently of the engine (App row)
+    # and the OSM fetch (Map data row). Same mtime derivation, and the
+    # same fresh-clone caveat, as buildDate.
     map_inputs = [config.get("_config_path"), config.get("logo"), config.get("icon")]
     map_inputs += [(e or {}).get("path") for e in config.get("additional_logos") or []]
     map_inputs += [(e or {}).get("geometry") for e in config.get("custom_routes") or []]
