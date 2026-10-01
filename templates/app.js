@@ -1231,6 +1231,7 @@ function showTapLift({ trailName = null, edges = null } = {}) {
     tapLiftTrail = trailName || null;
     tapLiftEdges = edges && edges.size ? { ids: edges, graph: laneGraph } : null;
     refreshTapLift();
+    syncTapLiftBrightness();
 }
 
 // Runs on the popup's close event, so every way a popup goes (a tap
@@ -1239,6 +1240,38 @@ function clearTapLift() {
     tapLiftTrail = null;
     tapLiftEdges = null;
     refreshTapLift();
+    syncTapLiftBrightness();
+}
+
+// A look under a selection's dim: the rider lifted a route (the wash
+// dims everything else) and tapped a trail off it to read it. The
+// selection stays, and the dim says the trail is not in it, but a
+// popup describing a line the rider can barely see, under a glow
+// meant to lift it, read as a contradiction (Steve, 2026-09-30). So
+// while the popup is open the lifted stretch draws at full brightness,
+// its lanes through the plugin's `bright` edge set (setHighlight) and
+// its name labels through trailIdentityMatch, and the dim returns when
+// the popup closes. Only under an active dim: with no selection there
+// is nothing to exempt from.
+function syncTapLiftBrightness() {
+    if (!highlightDimActive()) return;
+    syncLaneHighlight();
+    updateLabels();
+}
+
+// The graph edges the tap lift covers: its own edge set (a section or
+// an unnamed way), else every edge carrying the lifted name (a finder
+// pick). Empty when the lift's graph is gone or nothing is lifted.
+function tapLiftEdgeIds() {
+    if (tapLiftEdges) {
+        return tapLiftEdges.graph === laneGraph ? [...tapLiftEdges.ids] : [];
+    }
+    if (!tapLiftTrail || !laneGraph) return [];
+    const ids = [];
+    laneGraph.edges.forEach((e, id) => {
+        if (((e.properties || {}).trail_name || "") === tapLiftTrail) ids.push(id);
+    });
+    return ids;
 }
 
 function refreshTapLift() {
@@ -6625,8 +6658,9 @@ async function loadTrails() {
     // applyMapPaintForScheme to swap. The lane layer is custom and not
     // yet added here, so refreshLaneGraph and promoteBasemapLabels put
     // the glow back under the lanes each time the stack changes
-    // (moveTapLiftUnderLanes). Anchored on dim-tint until then so it
-    // never paints over the wash.
+    // (moveTapLiftUnderLanes). Anchored on dim-tint until then; the
+    // wash is then moved under it (promoteBasemapLabels), since a lift
+    // belongs above the wash.
     map.addLayer({
         id: TAP_GLOW_LAYER,
         type: "line",
@@ -6792,8 +6826,16 @@ function routeIdentityMatch() {
     return ["==", ["get", "solo_route_id"], highlight.key];
 }
 function trailIdentityMatch() {
-    if (highlight.kind === "rating") return ratingIdentityMatch();
-    return ["in", highlight.key, ["get", "shared_routes"]];
+    const own = highlight.kind === "rating"
+        ? ratingIdentityMatch()
+        : ["in", highlight.key, ["get", "shared_routes"]];
+    // The trail an open popup describes reads at full brightness
+    // (syncTapLiftBrightness). By name, since labels carry no edge
+    // id: a name in several stretches brightens every stretch's label
+    // while one of them is lifted, a small over-reach next to a dark
+    // name on a lifted line.
+    if (!tapLiftTrail) return own;
+    return ["any", own, ["==", ["get", "trail_name"], tapLiftTrail]];
 }
 // A color key highlight: the feature's own way has that key. Labels
 // and chevrons carry color_key (stamped per visibility pass, false for
@@ -7018,6 +7060,10 @@ function syncLaneHighlight() {
         outline: null,
         outlineWidth: 0,
         dim: washed ? 1 - SCRIM_OPACITY : 1,
+        // The open popup's trail stays readable under the dim
+        // (syncTapLiftBrightness). Needs maplibre-gl-lanes 1.2.0;
+        // 1.1.0 ignores the key.
+        bright: washed ? tapLiftEdgeIds() : [],
     });
 }
 
@@ -7269,8 +7315,10 @@ function refreshLaneGraph() {
             map.addLayer(laneLayer, laneLayerAnchor());
             // promoteBasemapLabels ran before the lanes existed and put
             // the labels between the tap lift and the anchor, where the
-            // lanes just landed; the lift belongs directly under them.
+            // lanes just landed; the lift belongs directly under them,
+            // and the wash directly under the lift.
             moveTapLiftUnderLanes();
+            placeWashUnderLift();
             placeClipArrowsAboveLanes();
             // A share link can select a route before the lanes exist.
             syncLaneHighlight();
@@ -12633,22 +12681,23 @@ function promoteBasemapLabels() {
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
     }
-    // The wash goes under the lanes, and under the basemap labels so
-    // they still recede: a highlight is the plugin's lift inside the
-    // lane layer, and the plugin dims the other lanes itself; a wash
-    // over the lanes would dim the lift too. Re-established after every
+    // The wash goes under the lanes but OVER the basemap labels, road
+    // shields, contour labels and the restricted-path marks, so they
+    // recede with the basemap they belong to: a highlight is the
+    // plugin's lift inside the lane layer, and the plugin dims the other
+    // lanes itself; a wash over the lanes would dim the lift too. (The
+    // lift work of 2026-09-30 first put the wash under the first symbol
+    // layer, which left every basemap label at full strength over the
+    // dimmed map.) The tap glow sits between the wash and the lanes,
+    // a lift above the wash as it should be. Re-established after every
     // basemap rebuild, since the setStyle diff can reorder the wash.
-    if (map.getLayer("dim-tint")) {
-        // Under the contour labels too, which sit with the basemap
-        // labels: whichever symbol layer comes first in the stack.
-        const symbols = new Set([...basemapSymbolIds, "contour-labels"]);
-        const first = map.getStyle().layers.find((l) => symbols.has(l.id));
-        map.moveLayer("dim-tint", first ? first.id : TAP_GLOW_LAYER);
-    }
     // The labels just landed between the tap lift and the lanes (or,
     // after a basemap rebuild, the setStyle diff may have shuffled the
-    // lift); keep it directly beneath the lanes, labels under it.
+    // lift); keep it directly beneath the lanes, labels under it, and
+    // only THEN the wash under the lift: placing the wash first left it
+    // under the labels once the lift moved up past them.
     moveTapLiftUnderLanes();
+    placeWashUnderLift(basemapSymbolIds);
     placeClipArrowsAboveLanes();
 }
 
@@ -12671,6 +12720,29 @@ function placeClipArrowsAboveLanes() {
 // promoteBasemapLabels).
 function laneLayerAnchor() {
     return map.getLayer("decor-chevron-fwd") ? "decor-chevron-fwd" : undefined;
+}
+
+// The wash directly under the tap glow, or under the lanes before the
+// glow exists, or, at style load before either, directly above the
+// last basemap symbol layer (the glow and the lanes then insert above
+// it). Every path ends with basemap symbols < wash < glow < lanes.
+function placeWashUnderLift(basemapSymbolIds) {
+    if (!map.getLayer("dim-tint")) return;
+    if (map.getLayer(TAP_GLOW_LAYER)) {
+        map.moveLayer("dim-tint", TAP_GLOW_LAYER);
+        return;
+    }
+    if (map.getLayer(LANE_LAYER_ID)) {
+        map.moveLayer("dim-tint", LANE_LAYER_ID);
+        return;
+    }
+    const ids = basemapSymbolIds || map.getStyle().layers
+        .filter((l) => l.source === "basemap" && l.type === "symbol")
+        .map((l) => l.id);
+    const order = map.getStyle().layers.map((l) => l.id);
+    const last = Math.max(-1, ...ids.map((id) => order.indexOf(id)));
+    const next = order.slice(last + 1).find((id) => id !== "dim-tint");
+    map.moveLayer("dim-tint", next);
 }
 
 // The glow, then the lanes. No-op until both exist.
