@@ -868,6 +868,60 @@ def _validate_additional_logos(report, config):
         _reject_unknown_keys(report, where, entry, {"path", "invert_dark"})
 
 
+def _validate_base_layers(report, config):
+    """base_layers: optional list of custom raster basemaps offered in the
+    Options basemap selector. Each entry is a mapping the runtime reads
+    as given (CONFIG.baseLayers): `id`, `name` and `url` are required,
+    the URL must carry the {z}/{x}/{y} placeholders, and the optional
+    `attribution`, `tile_size`, `max_zoom` and `headers` are typed. A
+    misspelled key or a bad value would otherwise ship silently and show
+    up as a broken layer in the selector."""
+    bl = config.get("base_layers")
+    if bl is None:
+        return
+    if not isinstance(bl, list):
+        report.err("base_layers", f"expected list, got {type(bl).__name__}")
+        return
+    seen_ids = set()
+    for i, entry in enumerate(bl):
+        where = f"base_layers[{i}]"
+        if not isinstance(entry, dict):
+            report.err(where, f"expected mapping with id/name/url keys, got {type(entry).__name__}")
+            continue
+        for key in ("id", "name", "url"):
+            v = entry.get(key)
+            if not isinstance(v, str) or not v.strip():
+                report.err(where, f"missing required `{key}:` (non-empty string)")
+        url = entry.get("url")
+        if isinstance(url, str):
+            missing = [t for t in ("{z}", "{x}", "{y}") if t not in url]
+            if missing:
+                report.err(f"{where}.url", f"must contain {', '.join(missing)}")
+        layer_id = entry.get("id")
+        if isinstance(layer_id, str):
+            if layer_id in seen_ids:
+                report.err(f"{where}.id", f"duplicate id {layer_id!r}")
+            seen_ids.add(layer_id)
+        if "attribution" in entry and not isinstance(entry["attribution"], str):
+            report.err(f"{where}.attribution", f"expected string, got {entry['attribution']!r}")
+        if "tile_size" in entry and not (_is_int(entry["tile_size"]) and entry["tile_size"] > 0):
+            report.err(f"{where}.tile_size", f"must be a positive integer, got {entry['tile_size']!r}")
+        if "max_zoom" in entry and not (
+            _is_int(entry["max_zoom"]) and 0 <= entry["max_zoom"] <= 24
+        ):
+            report.err(f"{where}.max_zoom", f"must be an integer 0..24, got {entry['max_zoom']!r}")
+        if "headers" in entry:
+            h = entry["headers"]
+            if not isinstance(h, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in h.items()
+            ):
+                report.err(f"{where}.headers", "must be a mapping of header name to string value")
+        _reject_unknown_keys(
+            report, where, entry,
+            {"id", "name", "url", "attribution", "tile_size", "max_zoom", "headers"},
+        )
+
+
 def _asset_paths(config):
     """Yield (config key, path) for every user-supplied asset path that is
     a non-empty string. Wrong types are reported by _validate_types and
@@ -1896,6 +1950,7 @@ def validate_config(config, *, config_path=None):
     _validate_relation_names(report, config)
     _validate_point_lists(report, config)
     _validate_additional_logos(report, config)
+    _validate_base_layers(report, config)
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_event_mode(report, config)

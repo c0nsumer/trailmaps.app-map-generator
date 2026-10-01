@@ -72,6 +72,22 @@ def test_typo_guard_warns_on_unknown_and_super_relation_keys(capsys):
     assert "relation_colors[999]" in out and "12562142" in out
 
 
+def test_typo_guard_covers_dashes_and_schedules(capsys):
+    g = _fc()
+    cfg = {
+        "dashed_relations": {111: True},
+        "direction_schedule": {"per_route": {222: {"reverse_days": ["mon"]},
+                                             999: {"reverse_days": ["tue"]}}},
+    }
+    _enrich_trails_geojson(cfg, g)
+    out = capsys.readouterr().out
+    assert "dashed_relations[111]" in out and "no such route" in out
+    assert "direction_schedule.per_route[222]" in out
+    # A super-relation parent is a valid per_route key: the schedule fans
+    # out to its children, so no warning.
+    assert "per_route[999]" not in out
+
+
 def test_typo_guard_silent_for_known_keys(capsys):
     g = _fc()
     _enrich_trails_geojson({"relation_colors": {12562142: "blue"}}, g)

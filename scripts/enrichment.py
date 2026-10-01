@@ -161,12 +161,24 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
     # template_inject, so only the curator's own keys are checked. A
     # super-relation parent is a special case: it was expanded into its
     # children at fetch time, so point the curator at those IDs.
-    for key in ("relation_names", "relation_colors"):
-        for rid in config.get(key) or {}:
+    # direction_schedule.per_route is the one dict where a super-relation
+    # key is valid: the injector fans a parent's schedule out to its
+    # children, so only an id that is on no list at all is a typo there.
+    per_route = (config.get("direction_schedule") or {}).get("per_route") or {}
+    keyed_overrides = (
+        ("relation_names", config.get("relation_names") or {}, False),
+        ("relation_colors", config.get("relation_colors") or {}, False),
+        ("dashed_relations", config.get("dashed_relations") or {}, False),
+        ("direction_schedule.per_route", per_route, True),
+    )
+    for key, mapping, supers_ok in keyed_overrides:
+        for rid in mapping:
             rid_str = str(rid)
             if rid_str in routes:
                 continue
             if rid_str in super_expansions:
+                if supers_ok:
+                    continue
                 children = ", ".join(super_expansions[rid_str])
                 console.warn(
                     f"{key}[{rid}]: this is a super-relation; key the "

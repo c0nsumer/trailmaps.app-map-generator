@@ -556,3 +556,33 @@ def test_every_known_key_reaches_the_runtime_or_is_declared_build_only():
     # Catches a key added to the validator that never reaches the template
     # injector, which otherwise breaks silently in the browser.
     assert assert_spec_coverage() is True
+
+
+# ---------------------------------------------------------------------------
+# base_layers entries
+# ---------------------------------------------------------------------------
+
+_LAYER = {"id": "sat", "name": "Satellite", "url": "https://t.example/{z}/{x}/{y}.png"}
+
+
+def test_base_layer_entry_is_valid():
+    assert not _errors(base_layers=[dict(_LAYER, tile_size=512, max_zoom=18,
+                                         attribution="x", headers={"A": "b"})])
+
+
+def test_base_layer_missing_url_and_bad_placeholders():
+    errs = _errors(base_layers=[{"id": "a", "name": "A"},
+                                dict(_LAYER, url="https://t.example/tiles.png")])
+    assert any("base_layers[0]" in e and "url" in e for e in errs)
+    assert any("base_layers[1].url" in e and "{z}" in e for e in errs)
+
+
+def test_base_layer_types_duplicates_and_unknown_keys():
+    errs = _errors(base_layers=[dict(_LAYER, tile_size="256", max_zoom=30, headers="x"),
+                                dict(_LAYER, tilesize=256)])
+    joined = "\n".join(errs)
+    assert "base_layers[0].tile_size" in joined
+    assert "base_layers[0].max_zoom" in joined
+    assert "base_layers[0].headers" in joined
+    assert "base_layers[1].id" in joined and "duplicate" in joined
+    assert "tilesize" in joined
