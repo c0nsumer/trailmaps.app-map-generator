@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import concurrent.futures
+import functools
 import hashlib
 import json
 import os
@@ -198,7 +199,7 @@ def _minify_html(src):
     template_inject deletes optional blocks by matching paired
     `<!-- Share start -->` / `<!-- Share end -->` markers, so a stripped
     template would silently ship every optional block on every map. The
-    build reaches this at step 5.5, after copy_templates has already
+    build reaches this in _stage_templates, after copy_templates has already
     consumed those markers.
     """
     import rcssmin
@@ -1041,7 +1042,7 @@ def apply_default_brand(config, project_root):
     return True
 
 
-def main(argv=None):
+def _build_parser():
     parser = argparse.ArgumentParser(description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
     # Remote data never updates on its own - cached responses are served
@@ -1122,33 +1123,11 @@ def main(argv=None):
         help="Suppress progress output; show only notes, warnings, and errors.",
     )
     parser.set_defaults(minify=True, precompress=True)
-    args = parser.parse_args(argv)
+    return parser
 
-    console.set_verbosity(quiet=args.quiet)
 
-    config = load_config(args.config)
-    project_root = os.path.dirname(SCRIPTS_DIR)
-
-    # Validate the config before doing anything expensive (Overpass fetches,
-    # tile generation). Errors abort the build; warnings (e.g. asset files
-    # not present yet) print but allow it to continue.
-    errors, warnings = validate_config(config, config_path=args.config)
-    for line in warnings:
-        console.raw(line)
-    if errors:
-        console.step(f"\nConfig validation failed for {args.config}:")
-        for line in errors:
-            console.raw(line)
-        sys.exit(1)
-
-    # A map that configures neither logo: nor icon: still gets favicons,
-    # a maskable PWA icon + manifest (installable), and an on-page brand
-    # mark by falling back to the engine's bundled placeholder. Applied
-    # after validation (which judges the curator's real config) so it
-    # also shows up in --dry-run's branding summary below.
-    if apply_default_brand(config, project_root):
-        console.info("No logo/icon configured - using the bundled placeholder bike icon")
-
+def _resolve_dirs(config, args, project_root):
+    """Return (output_dir, cache_dir) for this build."""
     # Path resolution precedence: CLI flag > config field > legacy default.
     # CLI-flag paths resolve against the current working directory so the
     # caller (orchestrator or shell) controls layout entirely; config-field
@@ -1166,34 +1145,41 @@ def main(argv=None):
         cache_dir = os.path.abspath(args.cache_dir)
     else:
         cache_dir = os.path.join(project_root, "cache")
+    return output_dir, cache_dir
 
-    # --dry-run: print what would happen, exit before any work.
-    # Runs AFTER validate_config so any schema/value errors still abort
-    # with a non-zero exit; runs BEFORE os.makedirs so dry-run leaves
-    # zero filesystem footprint (no empty output_dir created).
-    if args.dry_run:
-        _print_dry_run_summary(config, args, output_dir, cache_dir)
-        return
 
-    os.makedirs(output_dir, exist_ok=True)
+def _fetch_and_snapshot(config, trails_path, trails_src_path, cache_dir, refresh_trails):
+    # Snapshot the canonical base BEFORE enrichment edits it in place,
+    # so the next build enriches clean geometry again instead of
+    # re-enriching its own output. Copied after
+    # fetch_trails succeeds so a partial/aborted fetch leaves no base.
+    #
+    # Stash the outgoing snapshot first so the refresh can be diffed
+    # against it (vetted-deploys-only means the curator has to know what
+    # changed upstream). Read before fetch_trails so a fetch that
+    # rewrites trails_path can't race it; returns None on a first build.
+    prev_snapshot = stash_previous_snapshot(
+        trails_src_path, cache_dir, config["slug"])
+    fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
+    shutil.copyfile(trails_path, trails_src_path)
+    _save_signature(
+        trails_src_path,
+        _trails_fetch_fingerprint(config)
+        + "\ntrails-content="
+        + (_trails_content_hash(trails_src_path) or ""),
+    )
+    report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"])
+    return fetched
 
-    # Discard collector state a prior in-process main() call may have
-    # left behind (tests invoke main() repeatedly); the stage drains
-    # below must only ever see this build's recordings. After the
-    # --dry-run return so dry-run keeps its zero-footprint guarantee.
-    cache_manifest.drain()
 
-    # --refresh re-fetches this map's data by bypassing cached Overpass
-    # responses (refresh flag on the fetch calls below). The cache
-    # directory itself is left alone: it's SHARED across every map
-    # (plus the vendor-lib and accent-derivation caches), so the old
-    # rmtree here threw away all the other maps' responses too.
+def _stage_trails(config, args, output_dir, cache_dir):
+    """Fetch the trail base, or reuse it when its inputs are unchanged.
 
-    console.step(f"Building map: {config['title']}")
-    console.step(f"Output: {output_dir}")
-    console.blank()
-
-    # Step 1: Fetch trails
+    Returns (trails_geojson, fetch_ran, trails_path, trails_src_path).
+    fetch_ran feeds the cache-manifest step: a reuse build records no
+    Overpass trail paths, but neither does an osm_file map whose fetch
+    DID run, so drained-path counts can't tell them apart.
+    """
     trails_path = os.path.join(output_dir, "trails.geojson")
     # trails.geojson is the render output: the fetched geometry plus what
     # enrichment adds (bucket flags, custom routes, stats) and what event
@@ -1213,41 +1199,14 @@ def main(argv=None):
         needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
-    # Whether fetch_trails actually ran this build. Needed by the
-    # manifest step at the end of main(): a reuse build records no
-    # Overpass trail paths, but neither does an osm_file map whose
-    # fetch DID run, so drained-path counts can't tell them apart.
-    trails_fetch_ran = False
 
-    def _fetch_and_snapshot():
-        nonlocal trails_fetch_ran
-        trails_fetch_ran = True
-        # Snapshot the canonical base BEFORE enrichment edits it in place,
-        # so the next build enriches clean geometry again instead of
-        # re-enriching its own output. Copied after
-        # fetch_trails succeeds so a partial/aborted fetch leaves no base.
-        #
-        # Stash the outgoing snapshot first so the refresh can be diffed
-        # against it (vetted-deploys-only means the curator has to know what
-        # changed upstream). Read before fetch_trails so a fetch that
-        # rewrites trails_path can't race it; returns None on a first build.
-        prev_snapshot = stash_previous_snapshot(
-            trails_src_path, cache_dir, config["slug"])
-        fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
-        shutil.copyfile(trails_path, trails_src_path)
-        _save_signature(
-            trails_src_path,
-            _trails_fetch_fingerprint(config)
-            + "\ntrails-content="
-            + (_trails_content_hash(trails_src_path) or ""),
-        )
-        report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"])
-        return fetched
-
+    fetch_ran = False
     if needs_fetch or auto_refetch_reason:
         if auto_refetch_reason:
             console.step(f"Trails: refetching ({auto_refetch_reason})")
-        trails_geojson = _fetch_and_snapshot()
+        fetch_ran = True
+        trails_geojson = _fetch_and_snapshot(
+            config, trails_path, trails_src_path, cache_dir, refresh_trails)
     else:
         console.step(f"Trails: reusing base {trails_src_path}")
         try:
@@ -1259,67 +1218,52 @@ def main(argv=None):
             # the content guard, which only fires when a sidecar exists.
             # A bad base is never reused: refetch.
             console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
-            trails_geojson = _fetch_and_snapshot()
+            fetch_ran = True
+            trails_geojson = _fetch_and_snapshot(
+                config, trails_path, trails_src_path, cache_dir, refresh_trails)
+    return trails_geojson, fetch_ran, trails_path, trails_src_path
 
-    overpass_trails_paths = cache_manifest.drain()
 
-    # Record the data date ("when is this OSM data from") for the About
-    # modal and the service-worker cache key, in local time with HH:MM so
-    # stale clients update reliably on sub-day refetches. Read from the
-    # base's embedded metadata.data_timestamp (the Overpass osm3s snapshot
-    # captured at fetch time, or the .osm file's mtime), NOT from the base
-    # file's mtime: the base gets rewritten by any build that rebuilds
-    # it from cached Overpass responses (fresh checkout, machine move,
-    # config-triggered refetch), so its mtime reports the rebuild moment
-    # even when no fetch happened and the data is weeks old.
-    config["_data_date"] = ""
-    _data_ts = (trails_geojson.get("metadata") or {}).get("data_timestamp") or ""
-    if _data_ts:
+def _data_date(trails_geojson, trails_src_path):
+    """Return the data date ("when is this OSM data from") as local
+    "YYYY-MM-DD HH:MM", for the About modal and the service-worker cache
+    key."""
+    # Local time with HH:MM so stale clients update reliably on sub-day
+    # refetches. Read from the base's embedded metadata.data_timestamp
+    # (the Overpass osm3s snapshot captured at fetch time, or the .osm
+    # file's mtime), NOT from the base file's mtime: the base gets
+    # rewritten by any build that rebuilds it from cached Overpass
+    # responses (fresh checkout, machine move, config-triggered refetch),
+    # so its mtime reports the rebuild moment even when no fetch happened
+    # and the data is weeks old.
+    data_ts = (trails_geojson.get("metadata") or {}).get("data_timestamp") or ""
+    if data_ts:
         try:
-            config["_data_date"] = (
-                datetime.strptime(_data_ts, "%Y-%m-%dT%H:%M:%SZ")
+            return (
+                datetime.strptime(data_ts, "%Y-%m-%dT%H:%M:%SZ")
                 .replace(tzinfo=UTC)
                 .astimezone()
                 .strftime("%Y-%m-%d %H:%M")
             )
         except ValueError:
             pass  # unrecognized stamp - fall through to the mtime path
-    if not config["_data_date"]:
-        # A route-only map has no OSM data, so its base carries an empty
-        # stamp (fetch_trails._write_empty_trails), as does a response
-        # without an osm3s block: date the data by the base's mtime.
-        config["_data_date"] = datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
-            "%Y-%m-%d %H:%M"
-        )
-
-    # Tell the runtime whether clip_endpoints.geojson exists in this
-    # build. fetch_trails only writes the file when there are clipped
-    # relations whose endpoints fall inside the bbox (most maps don't
-    # have any), so a runtime probe-fetch produced a noisy 404 on
-    # those maps. Reading the file's existence here lets the runtime
-    # skip the fetch entirely.
-    config["_has_clip_endpoints"] = os.path.exists(
-        os.path.join(output_dir, "clip_endpoints.geojson")
+    # A route-only map has no OSM data, so its base carries an empty
+    # stamp (fetch_trails._write_empty_trails), as does a response
+    # without an osm3s block: date the data by the base's mtime.
+    return datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
+        "%Y-%m-%d %H:%M"
     )
 
-    # Accent palette: stash the resolved 4-value palette (light + dark
-    # shades, each with its on-accent text color) so
-    # inject_config_into_template can emit them as the CONFIG.accent*
-    # vars. resolve_accent_palette handles "auto" (Pillow-based logo
-    # derivation, cached per-source-hash as the raw pick), explicit hex,
-    # and the unset framework default uniformly, and emits per-shade
-    # WCAG contrast warnings. Always returns a palette (never None).
-    config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
-    derive_accent_paths = cache_manifest.drain()
 
+def _event_mode_prepass(config):
     # Event-mode pre-pass (no-op when event_mode is absent). Folds
     # event_mode.routes into config["custom_routes"] so they
-    # participate in the standard custom-route bake-in below, and
+    # participate in the standard custom-route bake-in, and
     # mutates non-featured custom routes' color / dashed fields to
     # the background style. Also adds `direction_arrows` to
     # `forced_visible` when event_mode.direction_arrows is true,
-    # which is why this has to run BEFORE the safety-warning check
-    # below (so the check sees the resolved value). The companion
+    # which is why this has to run BEFORE _warn_arrows_hidden
+    # (so the check sees the resolved value). The companion
     # relations-side pass runs in inject_config_into_template later.
     if config.get("event_mode"):
         em = config["event_mode"] or {}
@@ -1333,6 +1277,8 @@ def main(argv=None):
         )
         _apply_event_mode_to_custom_routes(config)
 
+
+def _warn_arrows_hidden(config, trails_geojson):
     # Safety warning: a map with one-way trails should normally
     # surface the direction-arrow layer by default, otherwise a
     # first-visit rider on a flow trail won't see which way they're
@@ -1342,8 +1288,8 @@ def main(argv=None):
     # explicit list (or []) that leaves arrows out. Skip the warning
     # when forced_visible includes direction_arrows (the layer is
     # forced on at every visit, so default_visible is irrelevant).
-    # Event mode adds direction_arrows to forced_visible above when
-    # event_mode.direction_arrows: true, so the warning is naturally
+    # The event-mode pre-pass adds direction_arrows to forced_visible
+    # when event_mode.direction_arrows: true, so the warning is naturally
     # suppressed for event maps.
     raw_dv = config.get("default_visible")
     raw_fv = config.get("forced_visible")
@@ -1370,13 +1316,15 @@ def main(argv=None):
                 "'direction_arrows' to the default_visible list."
             )
 
+
+def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
+    """Enrich trails_geojson in place and write it to trails_path."""
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, append any user-defined
     # custom_routes, and compute per-route distance/elevation stats.
     # Idempotent - safe to re-run against a trails.geojson that's
     # already been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, cache_dir)
-    route_stats_paths = cache_manifest.drain()
 
     # Event-mode arrow restriction: when event_mode.direction_arrows is
     # true, the runtime would render arrows on every OSM-tagged oneway
@@ -1391,7 +1339,7 @@ def main(argv=None):
     # regenerated from the base on every build, so it must reflect this
     # build's enrichment regardless of which passes reported a change. (The
     # reuse fingerprint + content-guard live on trails.src.geojson, written
-    # at fetch time above; the render output is never reused as a cache.)
+    # at fetch time; the render output is never reused as a cache.)
     #
     # Trim coordinate precision on the render output only (see
     # COORD_PRECISION) - roughly halves the gzipped transfer size and speeds
@@ -1417,6 +1365,8 @@ def main(argv=None):
     if bits:
         console.info(f"Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
 
+
+def _stage_bbox(config, trails_geojson):
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
@@ -1435,11 +1385,13 @@ def main(argv=None):
         console.info(f"Pan envelope (explicit): {config['pan_bbox']}")
     console.blank()
 
-    # Step 2: Fetch POIs (skip when every POI category is disabled).
-    # Otherwise fetch_pois runs on every build, so config-defined POIs
-    # (parking, trailheads, event_mode.pois) take effect without a
-    # refresh. The OSM portion hits the Overpass cache, so a cached map
-    # pays under a second.
+
+def _stage_pois(config, args, output_dir, cache_dir):
+    """Write pois.geojson and return its path."""
+    # Skip when every POI category is disabled. Otherwise fetch_pois runs
+    # on every build, so config-defined POIs (parking, trailheads,
+    # event_mode.pois) take effect without a refresh. The OSM portion
+    # hits the Overpass cache, so a cached map pays under a second.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
         console.step("POIs: Skipped (all POI layers disabled)")
@@ -1448,15 +1400,16 @@ def main(argv=None):
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
         fetch_pois(config, pois_path, cache_dir, refresh=args.refresh or args.refresh_pois)
-    overpass_pois_paths = cache_manifest.drain()
-    console.blank()
+    return pois_path
 
-    # Count POI features by type so the Welcome modal's Search line names
-    # only the POI types that exist. Sources are pois.geojson (OSM-fetched)
-    # plus the curator-supplied parking / trailheads YAML lists, which the
-    # runtime renders as separate markers.
-    #
-    # MUST run below the fetch_pois call: pois.geojson is read from disk.
+
+def _count_pois(config, pois_path):
+    """Return (poi_counts, pois_data): features per poi_type, plus the
+    parsed pois.geojson (None when unreadable)."""
+    # The counts let the Welcome modal's Search line name only the POI
+    # types that exist. Sources are pois.geojson (OSM-fetched) plus the
+    # curator-supplied parking / trailheads YAML lists, which the runtime
+    # renders as separate markers.
     poi_counts = {}
     pois_data = None
     if os.path.exists(pois_path):
@@ -1484,122 +1437,127 @@ def main(argv=None):
         yaml_hb = config.get("hubs") or []
         if yaml_hb:
             poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
-    config["_poi_counts"] = poi_counts
+    return poi_counts, pois_data
 
-    # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
-    # disk, not the in-memory trails_geojson: by this point enrichment has
-    # baked in custom routes (not OSM data, so not OSM's to fix) and applied
-    # rounded the coordinates, either of which would confuse the
-    # unconnected-way check. One extra JSON parse buys an audit of exactly what OSM said.
-    report_tagging_quality(_load_json_or_none(trails_src_path), pois_data,
-                           config, cache_dir)
 
-    # Steps 3+4: Fetch basemap + terrain in parallel.
-    #
-    # Both are independent (no shared state, no order dependency) and
-    # both are I/O-bound (network + subprocess for pmtiles extract or
-    # mapterhorn fetch). Running them in a 2-worker thread pool
-    # roughly halves the wall time on builds where both fetch (~30-60s
-    # each → ~30-60s total instead of 60-120s).
-    #
-    # Plan-then-execute split: decision logic (skip / use cached /
-    # regenerate) runs synchronously up front so the pre-fetch console
-    # messages stay tidy. Only the actual fetch + signature-save runs
-    # concurrently; subprocess output from the two fetches will
-    # interleave on stdout, which is acceptable for build logs.
-    tiles_minzoom = extract_minzoom(config)
+def _do_basemap(config, refresh, extract_stale, refresh_paths, trails_geojson,
+                extract_path, basemap_path, cache_dir, paths_bounds, tiles_minzoom,
+                basemap_maxzoom, basemap_sig, ways_cache):
+    # Old sidecar first: it vouched for the previous file and
+    # must not survive to vouch for an interrupted regen.
+    _clear_signature(basemap_path)
+    if refresh or extract_stale:
+        _clear_signature(extract_path)
+        fetch_basemap(config, extract_path)
+        _save_signature(extract_path, basemap_sig)
+    try:
+        # Whatever refreshes the trails refreshes the path
+        # data with them: a way split in OSM between two
+        # fetches would otherwise show through under its
+        # new id.
+        basemap_paths.generate(
+            trails_geojson, extract_path, basemap_path, cache_dir,
+            paths_bounds, tiles_minzoom, basemap_maxzoom,
+            refresh=refresh_paths, osm_file_path=config.get("osm_file"))
+    except basemap_paths.BasemapPathsError as e:
+        console.error(str(e))
+        sys.exit(1)
+    # After generating: a refresh rewrites the path data,
+    # and the signature must name what was actually used.
+    _save_signature(basemap_path, basemap_paths.input_signature(
+        basemap_sig, trails_geojson, ways_cache, config.get("osm_file")))
 
+
+def _do_terrain(config, terrain_path, terrain_sig):
+    # Old sidecar first: it vouched for the previous file and
+    # must not survive to vouch for an interrupted regen.
+    _clear_signature(terrain_path)
+    if fetch_terrain(config, terrain_path):
+        _save_signature(terrain_path, terrain_sig)
+    elif os.path.exists(terrain_path):
+        # Terrain failure is soft (the build continues and the
+        # runtime's HEAD-probe disables hillshade when the file
+        # is absent) - but regen was triggered because the
+        # PREVIOUS file no longer matches this build's
+        # bbox/zoom. Fetches are atomic, so what's on disk is
+        # that stale wrong-extent file; leaving it would ship
+        # it with exit code 0 and precache it on every phone.
+        os.remove(terrain_path)
+        console.warn(
+            "terrain regen failed; removed the previous "
+            "terrain.pmtiles (wrong extent) - hillshade is "
+            "disabled until a build fetches terrain successfully"
+        )
+
+
+def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_minzoom):
+    """Return (task, messages): the basemap fetch to run (or None) and the
+    lines to print after the fetches finish."""
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_bbox = config.get("pan_bbox") or config["bbox"]
     basemap_maxzoom = config.get("basemap_maxzoom", 15)
     basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom, tiles_minzoom)
 
-    terrain_path = os.path.join(output_dir, "terrain.pmtiles")
+    if args.no_basemap:
+        return None, ["Basemap: Skipped (--no-basemap)"]
+    # basemap.pmtiles is the Protomaps extract with its path and
+    # service-road lines replaced by generated ones
+    # (basemap_paths.py). The plain extract is kept in the cache
+    # dir, outside output_dir where the service worker sweep would
+    # ship it, so a trail change re-runs the join without
+    # extracting again.
+    try:
+        basemap_paths.require_tools()
+    except basemap_paths.BasemapPathsError as e:
+        console.error(str(e))
+        sys.exit(1)
+    extract_path = os.path.join(cache_dir, "basemap", f"{config['slug']}-protomaps.pmtiles")
+    os.makedirs(os.path.dirname(extract_path), exist_ok=True)
+    # The extract's bounds, padded the way fetch_basemap pads them.
+    pad = EXTRACT_PAD_DEG
+    paths_bounds = (basemap_bbox[0] - pad, basemap_bbox[1] - pad,
+                    basemap_bbox[2] + pad, basemap_bbox[3] + pad)
+    ways_cache = basemap_paths.overpass_cache_path(
+        basemap_paths.tile_cover_bounds(paths_bounds), cache_dir)
+    # Claimed on every build, not only when the query runs, or the
+    # cache prune would drop it after the first build that reuses it.
+    cache_manifest.record(ways_cache)
+
+    existing_sig = _load_signature(basemap_path)
+    extract_stale, extract_reason = _pmtiles_needs_regen(
+        extract_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
+    refresh_paths = args.refresh or args.refresh_trails
+    expected_sig = basemap_paths.input_signature(
+        basemap_sig, trails_geojson, ways_cache, config.get("osm_file"))
+    paths_stale = (not os.path.exists(basemap_path) or existing_sig != expected_sig
+                   or not os.path.exists(ways_cache)
+                   # a signature vouches for the inputs, not for the
+                   # bytes: an archive cut short by a full disk was
+                   # signed like any other (2026-09-21)
+                   or not basemap_paths.archive_ok(basemap_path))
+    if args.refresh or extract_stale or refresh_paths or paths_stale:
+        if not args.refresh and extract_stale and extract_reason:
+            console.step(f"Basemap: re-extracting ({extract_reason})")
+        elif not refresh_paths and paths_stale:
+            console.step("Basemap: regenerating paths (trails, area or path data changed)")
+        task = functools.partial(
+            _do_basemap, config, args.refresh, extract_stale, refresh_paths, trails_geojson,
+            extract_path, basemap_path, cache_dir, paths_bounds, tiles_minzoom,
+            basemap_maxzoom, basemap_sig, ways_cache)
+        return task, []
+    size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
+    return None, [f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)"]
+
+
+def _plan_terrain(config, args, terrain_path, tiles_minzoom):
+    """Return (task, messages): the terrain fetch to run (or None) and the
+    lines to print after the fetches finish."""
     terrain_bbox = config.get("pan_bbox") or config["bbox"]
     terrain_maxzoom = config.get("terrain_maxzoom", 12)
     terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom, tiles_minzoom)
 
-    fetch_tasks = []  # list of (label, callable) for parallel work
-    post_messages = []  # printed AFTER all parallel tasks complete
-
-    # ---- Basemap planning ----
-    if args.no_basemap:
-        post_messages.append("Basemap: Skipped (--no-basemap)")
-    else:
-        # basemap.pmtiles is the Protomaps extract with its path and
-        # service-road lines replaced by generated ones
-        # (basemap_paths.py). The plain extract is kept in the cache
-        # dir, outside output_dir where the service worker sweep would
-        # ship it, so a trail change re-runs the join without
-        # extracting again.
-        try:
-            basemap_paths.require_tools()
-        except basemap_paths.BasemapPathsError as e:
-            console.error(str(e))
-            sys.exit(1)
-        extract_path = os.path.join(cache_dir, "basemap", f"{config['slug']}-protomaps.pmtiles")
-        os.makedirs(os.path.dirname(extract_path), exist_ok=True)
-        # The extract's bounds, padded the way fetch_basemap pads them.
-        pad = EXTRACT_PAD_DEG
-        paths_bounds = (basemap_bbox[0] - pad, basemap_bbox[1] - pad,
-                        basemap_bbox[2] + pad, basemap_bbox[3] + pad)
-        ways_cache = basemap_paths.overpass_cache_path(
-            basemap_paths.tile_cover_bounds(paths_bounds), cache_dir)
-        # Claimed on every build, not only when the query runs, or the
-        # cache prune would drop it after the first build that reuses it.
-        cache_manifest.record(ways_cache)
-
-        existing_sig = _load_signature(basemap_path)
-        extract_stale, extract_reason = _pmtiles_needs_regen(
-            extract_path, basemap_bbox, basemap_maxzoom, tiles_minzoom)
-        refresh_paths = args.refresh or args.refresh_trails
-        expected_sig = basemap_paths.input_signature(
-            basemap_sig, trails_geojson, ways_cache, config.get("osm_file"))
-        paths_stale = (not os.path.exists(basemap_path) or existing_sig != expected_sig
-                       or not os.path.exists(ways_cache)
-                       # a signature vouches for the inputs, not for the
-                       # bytes: an archive cut short by a full disk was
-                       # signed like any other (2026-09-21)
-                       or not basemap_paths.archive_ok(basemap_path))
-        if args.refresh or extract_stale or refresh_paths or paths_stale:
-            if not args.refresh and extract_stale and extract_reason:
-                console.step(f"Basemap: re-extracting ({extract_reason})")
-            elif not refresh_paths and paths_stale:
-                console.step("Basemap: regenerating paths (trails, area or path data changed)")
-
-            def _do_basemap():
-                # Old sidecar first: it vouched for the previous file and
-                # must not survive to vouch for an interrupted regen.
-                _clear_signature(basemap_path)
-                if args.refresh or extract_stale:
-                    _clear_signature(extract_path)
-                    fetch_basemap(config, extract_path)
-                    _save_signature(extract_path, basemap_sig)
-                try:
-                    # Whatever refreshes the trails refreshes the path
-                    # data with them: a way split in OSM between two
-                    # fetches would otherwise show through under its
-                    # new id.
-                    basemap_paths.generate(
-                        trails_geojson, extract_path, basemap_path, cache_dir,
-                        paths_bounds, tiles_minzoom, basemap_maxzoom,
-                        refresh=refresh_paths, osm_file_path=config.get("osm_file"))
-                except basemap_paths.BasemapPathsError as e:
-                    console.error(str(e))
-                    sys.exit(1)
-                # After generating: a refresh rewrites the path data,
-                # and the signature must name what was actually used.
-                _save_signature(basemap_path, basemap_paths.input_signature(
-                    basemap_sig, trails_geojson, ways_cache, config.get("osm_file")))
-
-            fetch_tasks.append(("basemap", _do_basemap))
-        else:
-            size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-            post_messages.append(f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)")
-
-    # ---- Terrain planning ----
     if not config.get("show_terrain", True):
-        post_messages.append("Terrain: Disabled in config (show_terrain: false)")
+        messages = ["Terrain: Disabled in config (show_terrain: false)"]
         # A previous build's archive must not survive the flip: the SW
         # sweep hashes and precaches everything in output_dir, so a
         # stale terrain.pmtiles (up to ~30 MB) would keep shipping to
@@ -1608,50 +1566,53 @@ def main(argv=None):
         if os.path.exists(terrain_path):
             _clear_signature(terrain_path)
             os.remove(terrain_path)
-            post_messages.append(
+            messages.append(
                 "Terrain: Removed stale terrain.pmtiles left by a previous build")
-    elif args.no_terrain:
-        post_messages.append("Terrain: Skipped (--no-terrain)")
-    else:
-        needs_regen, reason = _pmtiles_needs_regen(
-            terrain_path, terrain_bbox, terrain_maxzoom, tiles_minzoom)
-        if args.refresh or needs_regen:
-            if not args.refresh and reason:
-                console.step(f"Terrain: regenerating ({reason})")
+        return None, messages
+    if args.no_terrain:
+        return None, ["Terrain: Skipped (--no-terrain)"]
+    needs_regen, reason = _pmtiles_needs_regen(
+        terrain_path, terrain_bbox, terrain_maxzoom, tiles_minzoom)
+    if args.refresh or needs_regen:
+        if not args.refresh and reason:
+            console.step(f"Terrain: regenerating ({reason})")
+        return functools.partial(_do_terrain, config, terrain_path, terrain_sig), []
+    size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
+    return None, [f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)"]
 
-            def _do_terrain():
-                # Old sidecar first: it vouched for the previous file and
-                # must not survive to vouch for an interrupted regen.
-                _clear_signature(terrain_path)
-                if fetch_terrain(config, terrain_path):
-                    _save_signature(terrain_path, terrain_sig)
-                elif os.path.exists(terrain_path):
-                    # Terrain failure is soft (the build continues and the
-                    # runtime's HEAD-probe disables hillshade when the file
-                    # is absent) - but regen was triggered because the
-                    # PREVIOUS file no longer matches this build's
-                    # bbox/zoom. Fetches are atomic, so what's on disk is
-                    # that stale wrong-extent file; leaving it would ship
-                    # it with exit code 0 and precache it on every phone.
-                    os.remove(terrain_path)
-                    console.warn(
-                        "terrain regen failed; removed the previous "
-                        "terrain.pmtiles (wrong extent) - hillshade is "
-                        "disabled until a build fetches terrain successfully"
-                    )
 
-            fetch_tasks.append(("terrain", _do_terrain))
-        else:
-            size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
-            post_messages.append(f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)")
+def _plan_tiles(config, args, output_dir, cache_dir, trails_geojson):
+    """Decide what the basemap and terrain steps must do.
 
-    # Drained here, before the fetches run: the path data's cache path
-    # is recorded during planning, and overpass.query records the same
-    # path again when generation runs, which the next drain would then
-    # hand to whatever category comes after.
-    overpass_basemap_paths = cache_manifest.drain()
+    Returns (fetch_tasks, post_messages, terrain_path): fetch_tasks is a
+    list of (label, callable) for _run_tiles; post_messages print after
+    every task completes.
+    """
+    # Plan-then-execute split: decision logic (skip / use cached /
+    # regenerate) runs synchronously up front so the pre-fetch console
+    # messages stay tidy. Only the actual fetch + signature-save runs
+    # concurrently; subprocess output from the two fetches will
+    # interleave on stdout, which is acceptable for build logs.
+    tiles_minzoom = extract_minzoom(config)
+    terrain_path = os.path.join(output_dir, "terrain.pmtiles")
 
-    # ---- Parallel execution ----
+    fetch_tasks = []
+    basemap_task, basemap_messages = _plan_basemap(
+        config, args, output_dir, cache_dir, trails_geojson, tiles_minzoom)
+    if basemap_task:
+        fetch_tasks.append(("basemap", basemap_task))
+    terrain_task, terrain_messages = _plan_terrain(config, args, terrain_path, tiles_minzoom)
+    if terrain_task:
+        fetch_tasks.append(("terrain", terrain_task))
+    return fetch_tasks, basemap_messages + terrain_messages, terrain_path
+
+
+def _run_tiles(fetch_tasks, post_messages):
+    # Basemap and terrain are independent (no shared state, no order
+    # dependency) and both are I/O-bound (network + subprocess for
+    # pmtiles extract or mapterhorn fetch). Running them in a 2-worker
+    # thread pool roughly halves the wall time on builds where both
+    # fetch (~30-60s each → ~30-60s total instead of 60-120s).
     if len(fetch_tasks) >= 2:
         # Two real fetches → run concurrently (the win case).
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
@@ -1671,29 +1632,20 @@ def main(argv=None):
         console.step(line)
     console.blank()
 
-    # Tell the runtime whether terrain.pmtiles exists in this build, so
-    # it can skip the HEAD probe (one serialized RTT before any trail
-    # layer is created on every cold load). Checked AFTER the fetch step
-    # above: extraction may have just written the file, a show_terrain
-    # flip may have just removed it, and a soft terrain-fetch failure
-    # removes a stale wrong-extent file. A --no-terrain build serving an
-    # archive left by a previous build still reads True, matching what
-    # the runtime's probe would have concluded.
-    config["_has_terrain"] = os.path.exists(terrain_path)
 
-    # Step 5: Copy templates and assets. Order matters: copy_assets
-    # runs first because it stashes processed-logo dimensions on
-    # config["_brand_img_dims"] which copy_templates reads when
-    # substituting the brand-img <img> width/height/fetchpriority
-    # attributes. Swapping the order leaves brand_dims as None and
-    # the brand-img tag emits without dimension hints (CLS regression).
+def _stage_templates(config, args, output_dir, cache_dir, trails_geojson):
+    # Order matters: copy_assets runs first because it stashes
+    # processed-logo dimensions on config["_brand_img_dims"] which
+    # copy_templates reads when substituting the brand-img <img>
+    # width/height/fetchpriority attributes. Swapping the order leaves
+    # brand_dims as None and the brand-img tag emits without dimension
+    # hints (CLS regression).
     console.step("Assembling output...")
     copy_assets(config, output_dir)
     copy_templates(config, output_dir, trails_geojson)
     console.blank()
 
-    # Step 5.5: Minify app.js + style.css + index.html unless --no-minify.
-    # Runs after copy_templates (which writes them) and before
+    # Minify after copy_templates (which writes the targets) and before
     # generate_service_worker, so the SW hash covers the minified bytes
     # the rider downloads.
     if args.minify:
@@ -1701,45 +1653,56 @@ def main(argv=None):
         _minify_assets(output_dir)
         console.blank()
 
-    # Step 6: Bundle vendor libraries (CDN deps served locally for offline)
+    # CDN deps served locally for offline use.
     console.step("Bundling vendor libraries...")
     download_vendor_libs(output_dir, cache_dir)
     console.blank()
 
-    # Step 7: Generate service worker (MUST be last - needs complete file list)
+
+def _pwa_warnings(output_dir):
+    """Return the reasons the PWA will not be installable (empty when it is)."""
+    pwa_warnings = []
+    manifest_path = os.path.join(output_dir, "icons", "site.webmanifest")
+    if not os.path.exists(manifest_path):
+        pwa_warnings.append(
+            "No web manifest (site.webmanifest) - set 'icon:' (or "
+            "'logo:') in your config so icons + manifest are generated "
+            "from a source image"
+        )
+    else:
+        icons_dir = os.path.join(output_dir, "icons")
+        has_icon = (
+            any(f.endswith(".png") for f in os.listdir(icons_dir))
+            if os.path.isdir(icons_dir)
+            else False
+        )
+        if not has_icon:
+            pwa_warnings.append(
+                "Web manifest exists but no icon PNGs found - "
+                "the browser needs at least one icon to show an install prompt"
+            )
+    return pwa_warnings
+
+
+def _stage_pwa(config, args, output_dir):
+    """Service worker (or its removal), then precompression.
+
+    MUST run after every other output file is written: the service worker
+    needs the complete file list.
+    """
     if config.get("pwa", True):
         console.step("Generating PWA assets...")
         generate_service_worker(config, output_dir)
 
-        # Step 7.5: Minify the service worker we just wrote (see
-        # MINIFY_TARGETS_SW for why it cannot ride along with step 5.5).
+        # Minify the service worker we just wrote (see MINIFY_TARGETS_SW
+        # for why it cannot ride along with the other minify targets).
         # Safe here: the SW's own bytes are deliberately excluded from
         # CACHE_VERSION, so rewriting them does not invalidate the hash,
-        # and step 8's sidecars then compress the minified bytes.
+        # and the precompress step then compresses the minified bytes.
         if args.minify:
             _minify_assets(output_dir, MINIFY_TARGETS_SW)
 
-        # Check for missing pieces that will prevent the PWA from being installable
-        pwa_warnings = []
-        manifest_path = os.path.join(output_dir, "icons", "site.webmanifest")
-        if not os.path.exists(manifest_path):
-            pwa_warnings.append(
-                "No web manifest (site.webmanifest) - set 'icon:' (or "
-                "'logo:') in your config so icons + manifest are generated "
-                "from a source image"
-            )
-        else:
-            icons_dir = os.path.join(output_dir, "icons")
-            has_icon = (
-                any(f.endswith(".png") for f in os.listdir(icons_dir))
-                if os.path.isdir(icons_dir)
-                else False
-            )
-            if not has_icon:
-                pwa_warnings.append(
-                    "Web manifest exists but no icon PNGs found - "
-                    "the browser needs at least one icon to show an install prompt"
-                )
+        pwa_warnings = _pwa_warnings(output_dir)
         if pwa_warnings:
             console.blank()
             console.info("PWA WARNINGS - the app will not be installable until fixed:")
@@ -1761,26 +1724,22 @@ def main(argv=None):
                 os.remove(stale)
                 console.info(f"Removed stale {name} left by a previous build")
 
-    # Step 8: Precompress static assets (MUST be after the service worker -
-    # see precompress_assets). Skipped with --no-precompress.
+    # MUST be after the service worker - see precompress_assets.
     if args.precompress:
         console.step("Precompressing static assets...")
         precompress_assets(output_dir)
         console.blank()
 
-    # Step 9: Cache manifest + prune. Last step of a successful build:
-    # every earlier failure raises or exits before this, so an aborted
-    # build never prunes. Write the new manifest FIRST, then delete -
-    # the on-disk manifest always understates what is deletable, so no
-    # crash window between the two can widen a later prune.
+
+def _stage_cache_manifest(config, args, cache_dir, cats, trails_fetch_ran):
+    """Save this build's cache claims and prune what the last build
+    claimed and this one did not."""
+    # Last step of a successful build: every earlier failure raises or
+    # exits before this, so an aborted build never prunes. Write the new
+    # manifest FIRST, then delete - the on-disk manifest always
+    # understates what is deletable, so no crash window between the two
+    # can widen a later prune.
     old_cats = cache_manifest.load(cache_dir, config["slug"])
-    cats = {
-        "overpass_trails": overpass_trails_paths,
-        "overpass_pois": overpass_pois_paths,
-        "overpass_basemap": overpass_basemap_paths,
-        "route_stats": route_stats_paths,
-        "derive_accent": derive_accent_paths,
-    }
     if not trails_fetch_ran and old_cats:
         # Reuse build: fetch_trails never ran, so nothing was recorded
         # for trails, but those cached responses are what makes an
@@ -1802,6 +1761,138 @@ def main(argv=None):
         if removed:
             noun = "entry" if removed == 1 else "entries"
             console.info(f"Cache: pruned {removed} stale {noun} ({freed / 1024:.0f} KB)")
+
+
+def main(argv=None):
+    args = _build_parser().parse_args(argv)
+
+    console.set_verbosity(quiet=args.quiet)
+
+    config = load_config(args.config)
+    project_root = os.path.dirname(SCRIPTS_DIR)
+
+    # Validate the config before doing anything expensive (Overpass fetches,
+    # tile generation). Errors abort the build; warnings (e.g. asset files
+    # not present yet) print but allow it to continue.
+    errors, warnings = validate_config(config, config_path=args.config)
+    for line in warnings:
+        console.raw(line)
+    if errors:
+        console.step(f"\nConfig validation failed for {args.config}:")
+        for line in errors:
+            console.raw(line)
+        sys.exit(1)
+
+    # A map that configures neither logo: nor icon: still gets favicons,
+    # a maskable PWA icon + manifest (installable), and an on-page brand
+    # mark by falling back to the engine's bundled placeholder. Applied
+    # after validation (which judges the curator's real config) so it
+    # also shows up in --dry-run's branding summary below.
+    if apply_default_brand(config, project_root):
+        console.info("No logo/icon configured - using the bundled placeholder bike icon")
+
+    output_dir, cache_dir = _resolve_dirs(config, args, project_root)
+
+    # --dry-run: print what would happen, exit before any work.
+    # Runs AFTER validate_config so any schema/value errors still abort
+    # with a non-zero exit; runs BEFORE os.makedirs so dry-run leaves
+    # zero filesystem footprint (no empty output_dir created).
+    if args.dry_run:
+        _print_dry_run_summary(config, args, output_dir, cache_dir)
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Discard collector state a prior in-process main() call may have
+    # left behind (tests invoke main() repeatedly); the stage drains
+    # below must only ever see this build's recordings. After the
+    # --dry-run return so dry-run keeps its zero-footprint guarantee.
+    cache_manifest.drain()
+
+    # --refresh re-fetches this map's data by bypassing cached Overpass
+    # responses (refresh flag on the fetch calls below). The cache
+    # directory itself is left alone: it's SHARED across every map
+    # (plus the vendor-lib and accent-derivation caches), so the old
+    # rmtree here threw away all the other maps' responses too.
+
+    console.step(f"Building map: {config['title']}")
+    console.step(f"Output: {output_dir}")
+    console.blank()
+
+    trails_geojson, trails_fetch_ran, trails_path, trails_src_path = _stage_trails(
+        config, args, output_dir, cache_dir)
+    overpass_trails_paths = cache_manifest.drain()
+
+    config["_data_date"] = _data_date(trails_geojson, trails_src_path)
+
+    # Tell the runtime whether clip_endpoints.geojson exists in this
+    # build. fetch_trails only writes the file when there are clipped
+    # relations whose endpoints fall inside the bbox (most maps don't
+    # have any), so a runtime probe-fetch produced a noisy 404 on
+    # those maps. Reading the file's existence here lets the runtime
+    # skip the fetch entirely.
+    config["_has_clip_endpoints"] = os.path.exists(
+        os.path.join(output_dir, "clip_endpoints.geojson")
+    )
+
+    # Accent palette: stash the resolved 4-value palette (light + dark
+    # shades, each with its on-accent text color) so
+    # inject_config_into_template can emit them as the CONFIG.accent*
+    # vars. resolve_accent_palette handles "auto" (Pillow-based logo
+    # derivation, cached per-source-hash as the raw pick), explicit hex,
+    # and the unset framework default uniformly, and emits per-shade
+    # WCAG contrast warnings. Always returns a palette (never None).
+    config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
+    derive_accent_paths = cache_manifest.drain()
+
+    _event_mode_prepass(config)
+    _warn_arrows_hidden(config, trails_geojson)
+    _stage_enrich(config, trails_geojson, trails_path, cache_dir)
+    route_stats_paths = cache_manifest.drain()
+    _stage_bbox(config, trails_geojson)
+
+    pois_path = _stage_pois(config, args, output_dir, cache_dir)
+    overpass_pois_paths = cache_manifest.drain()
+    console.blank()
+    # MUST run below _stage_pois: pois.geojson is read from disk.
+    config["_poi_counts"], pois_data = _count_pois(config, pois_path)
+
+    # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
+    # disk, not the in-memory trails_geojson: by this point enrichment has
+    # baked in custom routes (not OSM data, so not OSM's to fix) and applied
+    # rounded the coordinates, either of which would confuse the
+    # unconnected-way check. One extra JSON parse buys an audit of exactly what OSM said.
+    report_tagging_quality(_load_json_or_none(trails_src_path), pois_data,
+                           config, cache_dir)
+
+    fetch_tasks, post_messages, terrain_path = _plan_tiles(
+        config, args, output_dir, cache_dir, trails_geojson)
+    # Drained here, before the fetches run: the path data's cache path
+    # is recorded during planning, and overpass.query records the same
+    # path again when generation runs, which the next drain would then
+    # hand to whatever category comes after.
+    overpass_basemap_paths = cache_manifest.drain()
+    _run_tiles(fetch_tasks, post_messages)
+
+    # Tell the runtime whether terrain.pmtiles exists in this build, so
+    # it can skip the HEAD probe (one serialized RTT before any trail
+    # layer is created on every cold load). Checked AFTER the fetch step
+    # above: extraction may have just written the file, a show_terrain
+    # flip may have just removed it, and a soft terrain-fetch failure
+    # removes a stale wrong-extent file. A --no-terrain build serving an
+    # archive left by a previous build still reads True, matching what
+    # the runtime's probe would have concluded.
+    config["_has_terrain"] = os.path.exists(terrain_path)
+
+    _stage_templates(config, args, output_dir, cache_dir, trails_geojson)
+    _stage_pwa(config, args, output_dir)
+    _stage_cache_manifest(config, args, cache_dir, {
+        "overpass_trails": overpass_trails_paths,
+        "overpass_pois": overpass_pois_paths,
+        "overpass_basemap": overpass_basemap_paths,
+        "route_stats": route_stats_paths,
+        "derive_accent": derive_accent_paths,
+    }, trails_fetch_ran)
 
     print_summary(output_dir)
     console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
