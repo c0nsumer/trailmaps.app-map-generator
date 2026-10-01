@@ -6563,6 +6563,12 @@ async function loadTrails() {
                     : ratingMatchExpr(difficultyColor),
             ];
             const haloCol = clipArrowHaloExpr();
+            // A single-color dashed route draws its lanes bare, no
+            // casing (laneRouteMeta: a solid casing would show through
+            // the gaps), so its arrow draws bare too: an outlined
+            // arrowhead leaving a plain dashed line read as a different
+            // object (Steve, NCT on ntn_marquette).
+            const bareLane = isRouteMode(routeId) && laneRouteMeta()[routeId].casing === false;
             const layout = {
                 "icon-image": "clip-arrow",
                 "icon-rotate": ["get", "bearing"],
@@ -6642,7 +6648,7 @@ async function loadTrails() {
                     // dark surroundings. 1.2 rendered px (see the
                     // field's radius above).
                     "icon-halo-color": haloCol,
-                    "icon-halo-width": 0.6,
+                    "icon-halo-width": bareLane ? 0 : 0.6,
                     "icon-halo-blur": 0,
                 },
             });
@@ -12648,10 +12654,17 @@ function openTrailPopup(laneHit, anchor, { scope = "section" } = {}) {
     _trailPopupHit = laneHit;
     _trailPopupAnchor = anchor;
     _trailPopupScope = scope;
-    _trailPopup.on("close", () => {
+    const popup = _trailPopup;
+    popup.on("close", () => {
         clearTapLift();
         _trailPopupHit = null;
         _trailPopupAnchor = null;
+        // A map tap closes the popup through MapLibre (closeOnClick),
+        // not through closeTrailPopup, so the reference is dropped
+        // here too. With it left standing, the next Escape "closed"
+        // a popup that was already gone and the rider needed a
+        // second press to clear the highlight behind it.
+        if (_trailPopup === popup) _trailPopup = null;
     });
     showTapLift({ trailName: trailName || null, edges: liftEdges });
 }

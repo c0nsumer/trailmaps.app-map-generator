@@ -703,7 +703,7 @@ Several config keys depend on the color modes:
 | `show_trails` | Rejected if `false` when no relation is in route mode. The map then lists trails only. |
 | `show_elevation` | Computed for route-mode relations. The build warns only when no relation is in route mode. |
 | `relation_colors` / `dashed_relations` | Apply to route-mode relations. On a difficulty-mode relation the entry is ignored, and the build warns. |
-| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
+| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. The arrow of a single-color dashed route draws without an outline, as its lanes do. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
 | `show_distance` | Gates per-route distances for route-mode relations, per-rating distances for difficulty-mode relations, and per-trail distances. |
 
