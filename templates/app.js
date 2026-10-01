@@ -6588,7 +6588,15 @@ async function loadTrails() {
             // whose 16 px arrowhead sits centered on a 40 px canvas with
             // twice MapLibre's assumed field radius, so every halo width
             // and blur here is HALF its rendered width.
-            const size = ["interpolate", ["linear"], ["zoom"], 12, 1.2, 14, 1.65, 18, 2.4];
+            // A bare arrow (no halo, see bareLane) grows by what the halo
+            // added to the others' silhouette: 1.2 rendered px per side,
+            // in screen pixels whatever the icon size, so 2.4 px over
+            // the 16 px arrowhead is 0.15 of icon size at every stop.
+            // Without it the bare arrowhead read smaller than its
+            // neighbors (Steve, 2026-10-01).
+            const bump = bareLane ? 0.15 : 0;
+            const size = ["interpolate", ["linear"], ["zoom"],
+                12, 1.2 + bump, 14, 1.65 + bump, 18, 2.4 + bump];
             // Push the arrowhead away from the trail's clipped end so it
             // doesn't crowd the line where it meets the bbox edge. The
             // offset is in icon pixels, times icon-size, in pre-rotation
