@@ -9773,9 +9773,8 @@ function addHubMarkers(addToMap) {
 // see toilets that are usefully close to the trail without the
 // noise of every distant building polygon in the bbox. Square
 // swatch with a stylized figure glyph. No popup: the marker IS
-// the entire signal a rider needs ("there's a toilet here"); name
-// + access/fee metadata are noise mid-ride and the popup-card adds
-// tap friction. Search-overlay selection still pans + outline-pulses;
+// the entire signal a rider needs ("there's a toilet here"); a name
+// is noise mid-ride and the popup-card adds tap friction. Search-overlay selection still pans + outline-pulses;
 // createPoiMarkers and highlightPoi both gate popup attachment
 // behind a popupHtmlFn check so omitting it cleanly skips the
 // popup path.
