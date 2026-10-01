@@ -136,6 +136,12 @@
      * that must agree: they're the same mark rendered on four surfaces. */
     --swatch-line-radius: 2px;
     --swatch-outline: rgba(0, 0, 0, 0.08);
+    /* Two corner radii for the chrome: one for controls inside a surface
+     * (rows, buttons, inputs, selects, the popup), one for the surfaces
+     * themselves (sheets, cards, modals, toasts). Circles and pills keep
+     * their own values. */
+    --radius-control: 8px;
+    --radius-surface: 12px;
     /* Per-map accent palette. The build derives four base values from
      * one source color (logo pick / explicit hex / framework default)
      * and app.js sets them on :root at boot (see setPoiColorVars).
@@ -709,7 +715,7 @@ body::after {
     padding: 4px 8px;
     background: transparent;
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     color: var(--sheet-text);
     font: inherit;
     text-align: left;
@@ -1118,7 +1124,7 @@ body::after {
     flex: 0 1 auto;
     padding: 8px 28px 8px 10px;
     border: 1px solid var(--sheet-border);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: var(--input-bg);
     color: var(--sheet-text);
     font-family: inherit;
@@ -1144,7 +1150,7 @@ body::after {
     width: 100%;
     min-height: 52px;
     padding: 8px 4px;
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     border: none;
     background: transparent;
     text-align: left;
@@ -1248,7 +1254,7 @@ body::after {
 .install-btn .install-btn-icon img {
     width: 40px;
     height: 40px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     object-fit: cover;
     /* The android-chrome icon preserves source-image alpha (no white
      * composite at build time), so a transparent source would show
@@ -1812,7 +1818,7 @@ body::after {
     background: var(--sheet-bg);
     color: var(--sheet-text);
     border: 1px solid var(--sheet-border);
-    border-radius: 10px;
+    border-radius: var(--radius-surface);
     box-shadow: 0 6px 24px var(--sheet-shadow);
     max-width: 480px;
     width: calc(100vw - 32px);
@@ -1845,7 +1851,7 @@ body::after {
     border: none;
     color: var(--sheet-text);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: var(--radius-control);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1864,7 +1870,7 @@ body::after {
     background: var(--accent);
     color: var(--on-accent);
     border: 1px solid var(--accent);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     font: inherit;
     font-size: 14px;
     font-weight: 500;
@@ -2541,7 +2547,7 @@ body::after {
     font-family: inherit;
     font-size: 13px;
     padding: 8px 14px 10px 14px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--popup-bg);
     color: var(--sheet-text);
     /* Pseudo-element accent strip needs a positioned ancestor + a
@@ -2855,7 +2861,7 @@ body::after {
     background: rgba(0, 0, 0, 0.85);
     color: white;
     padding: 12px 18px;
-    border-radius: 10px;
+    border-radius: var(--radius-surface);
     font-size: 14px;
     font-family: inherit;
     line-height: 1.35;
@@ -2972,7 +2978,7 @@ body::after {
     z-index: 10;
     max-width: min(28rem, calc(100vw - 32px));
     padding: 20px 22px;
-    border-radius: 12px;
+    border-radius: var(--radius-surface);
     background: var(--sheet-bg);
     color: var(--sheet-text);
     line-height: 1.45;
@@ -3680,7 +3686,7 @@ body.fabs-labeled .fab-label {
      * clear button so typed text doesn't slide under it. */
     padding: 0 38px 0 12px;
     border: 1px solid var(--sheet-border);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: var(--input-bg);
     color: var(--sheet-text);
     font: inherit;
@@ -3897,7 +3903,7 @@ body.modal-open .gpx-overlay.is-open {
     height: 36px;
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     color: var(--sheet-text-muted);
     cursor: pointer;
     display: inline-flex;
@@ -4156,7 +4162,7 @@ body.modal-open .gpx-overlay.is-open {
      * its collapsed chip swap in place, so their edges should read as
      * the same control). Keeps its own drop-shadow geometry. */
     border: 1px solid var(--fab-edge);
-    border-radius: 12px;
+    border-radius: var(--radius-surface);
     box-shadow: var(--fab-halo), 0 3px 10px var(--sheet-shadow);
     padding: 6px 8px 8px;
     /* Narrow enough to never dominate a phone screen; long route
@@ -4210,7 +4216,7 @@ body.modal-open .gpx-overlay.is-open {
     width: 100%;
     background: none;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     padding: 5px 6px;
     font: inherit;
     font-size: 13px;
@@ -4344,7 +4350,7 @@ body.modal-open .gpx-overlay.is-open {
     .options-overlay-panel {
         width: min(440px, calc(100vw - 48px));
         border: 1px solid var(--sheet-border);
-        border-radius: 14px;
+        border-radius: var(--radius-surface);
         box-shadow: var(--elev-sheet);
     }
 
@@ -4360,7 +4366,7 @@ body.modal-open .gpx-overlay.is-open {
     .gpx-overlay-panel {
         width: min(440px, calc(100vw - 48px));
         border: 1px solid var(--sheet-border);
-        border-radius: 14px;
+        border-radius: var(--radius-surface);
         box-shadow: var(--elev-sheet);
         margin-bottom: 24px;
     }
