@@ -274,29 +274,24 @@ def gpx_download_entries(config):
     return out
 
 
-def inject_config_into_template(template_content, config, trails_geojson):
-    """Replace the CONFIG placeholder in templates with actual config data."""
-    # Extract route metadata from the trails GeoJSON
-    routes = {}
-    if trails_geojson and "metadata" in trails_geojson:
-        routes = trails_geojson["metadata"].get("routes", {})
+def _normalize_days(days_in, error_label):
+    """Return the canonical day tokens in days_in, sorted and de-duplicated;
+    exit naming error_label on an unknown token."""
+    days_norm = []
+    for d in days_in or []:
+        match = match_day_token(d)
+        if match is None:
+            sys.exit(
+                f"ERROR: {error_label} contains unknown day token {d!r}; "
+                f"valid: {sorted(VALID_DAYS)}"
+            )
+        days_norm.append(match)
+    return sorted(set(days_norm))
 
-    # Event-mode pre-pass on the relations side. Synthesizes
-    # relation_colors and dashed_relations entries for every
-    # non-featured OSM route so the override loop below applies the
-    # background style. No-op when event_mode is absent. Curator's
-    # explicit per-relation entries WIN.
-    _apply_event_mode_to_relations(config, trails_geojson)
 
-    # Apply route overrides (color, dash) in a single pass. YAML keys
-    # keep their original "relation" names since they take OSM
-    # relation IDs as input; the values populate route info on the JS
-    # side. (winter_relations is consumed earlier, in enrichment's
-    # bucket-flag pass - the runtime reads bucket flags, not a
-    # per-route season field.)
-    relation_colors = config.get("relation_colors") or {}
-    dashed_relations = config.get("dashed_relations") or {}
-
+def _resolve_direction_schedules(config, routes, trails_geojson):
+    """Return {route_id: {"reverse_days": [...]}} for every OSM route with
+    a non-empty effective direction schedule."""
     # Direction schedule controls when ways tagged oneway=yes/-1/reversible
     # have their arrows rotated 180° (day-of-week alternation). Single
     # hierarchical key with two parts:
@@ -320,18 +315,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # CONFIG.directionSchedules) is shared with the validator via
     # validate_config.match_day_token - single source of truth, so the
     # injector can't accept a token the validator rejects or vice versa.
-
-    def _normalize_days(days_in, error_label):
-        days_norm = []
-        for d in days_in or []:
-            match = match_day_token(d)
-            if match is None:
-                sys.exit(
-                    f"ERROR: {error_label} contains unknown day token {d!r}; "
-                    f"valid: {sorted(VALID_DAYS)}"
-                )
-            days_norm.append(match)
-        return sorted(set(days_norm))
 
     # Pull the schedule block. Both halves are optional; an absent
     # block means no rotation anywhere on the map.
@@ -405,7 +388,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
         eff = effective_schedule(rid)
         if eff and eff.get("reverse_days"):
             effective_schedules[rid] = eff
+    return effective_schedules
 
+
+def _check_reversible_ways_scheduled(trails_geojson, effective_schedules):
+    """Exit with a curator-facing error when an oneway=reversible way has no
+    effective direction schedule."""
     # Validate oneway=reversible features against the resolved schedules.
     # This is the only home of the check: it runs on every build, so a
     # config edit that drops a schedule fails the build even when the
@@ -456,6 +444,33 @@ def inject_config_into_template(template_content, config, trails_geojson):
             if len(unscheduled) > 20:
                 lines.append(f"         ... and {len(unscheduled) - 20} more")
             sys.exit("\n".join(lines))
+
+
+def inject_config_into_template(template_content, config, trails_geojson):
+    """Replace the CONFIG placeholder in templates with actual config data."""
+    # Extract route metadata from the trails GeoJSON
+    routes = {}
+    if trails_geojson and "metadata" in trails_geojson:
+        routes = trails_geojson["metadata"].get("routes", {})
+
+    # Event-mode pre-pass on the relations side. Synthesizes
+    # relation_colors and dashed_relations entries for every
+    # non-featured OSM route so the override loop below applies the
+    # background style. No-op when event_mode is absent. Curator's
+    # explicit per-relation entries WIN.
+    _apply_event_mode_to_relations(config, trails_geojson)
+
+    effective_schedules = _resolve_direction_schedules(config, routes, trails_geojson)
+    _check_reversible_ways_scheduled(trails_geojson, effective_schedules)
+
+    # Apply route overrides (color, dash) in a single pass. YAML keys
+    # keep their original "relation" names since they take OSM
+    # relation IDs as input; the values populate route info on the JS
+    # side. (winter_relations is consumed earlier, in enrichment's
+    # bucket-flag pass - the runtime reads bucket flags, not a
+    # per-route season field.)
+    relation_colors = config.get("relation_colors") or {}
+    dashed_relations = config.get("dashed_relations") or {}
 
     for route_id_str, route_info in routes.items():
         # Custom routes carry their own style + flags (set at enrichment
@@ -802,6 +817,284 @@ def resolve_icon_source(config):
     return ""
 
 
+def _process_index_html(content, config):
+    """Return index.html with its build-time placeholders substituted and
+    the marker-delimited blocks this config does not use stripped."""
+    # Dynamic page title. `title` is resolved by build.load_config
+    # ("{name} Map" unless the curator overrode it). The engine
+    # emits it unbranded; a deploying site that wants a brand tail
+    # on the <title> appends it in its own post-processing (the
+    # trailmaps.app orchestrator does this in inject-og-meta.py),
+    # keeping the engine output identical for every consumer.
+    page_title = config.get("title") or config.get("name") or "Trail Map"
+    title_text = _html_escape(page_title, quote=False)
+    content = re.sub(
+        r"<title>.*?</title>",
+        # Callable replacement: a title containing a backslash
+        # escape (\1, \g) would be read as a group reference in
+        # a plain replacement string.
+        lambda _m: f"<title>{title_text}</title>",
+        content,
+    )
+
+    # Open Graph + Twitter Card metadata. Always-on (no gate) -
+    # benefits search engines and the Share-button preview cards
+    # equally. Values are HTML-attribute-escaped to survive
+    # quotes / ampersands in trail-system names + descriptions.
+    og_title = page_title
+    # The map's one descriptive text lives at welcome.body
+    # (about.description was retired). `welcome: false` and
+    # omitted both leave no prose - fall through to the title.
+    welcome_cfg = config.get("welcome")
+    welcome_cfg = welcome_cfg if isinstance(welcome_cfg, dict) else {}
+    og_description_raw = (welcome_cfg.get("body") or "").strip()
+    # First paragraph only (split on the first double-newline);
+    # cap at ~200 chars to avoid runaway snippet length in
+    # share previews.
+    og_description = og_description_raw.split("\n\n", 1)[0].strip()
+    if len(og_description) > 200:
+        og_description = og_description[:197].rstrip() + "..."
+    # If no description configured, fall back to the title so
+    # OG previews still have something readable instead of an
+    # empty `content=""` attribute.
+    if not og_description:
+        og_description = og_title
+    # html.escape with quote=True turns " into &quot; so the
+    # value is safe inside the `content="..."` attribute.
+    content = content.replace("__OG_TITLE__", _html_escape(og_title, quote=True))
+    content = content.replace(
+        "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
+    )
+
+    # Strip the Share button section when share_button: false.
+    # Default true - the section's `hidden` class is only used
+    # to keep the section invisible until app.js reveals it.
+    if not config.get("share_button", True):
+        content = re.sub(
+            r"\s*<!-- Share start -->.*?<!-- Share end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+    # Strip the GPX download FAB + sheet when the map has no
+    # event_mode.gpx entries (the common case) - same pattern
+    # as the Share strip so non-event maps carry no dead markup.
+    if not gpx_download_entries(config):
+        content = re.sub(
+            r"\s*<!-- GPX start -->.*?<!-- GPX end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+    # Brand title - substitute the map's title text into both
+    # the alt= on the brand-img (used by screen readers + as a
+    # fallback when the image is missing) AND the brand-title
+    # span text (shown when no logo is configured at all). Same
+    # value as the OG title.
+    content = content.replace("__BRAND_TITLE__", _html_escape(page_title, quote=True))
+
+    # Brand-img CLS-prevention dimensions. process_logo() stashes
+    # the actual written pixel dimensions on config["_brand_img_dims"]
+    # (or (None, None) when it couldn't determine them - Pillow
+    # missing, SVG without viewBox, etc.). Substitute width/height
+    # into the <img> tag when known; otherwise emit the empty
+    # string so the tag stays valid HTML and we accept a small
+    # CLS hit rather than emit wrong dimensions. The CSS
+    # (style.css #brand-img: max-width 200px, max-height 48px,
+    # width/height auto) still controls actual render size; the
+    # HTML attrs only set the aspect ratio used by the browser
+    # to reserve layout box before image bytes arrive.
+    #
+    # fetchpriority="high" is unconditional in the template - it
+    # makes the brand-img the LCP image regardless of whether we
+    # could determine dims. Browsers without fetchpriority support
+    # ignore the attribute (no regression).
+    brand_dims = config.get("_brand_img_dims") or (None, None)
+    bw, bh = brand_dims
+    if bw and bh:
+        content = content.replace("__BRAND_IMG_DIMS__", f' width="{bw}" height="{bh}"')
+    else:
+        content = content.replace("__BRAND_IMG_DIMS__", "")
+
+    # Inline color-scheme bootstrap script. Runs synchronously
+    # in <head> BEFORE the stylesheet, so first paint already
+    # has the right data-color-scheme attribute on <html> and
+    # CSS variables resolve to the correct values without FOUC.
+    # Slug + default-scheme are baked in at build time; the
+    # snippet reads LS / falls back to the default / resolves
+    # "auto" against prefers-color-scheme.
+    slug = config.get("slug", "")
+    default_scheme = config.get("default_color_scheme", "light")
+    bootstrap_slug = json.dumps(slug)  # JS string-safe
+    bootstrap_default = json.dumps(default_scheme)
+    # Accent base vars, baked into the pre-paint bootstrap so the
+    # per-map accent is correct on the FIRST frame - before app.js
+    # (which carries CONFIG) has downloaded. Without this, a slow
+    # first load paints accent-colored chrome (notably the
+    # initial-load progress bar) with style.css's default
+    # --accent-light blue until app.js patches it: a visible color
+    # flash. Inline style on <html> beats the stylesheet :root
+    # defaults; app.js still sets the same four vars later
+    # (idempotent). style.css maps --accent / --on-accent from
+    # these per [data-color-scheme], so a missing palette here just
+    # falls back to the stylesheet defaults (accent_js empty).
+    _accent_palette = config.get("_accent_palette") or {}
+    # theme-color hexes for the browser chrome (Android PWA
+    # status bar): the per-scheme accent shades. build.py always
+    # resolves a palette; the literals mirror style.css's
+    # framework defaults for any direct caller that didn't.
+    _tc_light = _accent_palette.get("light") or FRAMEWORK_DEFAULT_ACCENT
+    _tc_dark = _accent_palette.get("dark") or "#258cd0"
+    accent_js = ""
+    for _av_name, _av_val in (
+        ("--accent-light", _accent_palette.get("light")),
+        ("--accent-dark", _accent_palette.get("dark")),
+        ("--on-accent-light", _accent_palette.get("onLight")),
+        ("--on-accent-dark", _accent_palette.get("onDark")),
+    ):
+        if _av_val:
+            accent_js += (
+                f"d.style.setProperty({json.dumps(_av_name)},{json.dumps(_av_val)});"
+            )
+    # The runtime stores LS values JSON-stringified (see
+    # LS.set in app.js: setItem(..., JSON.stringify(value))),
+    # so a stored "dark" preference is on disk as the
+    # 6-char string `"dark"` (with literal quote marks).
+    # The bootstrap parses it back; on parse failure (older
+    # raw values, or future schema drift) it falls through
+    # to the curator default rather than blocking on a
+    # broken LS entry.
+    bootstrap_script = (
+        "<script>"
+        "(function(){"
+        "try{"
+        "var d=document.documentElement;"
+        f'var raw=localStorage.getItem({bootstrap_slug}+".mtb.colorScheme");'
+        "var stored=null;"
+        "if(raw){try{stored=JSON.parse(raw);}catch(e){stored=raw;}}"
+        f"var s=stored||{bootstrap_default};"
+        'if(s==="auto"){'
+        's=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";'
+        "}"
+        'document.documentElement.setAttribute("data-color-scheme",s);'
+        + accent_js +
+        # Sync the meta theme-color tag in the same pass so
+        # the Android Chrome PWA status bar paints the per-map
+        # accent for the resolved scheme on first frame (the
+        # static value in the template is just a fallback;
+        # without this update the status bar would keep the
+        # manifest's light-accent color until applyColorScheme
+        # runs much later in app.js).
+        "var m=document.querySelector('meta[name=\"theme-color\"]');"
+        "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
+        f'm.setAttribute(\'content\',s==="dark"?{json.dumps(_tc_dark)}:{json.dumps(_tc_light)});'
+        "}catch(e){}"
+        "})();"
+        "</script>"
+    )
+    content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
+    # Static brand-color substitutions: the theme-color meta
+    # (no-JS fallback - the bootstrap re-points it per scheme
+    # on first frame), the Safari pinned-tab mask-icon tint,
+    # and the legacy Windows tile color all take the light
+    # accent shade. replace() catches every occurrence. No-op
+    # when the icons block (which carries all three tags) was
+    # stripped for icon-less maps.
+    content = content.replace("__THEME_COLOR__", _tc_light)
+    # Inject or remove brand image. Logo source falls back to
+    # icon: when logo: is omitted; raster sources are normalized
+    # to `logo.webp` in copy_assets() while SVG sources are
+    # copied as `logo.svg`. The template ships the brand-img
+    # with src="logo.webp"; rename to .svg if the source is
+    # vector. Strip the brand-img tag entirely when neither
+    # source is set, so the brand element falls back to the
+    # title span only.
+    logo_path = config.get("logo", "")
+    icon_path_for_logo = config.get("icon", "")
+    logo_chosen = logo_path or icon_path_for_logo
+    if logo_chosen:
+        out_name = logo_output_filename(logo_chosen)
+        if out_name != "logo.webp":
+            content = content.replace("logo.webp", out_name)
+    else:
+        content = re.sub(
+            r"\s*<!-- Brand img start -->.*?<!-- Brand img end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+    # Additional (secondary) brand images - event + sponsor logos
+    # stacked under the primary logo in #brand. Rendered in
+    # copy_assets() into logo-N.webp / logo-N.svg with per-logo
+    # dark-mode invert. Build the <img> tags here (alt="" - these
+    # are decorative co-branding; the primary logo/alt already
+    # names the map for screen readers), or strip the placeholder
+    # block entirely when no additional logos are configured.
+    rendered_additional = config.get("_additional_logos_rendered") or []
+    if rendered_additional:
+        tags = []
+        for extra in rendered_additional:
+            cls = "brand-logo-secondary"
+            if extra.get("invert_dark", True):
+                cls += " invert-dark"
+            dims = ""
+            if extra.get("width") and extra.get("height"):
+                dims = f' width="{extra["width"]}" height="{extra["height"]}"'
+            tags.append(
+                f'<img src="{extra["url"]}" alt="" class="{cls}"{dims} decoding="async">'
+            )
+        content = content.replace(
+            "__ADDITIONAL_LOGOS__", "\n        " + "\n        ".join(tags) + "\n        "
+        )
+    else:
+        # [ \t]* (not \s*) so we consume only this line's own
+        # indentation, not the newline after the preceding doc
+        # comment - otherwise the stripped block would pull the
+        # <span> up onto the comment's line.
+        content = re.sub(
+            r"[ \t]*<!-- Additional logos start -->.*?<!-- Additional logos end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+    # Strip PWA install UI and SW registration when PWA is disabled
+    if not config.get("pwa", True):
+        content = re.sub(
+            r"\s*<!-- PWA start -->.*?<!-- PWA end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+        content = re.sub(
+            r"\s*<!-- SW start -->.*?<!-- SW end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+
+    # Strip icon links when no icon source is resolvable.
+    # Uses the same fallback logic as copy_assets so a config
+    # with `logo:` set but no `icon:` keeps the manifest /
+    # apple-touch / theme-color links - the icons get
+    # generated from the logo and the HTML correctly points
+    # at them. (Without this consistency, the HTML strip
+    # would remove the manifest link even though copy_assets
+    # would happily generate a manifest from the logo,
+    # leaving a build with icons on disk but no PWA install.)
+    if not resolve_icon_source(config):
+        content = re.sub(
+            r"\s*<!-- Icons start -->.*?<!-- Icons end -->\n",
+            "",
+            content,
+            flags=re.DOTALL,
+        )
+    return content
+
+
 def copy_templates(config, output_dir, trails_geojson):
     """Copy and process HTML/JS/CSS templates."""
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -820,281 +1113,8 @@ def copy_templates(config, output_dir, trails_geojson):
         if filename.endswith(".js"):
             content = inject_config_into_template(content, config, trails_geojson)
 
-        # Process HTML template
         if filename == "index.html":
-            # Dynamic page title. `title` is resolved by build.load_config
-            # ("{name} Map" unless the curator overrode it). The engine
-            # emits it unbranded; a deploying site that wants a brand tail
-            # on the <title> appends it in its own post-processing (the
-            # trailmaps.app orchestrator does this in inject-og-meta.py),
-            # keeping the engine output identical for every consumer.
-            page_title = config.get("title") or config.get("name") or "Trail Map"
-            title_text = _html_escape(page_title, quote=False)
-            content = re.sub(
-                r"<title>.*?</title>",
-                # Callable replacement: a title containing a backslash
-                # escape (\1, \g) would be read as a group reference in
-                # a plain replacement string. Bound as a default arg so
-                # it captures this iteration's value, not the loop var.
-                lambda _m, _t=title_text: f"<title>{_t}</title>",
-                content,
-            )
-
-            # Open Graph + Twitter Card metadata. Always-on (no gate) -
-            # benefits search engines and the Share-button preview cards
-            # equally. Values are HTML-attribute-escaped to survive
-            # quotes / ampersands in trail-system names + descriptions.
-            og_title = page_title
-            # The map's one descriptive text lives at welcome.body
-            # (about.description was retired). `welcome: false` and
-            # omitted both leave no prose - fall through to the title.
-            welcome_cfg = config.get("welcome")
-            welcome_cfg = welcome_cfg if isinstance(welcome_cfg, dict) else {}
-            og_description_raw = (welcome_cfg.get("body") or "").strip()
-            # First paragraph only (split on the first double-newline);
-            # cap at ~200 chars to avoid runaway snippet length in
-            # share previews.
-            og_description = og_description_raw.split("\n\n", 1)[0].strip()
-            if len(og_description) > 200:
-                og_description = og_description[:197].rstrip() + "..."
-            # If no description configured, fall back to the title so
-            # OG previews still have something readable instead of an
-            # empty `content=""` attribute.
-            if not og_description:
-                og_description = og_title
-            # html.escape with quote=True turns " into &quot; so the
-            # value is safe inside the `content="..."` attribute.
-            content = content.replace("__OG_TITLE__", _html_escape(og_title, quote=True))
-            content = content.replace(
-                "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
-            )
-
-            # Strip the Share button section when share_button: false.
-            # Default true - the section's `hidden` class is only used
-            # to keep the section invisible until app.js reveals it.
-            if not config.get("share_button", True):
-                content = re.sub(
-                    r"\s*<!-- Share start -->.*?<!-- Share end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-
-            # Strip the GPX download FAB + sheet when the map has no
-            # event_mode.gpx entries (the common case) - same pattern
-            # as the Share strip so non-event maps carry no dead markup.
-            if not gpx_download_entries(config):
-                content = re.sub(
-                    r"\s*<!-- GPX start -->.*?<!-- GPX end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-
-            # Brand title - substitute the map's title text into both
-            # the alt= on the brand-img (used by screen readers + as a
-            # fallback when the image is missing) AND the brand-title
-            # span text (shown when no logo is configured at all). Same
-            # value as the OG title.
-            content = content.replace("__BRAND_TITLE__", _html_escape(page_title, quote=True))
-
-            # Brand-img CLS-prevention dimensions. process_logo() stashes
-            # the actual written pixel dimensions on config["_brand_img_dims"]
-            # (or (None, None) when it couldn't determine them - Pillow
-            # missing, SVG without viewBox, etc.). Substitute width/height
-            # into the <img> tag when known; otherwise emit the empty
-            # string so the tag stays valid HTML and we accept a small
-            # CLS hit rather than emit wrong dimensions. The CSS
-            # (style.css #brand-img: max-width 200px, max-height 48px,
-            # width/height auto) still controls actual render size; the
-            # HTML attrs only set the aspect ratio used by the browser
-            # to reserve layout box before image bytes arrive.
-            #
-            # fetchpriority="high" is unconditional in the template - it
-            # makes the brand-img the LCP image regardless of whether we
-            # could determine dims. Browsers without fetchpriority support
-            # ignore the attribute (no regression).
-            brand_dims = config.get("_brand_img_dims") or (None, None)
-            bw, bh = brand_dims
-            if bw and bh:
-                content = content.replace("__BRAND_IMG_DIMS__", f' width="{bw}" height="{bh}"')
-            else:
-                content = content.replace("__BRAND_IMG_DIMS__", "")
-
-            # Inline color-scheme bootstrap script. Runs synchronously
-            # in <head> BEFORE the stylesheet, so first paint already
-            # has the right data-color-scheme attribute on <html> and
-            # CSS variables resolve to the correct values without FOUC.
-            # Slug + default-scheme are baked in at build time; the
-            # snippet reads LS / falls back to the default / resolves
-            # "auto" against prefers-color-scheme.
-            slug = config.get("slug", "")
-            default_scheme = config.get("default_color_scheme", "light")
-            bootstrap_slug = json.dumps(slug)  # JS string-safe
-            bootstrap_default = json.dumps(default_scheme)
-            # Accent base vars, baked into the pre-paint bootstrap so the
-            # per-map accent is correct on the FIRST frame - before app.js
-            # (which carries CONFIG) has downloaded. Without this, a slow
-            # first load paints accent-colored chrome (notably the
-            # initial-load progress bar) with style.css's default
-            # --accent-light blue until app.js patches it: a visible color
-            # flash. Inline style on <html> beats the stylesheet :root
-            # defaults; app.js still sets the same four vars later
-            # (idempotent). style.css maps --accent / --on-accent from
-            # these per [data-color-scheme], so a missing palette here just
-            # falls back to the stylesheet defaults (accent_js empty).
-            _accent_palette = config.get("_accent_palette") or {}
-            # theme-color hexes for the browser chrome (Android PWA
-            # status bar): the per-scheme accent shades. build.py always
-            # resolves a palette; the literals mirror style.css's
-            # framework defaults for any direct caller that didn't.
-            _tc_light = _accent_palette.get("light") or FRAMEWORK_DEFAULT_ACCENT
-            _tc_dark = _accent_palette.get("dark") or "#258cd0"
-            accent_js = ""
-            for _av_name, _av_val in (
-                ("--accent-light", _accent_palette.get("light")),
-                ("--accent-dark", _accent_palette.get("dark")),
-                ("--on-accent-light", _accent_palette.get("onLight")),
-                ("--on-accent-dark", _accent_palette.get("onDark")),
-            ):
-                if _av_val:
-                    accent_js += (
-                        f"d.style.setProperty({json.dumps(_av_name)},{json.dumps(_av_val)});"
-                    )
-            # The runtime stores LS values JSON-stringified (see
-            # LS.set in app.js: setItem(..., JSON.stringify(value))),
-            # so a stored "dark" preference is on disk as the
-            # 6-char string `"dark"` (with literal quote marks).
-            # The bootstrap parses it back; on parse failure (older
-            # raw values, or future schema drift) it falls through
-            # to the curator default rather than blocking on a
-            # broken LS entry.
-            bootstrap_script = (
-                "<script>"
-                "(function(){"
-                "try{"
-                "var d=document.documentElement;"
-                f'var raw=localStorage.getItem({bootstrap_slug}+".mtb.colorScheme");'
-                "var stored=null;"
-                "if(raw){try{stored=JSON.parse(raw);}catch(e){stored=raw;}}"
-                f"var s=stored||{bootstrap_default};"
-                'if(s==="auto"){'
-                's=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";'
-                "}"
-                'document.documentElement.setAttribute("data-color-scheme",s);'
-                + accent_js +
-                # Sync the meta theme-color tag in the same pass so
-                # the Android Chrome PWA status bar paints the per-map
-                # accent for the resolved scheme on first frame (the
-                # static value in the template is just a fallback;
-                # without this update the status bar would keep the
-                # manifest's light-accent color until applyColorScheme
-                # runs much later in app.js).
-                "var m=document.querySelector('meta[name=\"theme-color\"]');"
-                "if(!m){m=document.createElement('meta');m.setAttribute('name','theme-color');document.head.appendChild(m);}"
-                f'm.setAttribute(\'content\',s==="dark"?{json.dumps(_tc_dark)}:{json.dumps(_tc_light)});'
-                "}catch(e){}"
-                "})();"
-                "</script>"
-            )
-            content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
-            # Static brand-color substitutions: the theme-color meta
-            # (no-JS fallback - the bootstrap re-points it per scheme
-            # on first frame), the Safari pinned-tab mask-icon tint,
-            # and the legacy Windows tile color all take the light
-            # accent shade. replace() catches every occurrence. No-op
-            # when the icons block (which carries all three tags) was
-            # stripped for icon-less maps.
-            content = content.replace("__THEME_COLOR__", _tc_light)
-            # Inject or remove brand image. Logo source falls back to
-            # icon: when logo: is omitted; raster sources are normalized
-            # to `logo.webp` in copy_assets() while SVG sources are
-            # copied as `logo.svg`. The template ships the brand-img
-            # with src="logo.webp"; rename to .svg if the source is
-            # vector. Strip the brand-img tag entirely when neither
-            # source is set, so the brand element falls back to the
-            # title span only.
-            logo_path = config.get("logo", "")
-            icon_path_for_logo = config.get("icon", "")
-            logo_chosen = logo_path or icon_path_for_logo
-            if logo_chosen:
-                out_name = logo_output_filename(logo_chosen)
-                if out_name != "logo.webp":
-                    content = content.replace("logo.webp", out_name)
-            else:
-                content = re.sub(
-                    r"\s*<!-- Brand img start -->.*?<!-- Brand img end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-
-            # Additional (secondary) brand images - event + sponsor logos
-            # stacked under the primary logo in #brand. Rendered in
-            # copy_assets() into logo-N.webp / logo-N.svg with per-logo
-            # dark-mode invert. Build the <img> tags here (alt="" - these
-            # are decorative co-branding; the primary logo/alt already
-            # names the map for screen readers), or strip the placeholder
-            # block entirely when no additional logos are configured.
-            rendered_additional = config.get("_additional_logos_rendered") or []
-            if rendered_additional:
-                tags = []
-                for extra in rendered_additional:
-                    cls = "brand-logo-secondary"
-                    if extra.get("invert_dark", True):
-                        cls += " invert-dark"
-                    dims = ""
-                    if extra.get("width") and extra.get("height"):
-                        dims = f' width="{extra["width"]}" height="{extra["height"]}"'
-                    tags.append(
-                        f'<img src="{extra["url"]}" alt="" class="{cls}"{dims} decoding="async">'
-                    )
-                content = content.replace(
-                    "__ADDITIONAL_LOGOS__", "\n        " + "\n        ".join(tags) + "\n        "
-                )
-            else:
-                # [ \t]* (not \s*) so we consume only this line's own
-                # indentation, not the newline after the preceding doc
-                # comment - otherwise the stripped block would pull the
-                # <span> up onto the comment's line.
-                content = re.sub(
-                    r"[ \t]*<!-- Additional logos start -->.*?<!-- Additional logos end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-
-            # Strip PWA install UI and SW registration when PWA is disabled
-            if not config.get("pwa", True):
-                content = re.sub(
-                    r"\s*<!-- PWA start -->.*?<!-- PWA end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-                content = re.sub(
-                    r"\s*<!-- SW start -->.*?<!-- SW end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
-
-            # Strip icon links when no icon source is resolvable.
-            # Uses the same fallback logic as copy_assets so a config
-            # with `logo:` set but no `icon:` keeps the manifest /
-            # apple-touch / theme-color links - the icons get
-            # generated from the logo and the HTML correctly points
-            # at them. (Without this consistency, the HTML strip
-            # would remove the manifest link even though copy_assets
-            # would happily generate a manifest from the logo,
-            # leaving a build with icons on disk but no PWA install.)
-            if not resolve_icon_source(config):
-                content = re.sub(
-                    r"\s*<!-- Icons start -->.*?<!-- Icons end -->\n",
-                    "",
-                    content,
-                    flags=re.DOTALL,
-                )
+            content = _process_index_html(content, config)
 
         dst = os.path.join(output_dir, filename)
         with open(dst, "w", encoding="utf-8") as f:
