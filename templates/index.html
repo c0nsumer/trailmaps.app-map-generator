@@ -280,12 +280,11 @@
     <div id="map-scale" aria-hidden="true"></div>
 
     <!-- Off-screen location indicator (managed by app.js). Static
-         markup, not rebuilt per
-         frame: updateLocationIndicator (app.js) runs on every pan/zoom
-         frame while Locate is active and only touches the arrow's
-         rotate transform, the distance pill's text, and the container's
-         left/top - an innerHTML rebuild here forced style+layout work
-         on every frame of a ride-long interaction.
+         markup, not rebuilt per frame: updateLocationIndicator (app.js)
+         runs on every pan/zoom frame while Locate is active and only
+         touches the arrow's rotate transform, the distance pill's text,
+         and the container's left/top - an innerHTML rebuild here forced
+         style+layout work on every frame of a ride-long interaction.
 
          The arrow is mdi:arrow-up-bold (Apache 2.0, Pictogrammers). A
          shafted arrow keeps its pointing direction unambiguous at every
