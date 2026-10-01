@@ -731,6 +731,17 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         )
 
         relations, source_expansions = extract_source_relations(parsed, relation_ids)
+        # Stop here, not at the bbox step downstream, whose message blames
+        # Overpass. The usual cause is a JOSM save: it hands every new
+        # object a fresh negative id, so a config written against the
+        # previous save names relations the file no longer holds.
+        if relation_ids and not relations:
+            console.error(
+                f"None of the relations {relation_ids} is in {osm_file}. A file saved "
+                "from JOSM renumbers its negative ids on every save; read the current "
+                "ids from the file and update the config."
+            )
+            sys.exit(1)
         super_relation_expansions.update(source_expansions)
         _log_expansions("expanded", source_expansions)
         console.info(f"Found {len(relations)} relation(s):")

@@ -853,9 +853,9 @@ def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001,
 
     if min_lon == float("inf"):
         raise ValueError(
-            "No trail geometry found to compute bounding box. "
-            "This usually means the Overpass API returned empty data - "
-            "try running the build again, or set an explicit 'bbox' in the config."
+            "No trail geometry found to compute bounding box: no relation produced "
+            "any ways. Check the relation ids in the config against the data source, "
+            "or set an explicit 'bbox' in the config."
         )
 
     extent = max(max_lon - min_lon, max_lat - min_lat)
