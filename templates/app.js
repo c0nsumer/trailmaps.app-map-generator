@@ -5826,20 +5826,6 @@ function trailSection(edgeId, graph = laneGraph) {
     return { name, edges, lengthM };
 }
 
-// How many separate sections a name has in `graph`. One means a tap's
-// section is the whole trail, so the popup keeps calling it Length.
-function trailSectionCount(name, graph = laneGraph) {
-    if (!graph || !name) return 0;
-    const seen = new Set();
-    let count = 0;
-    graph.edges.forEach((e, id) => {
-        if (seen.has(id) || ((e.properties || {}).trail_name || "") !== name) return;
-        count++;
-        for (const s of sameNameEdges(graph, id, name)) seen.add(s);
-    });
-    return count;
-}
-
 // Whether the map's edge cut this section short, the per-section twin
 // of isTruncatedTrail. A clip endpoint is the first or last vertex of a
 // clipped trail feature (stampClipEndpointWays), and a feature's end is
@@ -12489,17 +12475,16 @@ function trailPopupHtml(laneHit, scope = "section") {
         ? trailSection(laneHit.edge) : null;
     if (section && CONFIG.showDistance) {
         // A tap measures the section under it, the stretch its lift
-        // marks (showTapLift), deduped by way like the finder row.
-        // While the name has only that one section the number is the
-        // finder's and the label stays "Length:", so nothing changes
-        // for the rider; with more, "Section:" says why it is shorter
-        // than the finder's. The " shown" qualifier asks whether THIS
-        // section was cut at the map's edge (isTruncatedSection): a
-        // stretch well inside the map is whole even when another
-        // stretch of the name leaves it.
+        // marks (showTapLift), deduped by way like the finder row. The
+        // label stays "Length:" whatever the name's other stretches:
+        // the lift on the map is what the number covers, and a label
+        // that flipped with the count would change with the season
+        // toggle for reasons the rider cannot see. The " shown"
+        // qualifier asks whether THIS section was cut at the map's
+        // edge (isTruncatedSection): a stretch well inside the map is
+        // whole even when another stretch of the name leaves it.
         const distanceText = formatDistance(section.lengthM);
-        const base = trailSectionCount(trailName) === 1 ? "Length" : "Section";
-        const lengthLabel = isTruncatedSection(section) ? `${base} shown:` : `${base}:`;
+        const lengthLabel = isTruncatedSection(section) ? "Length shown:" : "Length:";
         html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
     } else if (trailName && CONFIG.showDistance) {
         // A finder pick or a /t/ link (scope "trail"), or a hit with

@@ -128,7 +128,7 @@ into the same folder, and reference them by bare filename in the config.
 |-----|----------|---------|-------------|
 | `relations` | Conditional | : | Non-empty list of OSM relation IDs to render as routes. **Required unless the map supplies geometry via `custom_routes` or `event_mode.routes`**; a route-only or event map can omit it. **Each entry may be a leaf route relation or a super-relation.** A super-relation is auto-expanded into its child routes one level deep at fetch time. The parent itself is dropped since it has no ways. Order doesn't matter. Multi-system maps list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its row "Length shown:" or "Section shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its row "Length shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
 | `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. Also carries `gpx:`, downloadable course files offered via a download FAB. See [Event mode](event-mode.md) for the schema and worked examples ([GPX downloads](event-mode.md#gpx-downloads)). |
 
 ### Route buckets
@@ -592,9 +592,8 @@ This example is a routes map. Difficulty-mode relations differ as described in
   lifts the trail off the map. The finder lists each name once, so a finder
   pick lifts and measures every stretch of that name. A tap on the map is
   narrower: it lifts and measures only the contiguous section of the named
-  road or trail under the tap. If the name has more than one section on the
-  map, the popup's row reads "Section:" instead of "Length:". It reads
-  "Section shown:" if the map edge cuts that section. The popup closes on the
+  road or trail under the tap. The glow shows what the popup's length covers.
+  The row reads "Length shown:" if the map edge cuts that section. The popup closes on the
   next tap elsewhere. A trail pick clears any highlighted route or place first.
 - **One thing at a time.** Picking a new route, trail or place replaces the
   previous one. Everything else stays visible; the highlight only adds
@@ -704,7 +703,7 @@ Several config keys depend on the color modes:
 | `show_trails` | Rejected if `false` when no relation is in route mode. The map then lists trails only. |
 | `show_elevation` | Computed for route-mode relations. The build warns only when no relation is in route mode. |
 | `relation_colors` / `dashed_relations` | Apply to route-mode relations. On a difficulty-mode relation the entry is ignored, and the build warns. |
-| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:" or "Section shown:". |
+| `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
 | `show_distance` | Gates per-route distances for route-mode relations, per-rating distances for difficulty-mode relations, and per-trail distances. |
 
