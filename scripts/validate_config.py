@@ -49,14 +49,26 @@ REQUIRED_KEYS = {"name", "slug"}
 # Keep this list in sync with:
 #   - scripts/template_inject.py CONFIG_SPEC
 #   - scripts/template_inject.py inject_config_into_template() custom-logic block
-#   - scripts/fetch_trails.py / fetch_pois.py / fetch_basemap.py /
-#     fetch_terrain.py / generate_icons.py config.get() lookups
+#   - every script that calls config.get()
 KNOWN_KEYS = {
-    # Identity / required
+    # Key order follows configs/reference/reference.yaml.
     "name": str,
     "slug": str,
     "title": str,
-    # Map view / geometry
+    # `relations` is the unified source list: every entry may be a leaf route
+    # relation or a super-relation (auto-expanded to its child routes one level deep).
+    "relations": list,
+    "osm_file": str,
+    "clipped_relations": list,
+    # Event mode: feature one or more routes prominently while every other
+    # trail renders as muted background context. A build-time pre-pass
+    # translates it into per-route overrides; nothing flows directly to the
+    # runtime CONFIG.
+    "event_mode": dict,
+    "winter_relations": list,
+    "summer_relations": list,
+    "emergency_access_relations": list,
+    "custom_routes": list,
     "bbox": list,
     "pan_bbox": list,
     "pan_padding": (int, float),
@@ -64,34 +76,48 @@ KNOWN_KEYS = {
     "max_zoom": (int, float),
     "basemap_maxzoom": (int, float),
     "terrain_maxzoom": (int, float),
-    # Data sources. `relations` is the unified source list: every entry
-    # may be a leaf route relation OR a super-relation (auto-expanded
-    # to its child routes one level deep). It replaces the historical
-    # `root_relation_id` (scalar) + `extra_relations` (list) split.
-    "relations": list,
-    "osm_file": str,
-    "clipped_relations": list,
-    "winter_relations": list,
-    "summer_relations": list,
-    "emergency_access_relations": list,
+    # Show/hide toggles gate data-fetching and build-time asset generation;
+    # UI visibility lives in localStorage. show_markers covers the merged
+    # guideposts + emergency-access-point layer.
+    "show_markers": bool,
+    "show_features": bool,
+    "show_parking": bool,
+    "show_trailheads": bool,
+    "show_hubs": bool,
+    "show_toilets": bool,
+    "show_drinking_water": bool,
+    "show_bicycle_repair_stations": bool,
+    "show_terrain": bool,
+    "show_difficulty": bool,
+    "show_trails": bool,
+    "show_direction_arrows": bool,
+    "suppress_basemap_pois": bool,
+    "suppress_basemap_oneway_arrows": bool,
+    "show_distance": bool,
+    "show_elevation": bool,
+    "poi_proximity_m": (int, float),
+    "relation_colors": dict,
+    "relation_names": dict,
+    "dashed_relations": dict,
+    "color_by": str,
     "color_by_route": list,
     "color_by_difficulty": list,
-    "custom_routes": list,
-    # Per-relation overrides (dicts keyed by integer relation IDs)
-    "relation_colors": dict,
-    "dashed_relations": dict,
-    "relation_names": dict,
-    # Day-of-week / date-parity direction-arrow reversal schedule.
-    # Single hierarchical key: top-level reverse_days is system-wide;
-    # nested per_route block holds per-relation overrides. See
-    # _validate_direction_schedule for the full schema.
-    "direction_schedule": dict,
-    # Display options
-    "default_labels": str,
-    "forced_labels": str,
-    "color_by": str,
     "route_key": bool,
     "default_trail_color": (str, dict),
+    # Direction-arrow reversal schedule: top-level reverse_days is system-wide,
+    # nested per_route holds per-relation overrides. See _validate_weekdays.
+    "direction_schedule": dict,
+    "default_visible": (list, str),
+    "forced_visible": (list, str),
+    "default_labels": str,
+    "forced_labels": str,
+    "default_color_scheme": str,
+    "invert_logo_dark": bool,
+    "map_dim_on_highlight": bool,
+    "scrim_opacity": (int, float),
+    "highlight_glow": bool,
+    "url_hash": bool,
+    "share_button": bool,
     "marker_color": str,
     "marker_text_color": str,
     "marker_border_color": str,
@@ -107,59 +133,20 @@ KNOWN_KEYS = {
     "hub_border_color": str,
     "feature_color": str,
     "feature_ring_color": str,
-    # Show/hide toggles (gate data-fetching and build-time asset gen;
-    # UI visibility lives in localStorage). show_markers covers the
-    # merged guideposts + emergency-access-point layer.
-    "show_markers": bool,
-    "show_features": bool,
-    "show_parking": bool,
-    "show_trailheads": bool,
-    "show_hubs": bool,
-    "show_toilets": bool,
-    "show_drinking_water": bool,
-    "show_bicycle_repair_stations": bool,
-    "show_terrain": bool,
-    "show_difficulty": bool,
-    "show_trails": bool,
-    "show_direction_arrows": bool,
-    "suppress_basemap_pois": bool,
-    "suppress_basemap_oneway_arrows": bool,
-    "map_dim_on_highlight": bool,
-    "scrim_opacity": (int, float),
-    "highlight_glow": bool,
-    "url_hash": bool,
-    "poi_proximity_m": (int, float),
-    "show_distance": bool,
-    "show_elevation": bool,
-    "share_button": bool,
-    # User-supplied feature data
+    "accent_color": str,
+    "base_layers": list,
+    "logo": str,
+    "icon": str,
+    # Event and sponsor logos stacked under the primary `logo:`. Display-only:
+    # they never drive icon generation, accent, About or og:image.
+    "additional_logos": list,
     "trailheads": list,
     "parking": list,
     "hubs": list,
-    "base_layers": list,
-    # Branding / chrome
-    "logo": str,
-    "icon": str,
-    # Secondary brand images (event + sponsor logos) stacked vertically
-    # under the primary `logo:`. Display-only - never drive icon
-    # generation / accent / About / og:image. See _validate_additional_logos.
-    "additional_logos": list,
-    "about": dict,
-    "welcome": (dict, bool),
-    "default_visible": (list, str),
-    "forced_visible": (list, str),
-    "accent_color": str,
-    "default_color_scheme": str,
-    "invert_logo_dark": bool,
     "pwa": bool,
     "pwa_install_prompt": bool,
-    # Event mode: feature one or more routes prominently while every
-    # other trail on the map renders as muted background context.
-    # Build-time pre-pass translates this into per-route overrides
-    # (relation_colors, dashed_relations, custom_routes mutation);
-    # nothing flows directly to the runtime CONFIG.
-    "event_mode": dict,
-    # Output
+    "about": dict,
+    "welcome": (dict, bool),
     "output_dir": str,
 }
 
@@ -329,9 +316,21 @@ def _check_type(report, where, value, expected):
         report.err(where, f"expected {_type_name(expected)}, got bool")
         return False
     if not isinstance(value, expected):
-        report.err(where, f"expected {_type_name(expected)}, got {type(value).__name__}")
+        if expected is bool:
+            report.err(where, f"must be true or false, got {value!r}")
+        else:
+            report.err(where, f"expected {_type_name(expected)}, got {type(value).__name__}")
         return False
     return True
+
+
+def _is_int(value):
+    """True for a real int; YAML `true`/`false` load as bool, a subclass of int."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _is_color(value):
@@ -344,30 +343,60 @@ def _is_color(value):
 # Per-key validators
 # ----------------------------------------------------------------------
 
-_LEGACY_KEYS = {
-    "root_relation_id",
-    "extra_relations",
-    # The native lane renderer and its selector went in 2026-09.
-    "lane_renderer",
-    # Units became the viewer's choice in Options (2026-09).
-    "distance_units",
-    # Renamed in the direction_schedule rework (May 2026). Caught
-    # with pointed migration messages in _validate_weekdays.
-    "default_direction_schedule",
-    "direction_schedules",
-    # Replaced by forced_visible: [direction_arrows] (May 2026).
-    # Caught with a rename hint in _validate_forced_visible.
-    "direction_arrows_required",
-    # Renamed to suppress_basemap_path_labels (May 2026), then both
-    # retired (2026-09): a generated basemap hides the label of every
-    # stretch it hides, and every other path keeps its label. Caught
-    # with their own messages in _validate_renamed_keys and
-    # _validate_legacy_keys.
-    "suppress_path_labels",
-    "suppress_basemap_path_labels",
-    # The plain-extract mode went with it (2026-09-27): every basemap is
-    # generated, and tippecanoe is a requirement, not an option.
-    "basemap_source",
+# Keys that no longer exist, each with its own migration message. The
+# unknown-key check skips them so the curator sees one pointed error per
+# key, not that plus a generic "unknown top-level key".
+_DIRECTION_SCHEDULE_MOVED = (
+    "renamed. The schema is now a single `direction_schedule:` key with "
+    "an optional top-level `reverse_days:` (system-wide) and a nested "
+    "`per_route:` dict for per-relation overrides. See "
+    "docs/configuration.md#direction-schedules."
+)
+_RETIRED_KEYS = {
+    "root_relation_id": (
+        "renamed to `relations:` (now a list). Replace "
+        "`root_relation_id: <id>` with `relations: [<id>]`. "
+        "Fold any `extra_relations:` entries into the same list."
+    ),
+    "extra_relations": (
+        "merged into `relations:`. Move every entry into the "
+        "`relations:` list (alongside the former `root_relation_id` value)."
+    ),
+    "lane_renderer": (
+        "removed. Every map draws its routes with maplibre-gl-lanes; "
+        "the build-time renderer that `native` selected is gone. "
+        "Delete the line."
+    ),
+    "distance_units": (
+        "removed. Each viewer picks miles or kilometers in Options, "
+        "and the default follows their device's region. Delete the line."
+    ),
+    "default_direction_schedule": _DIRECTION_SCHEDULE_MOVED,
+    "direction_schedules": _DIRECTION_SCHEDULE_MOVED,
+    "direction_arrows_required": (
+        "renamed; use `forced_visible: [direction_arrows]` instead. "
+        "forced_visible is a generic per-layer force-on list "
+        "(same shape as default_visible) that supersedes the "
+        "old single-purpose flag. See "
+        "docs/configuration.md#show--hide-on-a-per-map-basis."
+    ),
+    "suppress_path_labels": (
+        "removed (it was renamed `suppress_basemap_path_labels`, "
+        "and that was removed too). A generated basemap hides the "
+        "label of every path stretch it hides under a route, and "
+        "every other path keeps its label. Delete the line."
+    ),
+    "suppress_basemap_path_labels": (
+        "removed. A generated basemap hides the label of every path "
+        "stretch it hides under a route, and every other path keeps "
+        "its label; there is nothing left for the key to decide. "
+        "Delete the line."
+    ),
+    "basemap_source": (
+        "removed. Every basemap is the Protomaps extract with its path "
+        "and service-road lines generated here, which needs tippecanoe "
+        "and tile-join; the plain-extract mode is gone. Delete the line."
+    ),
 }
 
 
@@ -380,12 +409,7 @@ def _validate_unknown_keys(report, config):
         # if they leak in (defensive - users won't write these).
         if key.startswith("_"):
             continue
-        # Legacy keys get a pointed migration message from their
-        # dedicated validators (_validate_legacy_keys,
-        # _validate_renamed_keys, and friends); suppress the generic
-        # "unknown key" warning so the curator sees one clear error
-        # per key, not two.
-        if key in _LEGACY_KEYS:
+        if key in _RETIRED_KEYS:
             continue
         suggestions = difflib.get_close_matches(key, KNOWN_KEYS.keys(), n=2)
         hint = (
@@ -453,25 +477,16 @@ def _validate_enums(report, config):
             f"must be one of {sorted(VALID_COLOR_SCHEMES)}, got {config['default_color_scheme']!r}",
         )
 
-    # (Historical note: an earlier draft cross-checked
-    # show_elevation against show_terrain because the original
-    # plan was to sample our own terrain raster for elevation gain.
-    # The shipping implementation uses USGS 3DEP's getSamples HTTP
-    # endpoint instead, which is independent of the hillshade layer
-    # (Mapterhorn). The two settings are orthogonal - elevation stats
-    # can be enabled with terrain off, and vice versa. No cross-key
-    # check needed.)
-
 
 def _validate_geometry(report, config):
-    """Bbox / zoom sanity. Loose ranges so users with edge-case
-    setups (Antarctica, antimeridian crossings, etc.) aren't blocked."""
+    """Bbox / zoom sanity. Loose ranges so edge-case setups (polar maps,
+    for one) aren't blocked. A bbox crossing the antimeridian is rejected."""
     for bbox_key in ("bbox", "pan_bbox"):
         if bbox_key in config and isinstance(config[bbox_key], list):
             b = config[bbox_key]
             if len(b) != 4:
                 report.err(bbox_key, f"must be 4 values [w,s,e,n], got {len(b)}")
-            elif not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in b):
+            elif not all(_is_number(x) for x in b):
                 report.err(bbox_key, "all 4 values must be numbers")
             else:
                 w, s, e, n = b
@@ -488,11 +503,7 @@ def _validate_geometry(report, config):
     # makes no sense; huge values (>5) mean the pan envelope is 10× the
     # trail extent, almost certainly a typo. Warn rather than error so
     # power users can override for special cases.
-    if (
-        "pan_padding" in config
-        and isinstance(config["pan_padding"], (int, float))
-        and not isinstance(config["pan_padding"], bool)
-    ):
+    if "pan_padding" in config and _is_number(config["pan_padding"]):
         pp = config["pan_padding"]
         if pp < 0:
             report.err("pan_padding", f"must be >= 0 (0 = no pan room beyond bbox), got {pp}")
@@ -507,11 +518,7 @@ def _validate_geometry(report, config):
     # within which a feature/trail-marker POI is allowed to render.
     # Negative is nonsense; very large values defeat the filter and may
     # surface bbox-incidental POIs the trail map shouldn't claim.
-    if (
-        "poi_proximity_m" in config
-        and isinstance(config["poi_proximity_m"], (int, float))
-        and not isinstance(config["poi_proximity_m"], bool)
-    ):
+    if "poi_proximity_m" in config and _is_number(config["poi_proximity_m"]):
         pm = config["poi_proximity_m"]
         if pm < 0:
             report.err(
@@ -528,17 +535,13 @@ def _validate_geometry(report, config):
     # wash + menu backdrops). Outside that range is meaningless - the app
     # clamps, but flag it at build so a typo (e.g. 40 instead of 0.40) is
     # caught rather than silently turning the whole map black.
-    if (
-        "scrim_opacity" in config
-        and isinstance(config["scrim_opacity"], (int, float))
-        and not isinstance(config["scrim_opacity"], bool)
-    ):
+    if "scrim_opacity" in config and _is_number(config["scrim_opacity"]):
         op = config["scrim_opacity"]
         if not 0 <= op <= 1:
             report.err("scrim_opacity", f"must be in [0,1], got {op}")
 
     for k in ("min_zoom", "max_zoom", "basemap_maxzoom", "terrain_maxzoom"):
-        if k in config and isinstance(config[k], (int, float)) and not isinstance(config[k], bool):
+        if k in config and _is_number(config[k]):
             if not 0 <= config[k] <= 22:
                 report.err(k, f"zoom must be in [0,22], got {config[k]}")
 
@@ -581,31 +584,21 @@ def _reject_unknown_keys(report, where, mapping, allowed):
             continue
         suggestions = difflib.get_close_matches(str(k), sorted(allowed), n=2)
         hint = (
-            f" - did you mean {' or '.join(repr(s) for s in suggestions)}?"
-            if suggestions
-            else ""
+            f" - did you mean {' or '.join(repr(s) for s in suggestions)}?" if suggestions else ""
         )
         report.err(f"{where}.{k}", f"unknown key; allowed: {sorted(allowed)}{hint}")
 
 
 def _is_dash_pattern(p):
     """True for a valid line-dash pattern: a non-empty list of numbers."""
-    return (
-        isinstance(p, list)
-        and len(p) > 0
-        and all(isinstance(n, (int, float)) and not isinstance(n, bool) for n in p)
-    )
+    return isinstance(p, list) and len(p) > 0 and all(_is_number(n) for n in p)
 
 
 def _check_lonlat(report, where, c):
     """Shared [lon, lat] coordinate-pair check (shape + world-range).
     Used by every point-shaped config entry (trailheads / parking /
     hubs / event_mode.pois)."""
-    if not (
-        isinstance(c, list)
-        and len(c) == 2
-        and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in c)
-    ):
+    if not (isinstance(c, list) and len(c) == 2 and all(_is_number(x) for x in c)):
         report.err(where, f"must be [lon, lat] numbers, got {c!r}")
         return
     lon, lat = c
@@ -648,11 +641,9 @@ def _validate_colors(report, config):
         elif isinstance(dtc, dict):
             # The dict form's full shape is consumed by the injector
             # (color / pattern / cap → CONFIG.defaultTrail*). All three
-            # need validating - a typo'd `colour:` used to sail through
-            # and silently yield the default gray.
-            _reject_unknown_keys(
-                report, "default_trail_color", dtc, {"color", "pattern", "cap"}
-            )
+            # need validating - a typo'd `colour:` would otherwise
+            # silently yield the default gray.
+            _reject_unknown_keys(report, "default_trail_color", dtc, {"color", "pattern", "cap"})
             if "color" in dtc and not _is_color(dtc["color"]):
                 report.err("default_trail_color.color", f"not a valid color: {dtc['color']!r}")
             if "pattern" in dtc and not _is_dash_pattern(dtc["pattern"]):
@@ -680,7 +671,7 @@ def _validate_relation_id_dicts(report, config):
         if not isinstance(d, dict):
             continue
         for rid in d.keys():
-            if isinstance(rid, int) and not isinstance(rid, bool):
+            if _is_int(rid):
                 continue
             if isinstance(rid, str) and rid.lstrip("-").isdigit():
                 continue
@@ -692,7 +683,7 @@ def _validate_relation_id_dicts(report, config):
         per_route = ds.get("per_route")
         if isinstance(per_route, dict):
             for rid in per_route.keys():
-                if isinstance(rid, int) and not isinstance(rid, bool):
+                if _is_int(rid):
                     continue
                 if isinstance(rid, str) and rid.lstrip("-").isdigit():
                     continue
@@ -711,7 +702,7 @@ def _validate_relation_id_dicts(report, config):
         if not isinstance(lst, list):
             continue
         for i, rid in enumerate(lst):
-            if isinstance(rid, int) and not isinstance(rid, bool):
+            if _is_int(rid):
                 continue
             report.err(f"{key}[{i}]", f"must be an OSM relation ID (int), got {rid!r}")
 
@@ -723,30 +714,11 @@ def _validate_weekdays(report, config):
 
     def _check_days(where, days):
         if not isinstance(days, list):
-            report.err(where, f"reverse_days must be a list, got {type(days).__name__}")
+            report.err(where, f"reverse_days expected list, got {type(days).__name__}")
             return
         for d in days:
             if match_day_token(d) is None:
                 report.err(where, f"unknown day token {d!r}; valid: {sorted(VALID_DAYS)}")
-
-    # Legacy-key migration error. The previous schema split the
-    # schedule into two siblings (default_direction_schedule +
-    # direction_schedules). The new schema is one hierarchical key
-    # (direction_schedule.reverse_days + direction_schedule.per_route)
-    # so the system-wide / per-route relationship is structural rather
-    # than name-encoded. Hard cut to match the framework's other
-    # legacy-key migrations (more_information / extra_links → links;
-    # author → curator).
-    for legacy in ("default_direction_schedule", "direction_schedules"):
-        if legacy in config:
-            report.err(
-                legacy,
-                f"`{legacy}` was renamed; new schema is a single "
-                f"`direction_schedule:` key with optional top-level "
-                f"`reverse_days:` (system-wide) and a nested `per_route:` "
-                f"dict for per-relation overrides. See "
-                f"docs/configuration.md#direction-schedules.",
-            )
 
     ds = config.get("direction_schedule")
     if not isinstance(ds, dict):
@@ -760,7 +732,7 @@ def _validate_weekdays(report, config):
         if not isinstance(per_route, dict):
             report.err(
                 "direction_schedule.per_route",
-                f"must be a dict keyed by OSM relation IDs, got {type(per_route).__name__}",
+                f"expected dict keyed by OSM relation IDs, got {type(per_route).__name__}",
             )
         else:
             for rid, spec in per_route.items():
@@ -774,7 +746,7 @@ def _validate_weekdays(report, config):
                 # reverse_days didn't parse becomes an EMPTY override,
                 # which is the documented mechanism for opting a route
                 # OUT of the system-wide schedule. A `reverse_day:` typo
-                # used to silently disable arrow reversal for the route.
+                # would silently disable arrow reversal for the route.
                 _reject_unknown_keys(report, where, spec, {"reverse_days"})
                 if "reverse_days" in spec:
                     _check_days(f"{where}.reverse_days", spec["reverse_days"])
@@ -798,13 +770,13 @@ def _validate_dashed_relations(report, config):
         where = f"dashed_relations[{rid}]"
         if isinstance(spec, list):
             for i, n in enumerate(spec):
-                if not isinstance(n, (int, float)) or isinstance(n, bool):
+                if not _is_number(n):
                     report.err(f"{where}[{i}]", f"dash pattern values must be numbers, got {n!r}")
         elif isinstance(spec, dict):
             # `colors` is documented (docs/configuration.md
             # "Alternating-color dashes") and consumed by the injector
-            # (dashColors) but used to be entirely unvalidated - a
-            # string value or typo'd key flowed straight to the runtime.
+            # (dashColors); validated so a string value or typo'd key
+            # can't flow straight to the runtime.
             _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
             if "pattern" in spec and not _is_dash_pattern(spec["pattern"]):
                 report.err(
@@ -856,7 +828,7 @@ def _validate_point_lists(report, config):
             else:
                 _check_lonlat(report, f"{where}.coordinates", item["coordinates"])
             if "name" in item and not isinstance(item["name"], str):
-                report.err(f"{where}.name", f"must be a string, got {type(item['name']).__name__}")
+                report.err(f"{where}.name", f"expected str, got {type(item['name']).__name__}")
 
 
 def _validate_additional_logos(report, config):
@@ -878,12 +850,12 @@ def _validate_additional_logos(report, config):
     if al is None:
         return
     if not isinstance(al, list):
-        report.err("additional_logos", f"must be a list, got {type(al).__name__}")
+        report.err("additional_logos", f"expected list, got {type(al).__name__}")
         return
     for i, entry in enumerate(al):
         where = f"additional_logos[{i}]"
         if not isinstance(entry, dict):
-            report.err(where, f"must be a mapping with a `path:` key, got {type(entry).__name__}")
+            report.err(where, f"expected mapping with a `path:` key, got {type(entry).__name__}")
             continue
         p = entry.get("path")
         if not isinstance(p, str) or not p.strip():
@@ -891,9 +863,38 @@ def _validate_additional_logos(report, config):
         if "invert_dark" in entry and not isinstance(entry["invert_dark"], bool):
             report.err(
                 f"{where}.invert_dark",
-                f"expected bool, got {type(entry['invert_dark']).__name__}",
+                f"must be true or false, got {entry['invert_dark']!r}",
             )
         _reject_unknown_keys(report, where, entry, {"path", "invert_dark"})
+
+
+def _asset_paths(config):
+    """Yield (config key, path) for every user-supplied asset path that is
+    a non-empty string. Wrong types are reported by _validate_types and
+    the per-entry validators, so they are skipped here."""
+    for key in ("logo", "icon", "osm_file"):
+        p = config.get(key)
+        if p:
+            yield key, p
+
+    em = config.get("event_mode")
+    em = em if isinstance(em, dict) else {}
+    em_gpx = em.get("gpx")
+    em_gpx = em_gpx if isinstance(em_gpx, dict) else {}
+    # Inline event_mode.routes share the geometry-path semantics of
+    # top-level custom_routes: relative to the config YAML's directory.
+    for prefix, lst, field in (
+        ("additional_logos", config.get("additional_logos"), "path"),
+        ("custom_routes", config.get("custom_routes"), "geometry"),
+        ("event_mode.routes", em.get("routes"), "geometry"),
+        ("event_mode.gpx.routes", em_gpx.get("routes"), "file"),
+    ):
+        if not isinstance(lst, list):
+            continue
+        for i, entry in enumerate(lst):
+            p = entry.get(field) if isinstance(entry, dict) else None
+            if isinstance(p, str) and p:
+                yield f"{prefix}[{i}].{field}", p
 
 
 def _validate_paths(report, config, config_dir):
@@ -944,90 +945,18 @@ def _validate_paths(report, config, config_dir):
             return False
         return True
 
-    for key in ("logo", "icon", "osm_file"):
-        p = config.get(key)
-        if not p:
-            continue
+    for key, p in _asset_paths(config):
         full = _full(p)
         if not _check_path_safe(key, p, full):
             continue
         if not os.path.isfile(full):
             report.err(key, f"file not found: {p} (resolved to {full})")
 
-    al = config.get("additional_logos")
-    if isinstance(al, list):
-        for i, entry in enumerate(al):
-            if not isinstance(entry, dict):
-                continue
-            p = entry.get("path")
-            if not isinstance(p, str) or not p:
-                continue
-            full = _full(p)
-            key = f"additional_logos[{i}].path"
-            if not _check_path_safe(key, p, full):
-                continue
-            if not os.path.isfile(full):
-                report.err(key, f"file not found: {p} (resolved to {full})")
-
-    cr = config.get("custom_routes")
-    if isinstance(cr, list):
-        for i, entry in enumerate(cr):
-            if not isinstance(entry, dict):
-                continue
-            p = entry.get("geometry")
-            if not isinstance(p, str) or not p:
-                continue
-            full = _full(p)
-            if not _check_path_safe(f"custom_routes[{i}].geometry", p, full):
-                continue
-            if not os.path.isfile(full):
-                report.err(
-                    f"custom_routes[{i}].geometry", f"file not found: {p} (resolved to {full})"
-                )
-
-    # Inline event_mode.routes share the geometry-path semantics with
-    # top-level custom_routes (relative to the config YAML's directory).
-    em = config.get("event_mode")
-    if isinstance(em, dict):
-        em_routes = em.get("routes")
-        if isinstance(em_routes, list):
-            for i, entry in enumerate(em_routes):
-                if not isinstance(entry, dict):
-                    continue
-                p = entry.get("geometry")
-                if not isinstance(p, str) or not p:
-                    continue
-                full = _full(p)
-                key = f"event_mode.routes[{i}].geometry"
-                if not _check_path_safe(key, p, full):
-                    continue
-                if not os.path.isfile(full):
-                    report.err(key, f"file not found: {p} (resolved to {full})")
-
-        # event_mode.gpx.routes[].file - curator-supplied .gpx assets,
-        # same relative-to-config-dir semantics.
-        em_gpx = em.get("gpx")
-        if isinstance(em_gpx, dict) and isinstance(em_gpx.get("routes"), list):
-            for i, entry in enumerate(em_gpx["routes"]):
-                if not isinstance(entry, dict):
-                    continue
-                p = entry.get("file")
-                if not isinstance(p, str) or not p:
-                    continue
-                full = _full(p)
-                key = f"event_mode.gpx.routes[{i}].file"
-                if not _check_path_safe(key, p, full):
-                    continue
-                if not os.path.isfile(full):
-                    report.err(key, f"file not found: {p} (resolved to {full})")
-
 
 def _collect_osm_relation_ids(config):
-    """Return a set of stringified OSM relation IDs referenced anywhere
-    in the config's relation-id lists. Used by validators that need to
-    detect string-id-vs-int-id collisions.
-    """
-    osm_ids = set()
+    """Return the set of integer OSM relation IDs referenced anywhere in
+    the config's relation-id lists."""
+    ids = set()
     for key in (
         "relations",
         "clipped_relations",
@@ -1037,10 +966,24 @@ def _collect_osm_relation_ids(config):
     ):
         lst = config.get(key)
         if isinstance(lst, list):
-            for rid in lst:
-                if isinstance(rid, int) and not isinstance(rid, bool):
-                    osm_ids.add(str(rid))
-    return osm_ids
+            ids.update(rid for rid in lst if _is_int(rid))
+    return ids
+
+
+def _collect_custom_route_ids(config, *, include_event_routes=False):
+    """Return the set of non-empty string ids declared by top-level
+    `custom_routes`, plus inline `event_mode.routes` when asked."""
+    sources = [config.get("custom_routes")]
+    if include_event_routes:
+        em = config.get("event_mode")
+        sources.append(em.get("routes") if isinstance(em, dict) else None)
+    return {
+        entry["id"]
+        for lst in sources
+        if isinstance(lst, list)
+        for entry in lst
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"]
+    }
 
 
 def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
@@ -1068,8 +1011,8 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
             )
         else:
             seen_ids.add(cid)
-        # Collision with OSM relation ids - compare stringified.
-        if cid in osm_ids:
+        # Custom-route ids are strings, so compare against stringified OSM ids.
+        if cid in {str(rid) for rid in osm_ids}:
             report.err(
                 f"{where}.id",
                 f"id {cid!r} collides with an OSM relation id used elsewhere in this config",
@@ -1107,7 +1050,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
     flags_present = any(k in entry for k in ("summer", "winter", "emergency"))
     for flag_key in ("summer", "winter", "emergency"):
         if flag_key in entry and not isinstance(entry[flag_key], bool):
-            report.err(f"{where}.{flag_key}", f"must be bool, got {type(entry[flag_key]).__name__}")
+            report.err(f"{where}.{flag_key}", f"must be true or false, got {entry[flag_key]!r}")
 
     if flags_present:
         resolved = [entry.get(k, False) is True for k in ("summer", "winter", "emergency")]
@@ -1120,12 +1063,12 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
 
     # Optional bool
     if "dashed" in entry and not isinstance(entry["dashed"], bool):
-        report.err(f"{where}.dashed", f"must be bool, got {type(entry['dashed']).__name__}")
+        report.err(f"{where}.dashed", f"must be true or false, got {entry['dashed']!r}")
 
     # Optional strings
     for sk in ("description", "trail_name_field"):
         if sk in entry and not isinstance(entry[sk], str):
-            report.err(f"{where}.{sk}", f"must be string, got {type(entry[sk]).__name__}")
+            report.err(f"{where}.{sk}", f"expected str, got {type(entry[sk]).__name__}")
 
     # Optional `oneway`: drives the existing direction-arrow renderer.
     # Accepts the OSM `oneway=` vocabulary MINUS 'reversible': a
@@ -1146,8 +1089,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
         elif ow not in ("yes", "-1", ""):
             report.err(
                 f"{where}.oneway",
-                f"must be one of 'yes', '-1', "
-                f"or '' (empty for no arrows), got {ow!r}",
+                f"must be one of 'yes', '-1', or '' (empty for no arrows), got {ow!r}",
             )
 
     # Reject unknown keys in the custom route entry (catch typos).
@@ -1257,7 +1199,7 @@ def _validate_accent_color(report, config):
     if val is None:
         return
     if not isinstance(val, str):
-        report.err("accent_color", f"expected string, got {type(val).__name__}")
+        report.err("accent_color", f"expected str, got {type(val).__name__}")
         return
     if val == "auto":
         return
@@ -1282,7 +1224,7 @@ def _check_layer_list(report, key, val):
     seen = set()
     for i, item in enumerate(val):
         if not isinstance(item, str):
-            report.err(f"{key}[{i}]", f"expected string, got {type(item).__name__}")
+            report.err(f"{key}[{i}]", f"expected str, got {type(item).__name__}")
             continue
         if item not in DEFAULT_VISIBLE_LAYERS:
             suggestions = difflib.get_close_matches(item, DEFAULT_VISIBLE_LAYERS, n=2)
@@ -1311,22 +1253,6 @@ def _validate_default_visible(report, config):
         _check_layer_list(report, "default_visible", val)
 
 
-def _validate_renamed_keys(report, config):
-    """Hard-error on legacy keys whose only fate is a one-for-one
-    rename. Listed in _LEGACY_KEYS so the unknown-key fuzzy matcher
-    doesn't try to suggest spelling fixes for them - the error
-    message here points at the new name directly.
-    """
-    if "suppress_path_labels" in config:
-        report.err(
-            "suppress_path_labels",
-            "removed (it was renamed `suppress_basemap_path_labels`, "
-            "and that was removed too). A generated basemap hides the "
-            "label of every path stretch it hides under a route, and "
-            "every other path keeps its label. Delete the line.",
-        )
-
-
 def _validate_forced_visible(report, config):
     """Validate the optional `forced_visible` key.
 
@@ -1337,23 +1263,7 @@ def _validate_forced_visible(report, config):
     no off affordance, and any persisted localStorage state is
     ignored. Use for safety-critical layers (direction arrows on flow
     trails, e.g.) or maps where a layer must always be present.
-
-    Also handles the legacy `direction_arrows_required: true` key:
-    hard-errors with a rename instruction pointing at the new
-    `forced_visible: [direction_arrows]` form. Matches the
-    direction_schedule legacy-key migration pattern.
     """
-    if "direction_arrows_required" in config:
-        report.err(
-            "direction_arrows_required",
-            "`direction_arrows_required` was renamed; use "
-            "`forced_visible: [direction_arrows]` instead. "
-            "forced_visible is a generic per-layer force-on list "
-            "(same shape as default_visible) that supersedes the "
-            "old single-purpose flag. See "
-            "docs/configuration.md#show--hide-on-a-per-map-basis.",
-        )
-
     val = config.get("forced_visible")
     if val is not None:
         _check_layer_list(report, "forced_visible", val)
@@ -1380,13 +1290,13 @@ def _validate_welcome(report, config):
         report.err("welcome", f"expected dict or false, got {type(welcome).__name__}")
         return
     if "title" in welcome and not isinstance(welcome["title"], str):
-        report.err("welcome.title", f"must be a string, got {type(welcome['title']).__name__}")
+        report.err("welcome.title", f"expected str, got {type(welcome['title']).__name__}")
     if "body" in welcome and not isinstance(welcome["body"], str):
-        report.err("welcome.body", f"must be a string, got {type(welcome['body']).__name__}")
+        report.err("welcome.body", f"expected str, got {type(welcome['body']).__name__}")
     if "show_controls_hint" in welcome and not isinstance(welcome["show_controls_hint"], bool):
         report.err(
             "welcome.show_controls_hint",
-            f"must be a boolean, got {type(welcome['show_controls_hint']).__name__}",
+            f"must be true or false, got {welcome['show_controls_hint']!r}",
         )
     # Catch typos in welcome's sub-keys.
     _reject_unknown_keys(report, "welcome", welcome, {"title", "body", "show_controls_hint"})
@@ -1429,16 +1339,15 @@ def _validate_about(report, config):
     if "links" in about:
         v = about["links"]
         if not isinstance(v, list):
-            report.err("about.links", f"must be a list, got {type(v).__name__}")
+            report.err("about.links", f"expected list, got {type(v).__name__}")
         else:
             for i, link in enumerate(v):
                 if not isinstance(link, dict) or "label" not in link or "url" not in link:
                     report.err(f"about.links[{i}]", "each entry must be {label, url}")
-    # `author` was renamed to `curator` to better describe the role
-    # - the framework generates the map; the human curates the data
-    # and config. Hard cut to match the more_information / extra_links
-    # consolidation; one curator and a small known config set make
-    # alias logic more cost than benefit.
+    # `author` is a hard error rather than an alias: the framework
+    # generates the map and the human curates the data and config, so
+    # `curator` names the role, and a small known config set makes alias
+    # logic more cost than benefit.
     if "author" in about:
         report.err(
             "about.author",
@@ -1514,9 +1423,7 @@ def _validate_event_mode(report, config):
     # relations have named ways; inline routes and custom_routes are bare
     # geometry. Warning, not error: the map still works, the labels are
     # just empty along the course.
-    has_osm_featured = featured_nonempty and any(
-        isinstance(f, int) and not isinstance(f, bool) for f in featured
-    )
+    has_osm_featured = featured_nonempty and any(_is_int(f) for f in featured)
     if (routes_nonempty or featured_nonempty) and not has_osm_featured:
         for key in ("default_labels", "forced_labels"):
             if config.get(key) == "trails":
@@ -1530,16 +1437,10 @@ def _validate_event_mode(report, config):
     # Carry the seen_ids set across BOTH event_mode.routes and the
     # top-level custom_routes so the duplicate-id check spans both.
     osm_ids = _collect_osm_relation_ids(config)
-    seen_ids = set()
     # Pre-load top-level custom_routes IDs so an inline event_mode
     # route can't shadow one declared at top level.
-    cr = config.get("custom_routes")
-    if isinstance(cr, list):
-        for entry in cr:
-            if isinstance(entry, dict):
-                cid = entry.get("id")
-                if isinstance(cid, str) and cid:
-                    seen_ids.add(cid)
+    seen_top_level_ids = _collect_custom_route_ids(config)
+    seen_ids = set(seen_top_level_ids)
 
     if isinstance(routes, list):
         for i, entry in enumerate(routes):
@@ -1551,30 +1452,9 @@ def _validate_event_mode(report, config):
     # top-level custom_routes id) OR an int (matching an OSM relation
     # id present somewhere in this config).
     if isinstance(featured, list):
-        # Build the set of valid string IDs (top-level custom_routes
-        # only - inline event_mode.routes are featured by definition,
-        # so referencing one in `featured` would be redundant).
-        valid_string_ids = set()
-        if isinstance(cr, list):
-            for entry in cr:
-                if isinstance(entry, dict):
-                    cid = entry.get("id")
-                    if isinstance(cid, str) and cid:
-                        valid_string_ids.add(cid)
-        # Build the set of valid int IDs from every relation list.
-        valid_int_ids = set()
-        for key in (
-            "relations",
-            "clipped_relations",
-            "winter_relations",
-            "summer_relations",
-            "emergency_access_relations",
-        ):
-            lst = config.get(key)
-            if isinstance(lst, list):
-                for rid in lst:
-                    if isinstance(rid, int) and not isinstance(rid, bool):
-                        valid_int_ids.add(rid)
+        # Valid string IDs are top-level custom_routes only: inline
+        # event_mode.routes are featured by definition, so referencing
+        # one in `featured` would be redundant.
 
         for i, ref in enumerate(featured):
             where = f"event_mode.featured[{i}]"
@@ -1584,7 +1464,7 @@ def _validate_event_mode(report, config):
                 )
                 continue
             if isinstance(ref, int):
-                if ref not in valid_int_ids:
+                if ref not in osm_ids:
                     report.err(
                         where,
                         f"OSM relation id {ref} is not present in "
@@ -1593,7 +1473,7 @@ def _validate_event_mode(report, config):
                     )
                 continue
             if isinstance(ref, str):
-                if ref not in valid_string_ids:
+                if ref not in seen_top_level_ids:
                     report.err(
                         where,
                         f"string id {ref!r} does not match any "
@@ -1637,7 +1517,7 @@ def _validate_event_mode(report, config):
     # (always-on for event-mode arrows).
     da = em.get("direction_arrows")
     if da is not None and not isinstance(da, bool):
-        report.err("event_mode.direction_arrows", f"expected bool, got {type(da).__name__}")
+        report.err("event_mode.direction_arrows", f"must be true or false, got {da!r}")
 
     # pois: optional list of {name, coordinates, description?, directions?} entries.
     # Always-on at runtime (no rider toggle). Used for event-specific
@@ -1665,7 +1545,7 @@ def _validate_event_mode(report, config):
                 if "description" in entry and not isinstance(entry["description"], str):
                     report.err(
                         f"{where}.description",
-                        f"must be string, got {type(entry['description']).__name__}",
+                        f"expected str, got {type(entry['description']).__name__}",
                     )
                 # directions: optional bool, default false. Opt-in per
                 # POI because most race fixtures are places a rider
@@ -1690,9 +1570,8 @@ def _validate_event_mode(report, config):
     # gpx: optional downloadable-GPX block. Each entry offers one .gpx
     # file in the runtime's download sheet. Currently only curator-
     # supplied files (`file:`); `relation:` / `route:` generation is
-    # planned but not implemented (see .claude/plans/gpx-generation.md),
-    # so those keys are rejected with a forward-looking message rather
-    # than a generic "unknown key".
+    # planned but not implemented, so those keys are rejected with a
+    # forward-looking message rather than a generic "unknown key".
     _validate_event_gpx(report, em.get("gpx"))
 
 
@@ -1768,8 +1647,7 @@ def _validate_event_gpx(report, gpx):
         if len(source_keys) != 1:
             report.err(
                 where,
-                f"exactly one source key required (`file:`), "
-                f"got {sorted(source_keys) or 'none'}",
+                f"exactly one source key required (`file:`), got {sorted(source_keys) or 'none'}",
             )
             continue
 
@@ -1811,6 +1689,10 @@ def _validate_color_mode_lists(report, config):
     out to a relation in the other list is not detectable before the
     fetch.
     """
+    # A string entry can only be a custom-route id (top-level
+    # custom_routes or inline event_mode.routes); anything else is a
+    # typo that would otherwise sit inert in the list.
+    custom_ids = _collect_custom_route_ids(config, include_event_routes=True)
     for key in ("color_by_route", "color_by_difficulty"):
         lst = config.get(key)
         if not isinstance(lst, list):
@@ -1821,24 +1703,7 @@ def _validate_color_mode_lists(report, config):
                     f"{key}[{i}]",
                     f"must be an OSM relation ID (int) or a custom-route id (string), got {rid!r}",
                 )
-
-    # A string entry can only be a custom-route id (top-level
-    # custom_routes or inline event_mode.routes); anything else is a
-    # typo that would otherwise sit inert in the list.
-    custom_ids = set()
-    for entry in config.get("custom_routes") or []:
-        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
-            custom_ids.add(entry["id"])
-    em = config.get("event_mode")
-    for entry in (em.get("routes") or []) if isinstance(em, dict) else []:
-        if isinstance(entry, dict) and isinstance(entry.get("id"), str):
-            custom_ids.add(entry["id"])
-    for key in ("color_by_route", "color_by_difficulty"):
-        lst = config.get(key)
-        if not isinstance(lst, list):
-            continue
-        for i, rid in enumerate(lst):
-            if isinstance(rid, str) and rid not in custom_ids:
+            elif isinstance(rid, str) and rid not in custom_ids:
                 report.err(
                     f"{key}[{i}]",
                     f"{rid!r} is not a custom_routes or event_mode.routes id",
@@ -1974,56 +1839,10 @@ def _validate_geometry_source(report, config):
 
 
 def _validate_legacy_keys(report, config):
-    """Reject the pre-collapse `root_relation_id` / `extra_relations` keys
-    with a pointed migration message.
-
-    Both keys were removed when the unified `relations:` list shipped.
-    A YAML still carrying them would otherwise produce a generic
-    "unknown top-level key" warning that doesn't tell the curator what
-    the fix is. This validator runs before `_validate_unknown_keys`
-    short-circuits the message, so the migration prompt wins."""
-    if "root_relation_id" in config:
-        report.err(
-            "root_relation_id",
-            "renamed to `relations:` (now a list). Replace "
-            "`root_relation_id: <id>` with `relations: [<id>]`. "
-            "Fold any `extra_relations:` entries into the same list.",
-        )
-    if "extra_relations" in config:
-        report.err(
-            "extra_relations",
-            "merged into `relations:`. Move every entry into "
-            "the `relations:` list (alongside the former "
-            "`root_relation_id` value).",
-        )
-    if "lane_renderer" in config:
-        report.err(
-            "lane_renderer",
-            "removed. Every map draws its routes with maplibre-gl-lanes; "
-            "the build-time renderer that `native` selected is gone. "
-            "Delete the line.",
-        )
-    if "suppress_basemap_path_labels" in config:
-        report.err(
-            "suppress_basemap_path_labels",
-            "removed. A generated basemap hides the label of every path "
-            "stretch it hides under a route, and every other path keeps "
-            "its label; there is nothing left for the key to decide. "
-            "Delete the line.",
-        )
-    if "basemap_source" in config:
-        report.err(
-            "basemap_source",
-            "removed. Every basemap is the Protomaps extract with its path "
-            "and service-road lines generated here, which needs tippecanoe "
-            "and tile-join; the plain-extract mode is gone. Delete the line.",
-        )
-    if "distance_units" in config:
-        report.err(
-            "distance_units",
-            "removed. Each viewer picks miles or kilometers in Options, "
-            "and the default follows their device's region. Delete the line.",
-        )
+    """Report each retired key present, before the unknown-key check skips it."""
+    for key, message in _RETIRED_KEYS.items():
+        if key in config:
+            report.err(key, message)
 
 
 def _validate_slug(report, config):
@@ -2063,9 +1882,6 @@ def validate_config(config, *, config_path=None):
         config_dir = config.get("_config_dir")
 
     report = _Report()
-    # Run the legacy-keys check FIRST so the migration message (e.g.
-    # "root_relation_id: ... renamed to `relations:`") wins over the
-    # generic "unknown top-level key" warning that follows.
     _validate_legacy_keys(report, config)
     _validate_unknown_keys(report, config)
     _validate_required(report, config)
@@ -2088,7 +1904,6 @@ def validate_config(config, *, config_path=None):
     _validate_about(report, config)
     _validate_welcome(report, config)
     _validate_default_visible(report, config)
-    _validate_renamed_keys(report, config)
     _validate_forced_visible(report, config)
     _validate_accent_color(report, config)
     _validate_slug(report, config)
@@ -2114,8 +1929,8 @@ def assert_spec_coverage():
     HANDLED_SPECIALLY (built into the runtime via custom logic).
 
     Catches the common failure where a new config key is added with a
-    validator entry but never reaches the frontend - silent breakage that
-    used to ship to production. Run via `validate_config.py --check-spec`
+    validator entry but never reaches the frontend - a silent breakage.
+    Run via `validate_config.py --check-spec`
     and any time CONFIG_SPEC or KNOWN_KEYS changes.
     """
     # Lazy import: template_inject imports validate_config at top, so a

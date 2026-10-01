@@ -64,7 +64,7 @@ import yaml
 # generation when false.`).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
-from validate_config import _LEGACY_KEYS, KNOWN_KEYS  # noqa: E402
+from validate_config import _RETIRED_KEYS, KNOWN_KEYS  # noqa: E402
 
 KEY_NAMES = set(KNOWN_KEYS.keys())
 # Keys the engine no longer has. A one-line commented default of one
@@ -72,7 +72,7 @@ KEY_NAMES = set(KNOWN_KEYS.keys())
 # template that put it there no longer carries it, so nothing would
 # recognize it as boilerplate, and it would land in the carry-over
 # section of every config it was ever copied into.
-RETIRED_KEY_NAMES = set(_LEGACY_KEYS)
+RETIRED_KEY_NAMES = set(_RETIRED_KEYS)
 
 # Matches `key:` or `# key:` at column 0. Captures the key name; we
 # then check it against KEY_NAMES to filter out prose comments.
