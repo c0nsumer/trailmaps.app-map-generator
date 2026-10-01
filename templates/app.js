@@ -5151,6 +5151,12 @@ function buildAboutModalContent() {
         "https://maplibre.org",
         "MapLibre GL JS",
         " (BSD-3-Clause).");
+    // Every map draws its routes through the plugin, so the credit is
+    // unconditional, like MapLibre's own.
+    credit("Routes drawn as lanes by ",
+        "https://github.com/c0nsumer/maplibre-gl-lanes",
+        "maplibre-gl-lanes",
+        " (MIT).");
     credit("Map labels and UI text rendered with fonts under the ",
         "https://openfontlicense.org/",
         "SIL Open Font License",
