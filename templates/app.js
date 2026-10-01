@@ -6589,12 +6589,13 @@ async function loadTrails() {
             // twice MapLibre's assumed field radius, so every halo width
             // and blur here is HALF its rendered width.
             // A bare arrow (no halo, see bareLane) grows by what the halo
-            // added to the others' silhouette: 1.2 rendered px per side,
-            // in screen pixels whatever the icon size, so 2.4 px over
-            // the 16 px arrowhead is 0.15 of icon size at every stop.
-            // Without it the bare arrowhead read smaller than its
-            // neighbors (Steve, 2026-10-01).
-            const bump = bareLane ? 0.15 : 0;
+            // adds to the others' silhouette, measured rather than
+            // derived: at z13 and z15 the outlined arrow's half-coverage
+            // outline is about 3 screen px wider per side than the bare
+            // glyph at the same size, and 0.6 of icon size closes that
+            // at both zooms (headless sweep, 2026-10-01). Without it the
+            // bare arrowhead read smaller than its neighbors.
+            const bump = bareLane ? 0.6 : 0;
             const size = ["interpolate", ["linear"], ["zoom"],
                 12, 1.2 + bump, 14, 1.65 + bump, 18, 2.4 + bump];
             // Push the arrowhead away from the trail's clipped end so it
@@ -6607,7 +6608,18 @@ async function loadTrails() {
             // arrowhead's back, and this puts the back 4.24 icon px past
             // the endpoint, where the old 16 px icon's [0, -2] put it
             // (measured against it at z13 and z15).
-            const offset = [0, 10.8];
+            // A bare arrow is bigger (bump) and has no halo reaching back
+            // toward the line, and the offset scales with the icon, so
+            // left at 10.8 its back sat visibly further from the line's
+            // end than its outlined neighbors'. Measured against the
+            // outlined arrow's back at z13 and z15 (same sweep as the
+            // bump), the bare arrow's back lands on it at these offsets,
+            // the slope between them carried to the outer stops.
+            const offset = bareLane
+                ? ["interpolate", ["linear"], ["zoom"],
+                    12, ["literal", [0, 13.9]], 14, ["literal", [0, 13.6]],
+                    18, ["literal", [0, 13.0]]]
+                : [0, 10.8];
             // The lift's glow for this arrow: the same icon in the lift's
             // yellow under the arrow, with a halo as wide as the lane
             // halo's reach and a blur for its soft edge, the arrow's twin
