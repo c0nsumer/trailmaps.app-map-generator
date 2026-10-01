@@ -38,7 +38,7 @@ Oaks Map as of 2026-Jul-05*
     difficulty`) the key lists IMBA ratings, and a row highlights
     every trail of that rating.
 - Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
-- Trail markers, trailheads, parking, features, toilets, drinking water, and
+- Trail markers, trailheads, trail hubs, parking, features, toilets, drinking water, and
   bicycle repair stations as configurable POI layers; direction arrows on
   one-way ways; per-route dash patterns; per-trail IMBA difficulty symbols.
 - Compass heading indicator: on devices with a compass, the Locate dot grows
@@ -73,7 +73,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Install pmtiles somewhere in your path.
+# Install pmtiles, tippecanoe, and tile-join somewhere in your path.
 
 # Build a map
 python scripts/build.py configs/example/example.yaml
@@ -115,7 +115,7 @@ runtime templates. You do not need Node.js or `npm install` to build maps
 | `scripts/` | The engine itself: build pipeline, data fetchers, config validation, and the test suite. Despite the name, this is where the code lives. |
 | `map_generator/` | Thin CLI facade for the `python -m map_generator build` form; forwards to `scripts/build.py`. |
 | `templates/` | The web app shipped with every generated map (HTML, CSS, JS, service worker), processed at build time. |
-| `assets/` | Vendored fonts, sprites, and JS bundles, so builds are hermetic. |
+| `assets/` | Vendored fonts and sprites, so builds are hermetic. The build caches JS bundles in `cache/vendor/`. |
 | `tools/` | Maintainer helpers: deploy wrapper, config cleaner, diagnostics. See [`tools/README.md`](tools/README.md). |
 | `configs/` | Map configs. Only `example/` and `reference/` are tracked; yours stay private (see below). |
 | `docs/` | Full documentation, indexed under [Documentation](#documentation). |
@@ -210,6 +210,8 @@ One key has no slug prefix, because units are the visitor's preference and
 not a property of one map. Every map on the same origin shares it:
 
 - `mtb.units`: "mi" or "km"
+
+The app also writes two one-shot flags to `sessionStorage`, which is scoped to one tab. One holds the camera and highlight across a map-update reload. The other holds the "Map updated" toast flag. Each is removed as soon as it is read.
 
 Nothing else is stored. No identifiers, no geolocation traces, no analytics
 payloads.

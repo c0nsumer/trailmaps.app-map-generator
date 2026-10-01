@@ -161,8 +161,8 @@ schema and rules.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `bbox` | No | auto | Bounding box `[west, south, east, north]` used for the **initial view fit**. If omitted, it is auto-computed from trail geometry with a ~3% proportional buffer. |
-| `pan_padding` | No | `0.5` | How much looser the pan wall is than `bbox`, as a fraction of the bbox's greater dimension added on each side. `0.5` is about 4x the pannable area; `0` pins the wall to `bbox`. Also widens basemap and terrain tile extraction to match. See the notes below. |
 | `pan_bbox` | No | computed | Explicit pan envelope `[west, south, east, north]`; overrides `pan_padding` when set. Usually unnecessary: use `pan_padding` unless the auto-symmetric expansion is wrong for your site (e.g. asymmetric pan room to cover a parking lot north of the trails but nothing south). |
+| `pan_padding` | No | `0.5` | How much looser the pan wall is than `bbox`, as a fraction of the bbox's greater dimension added on each side. `0.5` is about 4x the pannable area; `0` pins the wall to `bbox`. Also widens basemap and terrain tile extraction to match. See the notes below. |
 | `min_zoom` | No | `10` | Minimum zoom level. |
 | `max_zoom` | No | `18` | Maximum zoom level. |
 | `basemap_maxzoom` | No | `15` | Max zoom for basemap tile extraction. |
@@ -233,8 +233,8 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `color_by_difficulty` | No | `[]` | Relations drawn in difficulty mode when `color_by` is `"route"`. Same kinds of IDs as `color_by_route`. `event_mode` is rejected while any relation is in difficulty mode. |
 | `route_key` | No | `true` | Whether the bottom-right panel shows the key: one row per visible route-mode relation and one row per rating for difficulty-mode relations, each with its swatch, name and stats. Set `false` for a trail system dense enough that a full key is a wall. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route (or trail) and place. |
 | `default_trail_color` | No | `"#808080"` | Fallback trail color. For route-mode relations: used when a relation has no OSM `colour` tag. For difficulty-mode relations: used for ways with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
-| `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
 | `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
+| `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
 | `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 
 ### Direction schedules
@@ -581,8 +581,9 @@ This example is a routes map. Difficulty-mode relations differ as described in
   routes panel uses) plus the name. OSM and custom routes appear together and
   behave identically.
 - **Trail rows** show the trail name and the parent route(s) underneath.
-- **Tapping a route row** highlights the route on the map (glow + stroke in the
-  route's own color). It also pans / zooms to its extent,
+- **Tapping a route row** highlights the route on the map. A soft yellow halo
+  lifts the route off the map, and the other routes dim. It also pans / zooms
+  to its extent,
   collapses the sheet, and shows a floating chip at the top of the map. Tap
   the chip to clear.
 - **Tapping a trail row** fits the map to the trail and collapses the sheet.
@@ -631,8 +632,8 @@ rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the
 map carries an `mtb:scale:imba` value, the toggle is hidden entirely, since
 there is nothing to display.
 
-Difficulty symbols only appear on segments where the trail casing is visible:
-hiding a trail (e.g. by switching season) also hides its difficulty symbols.
+Difficulty symbols only appear on segments of visible trails.
+If you hide a trail (for example, by switching season), its difficulty symbols disappear too.
 
 ### Difficulty is a way-level tag
 

@@ -142,8 +142,6 @@ relations:
 # overrides forced_visible.
 # show_direction_arrows: true
 
-# Hide path / track / footway labels from the Protomaps basemap.
-
 # Hide POI and place=locality labels from the Protomaps basemap.
 # suppress_basemap_pois: false
 
@@ -223,8 +221,9 @@ relations:
 # Layers forced ON with their toggle hidden. Same forms as default_visible.
 # forced_visible: []
 
-# First-visit label mode: "routes", "trails", or "none". An event map reads
-# an unset value as "routes".
+# First-visit label mode: "routes", "trails", or "none". If no relation is in
+# route mode, an unset value reads as "trails". An event map reads an unset
+# value as "routes".
 # default_labels: none
 
 # Lock the label mode and hide the Labels control: "routes", "trails", or "none".

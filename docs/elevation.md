@@ -1,7 +1,7 @@
 # Elevation data
 
 When `show_elevation: true` is set on a map, per-route climb (`gain`) and
-descent (`loss`) totals appear in the Finder rows and highlight chip. This
+descent (`loss`) totals appear in the key rows, the Finder rows, and the highlight chip. This
 document explains where those numbers come from, how they're computed, and why
 they may not match what your GPS or another app says.
 
@@ -11,7 +11,7 @@ they may not match what your GPS or another app says.
 - [How it's computed](#how-its-computed)
 - [Why both gain and loss](#why-both-gain-and-loss)
 - [Caveats: when the numbers may be wrong](#caveats-when-the-numbers-may-be-wrong)
-- [Diagnostic tool](#diagnostic-tool)
+- [Historical note: the source-comparison tool](#historical-note-the-source-comparison-tool)
 
 ## Source: USGS 3DEP
 
@@ -121,13 +121,8 @@ the values may not match what you'd get from a phone or GPS device:
 
 ## Historical note: the source-comparison tool
 
-The elevation source was chosen with a since-removed diagnostic,
-`scripts/compare_elevation_sources.py`. It fetched the same routes from
-multiple sources and printed a side-by-side comparison. It was deleted in
-July 2026 after drifting out of sync with the production pipeline in ways
-that would have skewed any rerun. It read geometry that the build had expanded
-for the lane renderer of the time, without filtering the added stub features, never chained segments, and used the
-pre-hysteresis gain/loss algorithm. If a future alternative source becomes
-interesting, resurrect it from git history and re-align it with
-`compute_route_stats.py` first. Better: prototype the comparison against
-`compute_route_stats`' own helpers so the numbers are the shipped numbers.
+The elevation source was chosen with a diagnostic script that compared
+several sources on the same routes. It was deleted in July 2026 after it
+drifted out of sync with the production pipeline. If a future source looks
+interesting, prototype the comparison against the helpers in
+`compute_route_stats.py`, so the numbers match the shipped numbers.

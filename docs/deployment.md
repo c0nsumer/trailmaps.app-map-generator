@@ -131,7 +131,7 @@ mytrailmaps.com {
     # The explicit *.geojson / *.webmanifest / *.gpx globs matter: those
     # extensions do not end in .json, so without them the trail data and
     # manifest would ship with no Cache-Control header at all.
-    @immutable path *.pmtiles *.pbf *.js *.css *.png *.webp *.ico *.svg *.json *.geojson *.webmanifest *.gpx
+    @immutable path *.pmtiles *.pbf *.js *.mjs *.css *.woff2 *.png *.webp *.ico *.svg *.json *.geojson *.webmanifest *.gpx
 
     # Pick one of these two:
 
@@ -162,11 +162,17 @@ code, data, or asset change therefore produces a new service worker. Riders
 pick it up two ways:
 
 - **On a page load or refresh**, the browser re-fetches `sw.js`. If it differs,
-  the browser installs the new worker and shows an "Updated map available"
-  toast with a Reload button.
+  the browser installs the new worker.
+  If the new core files finish caching within 60 seconds of the page load,
+  the app swaps silently. It shows the top loading bar, reloads once, and
+  restores the camera and highlight. A one-shot "Map updated" toast follows.
+  If the core files take longer than 60 seconds, the app shows an
+  "Updated map available" toast with a Reload button instead.
 - **Without a refresh**, the browser runs its own update check about every 24
   hours. That is standard service-worker behavior, outside the framework's
   control. A left-open tab generally sees the toast within a day of a deploy.
+  The app also re-checks for an update each time the tab returns to the
+  foreground. A mid-session update always uses the toast, never the silent swap.
 
 A rider who closes and re-opens the map gets the new build on the next launch.
 
@@ -212,9 +218,9 @@ The `pwa_install_prompt` config key controls install promotion:
 ## PMTiles and HTTP Range requests
 
 PMTiles relies on HTTP Range requests to read tile chunks instead of downloading
-the entire archive. This is critical for fast first-load performance. A typical
-trail map's basemap PMTiles is 10 to 30 MB, but rendering any given view needs
-only a few hundred KB of tile chunks.
+the entire archive. This is critical for fast first-load performance. A trail
+map's basemap PMTiles ranges from under 1 MB to about 26 MB. Most are under 10 MB.
+Rendering any given view needs only a few hundred KB of tile chunks.
 
 Verify Range support manually before deploying a new server config:
 

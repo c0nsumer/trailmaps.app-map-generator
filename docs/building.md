@@ -401,9 +401,8 @@ output-formatting notes.
 ## Data cache
 
 The build pipeline caches Overpass API responses in the `cache/`
-directory to avoid redundant network requests. **Cached data is never
-automatically updated.** Subsequent builds reuse existing cache files
-indefinitely until you explicitly clear them.
+directory to avoid redundant network requests. For when cached data
+is re-fetched, see [Build options](#build-options).
 
 Each successful build records the cache entries it used in
 `cache/manifests/<slug>.json`. When a config change makes one of a
@@ -428,17 +427,9 @@ ls -la cache/
 
 ### Refreshing cached data
 
-To update the cached OSM data (e.g. after trail edits in
-OpenStreetMap):
-
-- **`--refresh`** re-fetches all of this map's remote data. Trail
-  and POI queries bypass their cached Overpass responses. Other
-  maps' shared-cache entries are untouched. The build also
-  re-extracts basemap and terrain tiles.
-- **`--refresh-trails`** re-fetches just the trail data from
-  Overpass.
-- **`--refresh-pois`** re-fetches just the OSM POI data from
-  Overpass.
+To update the cached OSM data (for example, after trail edits in
+OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
+[Build options](#build-options) explains each flag.
 
 To refresh trail data without touching tiles:
 
@@ -519,12 +510,15 @@ python scripts/osm_parser.py configs/mytrails/osm.osm 12345678
 ## Vendor bundling
 
 The build downloads all JavaScript and CSS dependencies (MapLibre GL
-JS, PMTiles, Protomaps basemaps, maplibre-gl-lanes) from their CDNs and bundles them
+JS, PMTiles, Protomaps basemaps, maplibre-contour, maplibre-gl-lanes) from their CDNs and bundles them
 into `vendor/` in the output directory. The generated map has
 **no runtime CDN dependency**. Everything is served from your own
 server. This ensures the map continues to work even if upstream CDNs
 go offline or change.
 
+MapLibre GL JS 6 ships as three module files: `maplibre-gl.mjs`,
+`maplibre-gl-shared.mjs`, and `maplibre-gl-worker.mjs`. They must keep
+their upstream names, because they import each other by those names.
 Vendor libraries are bundled regardless of the `pwa` setting.
 
 ## Font trimming
@@ -592,9 +586,14 @@ templates/
 assets/
   fonts/              Protomaps basemap fonts (PBF glyph ranges, auto-trimmed at build time)
   sprites/            Protomaps basemap sprites (PNG + JSON, all flavors)
+  webfonts/           Inter (latin subset, woff2) for the DOM chrome
+  extras/             Clip-arrow SDF images and the script that generates them
 
 build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
+  basemap/            Basemap extracts and their work files
+  derive_accent/      Cached accent colors derived from logos (accent_color: auto)
+  vendor/             Downloaded vendor JS and CSS, copied into each build
   manifests/<slug>.json  Cache entries the map's last build used (drives stale-entry pruning)
   osm_diff/<slug>/    Previous trail snapshot, refresh diff, OSM data notes
 

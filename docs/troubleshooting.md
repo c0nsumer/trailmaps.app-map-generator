@@ -116,7 +116,7 @@ service worker isn't catching it. Two likely causes:
   `curl -H "Range: bytes=0-1000" -I https://yourserver/path/to/basemap.pmtiles`.
   Should return `206 Partial Content` and `Content-Range`.
 - **Service worker not caching `.pmtiles`**: open
-  DevTools > Application > Cache Storage > `trail-map-<version>` and confirm
+  DevTools > Application > Cache Storage > `trail-map-<slug>-<hash>` and confirm
   `basemap.pmtiles` and `terrain.pmtiles` are listed. If not, the
   precache list missed them. Rebuild and verify the build log
   mentions both files.
@@ -164,6 +164,10 @@ If the location indicator triangle points to where you *aren't*:
 The service worker decides when to check for updates. If you've
 just deployed and refreshed but no toast appears:
 
+- If the new core files finished caching within 60 seconds of the page
+  load, the app swapped silently. It reloaded once, restored the view,
+  and showed a brief "Map updated" toast. The "Updated map available" toast
+  only appears for updates found later in a session or on a slow connection.
 - The browser may have already activated the new SW silently. Check
   DevTools > Application > Service workers. If the active SW
   shows a recent install date matching your deploy, you're already
@@ -178,25 +182,16 @@ just deployed and refreshed but no toast appears:
 
 ## Build is slow
 
-Expected times (typical):
-
-- First-ever build of a new map: 5 to 10 min (downloads basemap,
-  terrain, sprites).
-- Re-build with cached data, no `--refresh`: under 30 seconds.
-- Build with `show_elevation: true` and a fresh cache: extra
-  ~30 sec to 2 min for USGS 3DEP API calls (one batch per route at
-  25m sampling; auto-retries transient 502s).
-- `--refresh` on a large map: 10 to 20 min.
-
+Expected build times are listed under
+[Expected build times](building.md#expected-build-times).
 If a build takes much longer, the slowest steps are usually terrain
-extraction (Mapterhorn HTTP fetches over a wide bbox) and Overpass
-(depends on relation size + Overpass server load).
+extraction and Overpass.
 
 ## Known issues
 
-- **Firefox console warning**: `WebGL warning: texImage: Alpha-premult
-  and y-flip are deprecated for non-DOM-Element uploads.` This is a
-  cosmetic warning from MapLibre GL JS and does not affect
-  functionality. A
-  [fix has been merged](https://github.com/maplibre/maplibre-gl-js/pull/7128)
-  and will be included in a future MapLibre GL JS release.
+- **Firefox console warning (fixed)**: `WebGL warning: texImage: Alpha-premult
+  and y-flip are deprecated for non-DOM-Element uploads.` MapLibre GL JS used
+  to log this cosmetic warning in Firefox. A
+  [fix](https://github.com/maplibre/maplibre-gl-js/pull/7128) shipped in
+  MapLibre GL JS 6, which the framework bundles now. If a map built before the
+  upgrade still logs the warning, rebuild it.

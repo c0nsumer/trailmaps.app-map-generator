@@ -25,7 +25,7 @@ clipped_relations:
 # min_zoom: 10
 # max_zoom: 18
 # basemap_maxzoom: 15
-# terrain_maxzoom: 13
+# terrain_maxzoom: 12
 
 # --- Build-time data gates ---
 # show_markers: true
@@ -92,7 +92,7 @@ invert_logo_dark: false
 # hub_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
-# accent_color: "#2980b9"
+# accent_color: "#1D6FA5"
 
 # --- Base layers ---
 # base_layers: []

@@ -6,8 +6,8 @@ Helper scripts for building and deploying trail maps.
 
 A convenience wrapper for the **SSH/rsync** deploy workflow.
 Builds and/or rsyncs one or more trail map configs. By default, it
-processes all YAML configs in `configs/`, skipping the
-`configs/reference/` folder of templates.
+processes all YAML configs in `configs/`. It skips the `example/` and
+`reference/` folders.
 
 This is *one* way to deploy, not the only one. The build pipeline
 itself (`scripts/build.py`) produces production-quality output by
@@ -68,7 +68,7 @@ script exits with an error and a clear hint.
 ### Notes
 
 - The YAML filename locates the config, but the `slug` field inside it determines the build output directory and deploy path. These do not need to match.
-- When no configs are specified, the script processes every per-map config under `configs/<slug>/<slug>.yaml` and skips the `configs/reference/` template folder.
+- When no configs are specified, the script processes every per-map config under `configs/<slug>/<slug>.yaml` and skips the `configs/example/` and `configs/reference/` folders.
 - At the end, the script prints a summary showing which maps succeeded and which failed.
 
 ## clean_config.py
@@ -167,3 +167,10 @@ python tools/list_relations.py example --ways
 # Allow a live Overpass query on cache miss
 python tools/list_relations.py example --fetch
 ```
+
+Two more flags are available:
+
+- `--override-template` formats each line as `<id>: "XX" # <name>`. The
+  output is a config override block with placeholder values to fill in.
+- `--cache-dir` sets the Overpass cache directory. The default is
+  `<repo>/cache`.

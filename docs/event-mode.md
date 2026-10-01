@@ -3,7 +3,7 @@
 Event mode is a presentation mode that flips the map's information hierarchy.
 One or more "featured" routes display prominently in their declared colors.
 Every other trail on the map renders as muted background context, typically a
-gray dashed line. POIs (parking, trailheads, water, toilets, features, trail
+gray dotted line. POIs (parking, trailheads, water, toilets, features, trail
 markers) all render normally so riders can still find facilities.
 
 Use event mode for:
@@ -57,7 +57,7 @@ event_mode:
 Drop the GeoJSON file (typically a single `LineString` or `MultiLineString`
 `FeatureCollection`) next to the YAML, build, and deploy. The race course
 renders bright red. Every OSM trail in relation 12345678 renders muted
-gray-dashed. POIs and the rest of the chrome behave normally.
+gray-dotted. POIs and the rest of the chrome behave normally.
 
 ### Route-only event maps (no OSM relations)
 
@@ -172,11 +172,10 @@ Pattern values are in line-width multiples (same convention as
 `dashed_relations`). `[0, 2]` is dots; `[2, 2]` short dashes; `[4, 2]` long
 dashes. Cap controls dash end-shape.
 
-**Featured rendering**: featured routes render on top of background routes.
-Their MapLibre layers are added last, after every background route's layer.
-Line widths and parallel-lane spacing are identical to a regular map. The
-spotlighted route reads as foreground through its solid color, its draw
-order, and its labels, with background trails dotted softly beneath it.
+**Featured rendering**: line widths and parallel-lane spacing are identical to
+a regular map. Featured routes read as foreground through the muted
+backgrounds and the labels. Their solid colors stand out against the dotted,
+soft background trails.
 
 **ID uniqueness**: an `event_mode.routes[].id` must be distinct from every
 top-level `custom_routes[].id` and every OSM relation ID anywhere in the
@@ -420,7 +419,7 @@ default_visible: all
 ```
 
 Result: the race course displays bright red over a Shelden Trails backdrop where
-every trail is gray dashed. Trailheads, parking, and any toilets / water in the
+every trail is gray dotted. Trailheads, parking, and any toilets / water in the
 bbox render with their normal swatches.
 
 ### Multi-class race (two classes, different colors)
