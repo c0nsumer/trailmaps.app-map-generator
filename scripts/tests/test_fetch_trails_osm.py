@@ -3,13 +3,8 @@ stops at the parse with a message about the ids, instead of writing an
 empty trails file and failing later on the bounding box. The usual
 cause is a JOSM save renumbering its negative ids."""
 
-import os
-import sys
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from fetch_trails import fetch_trails
 
 TINY_OSM = """<?xml version='1.0' encoding='UTF-8'?>

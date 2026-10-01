@@ -4,15 +4,9 @@ forced_visible interaction.
 
 Run from repo root:
     python -m pytest scripts/tests/test_config_hardening.py -v
-Or as a script:
-    python scripts/tests/test_config_hardening.py
 """
 
-import os
-import sys
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from event_mode import _apply_event_mode_to_custom_routes
 
@@ -61,9 +55,3 @@ def test_event_mode_arrows_append_to_forced_visible_list():
     }
     _apply_event_mode_to_custom_routes(config)
     assert config["forced_visible"] == ["toilets", "direction_arrows"]
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))

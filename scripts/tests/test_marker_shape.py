@@ -9,43 +9,20 @@ Run from repo root:
     python -m pytest scripts/tests/test_marker_shape.py -v
 """
 
-import json
-import os
-import re
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from template_inject import inject_config_into_template
-
-TRAILS = {"metadata": {"routes": {}}, "features": []}
-
-BASE = {
-    "name": "My Trails",
-    "slug": "my-trails",
-    "title": "My Trails Map",
-    "bbox": [0, 0, 1, 1],
-    "pan_bbox": [0, 0, 1, 1],
-}
-
-
-def _config_obj(config):
-    out = inject_config_into_template("/*__CONFIG__*/", config, dict(TRAILS))
-    return json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))
+from conftest import MINIMAL_CONFIG, inject_config
 
 
 def test_marker_shape_defaults_to_box():
-    assert _config_obj(dict(BASE))["markerShape"] == "box"
+    assert inject_config(dict(MINIMAL_CONFIG))["markerShape"] == "box"
 
 
 def test_marker_shape_pill_passed_through():
-    assert _config_obj({**BASE, "marker_shape": "pill"})["markerShape"] == "pill"
+    assert inject_config({**MINIMAL_CONFIG, "marker_shape": "pill"})["markerShape"] == "pill"
 
 
 def test_marker_shape_circle_passed_through():
-    assert _config_obj({**BASE, "marker_shape": "circle"})["markerShape"] == "circle"
+    assert inject_config({**MINIMAL_CONFIG, "marker_shape": "circle"})["markerShape"] == "circle"
 
 
 def test_marker_shape_diamond_passed_through():
-    assert _config_obj({**BASE, "marker_shape": "diamond"})["markerShape"] == "diamond"
+    assert inject_config({**MINIMAL_CONFIG, "marker_shape": "diamond"})["markerShape"] == "diamond"

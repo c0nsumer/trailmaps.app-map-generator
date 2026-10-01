@@ -10,11 +10,7 @@ Run from repo root:
     python -m pytest scripts/tests/test_minify_html.py -v
 """
 
-import os
-import sys
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from build import _minify_html
 

@@ -6,29 +6,16 @@ no network, no file writes - so the orchestration path stays wired together.
 
 Run from repo root:
     python -m pytest scripts/tests/test_build_smoke.py -v
-Or as a script:
-    python scripts/tests/test_build_smoke.py
 """
 
 import os
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_all_split_modules_import():
-    # If the split introduced a circular import or dropped a symbol, the
-    # import chain (build pulls in every sibling) raises here.
-    import cache_signatures  # noqa: F401
-    import colors  # noqa: F401
-    import enrichment  # noqa: F401
-    import event_mode  # noqa: F401
-    import logo  # noqa: F401
-    import template_inject  # noqa: F401
-
+    # build imports every sibling module, so a circular import or a missing
+    # symbol anywhere in the engine raises here.
     import build  # noqa: F401
 
 
@@ -77,12 +64,6 @@ def test_bundled_placeholder_icon_ships_and_is_usable():
     assert os.path.isfile(asset), f"missing bundled placeholder: {asset}"
     im = Image.open(asset)
     assert im.width == im.height and im.width >= 256
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))
 
 
 def test_vendor_scripts_lose_their_source_map_pointer(tmp_path):

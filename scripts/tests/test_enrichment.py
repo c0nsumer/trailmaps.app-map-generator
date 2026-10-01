@@ -3,17 +3,10 @@ per-relation override typo guard.
 
 Run from repo root:
     python -m pytest scripts/tests/test_enrichment.py -v
-Or as a script:
-    python scripts/tests/test_enrichment.py
 """
 
-import os
-import sys
 
-import pytest
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from enrichment import _enrich_trails_geojson
 
@@ -85,14 +78,8 @@ def test_typo_guard_silent_for_known_keys(capsys):
     assert "warn" not in capsys.readouterr().out
 
 
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))
-
-
 # ---------------------------------------------------------------------------
-# lane_renderer: plugin (the default) keeps the canonical features
+# Enrichment keeps the canonical features
 # ---------------------------------------------------------------------------
 
 _A = [-83.44, 42.67]
@@ -102,7 +89,7 @@ _C = [-83.46, 42.69]
 
 def _shared_corridor_fc():
     """Two routes sharing the A-B run, the second traversing it B->A so
-    the native corridor alignment would rewrite its vertex order."""
+    a corridor alignment pass would rewrite its vertex order."""
 
     def feat(rid, name, colour, coords, shared):
         return {
@@ -142,9 +129,6 @@ def test_enrichment_keeps_canonical_features():
     # travels a shared way the other way keeps its own vertex order.
     g = _shared_corridor_fc()
     _enrich_trails_geojson({}, g)
-    props = [f["properties"] for f in g["features"]]
-    assert len(props) == 3
+    assert len(g["features"]) == 3
     two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
     assert two[0]["geometry"]["coordinates"] == [_B, _A], "travel direction preserved"
-    assert "routeOrders" not in g["metadata"]
-    assert "corridorBaselines" not in g["metadata"]

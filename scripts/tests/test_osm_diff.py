@@ -12,11 +12,7 @@ Run from repo root:
     python -m pytest scripts/tests/test_osm_diff.py -v
 """
 
-import os
-import sys
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from osm_diff import diff_snapshots, format_report, summarize
 
@@ -377,8 +373,3 @@ def test_snapshot_without_expansions_is_inert():
     assert diff["super_relations_added"] == []
     assert diff["super_relations_removed"] == []
     assert "parentage" not in format_report(diff, "plain")
-
-
-if __name__ == "__main__":
-    import pytest
-    sys.exit(pytest.main([__file__, "-v"]))

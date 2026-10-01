@@ -10,40 +10,17 @@ Run from repo root:
     python -m pytest scripts/tests/test_has_terrain.py -v
 """
 
-import json
-import os
-import re
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from template_inject import inject_config_into_template
-
-TRAILS = {"metadata": {"routes": {}}, "features": []}
-
-BASE = {
-    "name": "My Trails",
-    "slug": "my-trails",
-    "title": "My Trails Map",
-    "bbox": [0, 0, 1, 1],
-    "pan_bbox": [0, 0, 1, 1],
-}
-
-
-def _config_obj(config):
-    out = inject_config_into_template("/*__CONFIG__*/", config, dict(TRAILS))
-    return json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))
+from conftest import MINIMAL_CONFIG, inject_config
 
 
 def test_has_terrain_true_when_stash_set():
-    assert _config_obj({**BASE, "_has_terrain": True})["hasTerrain"] is True
+    assert inject_config({**MINIMAL_CONFIG, "_has_terrain": True})["hasTerrain"] is True
 
 
 def test_has_terrain_false_when_stash_absent():
     # No stash at all (injector called outside build.py's flow).
-    assert _config_obj(dict(BASE))["hasTerrain"] is False
+    assert inject_config(dict(MINIMAL_CONFIG))["hasTerrain"] is False
 
 
 def test_has_terrain_false_when_stash_false():
-    assert _config_obj({**BASE, "_has_terrain": False})["hasTerrain"] is False
+    assert inject_config({**MINIMAL_CONFIG, "_has_terrain": False})["hasTerrain"] is False

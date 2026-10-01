@@ -6,19 +6,23 @@ inflating rider-facing stats.
 
 Run from repo root:
     python -m pytest scripts/tests/test_compute_route_stats.py -v
-Or as a script:
-    python scripts/tests/test_compute_route_stats.py
 """
 
+import json
 import os
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import cache_manifest
-import pytest
-from compute_route_stats import compute_and_attach, compute_distances
+import compute_route_stats as crs
+from compute_route_stats import (
+    _chain_segments,
+    _fetch_elevations_batched,
+    _gain_loss_from_samples,
+    _smooth_elevations,
+    compute_and_attach,
+    compute_distances,
+    compute_elevations,
+)
+from conftest import _FakeResp
 from geodesy import haversine_m
 
 # Two segments of route 100; the second is shared with route 200 and
@@ -79,16 +83,6 @@ def test_attach_writes_distance_and_strips_when_disabled():
 # Elevation: hysteresis accumulator, smoothing, no-data, 3DEP splicing
 # ---------------------------------------------------------------------------
 
-import compute_route_stats as crs  # noqa: E402
-from compute_route_stats import (  # noqa: E402
-    _chain_segments,
-    _fetch_elevations_batched,
-    _gain_loss_from_samples,
-    _smooth_elevations,
-    compute_elevations,
-)
-
-
 def test_chain_segments_reassembles_a_loop():
     # A closed loop delivered as three segments in arbitrary order and
     # direction (the shape OSM relations actually produce) must chain
@@ -146,19 +140,6 @@ def test_break_markers_survive_smoothing_and_block_deltas():
     assert _gain_loss_from_samples([0.0, 0.0, 0.0, None, 100.0, 100.0, 100.0]) == (0, 0)
 
 
-class _FakeResp:
-    status_code = 200
-
-    def __init__(self, payload):
-        self._payload = payload
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._payload
-
-
 def test_splice_places_samples_by_location_id(monkeypatch):
     # The service may omit a point and return the rest out of order.
     # Placement must key on locationId - an enumeration index would
@@ -205,7 +186,7 @@ def test_all_nodata_cached_as_marker_and_omitted(tmp_path, monkeypatch):
     assert out == {}  # omitted, NOT (0, 0)
     cache_path = crs._elev_cache_path(str(tmp_path), "100", crs._hash_coords(sampled))
     with open(cache_path, encoding="utf-8") as f:
-        cached = __import__("json").load(f)
+        cached = json.load(f)
     assert cached["elevation_gain_m"] is None  # no-data marker persisted
 
 
@@ -248,8 +229,6 @@ def test_difficulty_map_skips_elevation(monkeypatch):
     # The validator only warns about show_elevation on a difficulty map;
     # the build must not then spend the 3DEP calls on values no
     # difficulty-map surface reads.
-    import compute_route_stats as crs
-
     def boom(*_a, **_k):
         raise AssertionError("compute_elevations must not run on a difficulty map")
 
@@ -259,9 +238,3 @@ def test_difficulty_map_skips_elevation(monkeypatch):
         g, {"show_distance": True, "show_elevation": True, "color_by": "difficulty"}, None)
     assert g["metadata"]["routes"]["100"]["distance_m"] > 0
     assert "elevation_gain_m" not in g["metadata"]["routes"]["100"]
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))

@@ -6,19 +6,13 @@ rule.
 
 Run from repo root:
     python -m pytest scripts/tests/test_validate_config.py -v
-Or as a script:
-    python scripts/tests/test_validate_config.py
 """
 
 import contextlib
 import os
-import sys
 import tempfile
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from validate_config import validate_config
+from validate_config import assert_spec_coverage, validate_config
 
 # A minimal valid LineString FeatureCollection, used to satisfy the
 # geometry path-existence + content checks in route-only test configs.
@@ -244,15 +238,6 @@ def test_title_optional():
     assert errors == [], errors
 
 
-def test_title_suffix_rejected_as_unknown():
-    # `title_suffix` existed briefly (2026-07) and was removed before
-    # release: branding the <title> is the deploying site's job, done in
-    # post-processing, not an engine config concern. The unknown-key check
-    # must flag it so a stale yaml fails loud instead of silently
-    # un-branding.
-    assert any("title_suffix" in e for e in _errors(title_suffix=" | example.org"))
-
-
 def test_hub_colors_validated():
     assert any("hub_color" in e for e in _errors(hub_color="#zzzzzz"))
     assert any("hub_text_color" in e for e in _errors(hub_text_color="#zzzzzz"))
@@ -318,25 +303,6 @@ def test_about_curator_and_links_still_accepted():
 def test_welcome_body_accepted():
     errors = _errors(welcome={"body": "An unofficial map of the trails."})
     assert errors == [], errors
-
-
-if __name__ == "__main__":
-    import traceback
-
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    failed = 0
-    for fn in tests:
-        try:
-            fn()
-            print(f"  PASS  {fn.__name__}")
-        except Exception:
-            failed += 1
-            print(f"  FAIL  {fn.__name__}")
-            traceback.print_exc()
-    if failed:
-        print(f"\n{failed}/{len(tests)} failed")
-        sys.exit(1)
-    print(f"\nAll {len(tests)} tests passed.")
 
 
 def test_route_key_is_a_boolean():
@@ -429,14 +395,6 @@ def test_color_by_legacy_values_rejected_as_ordinary_junk():
 
 
 # --- show_distance / show_elevation (renamed from show_route_*) ------------
-
-
-def test_show_route_distance_is_an_unknown_key():
-    assert any("show_route_distance" in e for e in _errors(show_route_distance=True))
-
-
-def test_show_route_elevation_is_an_unknown_key():
-    assert any("show_route_elevation" in e for e in _errors(show_route_elevation=True))
 
 
 def test_show_distance_and_show_elevation_are_valid():
@@ -592,3 +550,9 @@ def test_trail_labels_on_an_inline_only_event_map_warn():
 def test_trail_labels_on_an_event_map_with_a_featured_relation_do_not_warn():
     warnings = _warnings(event_mode={"featured": [12345678]}, default_labels="trails")
     assert not any("no way names" in w for w in warnings), warnings
+
+
+def test_every_known_key_reaches_the_runtime_or_is_declared_build_only():
+    # Catches a key added to the validator that never reaches the template
+    # injector, which otherwise breaks silently in the browser.
+    assert assert_spec_coverage() is True

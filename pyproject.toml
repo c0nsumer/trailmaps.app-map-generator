@@ -18,3 +18,8 @@ license-files = ["LICENSE"]
 [project.urls]
 Homepage = "https://github.com/c0nsumer/trailmaps.app-map-generator"
 Documentation = "https://github.com/c0nsumer/trailmaps.app-map-generator/tree/main/docs"
+
+[tool.pytest.ini_options]
+# The engine modules live in scripts/ and the maintainer helpers in tools/;
+# neither is a package, so the tests import them by bare module name.
+pythonpath = ["scripts", "tools"]

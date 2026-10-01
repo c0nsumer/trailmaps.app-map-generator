@@ -7,19 +7,13 @@ tree.
 
 Run from repo root:
     python -m pytest scripts/tests/test_generate_service_worker.py -v
-Or as a script:
-    python scripts/tests/test_generate_service_worker.py
 """
 
 import json
 import os
 import re
-import sys
 
 import pytest
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import build
 
@@ -46,6 +40,13 @@ def _make_tree(root, files=TREE):
         os.makedirs(os.path.dirname(path) or root, exist_ok=True)
         with open(path, "wb") as f:
             f.write(content)
+
+
+# Build the tree before each test via an autouse fixture, keeping the
+# test bodies about the contract, not setup.
+@pytest.fixture(autouse=True)
+def _tree(tmp_path):
+    _make_tree(str(tmp_path))
 
 
 def _generate(root, slug="t"):
@@ -138,14 +139,3 @@ def test_cache_version_stable_across_reruns(tmp_path):
     v1, _ = _generate(root)
     v2, _ = _generate(root)
     assert v1["CACHE_VERSION"] == v2["CACHE_VERSION"]
-
-
-# Build the tree before each test via an autouse fixture, keeping the
-# test bodies about the contract, not setup.
-@pytest.fixture(autouse=True)
-def _tree(tmp_path):
-    _make_tree(str(tmp_path))
-
-
-if __name__ == "__main__":
-    sys.exit(pytest.main([__file__, "-v"]))

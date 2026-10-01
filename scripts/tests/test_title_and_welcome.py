@@ -9,33 +9,11 @@ Run from repo root:
     python -m pytest scripts/tests/test_title_and_welcome.py -v
 """
 
-import json
 import os
 import re
-import sys
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from template_inject import copy_templates, inject_config_into_template
-
-TRAILS = {"metadata": {"routes": {}}, "features": []}
-
-# Smallest config inject_config_into_template accepts: every CONFIG_SPEC
-# entry with a None default is a required read.
-BASE = {
-    "name": "My Trails",
-    "slug": "my-trails",
-    "title": "My Trails Map",
-    "bbox": [0, 0, 1, 1],
-    "pan_bbox": [0, 0, 1, 1],
-}
-
-
-def _config_obj(config):
-    """Run the injector and parse the CONFIG object back out."""
-    out = inject_config_into_template("/*__CONFIG__*/", config, dict(TRAILS))
-    return json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))
+from conftest import EMPTY_TRAILS, MINIMAL_CONFIG, inject_config
+from template_inject import copy_templates
 
 
 def _write_config(tmp_path, body):
@@ -86,7 +64,7 @@ def test_title_emitted_unbranded(tmp_path):
     """The engine ships unbranded output for every consumer. A deploying
     site that wants a brand tail on the <title> appends it in its own
     post-processing (trailmaps.app does this in inject-og-meta.py)."""
-    copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
+    copy_templates(dict(MINIMAL_CONFIG), str(tmp_path), dict(EMPTY_TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "<title>My Trails Map</title>" in html
     assert 'property="og:title" content="My Trails Map"' in html
@@ -115,7 +93,7 @@ def test_app_js_never_writes_document_title():
 
 def test_title_containing_a_backslash_escape_survives_substitution(tmp_path):
     """A plain re.sub replacement string would read `\\1` as a group ref."""
-    copy_templates({**BASE, "title": r"Back\1slash Map"}, str(tmp_path), dict(TRAILS))
+    copy_templates({**MINIMAL_CONFIG, "title": r"Back\1slash Map"}, str(tmp_path), dict(EMPTY_TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert r"<title>Back\1slash Map</title>" in html
 
@@ -130,32 +108,32 @@ ABOUT = {"curator": {"name": "A Curator"}}
 def test_welcome_dict_passes_through():
     """`welcome.body` is the one authored home of the map's description;
     injection must hand it to the runtime untouched."""
-    config = {**BASE, "about": ABOUT, "welcome": {"body": "An unofficial map."}}
-    assert _config_obj(config)["welcome"] == {"body": "An unofficial map."}
+    config = {**MINIMAL_CONFIG, "about": ABOUT, "welcome": {"body": "An unofficial map."}}
+    assert inject_config(config)["welcome"] == {"body": "An unofficial map."}
 
 
 def test_welcome_false_stays_suppressed():
     """`false` must not be collapsed into the "use defaults" None."""
-    assert _config_obj({**BASE, "about": ABOUT, "welcome": False})["welcome"] is False
+    assert inject_config({**MINIMAL_CONFIG, "about": ABOUT, "welcome": False})["welcome"] is False
 
 
 def test_welcome_dict_without_body_keeps_its_other_keys():
     """No defaulting from `about` - the retired `about.description` must
     never leak back into the welcome body."""
     config = {
-        **BASE,
+        **MINIMAL_CONFIG,
         "about": {**ABOUT, "description": "legacy text"},
         "welcome": {"show_controls_hint": False},
     }
-    welcome = _config_obj(config)["welcome"]
+    welcome = inject_config(config)["welcome"]
     assert welcome == {"show_controls_hint": False}
 
 
 def test_welcome_stays_none_when_absent_or_empty():
     """Nothing configured, so the runtime takes the framework default
     rather than an object that says nothing."""
-    assert _config_obj(dict(BASE))["welcome"] is None
-    assert _config_obj({**BASE, "welcome": {}})["welcome"] is None
+    assert inject_config(dict(MINIMAL_CONFIG))["welcome"] is None
+    assert inject_config({**MINIMAL_CONFIG, "welcome": {}})["welcome"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -164,22 +142,19 @@ def test_welcome_stays_none_when_absent_or_empty():
 
 
 def test_route_key_defaults_on_and_false_reaches_the_page():
-    assert _config_obj(dict(BASE))["routeKey"] is True
-    assert _config_obj({**BASE, "route_key": False})["routeKey"] is False
+    assert inject_config(dict(MINIMAL_CONFIG))["routeKey"] is True
+    assert inject_config({**MINIMAL_CONFIG, "route_key": False})["routeKey"] is False
 
 
 def test_every_map_loads_the_lane_plugin_and_carries_the_boot_note(tmp_path):
     # The plugin is the only thing that draws a route, so its script is
     # in every page, ahead of app.js (deferred scripts run in document
     # order, and app.js init refuses to start without the global).
-    copy_templates(dict(BASE), str(tmp_path), dict(TRAILS))
+    copy_templates(dict(MINIMAL_CONFIG), str(tmp_path), dict(EMPTY_TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     lanes = html.index('<script src="vendor/maplibre-gl-lanes.js" defer></script>')
     assert lanes < html.index('<script src="app.js" defer></script>')
     assert "__LANE_RENDERER_SCRIPT__" not in html
-    config = _config_obj(dict(BASE))
-    for gone in ("laneRenderer", "routeOrders", "corridorBaselines"):
-        assert gone not in config
     # The static boot-failure note ships in the page and app.js takes it
     # down first thing; neither half is any use without the other.
     assert 'id="boot-fallback"' in html

@@ -5,15 +5,10 @@ tippecanoe, tile-join or the pmtiles CLI is not installed.
 """
 
 import json
-import os
 import subprocess
-import sys
-
-import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import basemap_paths as bp
+import pytest
 from pmtiles_util import find_pmtiles_cli
 
 # About 1 m per 0.00001 degree of latitude here, which keeps the

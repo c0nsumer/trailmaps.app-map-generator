@@ -10,10 +10,6 @@ Run from repo root:
 
 import gzip
 import os
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import brotli
 

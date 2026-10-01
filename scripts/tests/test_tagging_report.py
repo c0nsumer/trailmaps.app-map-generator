@@ -10,11 +10,7 @@ Run from repo root:
     python -m pytest scripts/tests/test_tagging_report.py -v
 """
 
-import os
-import sys
 
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tagging_report import audit, format_report, summarize
 
@@ -200,8 +196,3 @@ def test_empty_and_malformed_input_do_not_crash():
         "geometry": {"type": "Point", "coordinates": [-87.6, 46.5]},
     }], "metadata": {"routes": {"1": {"name": "N", "colour": "red"}}}}
     assert audit(weird, None, _CFG)["total"] == 0
-
-
-if __name__ == "__main__":
-    import pytest
-    sys.exit(pytest.main([__file__, "-v"]))

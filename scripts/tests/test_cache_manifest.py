@@ -13,14 +13,11 @@ Run from repo root:
 import hashlib
 import json
 import os
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import cache_manifest
 import overpass
 import pytest
+from conftest import _FakeResp
 
 # Valid-shaped relative entry names (the allowlist is strict about them).
 OP_A = "overpass_" + "a" * 12 + ".json"
@@ -228,19 +225,6 @@ def test_reuse_carry_forward_protects_trail_entries(tmp_path):
     removed, freed = cache_manifest.prune(cache_dir, "mymap", old, new)
     assert (removed, freed) == (0, 0)
     assert os.path.exists(path_a)
-
-
-class _FakeResp:
-    status_code = 200
-
-    def __init__(self, payload):
-        self._payload = payload
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._payload
 
 
 def test_overpass_query_records_path_on_hit_and_miss(tmp_path, monkeypatch):

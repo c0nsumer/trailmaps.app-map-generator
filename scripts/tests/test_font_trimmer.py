@@ -8,20 +8,16 @@ fixtures, never the network.
 
 import json
 import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-WEBFONTS_DIR = os.path.join(REPO_ROOT, "assets", "webfonts")
-
-from font_trimmer import (  # noqa: E402
+from font_trimmer import (
     check_webfont_coverage,
     collect_text_from_config,
     load_webfont_coverage,
     warn_uncovered_canvas_ranges,
 )
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+WEBFONTS_DIR = os.path.join(REPO_ROOT, "assets", "webfonts")
 
 def test_committed_webfont_assets_consistent():
     # The @font-face in templates/style.css hard-references this
@@ -110,9 +106,3 @@ def test_warn_uncovered_canvas_ranges_flags_missing_pbf(tmp_path, capsys):
     assert missing == [(19968, 20223)]
     out = capsys.readouterr().out
     assert "U+4E00" in out and "中" in out
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))

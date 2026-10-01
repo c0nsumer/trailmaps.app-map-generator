@@ -2,18 +2,11 @@
 
 Run from repo root:
     python -m pytest scripts/tests/test_colors.py -v
-Or as a script:
-    python scripts/tests/test_colors.py
 """
 
 import os
-import sys
-
-# Make `scripts/` importable when running from the repo root.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import cache_manifest
-import pytest
 from colors import (
     _LIGHT_TARGET_CONTRAST,
     _best_text_color,
@@ -26,6 +19,7 @@ from colors import (
     _rgb_to_hex,
     resolve_accent_palette,
 )
+from PIL import Image
 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -179,7 +173,6 @@ def test_derive_accent_records_cache_path_and_explicit_hex_records_nothing(tmp_p
     # The per-map cache prune (cache_manifest) needs the accent cache
     # entry claimed on every "auto" build, hit or miss; and explicit-hex
     # configs must claim nothing so a stale entry becomes prunable.
-    Image = pytest.importorskip("PIL.Image")
     cache_manifest.drain()
     logo = tmp_path / "logo.png"
     Image.new("RGBA", (4, 4), (200, 30, 30, 255)).save(logo)
@@ -194,9 +187,3 @@ def test_derive_accent_records_cache_path_and_explicit_hex_records_nothing(tmp_p
 
     resolve_accent_palette({"accent_color": "#005088"}, str(tmp_path), cache_dir)
     assert cache_manifest.drain() == []
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-v"]))
