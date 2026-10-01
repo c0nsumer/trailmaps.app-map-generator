@@ -94,31 +94,13 @@
      * luminance as --sheet-bg, causing them to blend without
      * either an outline or an elevation cue). */
     --popup-bg: var(--sheet-bg);
-    /* Faint hairline outline for layer-swatch chips in Options.
-     * Light scheme: dark line on a white-ish sheet. Dark scheme:
-     * light line on a dark sheet. Both hover at low opacity so the
-     * chip's filled color does the heavy lifting and the hairline
-     * just provides a "this is a chip" edge. */
-    /* Elevation scale. Every shadow that lifts a surface off the map or
-     * off a sheet goes through one of these.
-     *
-     * The reason these exist: --sheet-shadow flips 0.18 -> 0.60 between
-     * schemes, but only 4 declarations used it. Twelve others hardcoded
-     * their own rgba(0,0,0,...) and there were NO dark-scheme box-shadow
-     * overrides anywhere in this file, so the FABs, the toast and both
-     * overlay panels kept a light-mode shadow in dark mode. A black
-     * shadow at 0.2 alpha over a dark sheet is close to invisible, which
-     * left the dark scheme with almost no depth cue at all.
-     *
-     * Geometry is deliberately IDENTICAL to what each role already used,
-     * so light mode is pixel-for-pixel unchanged and the fix is confined
-     * to dark mode.
-     *
-     * One deliberate holdout: the install-button icon and its "+" badge
-     * keep their own matching 0 1px 3px pair. They're a self-contained
-     * composite at their own scale, folding them in would change their
-     * geometry (not just color), and the badge's white ring already
-     * separates it in either scheme. */
+    /* Elevation scale for the shadows that lift a surface off the map or
+     * off a sheet: FABs, toasts, overlay panels, the attribution chip.
+     * The tokens flip for dark mode, where a light-scheme shadow is
+     * nearly invisible over a dark sheet. A few rules keep their own
+     * geometry because they are composites at their own scale (the
+     * install-button icon and its "+" badge, the popup drop-shadow
+     * filter, the hub chip's SVG drop-shadow). */
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.3);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.22);
@@ -179,13 +161,27 @@
     --accent-strong: color-mix(in srgb, var(--accent) 75%, black);
     --emergency-color: #c0392b;
     --highlight-amber: #ffb700;
+    /* Highlighter yellow: a tapped trail, a highlighted POI, the Finder's
+     * trail mark. app.js keeps its own copy as TAP_GLOW_COLOR (map layers
+     * cannot read a CSS variable); change both together. */
+    --highlight-yellow: #ffec00;
+    /* Locate FAB tint while following the user, and the primary toast
+     * action. The same cyan as the stock locate control. */
+    --locate-active: #33b5e5;
+    /* Off-state grays for Options rows: the swatch border, glyph and
+     * slash, and the row label. Dark arms sit near --sheet-text-muted at
+     * reduced opacity so an off row still reads as quieter than an on
+     * row on the dark sheet. */
+    --swatch-off: #9aa0a6;
+    --text-off: #6a6a6a;
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-top: env(safe-area-inset-top, 0px);
 
     /* POI marker design tokens - shared between Options-overlay
-     * swatches AND on-map markers so each Options chip is a true
-     * miniature of the marker it represents. Tweaking any of these
-     * updates both surfaces in lockstep.
+     * swatches AND on-map markers, so a color, border or radius change
+     * lands on both surfaces. The size is the exception: the Options
+     * swatch is 28 px on purpose (see .opt-toggle-row .layer-swatch),
+     * while the on-map chip uses --poi-marker-size.
      *
      * Trailheads use a wider chip because "TH" is two characters;
      * trail markers use a smaller, variable-width chip because the
@@ -242,7 +238,7 @@
     /* POI search highlight (marker outline + arrival pulse):
      * highlighter yellow framed by a halo that flips black/white with
      * the scheme, as a route highlight's outline does. */
-    --poi-highlight-color: #FFEC00;
+    --poi-highlight-color: var(--highlight-yellow);
     --poi-highlight-halo: rgba(0, 0, 0, 0.75);
     /* Feature-marker label (DOM text below the dot, painted directly
      * on the basemap). Mirrors MAP_PAINT_TOKENS for trail labels:
@@ -333,6 +329,8 @@
     --poi-marker-map-shadow: 0 1px 4px var(--poi-marker-shadow-color),
                               0 0 0 1px rgba(255, 255, 255, 0.1);
     --poi-highlight-halo: rgba(255, 255, 255, 0.9);
+    --swatch-off: rgba(176, 176, 176, 0.65);
+    --text-off: rgba(176, 176, 176, 0.8);
     --feature-label-color: #f0f0f0;
     --feature-label-halo: #000000;
 }
@@ -346,7 +344,7 @@
 /* Honor the user's OS-level "Reduce motion" preference (WCAG 2.1
  * SC 2.3.3 - Animation from Interactions). When set, drop animations
  * to near-zero so vestibular-sensitive users don't get vertigo from
- * the locate-button spinner, sheet drag/snap, toast fades, or
+ * the locate-button spinner, sheet drag/snap, or
  * highlight-chip transitions. Setting to 0.01ms (rather than 0)
  * keeps the timing-aware JS that reads transitionend events working.
  *
@@ -627,11 +625,8 @@ body::after {
     padding-bottom: 3px;
 }
 
-/* Text container - primary label on top, optional second-line note
- * below. Column-flex with min-width:0 so each child can ellipsis-
- * truncate independently. The wrapper is always present in the DOM;
- * the .highlight-chip-note inside it is .hidden until there's
- * something to say (POI force-show "hidden in Options" message). */
+/* Text container for the label. min-width:0 lets the label
+ * ellipsis-truncate inside the flex row. */
 .highlight-chip-text {
     display: flex;
     flex-direction: column;
@@ -644,30 +639,6 @@ body::after {
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 60vw;
-}
-
-/* Second-line note - smaller, muted. Kept lighter weight than the
- * primary label so the count/name reads as primary content and the
- * note reads as explanatory meta. Same ellipsis treatment so a
- * narrow viewport doesn't blow out the chip width. */
-.highlight-chip-note {
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--sheet-text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 60vw;
-}
-
-/* When the note is present (sibling .highlight-chip-note is NOT
- * .hidden), drop the chip to a less-aggressive border-radius. The
- * default 999px stadium shape looks oblong at two lines; 14px still
- * reads as a rounded pill but sits more comfortably with the taller
- * footprint. :has() is universally supported in evergreen browsers
- * and degrades gracefully (chip stays a stadium) in any holdouts. */
-.highlight-chip:has(.highlight-chip-note:not(.hidden)) {
-    border-radius: 14px;
 }
 
 /* Per-route stats ("8.2 mi · 410 ft ↑") rendered next to the route
@@ -742,11 +713,6 @@ body::after {
     color: var(--sheet-text);
     font: inherit;
     text-align: left;
-    /* Rows are controls, not copy: without this a double-click (a
-     * plausible way to rapid-toggle) word-selects the label text.
-     * Buttons get this for free; these rows are divs. */
-    -webkit-user-select: none;
-    user-select: none;
 }
 
 /* Binary rows opt into whole-row click via the
@@ -757,7 +723,6 @@ body::after {
  * opt in - see .opt-toggle-row-segmented below. */
 .opt-toggle-row-clickable {
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
     /* Governs the press wash's fade-OUT on release (and the hover
      * fade-in on desktop); :active below zeroes it so the wash lands
      * the instant the finger goes down. */
@@ -793,15 +758,11 @@ body::after {
 
 .opt-toggle-row .layer-swatch {
     flex: 0 0 auto;
+    /* 28 px on purpose: a roomier tap-row glyph than the 26 px on-map chip
+     * (--poi-marker-size). The colors, border and radius still come from
+     * the shared tokens; only the size differs. */
     width: 28px;
     height: 28px;
-    /* Swatch text labels (#, P, TH) inherit font-size 10px from the
-     * base .layer-swatch rule. In the Options overlay's larger 28px
-     * swatches that reads as tiny - bump to 13px to keep proportion
-     * with the swatch dimensions. "TH" still fits at this size
-     * (~2.4 ex per character × 2 chars = ~5 ex, swatch inner is ~25px
-     * after 1.5px borders → comfortable). */
-    font-size: 13px;
     /* MUST be positioned so the feature-swatch's ::before
      * colored-dot pseudo-element AND the off-state ::after diagonal
      * slash both anchor inside the swatch instead of floating to
@@ -923,8 +884,8 @@ body::after {
 .opt-toggle-row[data-on="false"] .layer-swatch,
 .opt-toggle-row[data-multi-off="true"] .layer-swatch {
     background: transparent !important;
-    border: 1.5px solid #9aa0a6 !important;
-    color: #9aa0a6 !important;
+    border: 1.5px solid var(--swatch-off) !important;
+    color: var(--swatch-off) !important;
     box-shadow: none !important;
 }
 
@@ -936,7 +897,7 @@ body::after {
     left: -2px;
     right: -2px;
     height: 1.5px;
-    background: #9aa0a6;
+    background: var(--swatch-off);
     transform: translateY(-50%) rotate(-45deg);
     transform-origin: center;
     pointer-events: none;
@@ -944,7 +905,7 @@ body::after {
 
 .opt-toggle-row[data-on="false"] .opt-toggle-row-label,
 .opt-toggle-row[data-multi-off="true"] .opt-toggle-row-label {
-    color: #6a6a6a;
+    color: var(--text-off);
 }
 
 /* ----- Binary toggle pill (POI / layer rows) -----------------------
@@ -981,7 +942,6 @@ body::after {
     background: var(--pill-bg);
     font: inherit;
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
 
 /* Metrics copied from .opt-segmented-pill .opt-segmented-btn so the two
@@ -1176,17 +1136,6 @@ body::after {
     min-height: 36px;
 }
 
-/* (Removed: the old "card-style" .opt-segmented + .opt-row-segmented
- * + .opt-segmented-btn base rules used to live here. They were dead
- * code - every segmented control in the current HTML uses
- * .opt-segmented-pill, and that variant's rules above cover styling
- * comprehensively. The base rules were also actively harmful: the
- * elements carry BOTH classes (.opt-segmented .opt-segmented-pill),
- * so .opt-segmented's `background: white` had the same specificity
- * as .opt-segmented-pill's `background: var(--pill-bg)`, and
- * appearing later in source it won - pinning every pill bg to white
- * regardless of the per-scheme --pill-bg token. Removed wholesale.) */
-
 /* ----- Action rows (Install / About) ------------------------------- */
 .opt-action-row {
     display: flex;
@@ -1335,9 +1284,9 @@ body::after {
 
 /* ----- Layer swatches (POI marker color cues in toggle rows) -------
  *
- * Sized via the shared --poi-marker-* tokens so each swatch in the
- * Options overlay is a true miniature of the on-map marker it stands
- * for. The thin outline (box-shadow with --swatch-outline) is unique
+ * Colors, border and radius come from the shared --poi-marker-* tokens
+ * so each swatch matches the on-map marker it stands for; the Options
+ * row enlarges the swatch to 28 px on purpose. The thin outline (box-shadow with --swatch-outline) is unique
  * to swatches - gives the chip an edge against the panel background.
  * The on-map markers use --poi-marker-map-shadow instead (drop-shadow,
  * not outline).
@@ -1354,7 +1303,6 @@ body::after {
     line-height: 1;
     color: white;
     border: var(--poi-marker-border) solid white;
-    box-sizing: border-box;
     flex-shrink: 0;
     /* Faint outer outline. Light scheme: a darker hairline against
      * the white sheet - gives the chip's white border something to
@@ -1441,13 +1389,13 @@ body::after {
  * + diagonal slash), so only the SVG content needs graying. */
 .opt-toggle-row[data-on="false"] .marker-swatch-diamond .trail-marker-shape,
 .opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-shape {
-    fill: transparent !important;
-    stroke: #9aa0a6 !important;
+    fill: transparent;
+    stroke: var(--swatch-off);
 }
 
 .opt-toggle-row[data-on="false"] .marker-swatch-diamond .trail-marker-letter,
 .opt-toggle-row[data-multi-off="true"] .marker-swatch-diamond .trail-marker-letter {
-    fill: #9aa0a6 !important;
+    fill: var(--swatch-off);
 }
 
 /* Emergency route-bucket swatch - still used on the Map-options
@@ -1558,13 +1506,13 @@ body::after {
  * swatches. */
 .opt-toggle-row[data-on="false"] .hub-swatch .hub-marker-shape,
 .opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-shape {
-    fill: transparent !important;
-    stroke: #9aa0a6 !important;
+    fill: transparent;
+    stroke: var(--swatch-off);
 }
 
 .opt-toggle-row[data-on="false"] .hub-swatch .hub-marker-letter,
 .opt-toggle-row[data-multi-off="true"] .hub-swatch .hub-marker-letter {
-    fill: #9aa0a6 !important;
+    fill: var(--swatch-off);
 }
 
 /* Labels - chrome indicator (not a sign), so it adapts to color
@@ -1595,12 +1543,6 @@ body::after {
 .units-swatch {
     background: var(--input-bg);
     color: var(--sheet-text);
-}
-
-[data-color-scheme="dark"] .appearance-swatch,
-[data-color-scheme="dark"] .units-swatch {
-    background: var(--input-bg);
-    color: #f0f0f0;
 }
 
 /* Toilets - neutral slate to read as "facility" without competing
@@ -1640,15 +1582,6 @@ body::after {
     border: var(--poi-marker-border) solid #fff;
 }
 
-/* (Removed: a duplicate locate-state-* block that targeted
- * `.locate-swatch` and `.layer-swatch` descendants of #toggle-locate.
- * Those selectors don't match anything in the current FAB markup -
- * the actual SVG has class `.locate-icon`, not `.locate-swatch`. The
- * live state machine lives further down (search "Locate FAB state
- * machine") and targets `#toggle-locate.locate-state-*` directly.
- * The mtb-locate-spin @keyframes referenced by the live block
- * also lives further down. */
-
 /* Feature swatch - just the dot, the way the map draws it: the
  * ::before reproduces the on-map feature marker (see
  * .feature-marker-icon below), a 12×12 purple circle with a 2px
@@ -1674,7 +1607,6 @@ body::after {
     border-radius: 50%;
     box-shadow: 0 1px 4px var(--poi-marker-shadow-color);
     transform: translate(-50%, -50%);
-    box-sizing: border-box;
     pointer-events: none;
 }
 
@@ -1703,16 +1635,9 @@ body::after {
     pointer-events: none;
 }
 
-/* Off-state: the base .opt-toggle-row[data-on="false"]
- * .layer-swatch rule above already grays the chip and draws the
- * slash. Also hollow out the inner ::before shapes (purple dot,
- * black diamond) so they match the outline-only motif instead of
- * staying full-color. */
 /* ----- Finder rows --------------------------------------------------
- * (Pre-search-overlay finder container styles - .finder, .finder-search,
- * .finder-input, .finder-list - removed; the current Search overlay
- * uses .search-overlay-* classes for the chrome and these per-row
- * classes for the result rows it builds dynamically.) */
+ * The Search overlay (.search-overlay-*) draws the chrome; these
+ * per-row classes style the result rows app.js builds dynamically. */
 
 .finder-section-header {
     font-size: 11px;
@@ -1810,17 +1735,16 @@ body::after {
 }
 
 /* Same 18×4 line shape as the route swatches above, so trail rows
- * read like the route rows. Highlighter yellow (#FFEC00) matches the
- * on-map trail highlight and the chip's trail line (highlightTrail),
- * not the old amber dot: the mark previews what clicking the row
- * does. Same rgba outline as the other bars keeps the light yellow
+ * read like the route rows. Highlighter yellow (--highlight-yellow)
+ * matches the on-map trail highlight and the chip's trail line: the
+ * mark previews what clicking the row does. Same rgba outline as the other bars keeps the light yellow
  * visible on the white list background. */
 .finder-row-trail-mark {
     display: inline-block;
     width: 18px;
     height: 4px;
     border-radius: var(--swatch-line-radius);
-    background: #ffec00;
+    background: var(--highlight-yellow);
     box-shadow: var(--swatch-hairline);
     flex-shrink: 0;
 }
@@ -1835,11 +1759,6 @@ body::after {
     height: 15px;
     object-fit: contain;
 }
-
-/* (Removed: .finder-row-text + .finder-row-title - orphan classes
- * from the pre-search-overlay finder layout. Current row rendering
- * (makeRouteRow / makeTrailRow / makePoiRow in app.js) doesn't use
- * a wrapping text container or a separate title class.) */
 
 .finder-row-meta {
     font-size: 12px;
@@ -1950,7 +1869,6 @@ body::after {
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
 
 .modal-cta:hover,
@@ -2133,27 +2051,9 @@ body::after {
     font-family: "Inter", "Helvetica Neue", Arial, Helvetica, sans-serif;
 }
 
-.maplibregl-ctrl-group {
-    background: var(--sheet-bg) !important;
-    border: 1px solid var(--sheet-border) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 6px var(--sheet-shadow) !important;
-    overflow: hidden;
-}
-
-.maplibregl-ctrl-group button {
-    background-color: transparent !important;
-    border-bottom: 1px solid var(--sheet-border) !important;
-}
-
-.maplibregl-ctrl-group button:last-child {
-    border-bottom: none !important;
-}
-
-.maplibregl-ctrl-group button:hover {
-    background-color: var(--sheet-hover) !important;
-}
-
+/* background and color keep !important: the vendor's
+ * .maplibregl-ctrl-attrib.maplibregl-compact rule (two classes)
+ * out-specifies this one-class selector. */
 .maplibregl-ctrl-attrib {
     background: var(--sheet-bg) !important;
     color: var(--sheet-text) !important;
@@ -2164,7 +2064,7 @@ body::after {
      * Tokens flip for dark mode with everything else. */
     border: 1px solid var(--fab-edge);
     box-shadow: var(--fab-halo), var(--elev-raised);
-    font-size: 10px !important;
+    font-size: 10px;
     /* Pin the line box to the chip's 20px content box (vendor:
      * min-height 20px content-box + 2px vertical padding = 24px chip).
      * Without this the 20px line-height arrives implicitly from the
@@ -2205,7 +2105,7 @@ body::after {
 }
 
 .maplibregl-ctrl-attrib a {
-    color: var(--sheet-text) !important;
+    color: var(--sheet-text);
 }
 
 /* MapLibre's collapsed-attribution (i) button - when collapsed, the
@@ -2229,7 +2129,6 @@ body::after {
     background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%23f0f0f0' fill-rule='evenodd' viewBox='0 0 20 20'%3E%3Cpath d='M4 10a6 6 0 1 0 12 0 6 6 0 1 0-12 0m5-3a1 1 0 1 0 2 0 1 1 0 1 0-2 0m0 3a1 1 0 1 1 2 0v3a1 1 0 1 1-2 0'/%3E%3C/svg%3E");
 }
 
-/* ----- Feature markers --------------------------------------------- */
 /* ============================================================
  * On-map POI markers - base + per-type modifiers
  *
@@ -2290,7 +2189,6 @@ body::after {
     color: white;
     font-weight: 700;
     line-height: 1;
-    box-sizing: border-box;
     box-shadow: var(--poi-marker-map-shadow);
     cursor: pointer;
 }
@@ -2354,15 +2252,18 @@ body::after {
 .hub-marker-icon {
     width: var(--poi-marker-size);
     height: var(--poi-marker-size);
-    /* Allow the 2 px stroke and drop-shadow to extend beyond the
-     * polygon's bounding box without being clipped to the SVG element. */
-    overflow: visible;
     /* Soft shadow lifts the chip off the basemap. drop-shadow rather
      * than box-shadow so the shadow follows the hexagon instead of its
      * bounding rect; shares --poi-marker-shadow-color with .poi-marker
      * so the two can't drift again (this was a hardcoded 0.35 against
      * the token's 0.30). Dark mode follows automatically. */
     filter: drop-shadow(0 1px 4px var(--poi-marker-shadow-color));
+}
+
+/* The svg, not the span, clips: the 2 px stroke and the drop-shadow
+ * extend past the polygon's bounding box and need overflow visible. */
+.hub-marker-icon svg {
+    overflow: visible;
 }
 
 /* The hex polygon shape - fill comes from the per-map --hub-color
@@ -2715,15 +2616,6 @@ body::after {
     border-left-color: var(--popup-bg);
 }
 
-.maplibregl-popup-close-button {
-    font-size: 18px;
-    line-height: 1;
-    padding: 4px 6px;
-    right: 0;
-    top: 0;
-    color: inherit;
-}
-
 .popup-title {
     font-weight: 600;
     margin-bottom: 4px;
@@ -2747,7 +2639,7 @@ body::after {
 .popup-hr {
     margin: 4px 0;
     border: none;
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--sheet-border);
 }
 
 .popup-routes {
@@ -2788,39 +2680,32 @@ body::after {
 }
 
 /* ----- Geolocate user dot ------------------------------------------ */
+/* Same specificity as the vendor rules and loaded after them, so no
+ * !important is needed. */
 .maplibregl-user-location-accuracy-circle {
-    background-color: rgba(52, 152, 219, 0.15) !important;
+    background-color: rgba(52, 152, 219, 0.15);
 }
 
 .maplibregl-user-location-dot {
-    background-color: #3498db !important;
+    background-color: #3498db;
 }
 
 /* Push the user-location marker (dot + accuracy circle) above POI
  * markers in the DOM overlay, so the blue dot stays visible even when
  * a parking / trailhead / feature marker sits at the same spot.
- * TWO selector shapes: GeolocateControl passes its dot/circle div AS
- * the Marker element, so .maplibregl-marker lands on that same
- * element (the class-pair selectors, the live match in MapLibre
- * 5.x). The :has(> ...) wrapper variants are kept for the
- * marker-wraps-child DOM some versions produce; with only those,
- * this rule silently matched nothing and the dot fell to z-auto
- * (found 2026-08-07 via the wedge-over-popup bug). */
+ * GeolocateControl passes its dot/circle div AS the Marker element, so
+ * .maplibregl-marker lands on that same element. */
 .maplibregl-marker.maplibregl-user-location-dot,
-.maplibregl-marker.maplibregl-user-location-accuracy-circle,
-.maplibregl-marker:has(> .maplibregl-user-location-dot),
-.maplibregl-marker:has(> .maplibregl-user-location-accuracy-circle) {
+.maplibregl-marker.maplibregl-user-location-accuracy-circle {
     z-index: 2;
 }
 
 /* Popups must cover every map-anchored DOM element, including the
- * z-indexed location stack above. MapLibre mounts popups as later
- * SIBLINGS of the canvas container with no z-index of their own, so
- * they beat z-auto markers by DOM order but LOSE to any positive
- * z-index (the heading wedge at z-1 showed through open popups,
- * 2026-08-07). z-3 restores popup-on-top ordering: POI markers
- * (auto) < wedge (1) < dot (2) < popup (3), still under the brand
- * (4) and FABs (5). */
+ * z-indexed ones: the heading wedge (1), a highlighted POI marker (1)
+ * and the user dot (2). MapLibre mounts popups as later siblings of the
+ * canvas container with no z-index of their own, so they beat z-auto
+ * markers by DOM order but lose to any positive z-index. Layer 3 keeps
+ * popups on top, still under the brand (4) and FABs (5). */
 .maplibregl-popup {
     z-index: 3;
 }
@@ -2875,13 +2760,6 @@ body::after {
     }
 }
 
-/* ----- Spotlight dim (map_dim_on_highlight) ------------------------
- * POI markers that aren't adjacent to the highlighted route/trail are
- * faded. The fade is driven by an INLINE style set in app.js
- * (updateMarkerDimState), not a CSS class - marker elements already
- * carry inline cssText from `markerStyle`, so keeping the fade on the
- * same style layer avoids any specificity/override surprises. */
-
 /* ----- Off-screen location indicator -------------------------------
  * (The legacy .location-indicator class was renamed to
  * .off-screen-indicator earlier in the UI rework; the comma-paired
@@ -2896,7 +2774,6 @@ body::after {
     transform: translate(-50%, -50%);
     cursor: pointer;
     pointer-events: auto;
-    user-select: none;
 }
 
 /* Indicator arrow - inline SVG (mdi:arrow-up-bold), see app.js's
@@ -2997,13 +2874,12 @@ body::after {
      * permanently blocks whatever's underneath. */
     z-index: 200;
     pointer-events: none;
-    transition: opacity 0.3s;
 }
 
-.map-toast.visible { opacity: 1; }
-.map-toast.hidden  { opacity: 0; }
+/* No fade: hiding adds the global .hidden (display: none) in the same
+ * tick, so the toast pops out instead of fading. */
 
-/* Persistent / actionable toast (B.7 SW update, etc.). Becomes
+/* Persistent / actionable toast (the service-worker update prompt, etc.). Becomes
  * pointer-active so the action + close buttons are clickable. Lays
  * the message + actions + close out in a row with comfortable
  * spacing; on narrow screens (max-width: min(90vw, 360px)), the row
@@ -3038,7 +2914,6 @@ body::after {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
 
 .map-toast-action:hover,
@@ -3048,8 +2923,8 @@ body::after {
 }
 
 .map-toast-action-primary {
-    background: #33b5e5;
-    border-color: #33b5e5;
+    background: var(--locate-active);
+    border-color: var(--locate-active);
     color: #fff;
 }
 
@@ -3071,7 +2946,6 @@ body::after {
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    -webkit-tap-highlight-color: transparent;
 }
 
 .map-toast-close:hover,
@@ -3081,7 +2955,6 @@ body::after {
     outline: none;
 }
 
-/* ----- Initial-load progress bar ----------------------------------- */
 /* ----- Boot-failure note (index.html #boot-fallback) ----------------
  * Static, and revealed by CSS alone: the cases it exists for are the
  * ones where no script runs. visibility, not opacity, so a screen reader
@@ -3119,6 +2992,7 @@ body::after {
  * a pending SW-update toast sees the bar up top and the toast at center,
  * no z-order fight. Indeterminate, not a percentage: MapLibre exposes no
  * reliable total for streaming PMTiles, so any percentage would be faked. */
+/* ----- Initial-load progress bar ----------------------------------- */
 #map-loading-bar {
     position: fixed;
     top: env(safe-area-inset-top, 0px);
@@ -3189,7 +3063,7 @@ body::after {
 }
 
 /* ============================================================
- * Floating chrome (Phase 3 of the UI v2 rework)
+ * Floating chrome
  *
  * The map fills the entire viewport. Pieces of chrome float over
  * it, occupying corners:
@@ -3315,7 +3189,6 @@ body::after {
 }
 
 #map-scale text {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 11px;
     font-weight: 600;
     fill: var(--map-scale-ink);
@@ -3383,7 +3256,7 @@ body::after {
     font-size: 16px;
     font-weight: 700;
     color: var(--sheet-text);
-    text-shadow: 0 0 6px rgba(255, 255, 255, 0.85);
+    text-shadow: 0 0 6px var(--feature-label-halo);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3415,7 +3288,7 @@ body::after {
  * doesn't work because the FAB is hidden behind the overlay; rider
  * closes the current overlay first, then taps the other FAB.
  *
- * Below the About modal (z-index 9 / 10) so About remains true-modal. */
+ * Below the About modal (z-index 100) so About remains true-modal. */
 .fab-stack {
     position: fixed;
     right: calc(12px + env(safe-area-inset-right, 0));
@@ -3471,7 +3344,6 @@ body:has(.gpx-overlay.is-open) .route-panel {
     cursor: pointer;
     padding: 0;
     transition: background 0.12s, transform 0.06s;
-    -webkit-tap-highlight-color: transparent;
     /* Positioning context for ::after pseudo-elements (e.g. the
      * locate-state-disabled red strike). Without this, abs-positioned
      * descendants resolve against the .fab-stack ancestor and the
@@ -3680,11 +3552,11 @@ body.fabs-labeled .fab-label {
 }
 
 #toggle-locate.locate-state-active {
-    color: #33b5e5;
+    color: var(--locate-active);
 }
 
 #toggle-locate.locate-state-background {
-    color: #33b5e5;
+    color: var(--locate-active);
 }
 #toggle-locate.locate-state-background .locate-dot {
     display: none;
@@ -3753,7 +3625,7 @@ body.fabs-labeled .fab-label {
 }
 
 .search-overlay[hidden] {
-    display: none !important;
+    display: none;
 }
 
 .search-overlay-panel {
@@ -3761,7 +3633,7 @@ body.fabs-labeled .fab-label {
      * mobile keyboard opens. Combined with `interactive-widget=
      * resizes-content` in the viewport meta, this keeps the panel
      * fully visible above the keyboard instead of being half-hidden. */
-    height: var(--search-overlay-height, min(60dvh, 480px));
+    height: min(60dvh, 480px);
     background: var(--sheet-bg);
     border-top: 1px solid var(--sheet-border);
     border-top-left-radius: 14px;
@@ -3857,7 +3729,6 @@ body.fabs-labeled .fab-label {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    -webkit-tap-highlight-color: transparent;
     transition: background 0.12s, color 0.12s;
 }
 
@@ -3896,7 +3767,6 @@ body.fabs-labeled .fab-label {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
 }
 
 .search-filter-chip[aria-selected="true"] {
@@ -3949,7 +3819,7 @@ body.fabs-labeled .fab-label {
 }
 
 .options-overlay[hidden] {
-    display: none !important;
+    display: none;
 }
 
 /* Single-scrim rule - only one black scrim is ever visible, so they never
@@ -4033,7 +3903,6 @@ body.modal-open .gpx-overlay.is-open {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    -webkit-tap-highlight-color: transparent;
     transition: background 0.12s, color 0.12s;
 }
 
@@ -4088,7 +3957,7 @@ body.modal-open .gpx-overlay.is-open {
 }
 
 .gpx-overlay[hidden] {
-    display: none !important;
+    display: none;
 }
 
 .gpx-overlay-panel {
@@ -4176,17 +4045,18 @@ body.modal-open .gpx-overlay.is-open {
     background: #0e7490;
 }
 
-/* Off-state hollowing for swatches with ::before fills. Same visual
- * as the row's data-on=false slash treatment: transparent fill
- * + gray border so the toggled-off swatch reads as "outline only." */
+/* Off-state hollowing for swatches with ::before fills (the feature dot,
+ * the difficulty diamond). The base off-state rule already grays the
+ * chip and draws the slash; hollowing the inner shape too keeps the
+ * toggled-off swatch outline-only instead of leaving it full-color. */
 .opt-toggle-row[data-on="false"] .feature-swatch::before {
     background: transparent;
-    border: 1.5px solid #9aa0a6;
+    border: 1.5px solid var(--swatch-off);
     box-shadow: none;
 }
 .opt-toggle-row[data-on="false"] .difficulty-swatch::before {
     background: transparent;
-    border-color: #9aa0a6;
+    border-color: var(--swatch-off);
 }
 
 /* MapLibre attribution lives at bottom-left (added to the map via
@@ -4203,12 +4073,12 @@ body.modal-open .gpx-overlay.is-open {
  * flattened so the visible chip edge IS the 12 px inset rather
  * than 12 + 10. */
 .maplibregl-ctrl-bottom-left {
-    bottom: calc(12px + var(--safe-bottom)) !important;
-    left: calc(12px + env(safe-area-inset-left, 0)) !important;
+    bottom: calc(12px + var(--safe-bottom));
+    left: calc(12px + env(safe-area-inset-left, 0));
 }
 
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
-    margin: 0 !important;
+    margin: 0;
 }
 
 /* ----- Routes panel, bottom-right -----------------------------------
@@ -4535,13 +4405,6 @@ body.modal-open .gpx-overlay.is-open {
     z-index: 1;
 }
 
-/* Popups were above every marker by DOM order alone (appended later,
- * z-index auto); the highlighted marker's z-index would now lift it
- * over its own info card's tip, so popups take the next layer up. */
-.maplibregl-popup {
-    z-index: 2;
-}
-
 .poi-marker.is-poi-highlighted,
 .feature-marker.is-poi-highlighted .feature-marker-icon {
     box-shadow: 0 0 0 3px var(--poi-highlight-color),
@@ -4579,9 +4442,6 @@ body.modal-open .gpx-overlay.is-open {
 .hub-marker-icon .poi-ring { stroke-width: 7.5; }
 .hub-marker-icon .poi-ring-halo { stroke-width: 10.3; }
 
-.hub-marker-icon svg {
-    overflow: visible;
-}
 
 /* Arrival pulse: once the camera settles on the result, a circular
  * "sonar" ripple grows out from the marker and fades, twice. The static
@@ -4645,7 +4505,7 @@ body.modal-open .gpx-overlay.is-open {
 }
 
 /* ============================================================
- * POI search rows (Phase 3 POI search)
+ * POI search rows
  *
  * POI finder rows reuse .finder-row + .finder-row-name + .finder-row-meta
  * from the existing route/trail rows. The left-side swatch is a
