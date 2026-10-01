@@ -14,12 +14,6 @@
     if (note) note.remove();
 })();
 
-// The brand element's content (logo image OR title text) is rendered
-// at template-substitution time by the build pipeline, see
-// scripts/build.py's __BRAND_TITLE__ replacement and the brand-img
-// strip when no logo is configured. No JS-side title injection
-// needed; the first paint carries the real brand.
-
 // Push YAML-configured POI colors onto :root as CSS custom
 // properties so the Options-overlay swatches, on-map markers, and
 // popup badges all read the same single source of truth. Done
@@ -75,7 +69,7 @@
 })();
 
 // ============================================================
-// Color scheme (light / dark) helpers, Bundle 4B
+// Color scheme (light / dark) helpers
 // ============================================================
 //
 // The data-color-scheme attribute on <html> is the single source of
@@ -114,12 +108,9 @@ const MAP_PAINT_TOKENS = {
         // the text read in a clean pocket with the glyph passing
         // behind, no collision management involved.
         //
-        // Fully opaque, not 0.95. This value has only ever moved one way
-        // (0.9 -> 0.95 in b313248, when the halo took on the knockout
-        // job), and the residual few percent of bleed is invisible
-        // indoors while being exactly what fails in bright sun. Opaque
-        // also makes the knockout pocket cleaner, which was that
-        // commit's whole point.
+        // Fully opaque: any residual bleed is invisible indoors but is
+        // exactly what fails in bright sun, and opaque keeps the
+        // knockout pocket clean.
         labelHalo:  "#ffffff",
         // One-way chevron glyph image IDs (forward / reverse, per
         // scheme); registered by registerChevronPatterns, swapped via
@@ -133,10 +124,9 @@ const MAP_PAINT_TOKENS = {
         hillshadeShadow:    "#3d3d3d",
         hillshadeHighlight: "#ffffff",
         // Basemap-contrasting edge colors, every trail/route edge
-        // treatment (casing, clip-arrow halo, highlight outline) contrasts
-        // the basemap the same way: dark on the light basemap, light on the
-        // dark basemap. Re-applied on scheme toggle by applyMapPaintForScheme.
-        // (Arrow halo 0.85. Outline opaque.)
+        // treatment (casing, clip-arrow halo) contrasts the basemap the
+        // same way: dark on the light basemap, light on the dark basemap.
+        // Re-applied on scheme toggle by applyMapPaintForScheme.
         //
         // Casing effective alpha is this value times the 0.5 that
         // laneCasingColor folds in, so 1.0 here paints at 0.50. Light deliberately
@@ -164,8 +154,7 @@ const MAP_PAINT_TOKENS = {
     },
     dark: {
         labelText:  "#f0f0f0",
-        // Opaque for the same reasons as light; dark started from an even
-        // lower 0.7 (raised to 0.85 in b313248) so it had further to go.
+        // Opaque for the same reasons as light.
         labelHalo:  "#000000",
         chevronFwd: "chevron-fwd-dark-bg",
         chevronRev: "chevron-rev-dark-bg",
@@ -176,15 +165,14 @@ const MAP_PAINT_TOKENS = {
         // that plain #ffffff produces.
         hillshadeShadow:    "#000000",
         hillshadeHighlight: "rgba(255, 255, 255, 0.15)",
-        // Left at the original 0.6 (effective 0.30) while light moved to
-        // 0.50. See the light casing note: the dark basemap's collision rate
-        // is 2%, so a stronger casing here would only fatten lines that
-        // already separate cleanly.
+        // 0.6 (effective 0.30), weaker than light on purpose. See the light
+        // casing note: the dark basemap's collision rate is 2%, so a
+        // stronger casing here would only fatten lines that already
+        // separate cleanly.
         trailCasing:      "rgba(255,255,255,0.6)",
         arrowHalo:        "rgba(255,255,255,0.85)",
         // Lower alpha than light: pale lines on a dark ground gain
-        // apparent contrast, and 0.25 was judged right on-device
-        // during Session D.
+        // apparent contrast; 0.25 was judged right on-device.
         contourLine:      "rgba(214,208,190,0.25)",
         contourLabelText: "#c9c2ae",
         contourLabelHalo: "rgba(26,26,24,0.9)",
@@ -208,10 +196,9 @@ function basemapFlavor(scheme) {
     return s === "dark" ? "dark" : "light";
 }
 
-// Basemap style, designed with Steve on devices over 2026-09-21 (the
-// Style Lab rounds; candidates, measurements and every rejected
-// alternative are in .claude/plans/style-lab-basemap.md). It replaces
-// the "bio" overrides of 2026-08-07. The basemap is ground, never
+// Basemap style, judged on devices (candidates, measurements and every
+// rejected alternative are in .claude/plans/style-lab-basemap.md). The
+// basemap is ground, never
 // figure: bright routes, lane bundles, labels and markers all draw on
 // top of it, so everything here is about staying out of their way
 // while still saying where you are.
@@ -249,8 +236,8 @@ const BASEMAP_BUILT = {
     dark: { fill: "#6c6c68", edge: "#121211" },
 };
 // Railways take the built system's own visible grey: the road edge on
-// light, the road fill on dark (Steve, Style Lab round 11; a step
-// stronger was the other candidate). `service` (sidings, spurs, yards)
+// light, the road fill on dark (a step stronger was the other
+// candidate). `service` (sidings, spurs, yards)
 // is that color 40% of the way to the ground.
 const BASEMAP_RAIL = {
     light: { line: "#b0aea6", service: "#cac9c4", text: "#8a877f" },
@@ -262,7 +249,7 @@ const BASEMAP_RAIL = {
 // the scheme's park green and water blue, plus the topo marsh sign
 // (small tufts over a dash) from z12. The marks are small, light, and
 // spaced well apart: at full topo size and density they read as
-// wallpaper over the map (Steve, Style Lab rounds 12 and 13). On dark
+// wallpaper over the map. On dark
 // the mark is dimmer than the water, not brighter, for the same reason.
 const BASEMAP_WETLAND = {
     light: { tint: "#cbdcd8", mark: "#93b6ca", pattern: "wetland-marks-light" },
@@ -271,7 +258,7 @@ const BASEMAP_WETLAND = {
 
 // Bare rock (landuse kind "bare_rock"), the other ground the flavor
 // leaves undrawn that a rider wants to know about: slabs and outcrops
-// (44 polygons around NTN Marquette, 2026-09-30). Same recipe as the
+// (44 polygons around NTN Marquette). Same recipe as the
 // wetlands: a tint a step greyer than the earth, and sparse outcrop
 // marks (small angular stones) in the contour brown from z13, where
 // OsmAnd and the topo sheets start showing rock. Sand and beach keep
@@ -407,8 +394,7 @@ const BASEMAP_FLAVOR_OVERRIDES = {
 // calling basemaps.namedFlavor directly. Returns a fresh merged
 // object; never mutates the vendor flavor (the vendored basemaps
 // bundle exposes its exports through getter-only properties, so
-// in-place patching is a silent no-op anyway; Session D learned
-// this the hard way).
+// in-place patching is a silent no-op anyway).
 function resolvedNamedFlavor(name) {
     const flavor = basemaps.namedFlavor(name);
     const overrides = BASEMAP_FLAVOR_OVERRIDES[name];
@@ -479,8 +465,8 @@ function styleBasemapLayers(layers, scheme) {
     // main OSM style does instead: a grey line with ground-colored
     // dashes inside it, and sidings, spurs and yards (the `service`
     // property) lighter and narrower so a yard reads as a fan of quiet
-    // tracks beside the main line. Steve, Style Lab round 11; cross
-    // ticks were the other candidate and meshed together in a yard.
+    // tracks beside the main line. Cross ticks were the other
+    // candidate and meshed together in a yard.
     const rail = byId("roads_rail");
     if (rail) {
         const dark = scheme === "dark";
@@ -558,7 +544,7 @@ function styleBasemapLayers(layers, scheme) {
     // in an emergency getting out trumps an access restriction, but the
     // map must not invite anyone onto it. A fainter line was tried and
     // only made the way harder to find; Xs with no line under them read
-    // as noise (Steve, Style Lab rounds 9 and 10). Upright Xs: rotated
+    // as noise. Upright Xs: rotated
     // with the line, an X on a diagonal stretch reads as a plus sign.
     if (other) {
         const dark = scheme === "dark";
@@ -594,8 +580,8 @@ function styleBasemapLayers(layers, scheme) {
 // the lane layer's width, casing and spacing, and the spacing is the
 // fill plus 1 px, so adjacent lanes keep a visible seam. Anything that
 // scales a width therefore scales the spacing with it; a featured-route
-// width multiplier that did not (event mode, 2026-08) made lanes overlap
-// and was removed. Event and regular maps share identical line geometry,
+// width multiplier that did not would make lanes overlap, so there is
+// none. Event and regular maps share identical line geometry,
 // and featured routes read as foreground through muted backgrounds, draw
 // order and labels instead of width.
 const TRAIL_WIDTH_STOPS = {
@@ -630,11 +616,10 @@ function applyMapPaintForScheme(scheme) {
     // Without the label flip they'd freeze at light-mode values (the "some
     // labels dark-inner light-outer" bug); without the halo flip the
     // arrow edges would freeze at the build-time scheme.
-    // Single getStyle() call: it serializes every source and layer
-    // (~130 basemap layers plus ~5 per route), so calling it once for
-    // the guard and again for the iteration doubled real work on both
-    // the boot path and every scheme toggle.
-    const style = map.getStyle && map.getStyle();
+    // One getStyle() call: it serializes every source and layer
+    // (~130 basemap layers plus ~5 per route), on the boot path and
+    // every scheme toggle.
+    const style = map.getStyle();
     if (style) {
         for (const layer of style.layers) {
             if (layer.id.startsWith("trail-label-")) {
@@ -666,10 +651,9 @@ function applyMapPaintForScheme(scheme) {
     }
     // The loops above just set every name label back to the flat
     // scheme color; updateLabels() re-applies the highlight-aware
-    // dim/bright split on top (same "recompute on scheme toggle"
-    // precedent as the highlight silhouettes above), so a scheme
-    // toggle mid-highlight doesn't flash every label bright for a
-    // frame or leave them all stuck bright.
+    // dim/bright split on top, so a scheme toggle mid-highlight
+    // doesn't flash every label bright for a frame or leave them all
+    // stuck bright.
     updateLabels();
 }
 
@@ -707,11 +691,10 @@ function applyColorScheme(rawScheme) {
     document.documentElement.setAttribute("data-color-scheme", resolved);
     updateThemeColorMeta(resolved);
 
-    // Rebuild basemap layers via the existing helper that's already
-    // careful to preserve trail/decoration/highlight overlays. A
-    // naive map.setStyle(buildStyle()) would replace the WHOLE style
-    // including those overlays, trails would vanish until the next
-    // page load. rebuildBasemapLayers extracts the overlay layers
+    // A plain map.setStyle(buildStyle()) would replace the WHOLE
+    // style including the trail/decoration overlays, so trails would
+    // vanish until the next page load. rebuildBasemapLayers extracts
+    // the overlay layers
     // from the current style, swaps in the new flavor's basemap,
     // and stitches the overlays back in via setStyle({diff: true}).
     // It also re-registers icons and re-applies map paint tokens.
@@ -751,12 +734,7 @@ function watchSystemColorScheme() {
             CONFIG.defaultColorScheme || "light");
         if (stored === "auto") applyColorScheme("auto");
     };
-    if (mql.addEventListener) {
-        mql.addEventListener("change", handler);
-    } else if (mql.addListener) {
-        // Safari < 14 fallback.
-        mql.addListener(handler);
-    }
+    mql.addEventListener("change", handler);
 }
 
 // ============================================================
@@ -1010,6 +988,8 @@ function difficultyToggleOn() {
     // in setupOptionsOverlay; this guard also handles initial layer
     // visibility at addAllTrailLayers time.
     if (CONFIG.eventModeActive) return false;
+    // forced_visible wins over the stored choice, as for the arrows.
+    if (isForcedVisible("difficulty")) return true;
     return LS.get("mtb.difficulty", isDefaultVisible("difficulty")) === true;
 }
 
@@ -1184,21 +1164,17 @@ function closeTrailPopup() {
 
 // While a trail popup is open, the trail it describes is lifted
 // off the page by a soft highlighter-yellow glow beneath its lanes
-// (TAP_GLOW_LAYER). Steve's call (2026-09-29): a tap that ran the
-// finder's full selection (dim wash, chip) felt too heavy. The popup
-// is a note, the lift only says which trail the note is about, and
-// routes, ratings and places stay the selection tools, so `highlight`,
-// the wash, the chip and the camera are left exactly as they are. The
-// glow started neutral (a white hairline over a dark shadow, inverted
-// in dark mode) so it could never pass for a route color, but on the
-// light basemap the dark blur read as a smudge; a lab of 29 variants
-// (hollow ink rings, bundle outlines, cast shadows) ended on the app's
-// own highlight yellow, the same color as the route highlight stroke,
-// which reads the same on both basemaps. Tune the width and blur
-// below if it ever needs it. A finder trail result opens the
-// same popup and lift after a camera fit (showTrail). On a routes map
-// the lift also shows where a named trail starts and ends inside a
-// same-color route.
+// (TAP_GLOW_LAYER). A tap that ran the finder's full selection (dim
+// wash, chip) felt too heavy. The popup is a note, the lift only says
+// which trail the note is about, and routes, ratings and places stay
+// the selection tools, so `highlight`, the wash, the chip and the
+// camera are left exactly as they are. The glow is the app's own
+// highlight yellow, the same color as the route highlight halo: it
+// reads the same on both basemaps, where a neutral dark blur read as a
+// smudge on the light one. A finder trail result opens the same popup
+// and lift after a camera fit (showTrail). On a routes map the lift
+// also shows where a named trail starts and ends inside a same-color
+// route.
 // What is lifted follows what the popup measures. A map tap lifts the
 // contiguous section of the named trail under the finger (trailSection):
 // a name can run in stretches that never meet, like DRvG's Casey Road,
@@ -1247,7 +1223,7 @@ function clearTapLift() {
 // dims everything else) and tapped a trail off it to read it. The
 // selection stays, and the dim says the trail is not in it, but a
 // popup describing a line the rider can barely see, under a glow
-// meant to lift it, read as a contradiction (Steve, 2026-09-30). So
+// meant to lift it, reads as a contradiction. So
 // while the popup is open the lifted stretch draws at full brightness,
 // its lanes through the plugin's `bright` edge set (setHighlight) and
 // its name labels through trailIdentityMatch, and the dim returns when
@@ -1461,19 +1437,10 @@ const POI = Object.freeze({
     EVENT:           "event",   // event_mode.pois, always rendered, no toggle
 });
 
-// Escape HTML special characters so untrusted strings (OSM `name=` tags,
-// curator-supplied YAML strings that may have been pasted from external
-// sources) can be safely interpolated into innerHTML / setHTML sinks.
-// Covers <, >, &, ", ', the standard XSS-prevention set; the resulting
-// string is safe both as element content and inside attribute values.
-//
-// We use string interpolation + setHTML for popup construction (rather
-// than DOM-builder helpers) because MapLibre's Popup API takes an HTML
-// string. Wrapping every interpolated value in escapeHtml() preserves
-// that ergonomics without the XSS exposure. Defense in depth: applies
-// to BOTH OSM-sourced and curator-sourced strings, the latter is
-// "trusted" in the framework's threat model but a curator copy-pasting
-// from a wiki page could carry markup unintentionally.
+// Every string interpolated into an innerHTML / setHTML sink goes through
+// this, OSM tags and curator YAML alike: a curator pasting from a wiki
+// can carry markup as easily as an OSM name. The five characters make
+// the result safe as element content and inside attribute values.
 const _ESCAPE_HTML_MAP = {
     "&": "&amp;",
     "<": "&lt;",
@@ -1484,6 +1451,13 @@ const _ESCAPE_HTML_MAP = {
 function escapeHtml(s) {
     if (s == null) return "";
     return String(s).replace(/[&<>"']/g, (c) => _ESCAPE_HTML_MAP[c]);
+}
+
+// iPadOS 13+ Safari reports a desktop UA with platform "MacIntel"; touch
+// points are what give an iPad away.
+function isIOSDevice() {
+    return /iP(ad|hone|od)/.test(navigator.userAgent || "")
+        || (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
 }
 
 const EARTH_RADIUS_M = 6378137;
@@ -1537,8 +1511,7 @@ function pointAtArcLength(segments, totalLength, arc) {
     if (arc < 0 || arc > totalLength || segments.length === 0) return null;
     for (const seg of segments) {
         if (arc <= seg.arcStart + seg.lengthM) {
-            const t = seg.lengthM === 0 ? 0
-                : (arc - seg.arcStart) / seg.lengthM;
+            const t = (arc - seg.arcStart) / seg.lengthM;
             return {
                 lng: seg.lng1 + t * (seg.lng2 - seg.lng1),
                 lat: seg.lat1 + t * (seg.lat2 - seg.lat1),
@@ -1556,7 +1529,6 @@ function pointAtArcLength(segments, totalLength, arc) {
 // tiered min_zoom keeps fewer items on screen, so a static radius
 // works across the visible range.
 const DECOR_RADIUS_M = {
-    label:    60,  // text along trail axis (legacy point placement)
     diamond:  35,
     obstacle: 30,  // POI / parking / trailhead / feature markers
     // Min distance from a line-placed label's support polyline to a
@@ -1639,9 +1611,8 @@ function makeSpatialIndex(anchorLat) {
             else grid.set(k, [item]);
         },
         nearby(lng, lat) {
-            // Inline 3×3 scan: explicit unrolling beats nested loops
-            // here because the function is in the hot path and 9 keys
-            // is small enough to be fully predictable for the JIT.
+            // 3×3 cell scan with the integer key inlined: hot path, so
+            // no cellKey() call or string keys per neighbor.
             const cx = Math.floor((lng * lngMPerDeg) / _SPATIAL_INDEX_CELL_M);
             const cy = Math.floor((lat * _LAT_M_PER_DEG) / _SPATIAL_INDEX_CELL_M);
             const out = [];
@@ -1774,8 +1745,7 @@ function collectCanonicalWays() {
 // see them in collision checks.
 function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                             decorations, placedIndex, extraPropsFn) {
-    const radius = (kind === KIND.DIAMOND) ? DECOR_RADIUS_M.diamond
-                 :                           DECOR_RADIUS_M.label;
+    const radius = DECOR_RADIUS_M.diamond;
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
         const pt = pointAtArcLength(way.segments, way.totalLength, arc);
@@ -1884,9 +1854,6 @@ const LABEL_CROSSOVER_ZOOM = Math.min(POINT_LABEL_MAX_ZOOM, CONFIG.maxZoom - 1);
 // drops out one zoom later, a brief, single-zoom co-existence, not a
 // permanent double.
 const OVERVIEW_LABEL_MAX_ZOOM = LABEL_CROSSOVER_ZOOM + 1;
-// Set false to drop the trails-mode point label (keep routes-mode only)
-// if per-trail overview labels prove too cluttered.
-const POINT_LABELS_IN_TRAILS_MODE = true;
 
 // Endpoint key for way-connectivity matching. OSM-derived way geometry
 // shares exact node coordinates at junctions; rounding to ~0.1 m guards
@@ -2188,28 +2155,27 @@ function computeDecorations() {
     // reflects the current label mode); the muted event-mode network
     // stays unlabeled there.
     {
-        const routeAgg = new Map();   // routeId -> { n, longest }
+        const routeAgg = new Map();   // routeId -> { longest }
         for (const way of ways) {
             const rids = (way.sharedRoutes && way.sharedRoutes.length)
                 ? way.sharedRoutes : [way.routeId];
             for (const rid of rids) {
                 if (!visibleRoutes.has(rid)) continue;
                 let agg = routeAgg.get(rid);
-                if (!agg) { agg = { n: 0, longest: way }; routeAgg.set(rid, agg); }
-                agg.n++;
+                if (!agg) { agg = { longest: way }; routeAgg.set(rid, agg); }
                 if (way.totalLength > agg.longest.totalLength) agg.longest = way;
             }
         }
         for (const [rid, agg] of routeAgg) {
             if (!routeLabelAllowed(rid)) continue;
             const name = (CONFIG.routes[rid] && CONFIG.routes[rid].name) || "";
-            if (!name || agg.n === 0) continue;
+            if (!name) continue;
             emitOverviewLabel(name, agg.longest,
                 { kind: KIND.ROUTE_LABEL_PT, solo_route_id: rid,
                   trail_name: agg.longest.trailName });
         }
     }
-    if (POINT_LABELS_IN_TRAILS_MODE && CONFIG.showTrails !== false) {
+    if (CONFIG.showTrails !== false) {
         const trailLongest = new Map();   // trailName -> longest way
         for (const way of ways) {
             if (!way.trailName || !trailLabelAllowed(way)) continue;
@@ -2285,11 +2251,9 @@ function computeDecorations() {
     return { type: "FeatureCollection", features: decorations };
 }
 
-// Refresh the trail-decorations source. Cheap to recompute (~ms for
-// most maps); called on initial load, route-visibility change, marker
-// proximity change, and day-tick (when reverseRoutesToday flips).
-// updateDecorationsSource, schedule a decoration recompute.
-// computeDecorations() is the expensive pass (50-200 ms on dense maps:
+// Schedule a trail-decorations recompute: on initial load,
+// route-visibility change, marker proximity change, and day-tick (when
+// reverseRoutesToday flips). computeDecorations() is the expensive pass (50-200 ms on dense maps:
 // 4-pass placement + collision-checked label clipping), and callers
 // legitimately overlap: applyVisibilityChange() alone reaches here
 // twice per toggle (updateTrailDisplay + updateMarkerProximity). Two
@@ -2299,8 +2263,7 @@ function computeDecorations() {
 //     loadTrails) so basemap + trail lines paint before the placer
 //     runs. Calls arriving earlier (setupFloatingChrome →
 //     applyVisibilityChange runs inside style.load, before that idle)
-//     are dropped, they used to run the placer 2-3× synchronously
-//     on the critical path, defeating the documented deferral.
+//     are dropped, so the placer never runs on the critical path.
 //   - rAF coalescing: after boot, back-to-back calls within one frame
 //     collapse into a single recompute on the next frame. State reads
 //     (visibleRoutes, obstacle cache, toggles) happen inside the rAF
@@ -2750,14 +2713,13 @@ let userLocation = null; // [lng, lat] from geolocate control
 let geolocateControl = null;
 // GeolocateControl + off-screen indicator state: see the
 // state-machine docblock above the GeolocateControl creation in
-// init() for the full story (state diagram, transition table, what
-// each flag is for, and where each gets set vs consumed).
+// init() (state diagram, transition table, what each flag is for).
 let _followUserOnGeolocate = false;
 // One-shot: the next locate camera move is the ACTIVATION move
 // (tracking just turned on), so lift a distant overview to
 // LOCATE_ACTIVATION_ZOOM. Every other locate move keeps the rider's
-// current zoom exactly (2026-08-07; matches Google/Apple Maps and
-// ride-recording apps: re-centering never changes zoom).
+// current zoom exactly (matches Google/Apple Maps and ride-recording
+// apps: re-centering never changes zoom).
 let _locateActivationZoomPending = false;
 // Floor, not target: activation zooms IN to this from an overview
 // but never zooms OUT someone already closer. 15 shows the rider's
@@ -2772,7 +2734,7 @@ const LOCATE_ACTIVATION_ZOOM = 15;
 // the GPS direction of travel; when stopped it falls back to the
 // device compass (facing), so a rider stopped at a junction can
 // still pick the right fork without riding until the dot moves.
-// Custom-built: MapLibre 5.24 has no showUserHeading. Contract:
+// Custom-built: MapLibre has no showUserHeading. Contract:
 //   - The sensor stream runs only while the Locate control is
 //     actively tracking (started from the Locate tap, stopped by
 //     mirrorLocateState's idle/disabled transitions).
@@ -3051,21 +3013,13 @@ function validateConfigShape() {
 // trails-load handler to apply the highlight (and discarded after).
 let _pendingShareHighlight = null;
 
-// Snapshot of the framework's canonical view target, the same
-// fitBounds(CONFIG.bbox + padding 50) the rider would see arriving
-// at the map with a clean URL. The Reset View FAB always replays
-// this regardless of how the rider arrived, so the control's
-// behavior is predictable: tapping Reset means "show me the whole
-// trail system" every time. Riders who want their original
-// share-link view can use the browser's Back button.
-//
-// Was previously context-aware (share-link arrivals reset to the
-// deep-linked center/zoom instead of the bbox), but that made the
-// same control behave differently depending on how the rider
-// arrived, surprising on a permanent UI affordance, and the
-// fit-to-page icon semantics imply "the map's canonical view," not
-// "your entry view."
-let _initialViewTarget = null;
+// The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
+// what a clean URL opens on, and what Reset View always returns to,
+// however the rider arrived. A control that behaved differently after a
+// share link would surprise on a permanent affordance, and the
+// fit-to-page icon promises the whole trail system. A rider who wants
+// the share-link view back has the browser's Back button.
+const HOME_VIEW_PADDING = 50;
 
 // Apply a highlight that was parsed from an incoming share link.
 // Called once, after trails + indexes are loaded. The view portion
@@ -3221,9 +3175,9 @@ function fallbackCopyShareUrl(url) {
             .then(() => showToast("View URL copied. Paste anywhere to share."))
             .catch(() => showToast("Couldn't copy URL. Try again or use the URL bar."));
     } else {
-        // Very old browser path. Use the legacy execCommand fallback
-        // via a hidden textarea (works in IE / pre-clipboard-API
-        // contexts). Rarely hit in practice.
+        // navigator.clipboard exists only in a secure context, so plain
+        // http (every LAN test build) lands here: the legacy
+        // execCommand copy through a hidden textarea.
         try {
             const ta = document.createElement("textarea");
             ta.value = url;
@@ -3440,6 +3394,9 @@ async function checkPMTilesRangeSupport() {
             contentLength > 0 &&
             contentLength <= 2000  // we asked for 1001 bytes; small slop for off-by-one
         );
+        // Only the headers matter. On the broken server this diagnoses,
+        // the body is the whole archive, so stop the download.
+        resp.body?.cancel();
         if (!looksOk) {
             console.error(
                 "[mtb-map] HTTP Range requests not honored for " + url + ".\n" +
@@ -3452,8 +3409,8 @@ async function checkPMTilesRangeSupport() {
                 ", Content-Length=" + contentLength +
                 " (expected status=206, Content-Range present, Content-Length≤1001).\n" +
                 "Fix: configure your reverse proxy to forward the Range header and " +
-                "return 206 Partial Content. See README → Troubleshooting → " +
-                "\"PMTiles won't load offline\" entry."
+                "return 206 Partial Content. See docs/troubleshooting.md, " +
+                "\"PMTiles won't load offline\"."
             );
         }
     } catch (e) {
@@ -3461,13 +3418,17 @@ async function checkPMTilesRangeSupport() {
     }
 }
 
-// The page when no map can be made (see the catch around the Map
-// constructor in init). Plain DOM and the sheet tokens, so it follows
-// the color scheme and depends on nothing that might also have failed.
+// The page when no map can be made: a broken config, a missing lanes
+// plugin, no WebGL2, or any later throw out of init(). Plain DOM and the
+// sheet tokens, so it follows the color scheme and depends on nothing
+// that might also have failed. A throw late in boot can land here after
+// an earlier failure already did, so the card is shown once.
 function showMapUnavailable(err) {
     console.error("Map could not start:", err);
     if (window.__hideMapLoading) window.__hideMapLoading();
+    if (document.getElementById("map-unavailable")) return;
     const box = document.createElement("div");
+    box.id = "map-unavailable";
     box.setAttribute("role", "alert");
     box.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);"
         + "max-width:min(28rem,calc(100vw - 32px));padding:20px 22px;border-radius:12px;"
@@ -3497,35 +3458,9 @@ async function init() {
     try {
         validateConfigShape();
     } catch (e) {
-        // Surface the error visibly on the map div so it's not buried
-        // in DevTools, operators deploying a broken build will see
-        // this immediately.
-        console.error(e);
-        const container = document.getElementById("map");
-        if (container) {
-            // Build the failure card via DOM nodes rather than
-            // template-literal innerHTML so the error message, which
-            // can come from anywhere upstream and may eventually
-            // include curator-controlled or OSM-derived strings,
-            // can't smuggle markup into the page. textContent
-            // neutralizes any HTML in e.message.
-            container.replaceChildren();
-            const wrap = document.createElement("div");
-            wrap.style.cssText = "padding:24px;font-family:system-ui;color:#b00";
-            const strong = document.createElement("strong");
-            strong.textContent = "Map failed to start.";
-            wrap.appendChild(strong);
-            wrap.appendChild(document.createElement("br"));
-            const code = document.createElement("code");
-            code.style.whiteSpace = "pre-wrap";
-            code.textContent = e.message;
-            wrap.appendChild(code);
-            container.appendChild(wrap);
-        }
-        // Tear down the initial-load bar, a config-broken build renders
-        // the error card above instead of a map, and a bar spinning over
-        // it reads as "still working" when it's actually dead.
-        if (window.__hideMapLoading) window.__hideMapLoading();
+        // The message names the bad key; it is for the operator, so it
+        // goes to the console and the rider gets the generic card.
+        showMapUnavailable(e);
         return;
     }
 
@@ -3696,7 +3631,7 @@ async function init() {
         // preserved, but leaks last-viewed location via URL / screen-
         // share. Controlled per-map via CONFIG.urlHash; default false
         // (URL stays clean). Opt in per-map by setting `url_hash: true`
-        // in the YAML. The Share button (B.3) generates one-shot share
+        // in the YAML. The Share button generates one-shot share
         // links via a separate "#share=..." format that's read on load
         // regardless of urlHash setting and then stripped.
         hash: CONFIG.urlHash,
@@ -3709,17 +3644,8 @@ async function init() {
             [CONFIG.bbox[0], CONFIG.bbox[1]],
             [CONFIG.bbox[2], CONFIG.bbox[3]],
         ];
-        mapOptions.fitBoundsOptions = { padding: 50 };
+        mapOptions.fitBoundsOptions = { padding: HOME_VIEW_PADDING };
     }
-    // Reset View target is always the framework canonical view
-    // (fitBounds CONFIG.bbox + padding 50), regardless of whether
-    // the rider arrived via share link. See _initialViewTarget
-    // declaration for rationale.
-    _initialViewTarget = {
-        kind: "bounds",
-        bbox: CONFIG.bbox.slice(),  // defensive copy
-        padding: 50,
-    };
 
     if (Object.keys(headersByDomain).length > 0) {
         mapOptions.transformRequest = (url) => {
@@ -3845,38 +3771,17 @@ async function init() {
     // change zoom: capped at 15 (yanks a z16-17 rider out) and
     // unbounded downward when a poor fix inflates the circle. That is
     // nonstandard; Google/Apple Maps and ride recorders never change
-    // zoom on a re-center. Replaced 2026-08-07 (Session D follow-on)
-    // by overriding the control's _updateCamera (an instance-assigned
-    // arrow function in MapLibre 5.24 and still in 6.10, checked
-    // 2026-09-21; re-verify on vendor upgrades)
-    // with center-only moves:
+    // zoom on a re-center. Our modifications (vs stock), through an
+    // _updateCamera override with center-only moves:
     //   - Every locate move eases to the fix AT THE CURRENT ZOOM.
     //   - The single exception: the activation move (tracking just
-    //     turned on) raises an overview to LOCATE_ACTIVATION_ZOOM,
-    //     floor semantics, never zooms out (_locateActivationZoomPending).
-    //
-    // Our modifications (vs stock):
-    //   - All locate camera moves keep the rider's zoom (above)
-    //   - Activation centers on the rider with the floor zoom and
-    //     starts follow-me (industry behavior; until 2026-08-07 the
-    //     activation move was suppressed entirely in favor of an
-    //     off-screen hint toast, retired with this change)
+    //     turned on) centers on the rider, raises an overview to
+    //     LOCATE_ACTIVATION_ZOOM (floor semantics, never zooms out,
+    //     _locateActivationZoomPending) and starts follow-me.
     //   - Manual pan exits follow-me (active → background-effective)
     //
-    // Where each modification lives:
-    //   - _updateCamera override: right after control creation
-    //   - Locate-button click handler: reads pre-click state, sets
-    //     flags BEFORE calling trigger(), single decision point
-    //   - Off-screen indicator click handler: own flyTo path; sets
-    //     flags before triggering re-engage
-    //   - `movestart` filter: exits follow on user-initiated moves,
-    //     cancels geolocate-source moves when follow is off
-    //   - mirrorLocateState: clears userLocation when state goes
-    //     idle / disabled (handles the "tracking actually ended"
-    //     transition without depending on which event fires)
-    //
     // We deliberately do NOT use `trackuserlocationstart` to arm
-    // flags, MapLibre 5.x fires it for IDLE → WAITING but NOT for
+    // flags, MapLibre fires it for IDLE → WAITING but NOT for
     // BACKGROUND → ACTIVE re-engagement (that one fires
     // userlocationfocus instead). Driving flag setup off click
     // handlers (synchronous, sees the pre-click state) is reliable
@@ -3922,15 +3827,12 @@ async function init() {
     geolocateControl = geolocate;  // expose to updateLocationIndicator
     attachOffScreenIndicatorHandler();
 
-    // Camera-writer override: every locate move keeps the rider's
-    // zoom (see the state-machine docblock above for the full
-    // rationale and the stock behavior this replaces). _updateCamera
-    // is an instance-assigned arrow function in MapLibre 5.24 and
-    // 6.10, so plain assignment replaces it; re-verify that shape on vendor
-    // upgrades (unlike the getter-only basemaps exports, this one
-    // takes the assignment silently EITHER way, so a breaking vendor
-    // change would show up as the stock zoom-yank returning, covered
-    // by the locate probe's zoom asserts).
+    // Camera-writer override (see the state-machine docblock above).
+    // _updateCamera is an instance-assigned arrow function in MapLibre
+    // 6.10, so plain assignment replaces it; re-verify that shape on
+    // vendor upgrades. The assignment succeeds silently EITHER way, so
+    // a breaking vendor change would show up only as the stock
+    // zoom-yank returning.
     //
     // The eventData ({geolocateSource: true}) must ride along
     // exactly like stock: the movestart filter below distinguishes
@@ -3987,17 +3889,14 @@ async function init() {
         }
     });
 
-    // NOTE: no trackuserlocationstart handler. MapLibre 5.x doesn't
-    // fire it for BACKGROUND → ACTIVE re-engagement (that's
-    // userlocationfocus instead), so it's an unreliable hook. All
-    // flag setup happens in the Locate-button click handler below
-    // (see the state-machine docblock above the GeolocateControl).
+    // No trackuserlocationstart handler: flag setup lives in the
+    // Locate-button click handler (see the docblock above).
 
     geolocate.on("trackuserlocationend", () => {
         _locateActivationZoomPending = false;
         _followUserOnGeolocate = false;
         // NOTE: don't clear userLocation here. Despite the event name
-        // sounding terminal, MapLibre 5.x fires trackuserlocationend
+        // sounding terminal, MapLibre fires trackuserlocationend
         // on ACTIVE_LOCK → BACKGROUND too (i.e. when the user just
         // panned away during tracking, they're STILL being tracked,
         // just not auto-followed). Clearing userLocation here made
@@ -4025,7 +3924,7 @@ async function init() {
             showToast("Location permission denied. Allow location access in your browser's site settings, then tap Locate again.");
         } else if (code === 3) {
             // TIMEOUT
-            showToast("Couldn't get your location. On desktop, check that macOS Location Services is enabled for this browser.");
+            showToast("Couldn't get your location in time. Check that location services are on for this browser, then tap Locate again.");
         } else {
             // POSITION_UNAVAILABLE or unknown
             showToast("Couldn't determine your location. Try again, or check your device's location settings.");
@@ -4153,12 +4052,9 @@ async function init() {
                 }
                 // IDLE / DISABLED → ACTIVE (initial enable): center
                 // on the rider, lift an overview to the activation
-                // floor zoom, and start follow-me. (Until 2026-08-07
-                // this branch suppressed the camera move entirely and
-                // showed a "tap the blue ▲" hint toast instead; the
-                // toast machinery retired with it. Fixes outside
+                // floor zoom, and start follow-me. Fixes outside
                 // maxBounds never reach the camera path, MapLibre
-                // fires outofmaxbounds instead, handled above.)
+                // fires outofmaxbounds instead, handled above.
                 _locateActivationZoomPending = true;
                 _followUserOnGeolocate = true;
                 // See the matching call in the BACKGROUND branch.
@@ -4331,14 +4227,13 @@ async function init() {
     // deploying site may post-process a brand tail onto it (the
     // trailmaps.app orchestrator appends " | trailmaps.app" in
     // inject-og-meta.py). A runtime `document.title = CONFIG.title`
-    // would silently clobber that the moment the app boots (it did,
-    // until 2026-07-10), so the element's build-time value must stay
-    // the only writer.
+    // would silently clobber that the moment the app boots, so the
+    // element's build-time value must stay the only writer.
 
     // About This Map modal
     initAbout();
 
-    // Welcome / Help modal (A.2). Auto-opens on the first visit only
+    // Welcome / Help modal. Auto-opens on the first visit only
     // (localStorage flag, per-map via the LS key prefix so a user
     // who's seen one map's welcome still sees another map's), and
     // stays reachable afterwards through the Options overlay's
@@ -4347,7 +4242,7 @@ async function init() {
 }
 
 // ============================================================
-// Welcome / Help modal (A.2)
+// Welcome / Help modal
 // ============================================================
 //
 // Bridges the gap between landing on the map and understanding the
@@ -4515,8 +4410,7 @@ function openWelcomeModal(source) {
     if (bodyEl) {
         bodyEl.innerHTML = "";
 
-        // `welcome.body` is the map's one descriptive text (the
-        // retired `about.description` folded into it). A map without
+        // `welcome.body` is the map's one descriptive text. A map without
         // it (including `welcome: false`) shows just the controls
         // hint here.
         const bodyText = welcome.body || "";
@@ -4573,8 +4467,8 @@ const _WELCOME_ICON_LOCATE     = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,
 // corner brackets + center dot read as "frame this content".
 const _WELCOME_ICON_RESET_VIEW = "M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2 0 0,0 3,5V9H5M19,3H15V5H19V9H21V5A2,2 0 0,0 19,3M19,19H15V21H19A2,2 0 0,0 21,19V15H19M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z";
 // mdi:cog (Apache 2.0, Pictogrammers), matches the Options FAB
-// glyph (templates/index.html). Reverted from a brief mdi:tune
-// experiment that read as "audio equalizer" rather than "settings".
+// glyph (templates/index.html). Not mdi:tune, which reads as an audio
+// equalizer rather than settings.
 const _WELCOME_ICON_OPTIONS    = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
 // mdi:format-list-bulleted (Apache 2.0, Pictogrammers), matches the
 // routes-panel chip glyph (templates/index.html): dot-per-row list
@@ -5064,9 +4958,7 @@ function buildAboutModalContent() {
 
     body.appendChild(details);
 
-    // More info - single section combining what was previously two
-    // (more_information + extra_links). Curator-supplied bulleted
-    // list of related links: official trail-system pages, club
+    // More info: curator-supplied bulleted list of related links: official trail-system pages, club
     // pages, related orgs, etc. Order matches the YAML.
     if (Array.isArray(about.links) && about.links.length) {
         const h = document.createElement("h3");
@@ -5288,10 +5180,9 @@ function buildCustomStyle(layer, base) {
 // of course the routes. Lakes stop looking bumpy and stop carrying
 // stray contour lines, and no road, path or route is shaded or crossed
 // by contour ink. Contour LABELS are symbols and stay up with the
-// other labels. Until 2026-09 both sat under the first symbol layer,
-// over water and every road. A custom raster base layer has no water
-// layer; terrain then goes under the first symbol layer as before,
-// which is above the raster.
+// other labels. A custom raster base layer has no water layer;
+// terrain then goes under the first symbol layer, which is above the
+// raster.
 function firstSymbolLayerId() {
     const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
     return firstSymbol ? firstSymbol.id : undefined;
@@ -5387,8 +5278,8 @@ async function addTerrainLayers() {
         },
     }, beforeLayer);
 
-    // Contour lines ride with terrain (adopted with the bio basemap,
-    // Session D 2026-08-07): same gate, same data, no config key.
+    // Contour lines ride with terrain: same gate, same data, no config
+    // key.
     addContourLayers(beforeLayer);
 
     // Resolve when terrain has SETTLED for the opening viewport, used to
@@ -5431,7 +5322,7 @@ async function addTerrainLayers() {
 // intercept serves its "contour-dem://{z}/{x}/{y}" requests straight
 // from the archive through pmtiles.js. worker:false keeps those
 // fetches on the main thread where the intercept lives; the isoline
-// math therefore also runs on-thread. Session D traced this as
+// math therefore also runs on-thread. A trace found that
 // acceptable; if a future profile disagrees, the escape hatch is a
 // fork with a pluggable tile reader, not worker:true (a worker
 // cannot see the intercept).
@@ -6384,14 +6275,6 @@ async function loadTrails() {
             throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
         routesData = await resp.json();
-        // Canonical features only, settled once here. Builds ship
-        // nothing else any more, but a service worker can hand a new
-        // app.js a trails.geojson cached from before the build-time lane
-        // expansion was removed, and its stubs and per-mode variants
-        // would count as extra routes in the lane graph, in proximity
-        // and in chevron ownership.
-        routesData.features = routesData.features.filter(
-            (f) => f.properties.isStub !== true && !f.properties.mode);
     } catch (e) {
         console.error("loadTrails: trails.geojson failed to load:", e);
         showToast("Map data failed to load. Try reloading the page.");
@@ -6515,36 +6398,29 @@ async function loadTrails() {
     // `CONFIG.mapDimOnHighlight` is true AND a route or rating is highlighted,
     // refreshSpotlightDim() sets its opacity to SCRIM_OPACITY so the
     // basemap recedes behind the wash and the lifted lanes read as a
-    // spotlight. It stays steady while
-    // a menu opens over it (the menu suppresses its own scrim instead,
-    // see .has-spotlight in style.css), so the dim never animates against
-    // a menu's scrim.
+    // spotlight. It stays steady while a menu opens over it (the menu
+    // suppresses its own scrim instead, see .has-spotlight in
+    // style.css).
     map.addLayer({
         id: "dim-tint",
         type: "background",
         paint: {
             "background-color": "#000",
-            // Starts transparent; refreshSpotlightDim() sets it to
-            // SCRIM_OPACITY whenever a highlight is active. The wash must
-            // change INSTANTLY, and duration:0 is REQUIRED to get that:
+            // Starts transparent. The wash must change INSTANTLY, and
+            // duration:0 is REQUIRED to get that:
             // MapLibre's default paint transition is 300ms, so without it
             // the opacity fades in over ~300ms. On the "tap a search
             // result" path (the menu scrim is removed instantly while the
             // camera flies ~300ms) that fade reads as the background
             // un-dimming then re-dimming during the fly. duration:0 makes
             // the wash an atomic swap with the menu scrim instead of an
-            // animation against it (two fading black layers also wouldn't
-            // composite to a constant → wobble). The wash is steady while
-            // up; menus suppress their own scrim over it (see
-            // .has-spotlight in style.css). The SAME SCRIM_OPACITY drives
-            // the CSS overlay scrims via --scrim-opacity (set in init()),
-            // so both share one density.
+            // animation against it (see refreshSpotlightDim).
             "background-opacity": 0,
             "background-opacity-transition": { duration: 0 },
         },
     });
 
-    // Pass 3: continuation arrowheads at clipped-relation bbox endpoints.
+    // Continuation arrowheads at clipped-relation bbox endpoints.
     if (map.getSource("clip-endpoints")) {
         for (const [routeId, routeInfo] of sortedRoutes) {
             // Per-endpoint color logic, paired:
@@ -6555,11 +6431,11 @@ async function loadTrails() {
             //   single route →
             //     fill with the route's actual color; halo contrasts the
             //     basemap via the scheme (see clipArrowHaloExpr), matching
-            //     the trail casing and highlight outline. A
-            //     difficulty-mode relation's color is not on the map, so
-            //     its arrow takes the rating of the way it continues
-            //     (stamped by stampClipEndpointWays), in the unrated
-            //     look for an unrated way.
+            //     the trail casing. A difficulty-mode relation's color
+            //     is not on the map, so its arrow takes the rating of
+            //     the way it continues (stamped by
+            //     stampClipEndpointWays), in the unrated look for an
+            //     unrated way.
             const iconCol = [
                 "case",
                 [">=", ["get", "visible_count"], 2],
@@ -6573,7 +6449,7 @@ async function loadTrails() {
             // casing (laneRouteMeta: a solid casing would show through
             // the gaps), so its arrow draws bare too: an outlined
             // arrowhead leaving a plain dashed line read as a different
-            // object (Steve, NCT on ntn_marquette).
+            // object.
             const bareLane = isRouteMode(routeId) && laneRouteMeta()[routeId].casing === false;
             const layout = {
                 "icon-image": "clip-arrow",
@@ -6599,7 +6475,7 @@ async function loadTrails() {
             // derived: at z13 and z15 the outlined arrow's half-coverage
             // outline is about 3 screen px wider per side than the bare
             // glyph at the same size, and 0.6 of icon size closes that
-            // at both zooms (headless sweep, 2026-10-01). Without it the
+            // at both zooms (headless sweep). Without it the
             // bare arrowhead read smaller than its neighbors.
             const bump = bareLane ? 0.6 : 0;
             const size = ["interpolate", ["linear"], ["zoom"],
@@ -7381,9 +7257,9 @@ let laneSwapPending = false;
 // case another tick follows. Lane offsets are pixels at one zoom, so
 // for that long, on top of the animation itself, the chevrons and
 // route names sat where the lanes were at the previous zoom, beside
-// their lanes on every shared corridor, and then jumped (Steve's
-// Firefox profile of MFO, 2026-09-20: nothing at all running during
-// those 200 ms). So the symbol source also refreshes as soon as the
+// their lanes on every shared corridor, and then jumped (a profile
+// showed nothing at all running during those 200 ms). So the symbol
+// source also refreshes as soon as the
 // zoom has stopped changing, without waiting for moveend.
 // laneFeatures() places the latest layout for the zoom on screen, the
 // same rescaling the layer draws with, so it does not need the rebuild
@@ -7729,7 +7605,7 @@ function _refreshVisibilityDependents() {
     }
 }
 
-// Sync every per-route layer's MapLibre visibility with the current
+// Sync every per-route clip-arrow layer's MapLibre visibility with the current
 // visibleRoutes set. Called from applyVisibilityChange()'s synchronous
 // part on every bucket-model change (the flips are worker-free, so
 // they paint in the tap's own frame while the setData recompute is
@@ -7743,11 +7619,12 @@ function _refreshVisibilityDependents() {
 function _applyPerRouteLayerVisibility() {
     for (const routeId of Object.keys(CONFIG.routes)) {
         const vis = visibleRoutes.has(routeId) ? "visible" : "none";
-        for (const prefix of ["trail-label-", "clip-arrow-"]) {
-            const layerId = prefix + routeId;
-            if (map.getLayer(layerId)) {
-                map.setLayoutProperty(layerId, "visibility", vis);
-            }
+        // trail-label-<id> is left to updateLabels(), the only place
+        // that also honors labelMode; forcing it visible here would
+        // flash route names on a map whose Labels setting is trails.
+        const layerId = "clip-arrow-" + routeId;
+        if (map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, "visibility", vis);
         }
     }
 }
@@ -7804,29 +7681,18 @@ function updateTrailDisplay() {
 //     washMarkerElement() in updateMarkerDimState(). Recolored rather
 //     than faded, for the same reason as labels: fading opacity would
 //     let the basemap show through the marker.
-// The in-map wash and the Search / Options / About menu backdrops share
-// one scrim density (SCRIM_OPACITY / --scrim-opacity) but are never both
-// animated at once: while a highlight is active the wash is steady and
-// the menus suppress their own backdrop (CSS .has-spotlight) so the
-// steady wash shows through; with no highlight the menu's own scrim
-// provides the dim. Two fading black layers don't composite to a
-// constant, so keeping it to one animated layer avoids the "variable
-// dimming" wobble, see refreshSpotlightDim().
+// The wash and the menu backdrops share one scrim density and are never
+// both animated at once; see refreshSpotlightDim().
 // Clearing the highlight, or toggling the config off, restores normal
 // visibility in one pass via applyDimState().
 
 function highlightDimActive() {
     // Default ON, opt out with `map_dim_on_highlight: false` in YAML.
-    // The explicit `!== false` check keeps a missing CONFIG key (e.g., an
-    // older bundle) dimming too, rather than silently disabling the
-    // effect.
     return CONFIG.mapDimOnHighlight !== false && highlight != null;
 }
 
 // Per-route clip-arrow visibility. Clip-arrow layers are route-scoped
 // (one layer per route), so this is straight visibility toggling.
-// A rating highlight hides every clip-arrow since they're a
-// route-level concept.
 // The continuation arrows narrow to the highlight while the map is
 // dimmed, and the ones that stay are part of it: the lifted route's
 // (or, for a lifted rating, every visible difficulty-mode relation's
@@ -7883,11 +7749,10 @@ function anyModalOpen() {
 //
 // Why not couple this to whether a *menu overlay* is open? Because the
 // wash (a WebGL background layer) and an overlay's own scrim (a CSS layer)
-// are two independent black layers. An earlier version cross-faded them on
-// open/close to avoid stacking, but two fading black layers don't
+// are two independent black layers, and two fading black layers don't
 // composite to a constant: `1−(1−a)(1−b)` dips below the target mid-fade,
-// and the WebGL vs CSS easings differ, so the map "breathed" (variable
-// dimming). The fix: never animate two scrims at once. The wash is steady
+// and the WebGL vs CSS easings differ, so a cross-fade makes the map
+// "breathe". So two scrims never animate at once. The wash is steady
 // (and instant) while a highlight is active, and the Search/Options
 // overlays suppress THEIR OWN scrim while .has-spotlight is set (CSS), so
 // the steady wash shows through, opening a menu over a highlight, or
@@ -7979,7 +7844,6 @@ function highlightRoute(routeId) {
     // lifts it above the other routes with a yellow halo, the tap lift's
     // color, and dims the rest (syncLaneHighlight). The chip carries the
     // route's own color and dash.
-    const color = effectiveRouteColor(info);
     syncLaneHighlight();
 
     // Fit bounds to the route
@@ -7988,17 +7852,14 @@ function highlightRoute(routeId) {
     // Show chip with per-route stats. routeIndex carries the same
     // distance/elevation values as the Finder rows; routeStatsText
     // returns "" when neither stat is enabled or available, in which
-    // case the chip just shows label + color (current behavior).
-    // Chip and route share the same color by construction.
+    // case the chip just shows label + swatch.
     const indexEntry = routeIndex.find((r) => r.id === routeId);
     showHighlightChip({
         label: info.name,
-        color,
         stats: indexEntry ? routeStatsText(indexEntry) : "",
         // Swatch model built from CONFIG directly (not indexEntry) so
         // the chip renders correctly even if routeIndex isn't built
-        // yet. routeSwatchModel's color equals `color` above by
-        // construction (both come from effectiveRouteColor).
+        // yet.
         line: routeSwatchModel(info),
     });
 
@@ -8010,7 +7871,7 @@ function highlightRoute(routeId) {
 }
 
 // A finder trail result, and a /t/ share link, is a look, not a
-// selection (Steve, 2026-09-29): the camera fits the trail, then the
+// selection: the camera fits the trail, then the
 // popup a tap opens appears on it, with its lift. A trail is found
 // once and then ridden by eye, like a place, so it gets no chip,
 // lift or wash, and a KEEP selection (a route, a rating, a place)
@@ -8223,8 +8084,8 @@ function _cancelPendingPoiPopup() {
 function highlightPoi(p) {
     if (!p || typeof p.lng !== "number" || typeof p.lat !== "number") return;
 
-    const label = p.name || (POI_TYPE_META_LABEL[p.type] || "Place");
-    highlightPoiSet([p], label);
+    // poiIndex entries always carry a name (buildPoiIndex synthesizes one).
+    highlightPoiSet([p], p.name);
     // Record the share descriptor. highlightPoiSet routes through
     // clearRouteTrailHighlight (not clearPoiHighlight), so it never
     // clobbers this; set it after for clarity. See _poiHighlightRef.
@@ -8409,8 +8270,7 @@ let _highlightedPois = [];                       // module-scope state
 // `category:<type>` uid. buildShareUrl() serializes this so a POI
 // highlight round-trips through a share link the way a route or rating does
 // via `highlight`. Set by highlightPoi / highlightPoiGroup, nulled by
-// clearPoiHighlight. The single-highlight invariant (see commit history)
-// keeps this and `highlight` mutually exclusive: at most one is non-null.
+// clearPoiHighlight. The single-highlight invariant keeps this and `highlight` mutually exclusive: at most one is non-null.
 let _poiHighlightRef = null;
 // Marker elements currently wearing the highlight outline (and, briefly,
 // the arrival pulse). Tracked so a new highlight or a clear strips
@@ -8539,10 +8399,9 @@ function _defaultVisibleNameForType(type) {
 // in localStorage is NOT touched. On highlight clear (or
 // replacement), the markers come back off.
 //
-// Simpler than yesterday's draft: only handles the toggle-off
-// case. Proximity-hidden POIs are excluded from search (and
-// therefore from highlights) before they get here, so there's no
-// proximity-force-mount path to worry about.
+// Only the toggle-off case needs handling: proximity-hidden POIs
+// are excluded from search (and therefore from highlights) before
+// they get here, so there's no proximity-force-mount path.
 let _forcedPoiTypes = new Set();
 
 function _forcePoiType(type) {
@@ -8786,7 +8645,6 @@ function highlightPoiSet(pois, label) {
         // shares it; mixed labels keep the generic "#".
         markerLabel: sharedTrailMarkerLabel(pois),
         stats: "",
-        note: "",
     });
 }
 
@@ -8895,13 +8753,12 @@ function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, note, line, glyph, poiType, markerLabel }) {
+function showHighlightChip({ label, color, stats, line, glyph, poiType, markerLabel }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
     const labelEl = chip.querySelector(".highlight-chip-label");
     const statsEl = chip.querySelector(".highlight-chip-stats");
-    const noteEl = chip.querySelector(".highlight-chip-note");
     // Swatch: rebuilt on every call. `line` (optional) is a
     // routeSwatchModel-shaped object ({color, dashed, dashCap,
     // dashColors}); when present the chip renders the same line
@@ -8916,8 +8773,8 @@ function showHighlightChip({ label, color, stats, note, line, glyph, poiType, ma
         if (line) {
             next = routeSwatchEl(line, "highlight-chip-swatch is-line");
         } else if (glyph) {
-            // A rating highlight, or a trail on a difficulty map: the
-            // rating's glyph, a data URL from difficultyIconDataUrl.
+            // A rating highlight: the rating's glyph, a data URL from
+            // difficultyIconDataUrl.
             next = document.createElement("img");
             next.className = "highlight-chip-swatch is-glyph";
             next.src = glyph;
@@ -8953,18 +8810,6 @@ function showHighlightChip({ label, color, stats, note, line, glyph, poiType, ma
             statsEl.classList.add("hidden");
         }
     }
-    // note is an optional second-line message under the label.
-    // Currently unused; kept in the API as a hook for future
-    // highlight types that might want a second-line annotation.
-    if (noteEl) {
-        if (note) {
-            noteEl.textContent = note;
-            noteEl.classList.remove("hidden");
-        } else {
-            noteEl.textContent = "";
-            noteEl.classList.add("hidden");
-        }
-    }
     chip.classList.remove("hidden");
 }
 
@@ -8981,10 +8826,9 @@ function hideHighlightChip() {
 // rows), browse ("what are my options?", same rows, tap to
 // highlight), search ("take me to X", the Search row pinned at the
 // card's bottom opens the search overlay, which is this panel's
-// expanded state, not a separate destination; it absorbed the old
-// Search FAB). A key row pairs a route's color with its name
-// (+ stats); previously that mapping was only discoverable by
-// tapping a route on the map.
+// expanded state, not a separate destination). A key row pairs a
+// route's color with its name (+ stats), a mapping a rider would
+// otherwise learn only by tapping a route on the map.
 //
 // The panel is always present, it's the map's key. Only two forms
 // exist, resolved by rebuildRoutePanel + initRoutePanel:
@@ -9062,7 +8906,7 @@ function rebuildRoutePanel() {
     wrap.classList.remove("hidden");
 
     // Rows of the map's default color mode come first and the
-    // exceptions after them (Steve, 2026-09-30), so a difficulty map
+    // exceptions after them, so a difficulty map
     // with a few route-mode relations still reads as a difficulty key.
     // Unrated closes the list either way, where a curator reads it as
     // the data still to tag.
@@ -9732,7 +9576,7 @@ function poiMarkerAriaLabel(poiType, props) {
     return name ? `${type}: ${name}` : type;
 }
 
-function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
+function createPoiMarkers({ poiType, className, labelFn, contentFn,
                             popupHtmlFn, popupMaxWidth, popupClass,
                             addToMap, targetArray }) {
     const features = poisData.features.filter((f) => f.properties.poi_type === poiType);
@@ -9742,7 +9586,6 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 
         const el = document.createElement("div");
         el.className = className;
-        if (markerStyle) el.style.cssText = markerStyle;
         if (contentFn) {
             contentFn(el, props);
         } else {
@@ -9757,14 +9600,11 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
         const marker = new maplibregl.Marker({ element: el }).setLngLat(coords);
 
         if (popupHtmlFn) {
-            // focusAfterOpen: false, MapLibre's default is to move
-            // keyboard focus into the first focusable element of the
-            // popup ("Get Directions" link), which renders the
-            // browser's native focus ring around it. We're a tap-
-            // driven trail map, not a keyboard-navigated form, so the
-            // ring is just visual noise. Skipping the auto-focus
-            // leaves keyboard focus where the user left it (typically
-            // on the marker element itself, or nowhere on touch).
+            // focusAfterOpen: false. MapLibre's default moves focus into
+            // the popup's first focusable element ("Get Directions"),
+            // which on a tap paints a focus ring nobody asked for. Off,
+            // focus stays where the rider left it: on the marker for a
+            // keyboard user, nowhere on touch.
             const popup = new maplibregl.Popup({
                 offset: 14,
                 maxWidth: popupMaxWidth,
@@ -9793,17 +9633,6 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
     invalidateObstaclesCache();
 }
 
-// Single helper covering the merged trail-marker POI category, OSM
-// guideposts and emergency-access points now render with the same
-// style. Shown/hidden together via the "Markers" toggle.
-// Note on className strings below: each map marker carries TWO
-// classes, the .poi-marker base (shared geometry, drop-shadow,
-// font weight, etc.) plus a per-type modifier (.parking-marker,
-// .toilet-marker, etc.) that sets the color triple and any per-
-// type size overrides. All driven by --poi-marker-* CSS tokens at
-// :root so the Options swatches stay in lockstep with the on-map
-// markers, see "On-map POI markers" block in style.css.
-
 // marker_shape values that pin the chip to a fixed 1:1 footprint, so
 // the label has to fit the chip instead of the chip growing to fit
 // the label. Two characters is what fits legibly in either
@@ -9813,26 +9642,6 @@ function createPoiMarkers({ poiType, className, markerStyle, labelFn, contentFn,
 const MARKER_FIXED_SHAPES = new Set(["circle", "diamond"]);
 const MARKER_FIXED_SHAPE_MAX_CHARS = 2;
 
-// Guideposts that carry neither ref nor name render as an empty chip:
-// OSM holds no value, so the marker shows none. Every glyph
-// considered for the slot claimed something the data doesn't say. "#"
-// (what this used to do) reads as "numbered, number missing"; an
-// arrow reads as a direction; an "i" would be wrong on the emergency-
-// access points merged into this same layer, which carry no
-// discriminator in the GeoJSON anyway (fetch_pois.py). The chip's
-// silhouette and color already say "trail marker", which is the whole
-// of what's known. min-width holds the footprint so a blank chip is
-// the same size as a labeled one, on the map and in the obstacle
-// scan. The Options / finder swatches are NOT the fallback: they
-// stand for the layer, which is numbered posts, so they keep "#".
-// What a search row or highlight chip shows for a set of POI index
-// entries: the trail markers' own chip text when every one of them
-// draws the same chip on the map (truncated per marker_shape exactly
-// like the map, "" for unlabeled posts, which the map draws blank).
-// So "14 (× 3)", three posts all labeled 14, shows "14", while a
-// category row whose members differ returns undefined and keeps the
-// legend-style "#", as do other types. The index stores a missing
-// ref's synthesized "Trail Marker" in `name`, so that doesn't count.
 // A trail marker index entry's full chip text before any shape
 // truncation: ref first, else a real name, else "" (unlabeled; the
 // index's synthesized "Trail Marker" name doesn't count). Search
@@ -9842,6 +9651,14 @@ function trailMarkerIdentity(p) {
     return p.ref || (p.synthesized ? "" : p.name);
 }
 
+// What a search row or highlight chip shows for a set of POI index
+// entries: the trail markers' own chip text when every one of them
+// draws the same chip on the map (truncated per marker_shape exactly
+// like the map, "" for unlabeled posts, which the map draws blank).
+// So "14 (× 3)", three posts all labeled 14, shows "14", while a
+// category row whose members differ returns undefined and keeps the
+// legend-style "#", as do other types. The index stores a missing
+// ref's synthesized "Trail Marker" in `name`, so that doesn't count.
 function sharedTrailMarkerLabel(pois) {
     if (!pois || !pois.length) return undefined;
     const labels = new Set();
@@ -9858,6 +9675,18 @@ function trailMarkerSwatchLabel(p) {
     return sharedTrailMarkerLabel(p.isGroup ? p.members : [p]);
 }
 
+// Guideposts that carry neither ref nor name render as an empty chip:
+// OSM holds no value, so the marker shows none. Every glyph
+// considered for the slot claimed something the data doesn't say. "#"
+// reads as "numbered, number missing"; an arrow reads as a direction;
+// an "i" would be wrong on the emergency-access points merged into
+// this same layer, which carry no discriminator in the GeoJSON anyway
+// (fetch_pois.py). The chip's silhouette and color already say "trail
+// marker", which is the whole of what's known. min-width holds the
+// footprint so a blank chip is the same size as a labeled one, on the
+// map and in the obstacle scan. The Options / finder swatches are NOT
+// the fallback: they stand for the layer, which is numbered posts, so
+// they keep "#".
 function trailMarkerLabel(props) {
     const label = props.ref || props.name || "";
     return MARKER_FIXED_SHAPES.has(CONFIG.markerShape)
@@ -9865,13 +9694,6 @@ function trailMarkerLabel(props) {
         : label;
 }
 
-// marker_shape: diamond - a square rotated 45 degrees with sharp
-// mitered points. Drawn as an SVG polygon rather than a CSS-rotated
-// chip because the chip element IS the MapLibre marker, and MapLibre
-// owns that element's `transform` for pixel positioning: a rotate()
-// there is either overwritten by MapLibre's inline transform or
-// breaks the anchor math. SVG `stroke` also follows the silhouette
-// where CSS `border` would not, the same reasoning as HUB_SVG below.
 // Search-highlight outline for the SVG markers (diamond, hexagon): a
 // halo stroke and a yellow stroke along the marker's own silhouette,
 // drawn before the shape so its fill and white border stay on top.
@@ -9884,6 +9706,13 @@ function poiRingPolygons(points) {
         + `<polygon class="poi-ring" points="${points}"/>`;
 }
 
+// marker_shape: diamond - a square rotated 45 degrees with sharp
+// mitered points. Drawn as an SVG polygon rather than a CSS-rotated
+// chip because the chip element IS the MapLibre marker, and MapLibre
+// owns that element's `transform` for pixel positioning: a rotate()
+// there is either overwritten by MapLibre's inline transform or
+// breaks the anchor math. SVG `stroke` also follows the silhouette
+// where CSS `border` would not, the same reasoning as HUB_SVG below.
 function trailMarkerDiamondSvg(label) {
     // Same baseline math as HUB_SVG: SVG <text> y is the BASELINE, so
     // centering a capital's optical center on the shape's center
@@ -9917,6 +9746,15 @@ function applyDiamondMarkerSwatches() {
     }
 }
 
+// One helper covers the merged trail-marker category: OSM guideposts
+// and emergency-access points render with the same style and are
+// shown/hidden together via the "Markers" toggle. Each map marker
+// carries TWO classes, the .poi-marker base (shared geometry,
+// drop-shadow, font weight, etc.) plus a per-type modifier
+// (.parking-marker, .toilet-marker, etc.) that sets the color triple
+// and any per-type size overrides. All driven by --poi-marker-* CSS
+// tokens at :root so the Options swatches stay in lockstep with the
+// on-map markers, see "On-map POI markers" block in style.css.
 function addTrailMarkers(addToMap) {
     const diamond = CONFIG.markerShape === "diamond";
     if (diamond) applyDiamondMarkerSwatches();
@@ -10011,7 +9849,6 @@ function addHubMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.HUB,
         className: "hub-marker",
-        markerStyle: null,
         contentFn: (el, props) => {
             const chip = document.createElement("span");
             chip.className = "hub-marker-icon";
@@ -10150,7 +9987,6 @@ function addFeatureMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.FEATURE,
         className: "feature-marker",
-        markerStyle: null,
         contentFn: (el, props) => {
             const icon = document.createElement("div");
             icon.className = "feature-marker-icon";
@@ -10274,12 +10110,9 @@ function setupFabLabels() {
         }
         document.body.classList.remove("fabs-labeled");
         LS.set(FLAG_KEY, true);
-        // Remove the label spans after the slide-out animation
-        // completes so they're not in the DOM forever (small but
-        // hygienic, keeps query selectors lean and avoids dangling
-        // .fab-label elements showing up if CSS is restyled later).
-        // Match the CSS transition duration; reduced-motion users
-        // get an instant detach.
+        // Detach the label spans once the slide-out (the CSS
+        // transition duration) finishes; reduced motion detaches at
+        // once.
         const reduce = window.matchMedia(
             "(prefers-reduced-motion: reduce)").matches;
         const ms = reduce ? 0 : 240;
@@ -10390,30 +10223,21 @@ function setupFloatingChrome() {
 
     // ----- Reset View FAB (top-right stack, between Locate + Options)
     //
-    // Always restores the framework's canonical view (fitBounds
-    // CONFIG.bbox + 50 px padding), regardless of how the rider
-    // arrived. See _initialViewTarget declaration for the rationale
-    // on why this isn't context-aware. Highlight state is
-    // intentionally NOT touched, the rider clears highlights via
-    // the chip's X. flyTo for an animated restore (300 ms feels like
+    // Always restores the canonical view (see HOME_VIEW_PADDING).
+    // Highlight state is intentionally NOT touched, the rider clears
+    // highlights via the chip's X. Animated over 300 ms: it reads as
     // "reset" without losing context; longer would feel sluggish for
-    // what's effectively an undo).
+    // what's effectively an undo.
     const resetBtn = document.getElementById("toggle-reset-view");
     if (resetBtn && map) {
         resetBtn.addEventListener("click", () => {
-            if (!_initialViewTarget) return;
-            // _initialViewTarget.kind is always "bounds" today (the
-            // framework canonical view). The kind discriminator is
-            // kept on the snapshot so a future change can re-introduce
-            // context-aware reset (e.g. per-feature) without
-            // restructuring the click handler.
             map.fitBounds(
                 [
-                    [_initialViewTarget.bbox[0], _initialViewTarget.bbox[1]],
-                    [_initialViewTarget.bbox[2], _initialViewTarget.bbox[3]],
+                    [CONFIG.bbox[0], CONFIG.bbox[1]],
+                    [CONFIG.bbox[2], CONFIG.bbox[3]],
                 ],
                 {
-                    padding: _initialViewTarget.padding,
+                    padding: HOME_VIEW_PADDING,
                     bearing: 0,
                     pitch: 0,
                     duration: 300,
@@ -10962,19 +10786,6 @@ function setupFloatingChrome() {
         emergencyOn = false;
     }
 
-    // ----- POI swatches ---------------------------------------------
-    // All swatch colors flow from YAML via CSS custom properties on
-    // :root (see setPoiColorVars near the top of this file). The
-    // matching CSS rules in style.css consume --marker-color /
-    // --marker-text-color / --marker-border-color (and the parking /
-    // trailhead equivalents). No JS-driven inline-style overrides
-    // here, that was a legacy path that beat CSS-var specificity
-    // and caused the Features chip "purple fill" bug earlier.
-    //
-    // The feature-swatch wrapper is intentionally transparent, the
-    // on-map marker appearance (colored dot + ring + drop shadow)
-    // is rendered by .feature-swatch::before whose fill lives in CSS.
-
     // ----- POI toggle rows (switches) -------------------------------
     //
     // The wirePeekToggle helper reads persisted state, paints the
@@ -10993,20 +10804,18 @@ function setupFloatingChrome() {
         // and any persisted LS state is ignored (write-through
         // suppressed too, we don't touch LS so a future config change
         // that drops the force still restores the rider's last
-        // preference). layerName is optional so existing call sites
-        // that haven't opted in yet keep working unchanged.
+        // preference).
         //
         // This MUST run before the hidden-row guard below. By the time
         // setupFloatingChrome() wires the toggles, loadPOIs() →
         // updatePoiToggleVisibility() has already hidden every forced
         // proximity row, and toilets/drinking-water/bicycle-repair
-        // also start hidden
-        // in the template, so the guard would otherwise short-circuit
+        // also start hidden in the template, so the guard would otherwise short-circuit
         // the force-on and the layer would silently never render.
         // The row state must be set first because the proximity-gated
         // POI layers render via updateMarkerProximity() → isOn(), which
         // reads exactly that attribute (not isForcedVisible).
-        if (layerName && isForcedVisible(layerName)) {
+        if (isForcedVisible(layerName)) {
             setRowToggleState(row, true);
             row.classList.add("hidden");
             onChange(true);
@@ -11102,7 +10911,6 @@ function setupFloatingChrome() {
         syncTabStops();
     }
 
-    // Trail markers, merged guideposts + emergency access points.
     // POI toggle handlers, each mutates marker visibility and then
     // rebuilds the finder so the search list stays in sync (WYSIWYG:
     // toggling a type off removes its rows from search, on adds them
@@ -11112,6 +10920,8 @@ function setupFloatingChrome() {
     // arrow/diamond placement). Off-branches sweep synchronously
     // (cheap marker removals) and recompute decorations explicitly
     // because they bypass proximity entirely.
+    //
+    // Trail markers, merged guideposts + emergency access points.
     wirePeekToggle("toggle-markers", "mtb.poi.markers",
             isDefaultVisible("trail_markers"), (on) => {
         if (on) {
@@ -11230,7 +11040,7 @@ function setupFloatingChrome() {
         // before wiring; wirePeekToggle reads the LS state again
         // and applies it via the onChange callback only on user
         // interaction, not on mount.
-        const initial = LS.get("mtb.difficulty", isDefaultVisible("difficulty"));
+        const initial = difficultyToggleOn();
         if (map.getLayer("decor-diamond")) {
             map.setLayoutProperty("decor-diamond", "visibility",
                 initial ? "visible" : "none");
@@ -11360,10 +11170,7 @@ function setupFloatingChrome() {
 
     // ----- Show Trails gating -----
     //
-    // Drop the Trails Labels option when trails are hidden. Routes are
-    // always present (a geometry source is required), so the Finder
-    // section and the Routes label option always stay, no "both off"
-    // case remains.
+    // show_trails: false drops the Trails Labels option (below).
     const showTrails = CONFIG.showTrails !== false;
 
     // ----- Map options: labels + basemap -----
@@ -11385,8 +11192,7 @@ function setupFloatingChrome() {
     } else if (labelGroup) {
         // Drop the Trails button when trails are hidden, or on an event
         // map whose featured routes are all inline (no way names to
-        // show). Routes always show on a routes map, so the Routes and
-        // None buttons remain there, the row never collapses to None-only.
+        // show).
         if (!showTrails || !eventTrailLabelsAvailable()) {
             const btn = labelGroup.querySelector('[data-value="trails"]');
             if (btn) btn.remove();
@@ -11480,7 +11286,7 @@ function setupFloatingChrome() {
     // ----- Finder -----
     setupFinder();
 
-    // ----- Share button (B.3) -----
+    // ----- Share button -----
     setupShareButton();
 
     // ----- Highlight chip -----
@@ -11937,18 +11743,11 @@ function groupPoisForFinder(matchedPois, query) {
             // visual duplication. Just push the lone group, its
             // "(× N)" count makes the aggregate nature clear.
             out.push(namedGroups[0]);
-        } else if (members.length === 1) {
-            // Single POI of this type, period. No group needed,
-            // just show the row as itself. (Edge case: same as
-            // namedGroups.length === 1 above, but worth keeping
-            // explicit for readability.)
-            out.push(members[0]);
         } else {
             // 2+ name-groups for this type. Push a category-level
             // "(× N)" row first, then the individual name-grouped
             // rows below it. The category row's count reads as
-            // "all of them" to the rider; no need for a separate
-            // "(All)" decoration.
+            // "all of them" to the rider.
             const baseName = POI_TYPE_FALLBACK_NAME[type] || type;
             out.push({
                 isGroup: true,
@@ -12022,9 +11821,9 @@ function routeStatsText(r) {
 // here: the pattern is centered on a dash or on a gap, whichever
 // shows at least two marks with the least cut off at the edges. A
 // cycle longer than the swatch, [4, 1] say, shows as a bar with one
-// notch, which is what the map shows of it at that zoom, and the
-// earlier design that squeezed every pattern into three evenly
-// spaced marks was what made the key disagree with the map.
+// notch, which is what the map shows of it at that zoom; squeezing
+// every pattern into evenly spaced marks would make the key disagree
+// with the map.
 //
 // The SVG shares the solid bar's exact 18×4 footprint, so list rows
 // keep their labels left-justified whether a route is dashed or not.
@@ -12279,9 +12078,8 @@ function makePoiRow(p) {
 
     // Meta line: type label, plus a count badge for groups so the
     // rider sees "toilets (× 5)" instead of just "toilets", makes
-    // it obvious the row represents multiple POIs. The earlier
-    // "(All)" decoration on category-aggregate rows is gone, the
-    // "(× N)" count IS the aggregate signal.
+    // it obvious the row represents multiple POIs; the "(× N)" count
+    // IS the aggregate signal.
     const meta = document.createElement("span");
     meta.className = "finder-row-meta";
     const typeLabel = POI_TYPE_META_LABEL[p.type] || p.type;
@@ -12429,19 +12227,14 @@ function setupInteractions() {
     //     without making popups feel imprecise.
     //
     // Detection: hover/pointer media queries split mouse from touch;
-    // UA + maxTouchPoints distinguishes iOS from Android within touch
-    // (Safari on iPad spoofs MacIntel platform string post-iPadOS 13,
-    // hence the maxTouchPoints fallback). Computed once at boot.
+    // isIOSDevice() distinguishes iOS from Android within touch.
+    // Computed once at boot.
     const TRAIL_TAP_BUFFER_PX = (function () {
         try {
             const isTouch = window.matchMedia(
                 "(hover: none) and (pointer: coarse)").matches;
             if (!isTouch) return 4;  // desktop mouse / trackpad
-            const ua = navigator.userAgent || "";
-            const isIOS = /iP(ad|hone|od)/.test(ua)
-                || (navigator.platform === "MacIntel"
-                    && (navigator.maxTouchPoints || 0) > 1);
-            return isIOS ? 12 : 6;
+            return isIOSDevice() ? 12 : 6;
         } catch (_) {
             // matchMedia missing or threw - fall back to a middle
             // ground that won't feel broken on any platform.
@@ -12580,10 +12373,7 @@ function trailPopupHtml(laneHit, scope = "section") {
         // the number can't disagree about a truncated trail).
         const distanceText = trailStatsText(trailEntry(trailName), { bare: true });
         if (distanceText) {
-            // Same quiet inline-style pattern as popup-difficulty
-            // below (see the comment there: markup-in-JS on purpose,
-            // so the popup never renders half-styled against a
-            // stale service-worker-cached stylesheet).
+            // Inline style: see the popup rows comment above.
             const lengthLabel = isTruncatedTrail(trailName) ? "Length shown:" : "Length:";
             html += `<div class="popup-distance" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
         }
@@ -12707,14 +12497,11 @@ function promoteBasemapLabels() {
     // The labels go just under the routes: above every basemap fill
     // and line, and under the lanes. The lane layer is a custom
     // layer, absent from getStyle, so it is asked for by id. Before it
-    // exists (first load, promoted before the lanes are ordered) the
-    // anchor is dim-tint, and the lane layer then inserts itself just
-    // before dim-tint, above the labels, so both paths end the same
-    // way. Anchoring on dim-tint AFTER the lane layer existed used to
-    // put the labels over the lanes following any basemap rebuild.
-    // The hillshade is no anchor any more: it sits under the water now
-    // (terrainBeforeLayer), and anchoring on it buried every label
-    // under the water and road fills.
+    // exists (first load) the anchor is where the lanes will insert
+    // (laneLayerAnchor), so the lanes land above the labels and both
+    // paths end the same way. The hillshade is no anchor: it sits
+    // under the water (terrainBeforeLayer), and anchoring on it would
+    // bury every label under the water and road fills.
     const beforeId = map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : laneLayerAnchor();
 
     for (const id of basemapSymbolIds) {
@@ -12724,17 +12511,13 @@ function promoteBasemapLabels() {
     // shields, contour labels and the restricted-path marks, so they
     // recede with the basemap they belong to: a highlight is the
     // plugin's lift inside the lane layer, and the plugin dims the other
-    // lanes itself; a wash over the lanes would dim the lift too. (The
-    // lift work of 2026-09-30 first put the wash under the first symbol
-    // layer, which left every basemap label at full strength over the
-    // dimmed map.) The tap glow sits between the wash and the lanes,
-    // a lift above the wash as it should be. Re-established after every
-    // basemap rebuild, since the setStyle diff can reorder the wash.
-    // The labels just landed between the tap lift and the lanes (or,
-    // after a basemap rebuild, the setStyle diff may have shuffled the
-    // lift); keep it directly beneath the lanes, labels under it, and
-    // only THEN the wash under the lift: placing the wash first left it
-    // under the labels once the lift moved up past them.
+    // lanes itself; a wash over the lanes would dim the lift too. The
+    // tap glow sits between the wash and the lanes, a lift above the
+    // wash. Order matters: the glow goes directly beneath the lanes
+    // first, and only THEN the wash under it, since a wash placed first
+    // ends up under the labels once the glow moves up past them.
+    // Re-established after every basemap rebuild, since the setStyle
+    // diff can reorder the stack.
     moveTapLiftUnderLanes();
     placeWashUnderLift(basemapSymbolIds);
     placeClipArrowsAboveLanes();
@@ -12844,11 +12627,8 @@ function applyBasemapDrawnPathFilter() {
     for (const id of BASEMAP_GENERATED_LINE_LAYERS) set(id, legacy);
     // Labels follow their line: a hidden stretch loses its name, and
     // every path or service road the map does not draw over keeps
-    // its label. That is the whole rule (Steve, 2026-09-27); the old
-    // suppress_basemap_path_labels key, which silenced every path
-    // label on the map, is retired. One exception since the minor
-    // streets joined the generated set (Steve, 2026-09-29): a street
-    // keeps its name under the route that hides its line. A rider on
+    // its label. One exception: a street keeps its name under the
+    // route that hides its line. A rider on
     // a street route navigates by the street name, and a symbol layer
     // places the name along its own geometry whether or not any line
     // layer draws it, so the label survives while the line goes.
@@ -12998,7 +12778,7 @@ function rebuildBasemapLayers() {
 }
 
 // ============================================================
-// PWA updates: silent swap near page load, toast mid-session (B.7)
+// PWA updates: silent swap near page load, toast mid-session
 // ============================================================
 //
 // Two update experiences, chosen by WHEN the new version is found:
@@ -13486,48 +13266,36 @@ function stopOfflineStatusPolling() {
 }
 
 // ============================================================
-// PWA Install, promoted out of About into a dedicated Options row.
-// Per-map opt-out via CONFIG.pwaInstallPrompt (default true). Two modes:
+// PWA Install row in the Options overlay. Gated on CONFIG.pwa (a build
+// without PWA support has nothing to install) and on
+// CONFIG.pwaInstallPrompt (default true).
 //
-//   pwaInstallPrompt: true (default), show-both strategy: register
-//     beforeinstallprompt without preventDefault so Chrome's native
-//     mini-infobar still appears, AND show our custom Install row in
-//     the Options overlay as a persistent surface for second-visit
-//     installs. The flow is described in the second mode block below.
+// pwaInstallPrompt: false registers no beforeinstallprompt handler at
+// all: a handler that never calls prompt() earns a Chrome console
+// warning ("Banner not shown: beforeinstallpromptevent.preventDefault()
+// called..."), and Chrome's own mini-infobar, omnibox icon and three-dot
+// "Install app" keep working without us. For personal/family maps where
+// install promotion would be unwanted.
 //
-//   pwaInstallPrompt: false (per-map opt-out), DO NOT register
-//     beforeinstallprompt at all. This silences the Chrome console
-//     warning ("Banner not shown: beforeinstallpromptevent.preventDefault()
-//     called...") that fires when a handler is registered but never
-//     calls prompt(). Chrome still shows its native mini-infobar /
-//     omnibox install icon on its own (browser behavior, not ours),
-//     and Chrome's three-dot menu still has "Install app". Our custom
-//     Install button is hidden everywhere, this is the "no install
-//     promotion on this map" mode (use for personal/family maps where
-//     install nagging would be unwanted).
-//
-//   pwaInstallPrompt: true, show-when-armed strategy:
-//     * Register beforeinstallprompt without preventDefault so
-//       Chrome's native mini-infobar still appears, AND stash the
-//       event so the button click can call prompt() on it.
-//     * The Install button is hidden until beforeinstallprompt
-//       fires; once fired, it's revealed and clicking it opens
-//       Chrome's native install dialog. Click ALWAYS works because
-//       the button only exists when there's an armed prompt to
-//       call. No fallback-hint surprise.
-//     * Riders on a low-engagement first visit don't see the
-//       button until they've poked around enough for Chrome's
-//       heuristic to decide the page is "real PWA worthy"
-//       (~30 s of interaction). Chrome's three-dot menu has a
-//       browser-provided "Install app" option as the always-
-//       available alternative.
-//     * iOS Safari (no beforeinstallprompt) gets the static
-//       Add-to-Home-Screen instructions hint instead of a button.
-//     * On 'appinstalled' (any UI triggered it), hide the row in
-//       this tab for immediate feedback.
-//
-// CONFIG.pwa still gates the entire block, maps without PWA support
-// at build time skip all of this.
+// Otherwise, show-when-armed:
+//   * Register beforeinstallprompt without preventDefault so
+//     Chrome's native mini-infobar still appears, AND stash the
+//     event so the button click can call prompt() on it.
+//   * The Install button is hidden until beforeinstallprompt
+//     fires; once fired, it's revealed and clicking it opens
+//     Chrome's native install dialog. Click ALWAYS works because
+//     the button only exists when there's an armed prompt to
+//     call. No fallback-hint surprise.
+//   * Riders on a low-engagement first visit don't see the
+//     button until they've poked around enough for Chrome's
+//     heuristic to decide the page is "real PWA worthy"
+//     (~30 s of interaction). Chrome's three-dot menu has a
+//     browser-provided "Install app" option as the always-
+//     available alternative.
+//   * iOS Safari (no beforeinstallprompt) gets the static
+//     Add-to-Home-Screen instructions hint instead of a button.
+//   * On 'appinstalled' (any UI triggered it), hide the row in
+//     this tab for immediate feedback.
 // ============================================================
 if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     let deferredInstallPrompt = null;
@@ -13543,20 +13311,8 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
     //                Uninstall is handled automatically: Chrome
     //                re-fires beforeinstallprompt on the rider's
     //                next visit after they remove the app.
-    //
-    // The button is intentionally tied 1:1 to a working native
-    // prompt: the click ALWAYS calls Chrome's install dialog. No
-    // "armed-but-might-not-work" state, no fallback-text branch.
-    // If Chrome's engagement heuristic hasn't tripped yet, the
-    // button is hidden, riders can fall back to Chrome's three-
-    // dot menu (browser-provided, always available for installable
-    // apps).
-    //
-    // iOS Safari lacks beforeinstallprompt entirely; we show the
-    // manual Add-to-Home-Screen hint instead, which is just static
-    // text (no programmatic install API on iOS).
     const standalone = window.matchMedia("(display-mode: standalone)").matches;
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isIOS = isIOSDevice();
 
     function revealInstallSection(showButton) {
         const btn = document.getElementById("install-btn");
@@ -13655,25 +13411,13 @@ if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
 }
 
 // ============================================================
-// Off-screen location indicator
-// ============================================================
-// Distance helper that takes [lng, lat] tuples instead of four scalars
-// the off-screen indicator code naturally has lngLat objects/arrays
-// from MapLibre. Delegates to the canonical haversineMeters defined
-// near the decoration system (Earth radius 6378137, WGS-84 equatorial).
-function haversineDistance(lngLat1, lngLat2) {
-    return haversineMeters(lngLat1[0], lngLat1[1],
-                           lngLat2[0], lngLat2[1]);
-}
-
-// ============================================================
 // Map scale (under the brand, only while the rider moves the map)
 // ============================================================
 // Every screen corner is taken on a phone, so the scale takes no space
 // at rest: it fades in when the rider zooms or pans and fades out 2 s
-// after the map settles. Steve, Style Lab round 14; always on, bottom
-// center and bottom left were the other candidates, and bottom center
-// sits behind the expanded routes card on a phone. Only gestures show
+// after the map settles. Always on, bottom center and bottom left were
+// the other candidates, and bottom center sits behind the expanded
+// routes card on a phone. Only gestures show
 // it: programmatic moves carry no originalEvent, so Locate's follow
 // recenters and route fly-tos don't flash it mid-ride.
 const MAP_SCALE_MAX_PX = 90;
@@ -13847,6 +13591,9 @@ function formatElevationPair(gainM, lossM) {
     return `${parts.join(" / ")} ${unit}`;
 }
 
+// ============================================================
+// Off-screen location indicator
+// ============================================================
 // Wire the off-screen indicator's click. Called once from init() after
 // the GeolocateControl is set up; the indicator element itself is
 // pre-rendered in index.html so we can attach the listener at boot
@@ -14044,7 +13791,7 @@ function updateLocationIndicator() {
     if (sinA > eps)  tEdge = Math.min(tEdge, (h - cy) / sinA);
     if (sinA < -eps) tEdge = Math.min(tEdge, (0 - cy) / sinA);
     const edge = map.unproject([cx + cosA * tEdge, cy + sinA * tEdge]);
-    const dist = haversineDistance([edge.lng, edge.lat], userLocation);
+    const dist = haversineMeters(edge.lng, edge.lat, userLocation[0], userLocation[1]);
 
     // Per-frame writes only: the arrow SVG and distance pill are
     // static markup in index.html (see the comment there for the
@@ -14296,4 +14043,4 @@ function dismissToast() {
 // ============================================================
 // Start
 // ============================================================
-init();
+init().catch(showMapUnavailable);
