@@ -76,6 +76,12 @@ def error(msg):
     print(f"  error: {msg}")
 
 
+def raw(line):
+    """A preformatted line that carries its own prefix (the validator's
+    report). Always shown, like warn and error."""
+    print(line)
+
+
 def blank():
     """A blank separator line (suppressed when quiet)."""
     if _verbosity >= NORMAL:

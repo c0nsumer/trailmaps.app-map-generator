@@ -107,8 +107,6 @@ changed bbox re-extracts tiles.
   never need it: `parking:`, `trailheads:`, `event_mode.pois`,
   and the related color overrides flow through `fetch_pois.py` on
   every build automatically.
-- `--force` and `--trails` are deprecated spellings of `--refresh`
-  and `--refresh-trails`. They still work but print a note.
 - `--no-terrain` and `--no-basemap` skip the corresponding tile
   extraction steps. Useful for faster rebuilds when only templates or
   config options have changed.

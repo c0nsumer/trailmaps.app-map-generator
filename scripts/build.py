@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import UTC, datetime
 
@@ -28,7 +29,6 @@ if sys.version_info < (3, 11):  # noqa: UP036 - runtime gate FOR older Pythons
     )
 
 import requests
-import yaml
 
 # Add scripts directory to path for imports
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,13 +48,14 @@ from cache_signatures import (
     _trails_needs_refetch,
 )
 from colors import resolve_accent_palette
+from config_io import read_config_yaml
 from enrichment import _enrich_trails_geojson
 from event_mode import (
     _apply_event_mode_to_custom_routes,
     _apply_event_mode_to_feature_oneway,
     _event_mode_background_style,
 )
-from fetch_basemap import fetch_basemap
+from fetch_basemap import EXTRACT_PAD_DEG, fetch_basemap
 from fetch_pois import POI_SHOW_FLAGS, fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
@@ -247,8 +248,11 @@ def _minify_assets(output_dir, targets=None):
 
     Errors are logged but don't abort the build - the unminified file
     stays in place, so the deploy still ships a working (just larger)
-    artifact.
+    artifact. With Node on PATH, minified JavaScript must also pass
+    ``node --check``; a minifier bug that breaks the syntax would
+    otherwise kill the app at boot on every device.
     """
+    node = shutil.which("node")
     for fname, lib in targets if targets is not None else MINIFY_TARGETS:
         path = os.path.join(output_dir, fname)
         if not os.path.exists(path):
@@ -270,6 +274,11 @@ def _minify_assets(output_dir, targets=None):
                 minified = rcssmin.cssmin(src)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(minified)
+            if node and lib == "rjsmin" and not _node_check(node, path):
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(src)
+                console.warn(f"minified {fname} failed node --check - shipped unminified")
+                continue
             after = os.path.getsize(path)
             pct = (1 - after / before) * 100 if before else 0
             console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
@@ -280,8 +289,20 @@ def _minify_assets(output_dir, targets=None):
                 f"{missing} not installed - {fname} left unminified. "
                 f"Run: .venv/bin/pip install {missing}"
             )
-        except (OSError, UnicodeDecodeError) as e:
+        except Exception as e:
+            # Any minifier failure, including a bug inside rjsmin, costs
+            # only size. The file is rewritten in one call after the
+            # minifier returns, so a failure leaves the original bytes.
             console.warn(f"failed to minify {fname} ({e}) - left unminified")
+
+
+def _node_check(node, path):
+    """True when ``node --check`` parses the file, or Node cannot run."""
+    try:
+        proc = subprocess.run([node, "--check", path], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return proc.returncode == 0
 
 
 _SOURCE_MAP_COMMENT = re.compile(rb"\s*//[#@] ?sourceMappingURL=\S+\s*\Z")
@@ -313,16 +334,14 @@ def _copy_vendor_script(src, dst):
     shutil.copystat(src, dst)
 
 
-def download_vendor_libs(output_dir, cache_dir, config=None):
+def download_vendor_libs(output_dir, cache_dir):
     """Download CDN dependencies to vendor/ for offline use.
 
     Downloads are cached in cache/vendor/ so subsequent builds skip the
-    fetch. The cache filename embeds a hash of the source URL - the
-    version lives only in the URL, so a bare-filename cache key meant a
-    VENDOR_LIBS version bump silently kept shipping the previously
-    cached library to every map until someone happened to --force.
-    Bumping a version now misses the cache naturally, and the stale
-    variant is cleaned up after the new one downloads.
+    fetch. The cache filename embeds a hash of the source URL, because
+    the version lives only in the URL: bumping a version misses the
+    cache naturally. Any cache entry that is not a current VENDOR_LIBS
+    entry is removed, so a bumped or dropped library does not linger.
     """
     vendor_cache = os.path.join(cache_dir, "vendor")
     vendor_dst = os.path.join(output_dir, "vendor")
@@ -330,8 +349,10 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
     os.makedirs(vendor_dst, exist_ok=True)
 
     downloaded = 0
+    cache_names = set()
     for filename, url in VENDOR_LIBS.items():
         url_tag = hashlib.sha256(url.encode()).hexdigest()[:8]
+        cache_names.add(f"{filename}.{url_tag}")
         cached = os.path.join(vendor_cache, f"{filename}.{url_tag}")
         dst = os.path.join(vendor_dst, filename)
 
@@ -342,17 +363,14 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
             with open(cached, "wb") as f:
                 f.write(resp.content)
             downloaded += 1
-            # Drop cache entries for other versions of this lib (and the
-            # legacy un-tagged filename from before the URL-keyed cache).
-            for stale in os.listdir(vendor_cache):
-                if (
-                    stale.startswith(filename)
-                    and stale != f"{filename}.{url_tag}"
-                    and (stale == filename or stale[len(filename)] == ".")
-                ):
-                    os.remove(os.path.join(vendor_cache, stale))
 
         _copy_vendor_script(cached, dst)
+
+    for name in os.listdir(vendor_cache):
+        path = os.path.join(vendor_cache, name)
+        if name not in cache_names and os.path.isfile(path):
+            os.remove(path)
+            console.info(f"Removed stale vendor cache entry {name}")
 
     bundled = len(VENDOR_LIBS)
 
@@ -364,7 +382,7 @@ def download_vendor_libs(output_dir, cache_dir, config=None):
     expected = set(VENDOR_LIBS)
     for name in os.listdir(vendor_dst):
         base = name
-        for ext in (".br", ".gz", ".zst"):
+        for ext in (".br", ".gz"):
             if base.endswith(ext):
                 base = base[: -len(ext)]
         path = os.path.join(vendor_dst, name)
@@ -436,7 +454,7 @@ def generate_service_worker(config, output_dir):
             # (the original's bytes are already hashed). precompress_assets
             # runs last, but a rebuild over a prior build's output would
             # otherwise see stale sidecars here.
-            if fname.endswith((".gz", ".zst", ".br")):
+            if fname.endswith((".gz", ".br")):
                 continue
             path = os.path.join(root, fname)
             rel = os.path.relpath(path, output_dir)
@@ -598,8 +616,6 @@ def generate_service_worker(config, output_dir):
 # measured ~2.5x smaller than gzip-9 on trails.geojson and 5-10% under
 # zstd-19 everywhere else. Every zstd-capable browser also accepts br,
 # which makes `.zst` dead weight once `.br` exists - swap, don't add.
-# The stale-sidecar sweep below still clears `.zst` so rebuilds over a
-# pre-swap output dir can't leave orphans.
 #
 # Skipped: already-compressed media (png/webp/ico) where gzip only adds
 # bytes, and .pmtiles, which MUST stay uncompressed so HTTP Range slicing
@@ -666,7 +682,7 @@ def precompress_assets(output_dir):
     # Clear prior sidecars for deterministic output.
     for root, _dirs, files in os.walk(output_dir):
         for fname in files:
-            if fname.endswith((".gz", ".zst", ".br")):
+            if fname.endswith((".gz", ".br")):
                 os.remove(os.path.join(root, fname))
 
     count = orig_total = comp_total = 0
@@ -728,8 +744,7 @@ def load_config(config_path):
     ``base_layers[].url``, etc.) stay in their original form - they're
     either repo-relative or external URLs.
     """
-    with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f) or {}
+    config = read_config_yaml(config_path)
 
     config_dir = os.path.dirname(os.path.abspath(config_path))
 
@@ -1155,11 +1170,6 @@ def main(argv=None):
         "Config-defined POIs (parking, trailheads, hubs) are rebuilt on "
         "every build regardless.",
     )
-    # Deprecated spellings, kept because the engine is public and older
-    # scripts may pass them. Hidden from --help; mapped onto the
-    # --refresh flags (with a note) right after parsing.
-    parser.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--trails", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-terrain", action="store_true", help="Skip terrain tile generation")
     parser.add_argument("--no-basemap", action="store_true", help="Skip basemap extraction")
     parser.add_argument(
@@ -1217,13 +1227,6 @@ def main(argv=None):
 
     console.set_verbosity(quiet=args.quiet)
 
-    if args.force:
-        console.note("--force is deprecated; use --refresh")
-        args.refresh = True
-    if args.trails:
-        console.note("--trails is deprecated; use --refresh-trails")
-        args.refresh_trails = True
-
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
 
@@ -1232,11 +1235,11 @@ def main(argv=None):
     # not present yet) print but allow it to continue.
     errors, warnings = validate_config(config, config_path=args.config)
     for line in warnings:
-        print(line)
+        console.raw(line)
     if errors:
         console.step(f"\nConfig validation failed for {args.config}:")
         for line in errors:
-            print(line)
+            console.raw(line)
         sys.exit(1)
 
     # A map that configures neither logo: nor icon: still gets favicons,
@@ -1307,8 +1310,7 @@ def main(argv=None):
     needs_fetch = refresh_trails or not os.path.exists(trails_src_path)
     if not needs_fetch:
         # Base cache exists; refetch only if the config inputs changed or the
-        # base file was modified out from under us (content-guard). A missing
-        # sidecar is a legacy backfill, not a refetch.
+        # base file was modified out from under us (content-guard).
         needs, reason = _trails_needs_refetch(trails_src_path, config)
         if needs:
             auto_refetch_reason = reason
@@ -1357,20 +1359,11 @@ def main(argv=None):
             # between the snapshot copy and the signature save) used to
             # be an unrecoverable crash loop: the content-guard only
             # fires when a sidecar exists, so every rerun died on this
-            # bare json.load until the user knew to pass --trails.
+            # bare json.load until the user knew to pass --refresh-trails.
             # Match the content-guard philosophy: a bad base is never
             # reused - refetch.
             console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
             trails_geojson = _fetch_and_snapshot()
-        else:
-            # Backfill the sidecar for a base written before content-guarding.
-            if _load_signature(trails_src_path) is None:
-                _save_signature(
-                    trails_src_path,
-                    _trails_fetch_fingerprint(config)
-                    + "\ntrails-content="
-                    + (_trails_content_hash(trails_src_path) or ""),
-                )
 
     overpass_trails_paths = cache_manifest.drain()
 
@@ -1396,9 +1389,9 @@ def main(argv=None):
         except ValueError:
             pass  # unrecognized stamp - fall through to the mtime path
     if not config["_data_date"]:
-        # Base predates the metadata stamp (or is a route-only map with
-        # no OSM data): fall back to the old mtime derivation. A
-        # --refresh-trails run stamps the real timestamp permanently.
+        # A route-only map has no OSM data, so its base carries an empty
+        # stamp (fetch_trails._write_empty_trails), as does a response
+        # without an osm3s block: date the data by the base's mtime.
         config["_data_date"] = datetime.fromtimestamp(os.path.getmtime(trails_src_path)).strftime(
             "%Y-%m-%d %H:%M"
         )
@@ -1486,7 +1479,7 @@ def main(argv=None):
     # custom_routes, and compute per-route distance/elevation stats.
     # Idempotent - safe to re-run against a trails.geojson that's
     # already been enriched.
-    enriched = _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir)
+    enriched = _enrich_trails_geojson(config, trails_geojson, cache_dir)
     route_stats_paths = cache_manifest.drain()
 
     # Event-mode arrow restriction: when event_mode.direction_arrows is
@@ -1533,15 +1526,6 @@ def main(argv=None):
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
         console.info(f"Computed bbox from trails: {config['bbox']}")
 
-    # Compute center from bbox if not specified in config
-    if "center" not in config:
-        bbox = config["bbox"]
-        config["center"] = [
-            round((bbox[0] + bbox[2]) / 2, 4),
-            round((bbox[1] + bbox[3]) / 2, 4),
-        ]
-        console.info(f"Computed center from bbox: {config['center']}")
-
     # Compute pan_bbox: the looser envelope that drives maxBounds at
     # runtime and the basemap/terrain PMTiles extraction footprint. The
     # tight `bbox` still frames the initial view; pan_bbox gives the user
@@ -1563,15 +1547,8 @@ def main(argv=None):
     # so config-defined POIs (parking, trailheads, event_mode.pois)
     # take effect on the next build automatically. The OSM portion
     # still hits the Overpass cache internally, so the cost of the
-    # always-on rebuild is sub-second on cached maps.
-    #
-    # The previous behavior gated this on `--force` / `--trails` /
-    # missing pois.geojson, which created an asymmetric trap: editing
-    # parking lots or event_mode.pois in YAML wouldn't show up until
-    # the curator remembered to pass `--trails`. Trails are
-    # re-enriched every build (the unconditional
-    # `_enrich_trails_geojson` pass earlier in main() does that
-    # for custom routes); POIs now follow the same convention.
+    # always-on rebuild is sub-second on cached maps. Trails follow the
+    # same convention: `_enrich_trails_geojson` runs on every build.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
         console.step("POIs: Skipped (all POI layers disabled)")
@@ -1680,8 +1657,9 @@ def main(argv=None):
         extract_path = os.path.join(cache_dir, "basemap", f"{config['slug']}-protomaps.pmtiles")
         os.makedirs(os.path.dirname(extract_path), exist_ok=True)
         # The extract's bounds, padded the way fetch_basemap pads them.
-        paths_bounds = (basemap_bbox[0] - 0.02, basemap_bbox[1] - 0.02,
-                        basemap_bbox[2] + 0.02, basemap_bbox[3] + 0.02)
+        pad = EXTRACT_PAD_DEG
+        paths_bounds = (basemap_bbox[0] - pad, basemap_bbox[1] - pad,
+                        basemap_bbox[2] + pad, basemap_bbox[3] + pad)
         ways_cache = basemap_paths.overpass_cache_path(
             basemap_paths.tile_cover_bounds(paths_bounds), cache_dir)
         # Claimed on every build, not only when the query runs, or the
@@ -1720,7 +1698,7 @@ def main(argv=None):
                     # fetches would otherwise show through under its
                     # new id.
                     basemap_paths.generate(
-                        config, trails_geojson, extract_path, basemap_path, cache_dir,
+                        trails_geojson, extract_path, basemap_path, cache_dir,
                         paths_bounds, tiles_minzoom, basemap_maxzoom,
                         refresh=refresh_paths, osm_file_path=config.get("osm_file"))
                 except basemap_paths.BasemapPathsError as e:
@@ -1845,7 +1823,7 @@ def main(argv=None):
 
     # Step 6: Bundle vendor libraries (CDN deps served locally for offline)
     console.step("Bundling vendor libraries...")
-    download_vendor_libs(output_dir, cache_dir, config)
+    download_vendor_libs(output_dir, cache_dir)
     console.blank()
 
     # Step 7: Generate service worker (MUST be last - needs complete file list)
@@ -1897,7 +1875,7 @@ def main(argv=None):
         # the update check 404, which is the documented signal for the
         # browser to unregister the worker. Sidecars go with it so the
         # rsync tree carries no orphaned encodings.
-        for name in ("sw.js", "sw.js.gz", "sw.js.zst", "sw.js.br"):
+        for name in ("sw.js", "sw.js.gz", "sw.js.br"):
             stale = os.path.join(output_dir, name)
             if os.path.exists(stale):
                 os.remove(stale)

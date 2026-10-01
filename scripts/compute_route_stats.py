@@ -826,13 +826,8 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     ``elevation_loss_m`` (when available) into ``metadata.routes[<id>]``.
     Returns True if anything was attached (caller writes back to disk).
 
-    MUST run on canonical geometry. Until 2026-09 the build expanded
-    shared corridors for the native lane renderer, replacing each host
-    feature with one full-length variant per mode, all carrying the same
-    ``route_id``; computing on that output counted host geometry once
-    per mode (a 4-mode map inflated one route ~4x). Nothing writes such
-    a file any more, but one left in a build directory by an older
-    engine still must not be measured. Guarded below.
+    MUST run on canonical geometry: one feature per route per run of
+    way. Geometry that repeats a route's ways inflates its stats.
     """
     want_distance = bool(config.get("show_distance"))
     # A difficulty-mode relation shows no per-route stats, so the build
@@ -840,16 +835,6 @@ def compute_and_attach(trails_geojson, config, cache_dir):
     # warns about the key when no route-mode relation exists; this is what
     # makes the warning true).
     want_elevation = bool(config.get("show_elevation"))
-
-    for f in trails_geojson.get("features") or []:
-        props = f.get("properties") or {}
-        if props.get("isStub") or props.get("_subwayHostVariant"):
-            raise ValueError(
-                "compute_and_attach called on subway-expanded geometry "
-                "(found isStub/_subwayHostVariant features). Stats must "
-                "be computed on the canonical base or every multi-mode "
-                "host route is counted once per mode."
-            )
 
     metadata = trails_geojson.setdefault("metadata", {})
     routes = metadata.setdefault("routes", {})

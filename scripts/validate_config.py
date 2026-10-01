@@ -60,8 +60,6 @@ KNOWN_KEYS = {
     "bbox": list,
     "pan_bbox": list,
     "pan_padding": (int, float),
-    "center": list,
-    "zoom": (int, float),
     "min_zoom": (int, float),
     "max_zoom": (int, float),
     "basemap_maxzoom": (int, float),
@@ -261,7 +259,7 @@ def match_day_token(token):
 
     Accepts the full token or any unambiguous prefix of length >= 3
     ("mon" → "monday", "even" → "even_days"). Single source of truth
-    for the accept-prefix rule - template_inject._normalise_days
+    for the accept-prefix rule - template_inject._normalize_days
     consumes this too, so the validator and the injector can't drift.
     """
     tl = str(token).strip().lower()
@@ -466,7 +464,7 @@ def _validate_enums(report, config):
 
 
 def _validate_geometry(report, config):
-    """Bbox / center / zoom sanity. Loose ranges so users with edge-case
+    """Bbox / zoom sanity. Loose ranges so users with edge-case
     setups (Antarctica, antimeridian crossings, etc.) aren't blocked."""
     for bbox_key in ("bbox", "pan_bbox"):
         if bbox_key in config and isinstance(config[bbox_key], list):
@@ -539,20 +537,7 @@ def _validate_geometry(report, config):
         if not 0 <= op <= 1:
             report.err("scrim_opacity", f"must be in [0,1], got {op}")
 
-    if "center" in config and isinstance(config["center"], list):
-        c = config["center"]
-        if len(c) != 2:
-            report.err("center", f"must be 2 values [lon,lat], got {len(c)}")
-        elif not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in c):
-            report.err("center", "both values must be numbers")
-        else:
-            lon, lat = c
-            if not -180 <= lon <= 180:
-                report.err("center", f"longitude must be in [-180,180]: {lon}")
-            if not -90 <= lat <= 90:
-                report.err("center", f"latitude must be in [-90,90]: {lat}")
-
-    for k in ("zoom", "min_zoom", "max_zoom", "basemap_maxzoom", "terrain_maxzoom"):
+    for k in ("min_zoom", "max_zoom", "basemap_maxzoom", "terrain_maxzoom"):
         if k in config and isinstance(config[k], (int, float)) and not isinstance(config[k], bool):
             if not 0 <= config[k] <= 22:
                 report.err(k, f"zoom must be in [0,22], got {config[k]}")
@@ -733,7 +718,7 @@ def _validate_relation_id_dicts(report, config):
 
 def _validate_weekdays(report, config):
     """Validate any reverse_days lists. Shares match_day_token() with
-    template_inject._normalise_days so the validator agrees with the
+    template_inject._normalize_days so the validator agrees with the
     injector's accept-prefix logic by construction."""
 
     def _check_days(where, days):
@@ -2195,9 +2180,9 @@ def main():
         status = "FAIL" if errors else "OK"
         console.step(f"{status}: {path}")
         for line in errors:
-            print(line)
+            console.raw(line)
         for line in warnings:
-            print(line)
+            console.raw(line)
         overall_errors += len(errors)
 
     sys.exit(1 if overall_errors else 0)

@@ -18,10 +18,9 @@ def _event_mode_background_style(config):
     """Resolve the background_style for event mode (override + default)."""
     em = config.get("event_mode") or {}
     bg = dict(_EVENT_MODE_DEFAULT_BG)
+    # validate_config has already rejected a pattern that is not a
+    # non-empty list of numbers.
     bg.update(em.get("background_style") or {})
-    # Defensive: ensure pattern is a list.
-    if not isinstance(bg.get("pattern"), list) or not bg["pattern"]:
-        bg["pattern"] = list(_EVENT_MODE_DEFAULT_BG["pattern"])
     return bg
 
 

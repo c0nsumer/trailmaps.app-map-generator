@@ -9,7 +9,6 @@ realigns or expands geometry.
 """
 
 import json
-import os
 import sys
 
 import console
@@ -59,7 +58,7 @@ def resolve_color_modes(config, route_ids, super_expansions=None):
     return modes
 
 
-def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None):
+def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
     """Enrich trails.geojson in-place with bucket flags + custom routes.
 
     Runs after trails have been fetched (or loaded from cache). It:
@@ -205,8 +204,13 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
     # filter expressions). fetch_trails.py emits OSM ids as ints;
     # custom routes already emit strings. Normalize both here so the
     # downstream JSON has a single consistent type.
+    #
+    # A base fetched by an older engine also carries `route_ref` and
+    # `segment_index`; the runtime reads neither, so they do not ship.
     for feat in trails_geojson["features"]:
         props = feat.setdefault("properties", {})
+        props.pop("route_ref", None)
+        props.pop("segment_index", None)
         rid = props.get("route_id")
         if isinstance(rid, int):
             props["route_id"] = str(rid)
@@ -222,8 +226,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
         cid = entry["id"]
         cname = entry["name"]
         ccolor = entry["color"]
-        cgeom_rel = entry["geometry"]
-        cgeom_abs = cgeom_rel if os.path.isabs(cgeom_rel) else os.path.join(project_root, cgeom_rel)
+        # build.load_config has already made the path absolute.
+        cgeom_abs = entry["geometry"]
 
         # Bucket flags: if none of the three are set, default to summer-only
         # to match the OSM-default rule. If any is set explicitly, use the
@@ -272,7 +276,6 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                 f"(got {gj.get('type')!r})"
             )
 
-        appended = 0
         for i, feat in enumerate(gj_features):
             geom = feat.get("geometry") or {}
             gtype = geom.get("type")
@@ -311,7 +314,6 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                         # stringified OSM ids above.
                         "route_name": cname,
                         "route_colour": ccolor,
-                        "route_ref": "",
                         "trail_name": trail_name,
                         "shared_routes": [cid],
                         "imba_difficulty": "",
@@ -323,21 +325,17 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
                         # is true (see _apply_event_mode_to_custom_routes).
                         # Empty string means no arrows.
                         "oneway": entry.get("oneway", ""),
-                        "segment_index": appended,
                         "way_ids": [],
                         "isCustom": True,
                     },
                 }
                 trails_geojson["features"].append(new_feat)
-                appended += 1
 
         # Metadata.routes entry - shape mirrors OSM-sourced routes plus
         # the three bucket flags and isCustom.
         info = {
             "name": cname,
             "colour": ccolor,
-            "ref": "",
-            "seasonal": "winter" if (c_winter and not c_summer) else "",
             "summer": c_summer,
             "winter": c_winter,
             "emergency": c_emergency,
@@ -358,6 +356,8 @@ def _enrich_trails_geojson(config, trails_geojson, project_root, cache_dir=None)
 
     # ----- Per-route distance / elevation stats -----
     # After the custom routes are appended, so they are measured too.
+    # Imported here: compute_route_stats imports resolve_color_modes
+    # from this module, so a top-level import would be circular.
     from compute_route_stats import compute_and_attach
 
     if compute_and_attach(trails_geojson, config, cache_dir):

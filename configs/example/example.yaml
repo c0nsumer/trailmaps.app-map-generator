@@ -22,8 +22,6 @@ clipped_relations:
 # bbox: [-87.66, 46.47, -87.59, 46.53]
 # pan_bbox: [-87.70, 46.44, -87.55, 46.56]
 # pan_padding: 0.5
-# center: [-87.635, 46.495]
-# zoom: 14
 # min_zoom: 10
 # max_zoom: 18
 # basemap_maxzoom: 15

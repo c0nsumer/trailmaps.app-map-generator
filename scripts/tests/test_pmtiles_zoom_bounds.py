@@ -15,13 +15,13 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pmtiles_util  # noqa: E402
-from cache_signatures import (  # noqa: E402
+import pmtiles_util
+from cache_signatures import (
     _bbox_signature,
     _pmtiles_needs_regen,
     _save_signature,
 )
-from pmtiles_util import extract_minzoom  # noqa: E402
+from pmtiles_util import extract_minzoom
 
 BBOX = [-88.0, 46.0, -87.0, 47.0]
 

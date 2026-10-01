@@ -18,9 +18,9 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import cache_manifest  # noqa: E402
-import overpass  # noqa: E402
-import pytest  # noqa: E402
+import cache_manifest
+import overpass
+import pytest
 
 # Valid-shaped relative entry names (the allowlist is strict about them).
 OP_A = "overpass_" + "a" * 12 + ".json"

@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 
 import console
+from colors import FRAMEWORK_DEFAULT_ACCENT
 
 try:
     from PIL import Image, ImageChops
@@ -32,14 +33,12 @@ except ImportError:
 # The 192 + 512 pair satisfies Chrome's WebAPK install criteria for
 # Android - without 512x512, Chrome can fall back to a "shortcut"
 # install that has weaker integration (e.g. shows the package name
-# rather than the app name in the uninstall toast). 256 is kept for
-# legacy reasons; some older docs/configurations reference it.
+# rather than the app name in the uninstall toast).
 ICON_SIZES = [
     ("icons/apple-touch-icon.png", 180, 180, True),
     ("icons/favicon-32x32.png", 32, 32, False),
     ("icons/favicon-16x16.png", 16, 16, False),
     ("icons/android-chrome-192x192.png", 192, 192, False),
-    ("icons/android-chrome-256x256.png", 256, 256, False),
     ("icons/android-chrome-512x512.png", 512, 512, False),
 ]
 
@@ -128,7 +127,7 @@ def generate_png_icons(source_img, output_dir):
 
     count = 0
     for filename, w, h, on_white in ICON_SIZES:
-        resized = source_img.resize((w, h), Image.LANCZOS)
+        resized = source_img.resize((w, h), Image.Resampling.LANCZOS)
         if on_white:
             resized = _composite_on_white(resized)
         out_path = os.path.join(output_dir, filename)
@@ -140,12 +139,7 @@ def generate_png_icons(source_img, output_dir):
     # is built by walking the tree, so a file dropped from ICON_SIZES
     # would otherwise keep shipping to riders forever on rebuilt maps.
     # Same pattern as build.py's stale-terrain removal.
-    #
-    # mstile-150x150.png (removed 2026-08): Windows Start tile for
-    # IE11 / EdgeHTML pinning. Unreachable all along - discovery needs
-    # an msapplication-TileImage meta or browserconfig.xml, and the
-    # app shipped neither - and both consumers are retired.
-    for stale in ("icons/mstile-150x150.png",):
+    for stale in ("icons/android-chrome-256x256.png",):
         stale_path = os.path.join(output_dir, stale)
         if os.path.exists(stale_path):
             os.remove(stale_path)
@@ -227,7 +221,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     src = source_img.copy()
     if src.mode != "RGBA":
         src = src.convert("RGBA")
-    src.thumbnail((inner, inner), Image.LANCZOS)
+    src.thumbnail((inner, inner), Image.Resampling.LANCZOS)
 
     x = (size - src.width) // 2
     y = (size - src.height) // 2
@@ -243,7 +237,7 @@ def generate_favicon_ico(source_img, output_dir):
     sizes = [(16, 16), (32, 32), (48, 48)]
     imgs = []
     for size in sizes:
-        resized = source_img.resize(size, Image.LANCZOS)
+        resized = source_img.resize(size, Image.Resampling.LANCZOS)
         if resized.mode != "RGBA":
             resized = resized.convert("RGBA")
         imgs.append(resized)
@@ -274,7 +268,7 @@ def generate_safari_pinned_tab(source_img, output_dir):
     # (including _pad_to_square's padding) as a filled rectangle
     # instead of the logo silhouette.
     trace_img = _composite_on_white(
-        source_img.resize((256, 256), Image.LANCZOS)
+        source_img.resize((256, 256), Image.Resampling.LANCZOS)
     ).convert("1")
 
     with tempfile.NamedTemporaryFile(suffix=".pbm", delete=False) as tmp:
@@ -356,7 +350,7 @@ def generate_manifest(config, output_dir, bg_color=None):
     # per light/dark scheme. Fallback mirrors style.css's framework
     # default for direct/standalone callers without a resolved palette.
     background_color = _rgba_to_hex(bg_color) if bg_color else "#ffffff"
-    theme_color = (config.get("_accent_palette") or {}).get("light") or "#1D6FA5"
+    theme_color = (config.get("_accent_palette") or {}).get("light") or FRAMEWORK_DEFAULT_ACCENT
     manifest = {
         "name": title,
         "short_name": name,
@@ -369,12 +363,6 @@ def generate_manifest(config, output_dir, bg_color=None):
             {
                 "src": "android-chrome-192x192.png",
                 "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any",
-            },
-            {
-                "src": "android-chrome-256x256.png",
-                "sizes": "256x256",
                 "type": "image/png",
                 "purpose": "any",
             },

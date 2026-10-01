@@ -1,10 +1,8 @@
-"""Tests for compute_route_stats.py - per-route distance and the
-canonical-geometry guard.
+"""Tests for compute_route_stats.py - per-route distance and elevation.
 
-The guard is the regression fence for a bug that has now happened
-TWICE (once via shared_routes double-counting, once via the multi-mode
-subway expansion): distance/elevation computed on geometry where a
-route's ways appear more than once, inflating rider-facing stats.
+The distance tests fence a bug that has happened before: distance
+computed on geometry where a route's ways appear more than once,
+inflating rider-facing stats.
 
 Run from repo root:
     python -m pytest scripts/tests/test_compute_route_stats.py -v
@@ -18,10 +16,10 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import cache_manifest  # noqa: E402
-import pytest  # noqa: E402
-from compute_route_stats import compute_and_attach, compute_distances  # noqa: E402
-from geodesy import haversine_m  # noqa: E402
+import cache_manifest
+import pytest
+from compute_route_stats import compute_and_attach, compute_distances
+from geodesy import haversine_m
 
 # Two segments of route 100; the second is shared with route 200 and
 # emitted once per parent (route_id 100 and route_id 200), matching
@@ -261,18 +259,6 @@ def test_difficulty_map_skips_elevation(monkeypatch):
         g, {"show_distance": True, "show_elevation": True, "color_by": "difficulty"}, None)
     assert g["metadata"]["routes"]["100"]["distance_m"] > 0
     assert "elevation_gain_m" not in g["metadata"]["routes"]["100"]
-
-
-@pytest.mark.parametrize("marker", ["isStub", "_subwayHostVariant"])
-def test_refuses_subway_expanded_geometry(marker):
-    # The multi-mode subway pass replaces a truncated host with one
-    # full-length variant PER MODE, all carrying the host's route_id.
-    # Stats computed on that output count the host once per mode - the
-    # guard must refuse rather than silently inflate.
-    g = _fc()
-    g["features"].append(_feat("100", _SEG_B, **{marker: True, "mode": "summer"}))
-    with pytest.raises(ValueError, match="canonical"):
-        compute_and_attach(g, {"show_distance": True}, None)
 
 
 if __name__ == "__main__":

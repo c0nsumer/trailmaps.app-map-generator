@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import io
 import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
@@ -65,17 +66,13 @@ class RangeRequestHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", self.guess_type(path))
             self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
             self.send_header("Content-Length", str(length))
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-
-            import io
-
             return io.BytesIO(data)
         except (ValueError, IndexError):
             return super().send_head()
 
     def end_headers(self):
+        # Every response carries these, so the handlers above leave them out.
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Access-Control-Allow-Origin", "*")
         super().end_headers()
@@ -87,8 +84,6 @@ class RangeRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", self.guess_type(path))
             self.send_header("Content-Length", str(os.path.getsize(path)))
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
         else:
             super().do_HEAD()

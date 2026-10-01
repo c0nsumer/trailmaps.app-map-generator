@@ -7,6 +7,7 @@ orchestrator stays lean. ``resolve_accent_palette`` is the only entry
 point the build needs; the rest are internal helpers.
 """
 
+import colorsys
 import hashlib
 import json
 import os
@@ -61,8 +62,6 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_
     Bails after a fixed number of iterations to avoid pathological inputs
     spinning forever.
     """
-    import colorsys
-
     r, g, b = (c / 255.0 for c in rgb)
     h, lightness, s = colorsys.rgb_to_hls(r, g, b)
     for _ in range(40):
@@ -170,8 +169,6 @@ def _lighten_for_contrast(rgb, target_contrast=4.5, against=_DARK_SHEET_BG):
     and never approaches neon/white - no separate desaturation cap is
     needed. Bails after a fixed number of iterations.
     """
-    import colorsys
-
     r, g, b = (c / 255.0 for c in rgb)
     h, lightness, s = colorsys.rgb_to_hls(r, g, b)
     for _ in range(40):

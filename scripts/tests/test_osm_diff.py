@@ -18,7 +18,7 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from osm_diff import diff_snapshots, format_report, summarize  # noqa: E402
+from osm_diff import diff_snapshots, format_report, summarize
 
 
 def _feature(way_ids, coords, *, route_id="1", trail="", imba="", oneway=""):

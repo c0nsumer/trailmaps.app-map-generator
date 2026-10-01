@@ -86,12 +86,6 @@ relations:
 # pannable area; 0 pins the wall to bbox. Also widens tile extraction.
 # pan_padding: 0.5
 
-# Map center [lon, lat]; auto-computed from the bbox midpoint if omitted.
-# center: [-87.635, 46.495]
-
-# Initial zoom level.
-# zoom: 14
-
 # Minimum zoom level.
 # min_zoom: 10
 

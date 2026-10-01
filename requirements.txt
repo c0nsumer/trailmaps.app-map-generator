@@ -1,4 +1,4 @@
-# mtb-map-framework Python dependencies, pinned for reproducible builds.
+# trailmaps.app Map Generator Python dependencies, pinned for reproducible builds.
 #
 # Requires Python 3.11+ (tested through 3.14). The only direct deps are those
 # under "Direct dependencies" below; everything else is a pinned transitive (captured via

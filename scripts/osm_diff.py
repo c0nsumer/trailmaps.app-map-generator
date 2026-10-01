@@ -214,8 +214,7 @@ def diff_snapshots(prev, cur):
         old_trail = wa[wid].get("trail") or ""
         new_trail = wb[wid].get("trail") or ""
         if old_trail != new_trail:
-            renames[(old_trail, new_trail)] = \
-                renames.get((old_trail, new_trail), 0) + 1
+            renames[(old_trail, new_trail)] = renames.get((old_trail, new_trail), 0) + 1
         for key, label in _WAY_TAG_FIELDS:
             old = wa[wid].get(key) or ""
             new = wb[wid].get(key) or ""
@@ -341,7 +340,7 @@ def _length(metres, signed=False):
 
 
 def _capped(items, cap=_MAX_LIST):
-    """Yield up to `cap` items, plus a trailing note when any were dropped."""
+    """Return up to `cap` items and the count of the ones dropped."""
     shown = list(items)[:cap]
     dropped = len(items) - len(shown)
     return shown, dropped
@@ -586,7 +585,7 @@ def report_refresh_diff(prev, cur, cache_dir, slug):
         return
     try:
         diff = diff_snapshots(prev, cur)
-    except Exception as e:  # noqa: BLE001 - a diff must never fail a build
+    except Exception as e:
         console.warn(f"OSM diff failed: {e}")
         return
 

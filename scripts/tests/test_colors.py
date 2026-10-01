@@ -12,9 +12,9 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import cache_manifest  # noqa: E402
-import pytest  # noqa: E402
-from colors import (  # noqa: E402
+import cache_manifest
+import pytest
+from colors import (
     _LIGHT_TARGET_CONTRAST,
     _best_text_color,
     _contrast_ratio,

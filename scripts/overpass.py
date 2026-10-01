@@ -68,11 +68,6 @@ EMPTY_RETRY_LIMIT = 2
 MAX_OSM_BASE_LAG = timedelta(hours=24)
 
 
-def _server_name(url):
-    """Extract a short server name from a URL."""
-    return url.split("/")[2]
-
-
 def _write_cache(cache_path, data):
     """Write a cache file atomically (temp sibling + os.replace).
 
@@ -96,13 +91,9 @@ def _write_cache(cache_path, data):
 class EmptyResponseError(Exception):
     """Raised when a server returns valid JSON but with no elements."""
 
-    pass
-
 
 class StaleSnapshotError(Exception):
     """Raised when a mirror's osm_base timestamp is too far behind wall clock."""
-
-    pass
 
 
 class PartialResponseError(Exception):
@@ -116,10 +107,14 @@ class PartialResponseError(Exception):
     caches the partial result.
     """
 
-    pass
+
+def cache_path(query_str, cache_dir):
+    """Where the response to `query_str` is cached in `cache_dir`."""
+    h = hashlib.md5(query_str.encode()).hexdigest()[:12]
+    return os.path.join(cache_dir, f"overpass_{h}.json")
 
 
-def _check_snapshot_freshness(data, server):
+def _check_snapshot_freshness(data):
     """Raise StaleSnapshotError if the response's osm_base is too old.
 
     No-op if the response lacks an osm3s/timestamp_osm_base field (older
@@ -173,8 +168,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
 
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
-        h = hashlib.md5(query_str.encode()).hexdigest()[:12]
-        cp = os.path.join(cache_dir, f"overpass_{h}.json")
+        cp = cache_path(query_str, cache_dir)
         # Before the hit/miss/refresh branches, so every outcome records
         # this build's claim on the entry (see cache_manifest docstring).
         cache_manifest.record(cp)
@@ -213,7 +207,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
     else:
         cp = None
 
-    server = _server_name(OVERPASS_API)
+    server = OVERPASS_API.split("/")[2]
     last_error = None
     empty_attempts = 0
     for attempt in range(MAX_RETRIES):
@@ -246,7 +240,8 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                 # matches no data (e.g. typo'd relation ID, deleted
                 # relation). Retry up to EMPTY_RETRY_LIMIT to ride out
                 # the hiccup case; after that, accept the empty payload
-                # and let the caller decide what to do.
+                # and let the caller decide what to do. It is not cached:
+                # with no TTL, a cached hiccup would never be retried.
                 empty_attempts += 1
                 if empty_attempts > EMPTY_RETRY_LIMIT:
                     console.warn(f"{server} returned 0 elements {empty_attempts} times in a row.")
@@ -256,16 +251,14 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                         "relation IDs for typos."
                     )
                     console.info("Continuing with empty data; downstream may produce an empty map.")
-                    _check_snapshot_freshness(data, server)
-                    if cp:
-                        _write_cache(cp, data)
+                    _check_snapshot_freshness(data)
                     return data
                 raise EmptyResponseError(
                     f"0 elements returned (attempt {empty_attempts}/"
                     f"{EMPTY_RETRY_LIMIT + 1}; may be transient)"
                 )
 
-            _check_snapshot_freshness(data, server)
+            _check_snapshot_freshness(data)
 
             console.info(f"Response from {server} ({len(data.get('elements', []))} elements)")
 
@@ -285,10 +278,12 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             console.info(f"Retrying in {delay}s...")
             time.sleep(delay)
 
-    console.step(f"\n  ERROR: {server} failed after {MAX_RETRIES} attempts.")
+    console.blank()
+    console.error(f"{server} failed after {MAX_RETRIES} attempts.")
     if last_error is not None:
-        console.info(f"  last error: {type(last_error).__name__}: {last_error}")
-    console.step("\n  The server may be overloaded. Try again in a few minutes.")
+        console.error(f"last error: {type(last_error).__name__}: {last_error}")
+    console.blank()
+    console.error("The server may be overloaded. Try again in a few minutes.")
     console.info("Tip: Re-run without the --refresh flags to reuse any")
     console.info("cached responses from earlier successful queries.\n")
     sys.exit(1)

@@ -21,6 +21,11 @@ import re
 # inconsistency is intentional and irrelevant at trail scales.
 EARTH_R_M = 6371000.0
 
+# Equirectangular scale for short distances: meters per degree of
+# latitude, and per degree of longitude at the equator (times cos(lat)).
+M_PER_DEG_LAT = 110540.0
+M_PER_DEG_LNG_EQUATOR = 111320.0
+
 
 def haversine_m(lng1, lat1, lng2, lat2):
     """Great-circle distance between two (lng, lat) points, in meters.
@@ -51,8 +56,8 @@ def point_to_segment_m(plng, plat, alng, alat, blng, blat):
     way can sit hundreds of meters from its nearest vertex. Rail trails and
     road segments are routinely drawn that way.
     """
-    m_per_deg_lat = 110540.0
-    m_per_deg_lng = 111320.0 * math.cos(math.radians(plat))
+    m_per_deg_lat = M_PER_DEG_LAT
+    m_per_deg_lng = M_PER_DEG_LNG_EQUATOR * math.cos(math.radians(plat))
     ax = (alng - plng) * m_per_deg_lng
     ay = (alat - plat) * m_per_deg_lat
     bx = (blng - plng) * m_per_deg_lng

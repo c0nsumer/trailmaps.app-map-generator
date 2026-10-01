@@ -163,8 +163,6 @@ schema and rules.
 | `bbox` | No | auto | Bounding box `[west, south, east, north]` used for the **initial view fit**. If omitted, it is auto-computed from trail geometry with a ~3% proportional buffer. |
 | `pan_padding` | No | `0.5` | How much looser the pan wall is than `bbox`, as a fraction of the bbox's greater dimension added on each side. `0.5` is about 4x the pannable area; `0` pins the wall to `bbox`. Also widens basemap and terrain tile extraction to match. See the notes below. |
 | `pan_bbox` | No | computed | Explicit pan envelope `[west, south, east, north]`; overrides `pan_padding` when set. Usually unnecessary: use `pan_padding` unless the auto-symmetric expansion is wrong for your site (e.g. asymmetric pan room to cover a parking lot north of the trails but nothing south). |
-| `center` | No | auto | Map center `[lon, lat]`; auto-computed from bbox midpoint if omitted. |
-| `zoom` | No | `14` | Initial zoom level. |
 | `min_zoom` | No | `10` | Minimum zoom level. |
 | `max_zoom` | No | `18` | Maximum zoom level. |
 | `basemap_maxzoom` | No | `15` | Max zoom for basemap tile extraction. |
@@ -1237,7 +1235,6 @@ The build generates the following files from the source image:
 |---|---|---|
 | `icons/apple-touch-icon.png` | 180x180 | Composited on white background for iOS |
 | `icons/android-chrome-192x192.png` | 192x192 | Android home screen |
-| `icons/android-chrome-256x256.png` | 256x256 | Android home screen (high-DPI) |
 | `icons/android-chrome-512x512.png` | 512x512 | Android home screen (Chrome WebAPK) |
 | `icons/android-chrome-maskable-512x512.png` | 512x512 | Maskable PWA tile (Android). Content sits in the inner 80% safe zone; the margin bleeds the icon's own field color so it fills any OEM mask shape (circle, squircle, …) |
 | `icons/favicon-32x32.png` | 32x32 | Standard browser tab icon |

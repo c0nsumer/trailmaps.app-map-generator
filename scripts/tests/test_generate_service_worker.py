@@ -21,7 +21,7 @@ import pytest
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import build  # noqa: E402
+import build
 
 # A representative build tree: page + app code, one precachable glyph and
 # one cache-on-fetch glyph, a tile archive, plus every class of file the

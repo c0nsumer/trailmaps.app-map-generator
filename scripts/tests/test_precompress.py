@@ -2,8 +2,7 @@
 
 The properties under test: both encodings are written for compressible
 assets (brotli is what Safari riders actually get; zstd never was),
-stale sidecars from earlier builds are swept (including retired .zst
-ones), and incompressible or tiny files gain no sidecar.
+stale sidecars from earlier builds are swept, and incompressible or tiny files gain no sidecar.
 
 Run from repo root:
     python -m pytest scripts/tests/test_precompress.py -v
@@ -16,9 +15,9 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import brotli  # noqa: E402
+import brotli
 
-from build import precompress_assets  # noqa: E402
+from build import precompress_assets
 
 
 def _plant(root, rel, content):
@@ -41,15 +40,12 @@ def test_writes_gzip_and_brotli_sidecars(tmp_path):
     assert not os.path.exists(os.path.join(root, "trails.geojson.zst"))
 
 
-def test_stale_sidecars_swept_including_zst(tmp_path):
-    # A rebuild over a pre-swap output dir must clear retired .zst
-    # sidecars and any orphan whose original no longer exists.
+def test_stale_sidecars_swept(tmp_path):
+    # A rebuild must clear any orphan whose original no longer exists.
     root = str(tmp_path)
     _plant(root, "app.js", b"var x = 1;" * 500)
-    _plant(root, "app.js.zst", b"old zstd sidecar")
     _plant(root, "gone.css.gz", b"orphan for a removed file")
     precompress_assets(root)
-    assert not os.path.exists(os.path.join(root, "app.js.zst"))
     assert not os.path.exists(os.path.join(root, "gone.css.gz"))
     assert os.path.exists(os.path.join(root, "app.js.gz"))
     assert os.path.exists(os.path.join(root, "app.js.br"))

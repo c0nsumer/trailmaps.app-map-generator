@@ -68,11 +68,14 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         shutil.copy2(source_path, output_path)
         return (None, None)
 
-    svg_open = re.search(r"<svg\b[^>]*>", text)
-    if not svg_open:
+    def _copy_verbatim(dims=(None, None)):
         shutil.copy2(source_path, output_path)
         console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return (None, None)
+        return dims
+
+    svg_open = re.search(r"<svg\b[^>]*>", text)
+    if not svg_open:
+        return _copy_verbatim()
 
     tag = svg_open.group(0)
     width_m = re.search(r'\bwidth\s*=\s*"([^"]*)"', tag)
@@ -111,25 +114,19 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         and _is_definite_pixel(height_m.group(1))
     )
 
-    if has_definite or not viewbox_m:
-        shutil.copy2(source_path, output_path)
-        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        if has_definite:
-            return (_parse_pixel(width_m.group(1)), _parse_pixel(height_m.group(1)))
-        return (None, None)
+    if has_definite:
+        return _copy_verbatim((_parse_pixel(width_m.group(1)), _parse_pixel(height_m.group(1))))
+    if not viewbox_m:
+        return _copy_verbatim()
 
     parts = viewbox_m.group(1).split()
     if len(parts) != 4:
-        shutil.copy2(source_path, output_path)
-        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return (None, None)
+        return _copy_verbatim()
     try:
         vb_w = float(parts[2])
         vb_h = float(parts[3])
     except ValueError:
-        shutil.copy2(source_path, output_path)
-        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
-        return (None, None)
+        return _copy_verbatim()
 
     # Format pixel values without a trailing ".0" when integer-valued.
     def _fmt(v):

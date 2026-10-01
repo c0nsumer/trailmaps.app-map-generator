@@ -18,9 +18,6 @@ extend-exclude = [
     ".venv",
     ".claude",
     "assets",
-    # Untracked, experimental - paired with the accent-per-mode plan and
-    # still being iterated on. Lint it once it stabilizes.
-    "tools/preview_accents.py",
 ]
 
 [lint]

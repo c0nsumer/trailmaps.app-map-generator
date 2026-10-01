@@ -14,7 +14,7 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from event_mode import _apply_event_mode_to_custom_routes  # noqa: E402
+from event_mode import _apply_event_mode_to_custom_routes
 
 
 def test_load_config_coerces_digit_string_relation_keys(tmp_path):

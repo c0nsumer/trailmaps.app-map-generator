@@ -16,7 +16,7 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from build import _minify_html  # noqa: E402
+from build import _minify_html
 
 PAGE = """<html><head>
     <!-- design rationale that no reader of the built page needs -->

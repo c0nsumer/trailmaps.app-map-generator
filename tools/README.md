@@ -148,9 +148,9 @@ expanded to their child routes (the leaves that actually produce
 geometry), exactly as the build does. Clipped relations are marked
 `[clipped]`.
 
-Operates purely from the local cache by default: it reconstructs the
-same Overpass query `fetch_trails` runs and reads the matching
-`cache/overpass_<hash>.json`. Unless `--fetch` is given, it never
+Operates purely from the local cache by default: it calls the same
+`fetch_trails` code the build runs to build the Overpass queries, and
+reads the matching `cache/overpass_<hash>.json`. Unless `--fetch` is given, it never
 touches the network. For maps that read a local `osm_file:`, the tool
 parses that file directly; no cache is needed.
 

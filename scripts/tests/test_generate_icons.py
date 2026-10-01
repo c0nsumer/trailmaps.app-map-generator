@@ -14,7 +14,7 @@ import tempfile
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from generate_icons import (  # noqa: E402
+from generate_icons import (
     _composite_on_white,
     _detect_bleed_color,
     _rgba_to_hex,
@@ -23,7 +23,7 @@ from generate_icons import (  # noqa: E402
     generate_icons,
     generate_maskable_icon,
 )
-from PIL import Image  # noqa: E402
+from PIL import Image
 
 GREEN = (58, 107, 62, 255)  # #3a6b3e - the placeholder's full-bleed field
 WHITE = (255, 255, 255, 255)

@@ -8,9 +8,10 @@ actually produce geometry -- exactly as the build does, and clipped
 relations are marked ``[clipped]``.
 
 Operates purely from the local cache (``<repo>/cache``) by default: it
-reconstructs the same Overpass query ``fetch_trails`` runs, hashes it the
-same way (``md5(query)[:12]``), and reads ``cache/overpass_<hash>.json``.
-It never touches the network unless ``--fetch`` is given. Maps that read a
+calls the same ``fetch_trails`` code the build runs to gather the ids and
+build the Overpass queries, and swaps only the network call for a reader
+of the cache entry ``overpass.cache_path`` names. It never touches the
+network unless ``--fetch`` is given. Maps that read a
 local ``osm_file:`` are handled by parsing that file, no cache needed.
 
 Usage:
@@ -21,7 +22,6 @@ Usage:
 """
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
 import config_io  # noqa: E402
 import fetch_trails  # noqa: E402
 import osm_parser  # noqa: E402
+import overpass  # noqa: E402
 
 
 class CacheMiss(Exception):
@@ -47,14 +48,11 @@ class CacheMiss(Exception):
 def _cache_only_query(query_str, cache_dir=None, label="", require_elements=False, refresh=False):
     """Drop-in for overpass.query that reads the cache and never fetches.
 
-    Reproduces overpass.query's key scheme (md5 of the exact query string,
-    first 12 hex chars) so it resolves the same file the build wrote.
     Raises CacheMiss when the entry is absent instead of hitting the API.
     """
     if not cache_dir:
         raise CacheMiss(None, label)
-    h = hashlib.md5(query_str.encode()).hexdigest()[:12]
-    cache_path = os.path.join(cache_dir, f"overpass_{h}.json")
+    cache_path = overpass.cache_path(query_str, cache_dir)
     if not os.path.exists(cache_path):
         raise CacheMiss(cache_path, label)
     with open(cache_path, encoding="utf-8") as f:
@@ -74,22 +72,6 @@ def _resolve_config_path(slug_or_path):
             f"(looked for {os.path.relpath(candidate, _PROJECT_ROOT)})"
         )
     return candidate
-
-
-def _gather_relation_ids(config):
-    """Union the config's route-relation lists exactly as fetch_trails does.
-
-    Returns (relation_ids, clipped_ids). The winter/summer/emergency lists
-    all mean 'pull this relation' as far as fetching goes, so they fold into
-    the main set; clipped relations stay separate so we can mark them.
-    """
-    source_ids = list(config.get("relations") or [])
-    winter = set(config.get("winter_relations") or [])
-    summer = set(config.get("summer_relations") or [])
-    emergency = set(config.get("emergency_access_relations") or [])
-    relation_ids = list({*source_ids, *winter, *summer, *emergency})
-    clipped_ids = list(config.get("clipped_relations") or [])
-    return relation_ids, clipped_ids
 
 
 def _load_from_osm_file(config, relation_ids, clipped_ids):
@@ -154,7 +136,7 @@ def main(argv=None):
     config_path = _resolve_config_path(args.slug)
     config = config_io.load_config_for_fetch(config_path)
     slug = config.get("slug", args.slug)
-    relation_ids, clipped_ids = _gather_relation_ids(config)
+    relation_ids, clipped_ids = fetch_trails.gather_relation_ids(config)
 
     if not relation_ids and not clipped_ids:
         print(

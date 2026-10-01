@@ -23,10 +23,10 @@ import console
 
 # Shared narrow-resolution loader (handles ``osm_file:`` only - the
 # full path-resolution path lives in build.py for the standard
-# pipeline). Imported under the historical name so call sites stay
-# unchanged.
-from config_io import load_config_for_fetch as load_config
+# pipeline).
+from config_io import load_config_for_fetch
 from geodesy import haversine_m
+from osm_parser import POI_TAG_FILTERS
 from overpass import query as overpass_query
 
 # Every show_* flag that gates a POI category in build_pois_geojson.
@@ -68,19 +68,16 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
     the pipeline can treat them as point POIs.
     """
     south, west, north, east = bbox[1], bbox[0], bbox[3], bbox[2]
+    # The query text is the cache key: keep the line order stable.
+    statements = []
+    for pairs, as_way in POI_TAG_FILTERS:
+        tag_filter = "".join(f'["{k}"="{v}"]' for k, v in pairs)
+        for element_type in ("node", "way") if as_way else ("node",):
+            statements.append(f"  {element_type}{tag_filter}({south},{west},{north},{east});\n")
     q = f"""
 [out:json][timeout:60];
 (
-  node["tourism"="information"]["information"="guidepost"]({south},{west},{north},{east});
-  node["highway"="emergency_access_point"]({south},{west},{north},{east});
-  node["tourism"="attraction"]({south},{west},{north},{east});
-  node["amenity"="toilets"]({south},{west},{north},{east});
-  way["amenity"="toilets"]({south},{west},{north},{east});
-  node["amenity"="drinking_water"]({south},{west},{north},{east});
-  way["amenity"="drinking_water"]({south},{west},{north},{east});
-  node["amenity"="bicycle_repair_station"]({south},{west},{north},{east});
-  way["amenity"="bicycle_repair_station"]({south},{west},{north},{east});
-);
+{"".join(statements)});
 out center;
 """
     return overpass_query(q, cache_dir, label="POIs", refresh=refresh)
@@ -225,7 +222,6 @@ def build_pois_geojson(
                         "poi_type": "trail_marker",
                         "name": tags.get("name", ""),
                         "ref": tags.get("ref", ""),
-                        "ele": tags.get("ele", ""),
                     },
                 }
             )
@@ -253,11 +249,6 @@ def build_pois_geojson(
                     "properties": {
                         "poi_type": "toilet",
                         "name": tags.get("name", ""),
-                        # OSM `access` tag (yes/no/permissive/private) helps
-                        # riders know whether they can actually use it.
-                        "access": tags.get("access", ""),
-                        # OSM `fee` tag (yes/no) - same reason.
-                        "fee": tags.get("fee", ""),
                     },
                 }
             )
@@ -271,9 +262,6 @@ def build_pois_geojson(
                     "properties": {
                         "poi_type": "drinking_water",
                         "name": tags.get("name", ""),
-                        # OSM `seasonal` tag (yes/no/summer/winter) tells
-                        # riders whether the fountain is reliably running.
-                        "seasonal": tags.get("seasonal", ""),
                     },
                 }
             )
@@ -385,7 +373,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     responses for this map's queries without touching the shared
     cache directory's other entries.
     """
-    config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
+    config = config_or_path if isinstance(config_or_path, dict) else load_config_for_fetch(config_or_path)
     bbox = config["bbox"]
     config_parking = config.get("parking", [])
     config_trailheads = config.get("trailheads", [])
@@ -403,13 +391,13 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     console.info(f"Bbox: {bbox}")
 
     if osm_file:
-        from osm_parser import extract_guideposts, parse_osm_file
+        from osm_parser import extract_pois, parse_osm_file
 
         if not os.path.isabs(osm_file):
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             osm_file = os.path.join(project_root, osm_file)
         parsed = parse_osm_file(osm_file)
-        osm_data = extract_guideposts(parsed, bbox)
+        osm_data = extract_pois(parsed, bbox)
     else:
         osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh)
 
@@ -510,6 +498,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "pois.geojson")
     fetch_pois(config, output, args.cache_dir)

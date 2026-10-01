@@ -42,7 +42,9 @@ import tempfile
 from collections import Counter
 
 import console
+import osm_parser
 import overpass
+from geodesy import M_PER_DEG_LAT, M_PER_DEG_LNG_EQUATOR
 from pmtiles_util import find_pmtiles_cli
 from shapely.geometry import LineString, MultiLineString, Point, Polygon, box
 from shapely.ops import linemerge, unary_union
@@ -134,6 +136,11 @@ def find_tools():
 
 
 def require_tools():
+    """Paths of tippecanoe, tile-join and the pmtiles CLI.
+
+    Raises with install guidance when any is missing, so a build fails
+    up front rather than partway through tile_and_join.
+    """
     tippecanoe, tile_join = find_tools()
     if not tippecanoe or not tile_join:
         raise BasemapPathsError(
@@ -141,7 +148,14 @@ def require_tools():
             "(Debian/Ubuntu: apt install tippecanoe; macOS: brew install "
             "tippecanoe; others: https://github.com/felt/tippecanoe)."
         )
-    return tippecanoe, tile_join
+    pmtiles = find_pmtiles_cli()
+    if not pmtiles:
+        raise BasemapPathsError(
+            "the basemap build needs the pmtiles CLI "
+            "(go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest, "
+            "or a release from https://github.com/protomaps/go-pmtiles/releases)."
+        )
+    return tippecanoe, tile_join, pmtiles
 
 
 # ---------------------------------------------------------------------------
@@ -316,8 +330,8 @@ class _Plane:
     """Lon/lat to local meters and back; ample for a map-sized area."""
 
     def __init__(self, lat0):
-        self.kx = 111320.0 * math.cos(math.radians(lat0))
-        self.ky = 110540.0
+        self.kx = M_PER_DEG_LNG_EQUATOR * math.cos(math.radians(lat0))
+        self.ky = M_PER_DEG_LAT
 
     def to_m(self, coords):
         return [(x * self.kx, y * self.ky) for x, y in coords]
@@ -452,9 +466,10 @@ def build_features(ways, trails_geojson, bounds, minzoom, maxzoom, merge=True):
     pieces = []  # (props, LineString in meters)
     for way_id in sorted(ways):
         tags, coords = ways[way_id]
+        way_props = to_props(tags)
         for part in _lines(LineString(plane.to_m(coords)).intersection(outer)):
             for piece, flags in split_by_drawn(part, covers) if covers else [(part, ())]:
-                props = to_props(tags)
+                props = dict(way_props)
                 for flag in flags:
                     props[flag] = 1
                 if flags:
@@ -549,7 +564,7 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom,
     Linux boxes /tmp is a RAM disk of a few GB shared with everything
     else, and this step writes several copies of a basemap there.
     """
-    tippecanoe, tile_join = require_tools()
+    tippecanoe, tile_join, pmtiles = require_tools()
     paths_min = max(minzoom, PATHS_MIN_TILE_ZOOM)
     if work_root:
         os.makedirs(work_root, exist_ok=True)
@@ -584,7 +599,7 @@ def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom,
         # cut the Protomaps extract cuts this one to the same tile set.
         _run(
             [
-                find_pmtiles_cli(),
+                pmtiles,
                 "extract",
                 "paths.pmtiles",
                 "paths-cut.pmtiles",
@@ -680,7 +695,6 @@ def input_signature(bbox_signature, trails_geojson, ways_cache_path, osm_file_pa
 
 
 def generate(
-    config,
     trails_geojson,
     extract_path,
     output_path,
@@ -698,8 +712,6 @@ def generate(
     fetched = len(ways)
     local = 0
     if osm_file_path:
-        import osm_parser
-
         nodes, file_ways, _ = osm_parser.parse_osm_file(osm_file_path)
         from_file = local_file_ways(nodes, file_ways)
         local = len(from_file)

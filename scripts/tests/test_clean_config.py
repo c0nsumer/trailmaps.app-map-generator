@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "tools"))
-from clean_config import _assert_same_data, clean_config  # noqa: E402
+from clean_config import _assert_same_data, clean_config
 
 TEMPLATE = """\
 # --- Identity ---

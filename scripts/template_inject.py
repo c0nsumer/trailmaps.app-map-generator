@@ -14,8 +14,10 @@ import subprocess
 import sys
 import urllib.parse
 from datetime import datetime
+from html import escape as _html_escape
 
 import console
+from colors import FRAMEWORK_DEFAULT_ACCENT
 from enrichment import resolve_color_modes
 from event_mode import _apply_event_mode_to_relations
 from font_trimmer import (
@@ -147,8 +149,6 @@ CONFIG_SPEC = [
     # wall) and gets precomputed from `bbox` + `pan_padding` above.
     ("bbox", "bbox", None),
     ("pan_bbox", "panBbox", None),
-    ("center", "center", None),
-    ("zoom", "zoom", 14),
     ("min_zoom", "minZoom", 10),
     ("max_zoom", "maxZoom", 18),
     # Build-time data gates (skip fetching / sprite-gen when False).
@@ -374,7 +374,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # validate_config.match_day_token - single source of truth, so the
     # injector can't accept a token the validator rejects or vice versa.
 
-    def _normalise_days(days_in, error_label):
+    def _normalize_days(days_in, error_label):
         days_norm = []
         for d in days_in or []:
             match = match_day_token(d)
@@ -392,7 +392,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
     # System-wide default. Stored as None when unset OR when explicitly
     # set with empty reverse_days (degenerate; treated the same as unset).
-    def_sched_days = _normalise_days(
+    def_sched_days = _normalize_days(
         sched_block.get("reverse_days"),
         "direction_schedule.reverse_days",
     )
@@ -421,7 +421,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
         if rel_id_str in super_expansions:
             deferred_supers.append((rel_id, spec))
             continue
-        days = _normalise_days(
+        days = _normalize_days(
             (spec or {}).get("reverse_days"),
             f"direction_schedule.per_route[{rel_id}].reverse_days",
         )
@@ -432,7 +432,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Pass 2: super-relations fan out to children (without clobbering
     # an explicit per-child entry from Pass 1).
     for rel_id, spec in deferred_supers:
-        days = _normalise_days(
+        days = _normalize_days(
             (spec or {}).get("reverse_days"),
             f"direction_schedule.per_route[{rel_id}].reverse_days",
         )
@@ -460,18 +460,14 @@ def inject_config_into_template(template_content, config, trails_geojson):
             effective_schedules[rid] = eff
 
     # Validate oneway=reversible features against the resolved schedules.
-    # fetch_trails.py performs the same check against raw OSM data, but it
-    # only runs when the GeoJSON is being (re)built. A "config-only" rebuild
-    # - `build.py <config>` without --refresh-trails - reuses the cached
-    # GeoJSON and would otherwise skip the check. We re-validate here so the
-    # build always fails when a reversible way has no schedule covering it,
-    # regardless of whether trails were refetched this run.
+    # This is the only home of the check: it runs on every build, so a
+    # config edit that drops a schedule fails the build even when the
+    # trails were not refetched.
     if trails_geojson and trails_geojson.get("features"):
         # scheduled_ids is compared against feature `shared_routes`, which are
         # stringified in the enriched GeoJSON. Stringify the keys to match.
         scheduled_ids = set(str(k) for k in effective_schedules.keys())
-        unscheduled = []  # list of (way_id_or_None, parent_route_ids)
-        unscheduled_no_wayids = 0  # features missing way_ids (legacy cache)
+        unscheduled = []  # list of (way_id, parent_route_ids)
         seen = set()
         for feat in trails_geojson["features"]:
             props = feat.get("properties", {})
@@ -480,18 +476,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
             parents = set(props.get("shared_routes") or [])
             if parents & scheduled_ids:
                 continue
-            way_ids = props.get("way_ids") or []
-            if not way_ids:
-                # Cached GeoJSON predates the way_ids field. We can still flag
-                # the problem at the route level, just not point at specific
-                # OSM ways. Recommend rebuilding trails to get URLs.
-                unscheduled_no_wayids += 1
-                key = ("__route__", tuple(sorted(parents)))
-                if key not in seen:
-                    seen.add(key)
-                    unscheduled.append((None, sorted(parents)))
-                continue
-            for wid in way_ids:
+            for wid in props.get("way_ids") or []:
                 if wid in seen:
                     continue
                 seen.add(wid)
@@ -518,22 +503,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
                 "       Offending ways (way_id → parent relation IDs):",
             ]
             for way_id, parents in unscheduled[:20]:
-                if way_id is None:
-                    lines.append(
-                        f"         (way_ids unavailable in cached GeoJSON)"
-                        f"  →  parent relations: {parents}"
-                    )
-                else:
-                    lines.append(
-                        f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}"
-                    )
+                lines.append(
+                    f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}"
+                )
             if len(unscheduled) > 20:
                 lines.append(f"         ... and {len(unscheduled) - 20} more")
-            if unscheduled_no_wayids:
-                lines.append("")
-                lines.append("       Tip: rerun with --refresh-trails to refresh the cached")
-                lines.append("       GeoJSON; new builds include OSM way IDs so this")
-                lines.append("       message will list specific ways.")
             sys.exit("\n".join(lines))
 
     for route_id_str, route_info in routes.items():
@@ -547,6 +521,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
             continue
 
         route_id = int(route_id_str)
+
+        # The runtime reads neither; enrichment has already turned
+        # `seasonal` into the bucket flags.
+        route_info.pop("ref", None)
+        route_info.pop("seasonal", None)
 
         # Color override
         color_override = relation_colors.get(route_id)
@@ -834,15 +813,15 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Logo: derived from `logo:` if set, else falls back to `icon:`. Processed
     # in copy_assets() into a normalized `logo.webp` (raster) or `logo.svg`
     # (vector). Only emit logoUrl when the chosen source actually exists.
-    project_root_for_logo = os.path.dirname(SCRIPTS_DIR)
+    # build.load_config has already made both paths absolute.
     logo_p = config.get("logo") or ""
     icon_p = config.get("icon") or ""
-    logo_source_rel = ""
-    if logo_p and os.path.isfile(os.path.join(project_root_for_logo, logo_p)):
-        logo_source_rel = logo_p
-    elif not logo_p and icon_p and os.path.isfile(os.path.join(project_root_for_logo, icon_p)):
-        logo_source_rel = icon_p
-    config_obj["logoUrl"] = logo_output_filename(logo_source_rel) if logo_source_rel else None
+    logo_source = ""
+    if logo_p and os.path.isfile(logo_p):
+        logo_source = logo_p
+    elif not logo_p and icon_p and os.path.isfile(icon_p):
+        logo_source = icon_p
+    config_obj["logoUrl"] = logo_output_filename(logo_source) if logo_source else None
 
     config_json = json.dumps(config_obj, indent=2)
     return template_content.replace("/*__CONFIG__*/", f"const CONFIG = {config_json};")
@@ -856,7 +835,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
 _PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
 
 
-def resolve_icon_source(config, project_root):
+def resolve_icon_source(config):
     """Return the resolved icon source path, or "" if none exists.
 
     Three input shapes, in priority order:
@@ -882,10 +861,8 @@ def resolve_icon_source(config, project_root):
     logo_path = config.get("logo", "")
     if logo_path:
         ext = os.path.splitext(logo_path)[1].lower()
-        if ext in _PIL_READABLE_EXTS:
-            candidate = os.path.join(project_root, logo_path)
-            if os.path.isfile(candidate):
-                return logo_path
+        if ext in _PIL_READABLE_EXTS and os.path.isfile(logo_path):
+            return logo_path
     return ""
 
 
@@ -916,13 +893,14 @@ def copy_templates(config, output_dir, trails_geojson):
             # trailmaps.app orchestrator does this in inject-og-meta.py),
             # keeping the engine output identical for every consumer.
             page_title = config.get("title") or config.get("name") or "Trail Map"
+            title_text = _html_escape(page_title, quote=False)
             content = re.sub(
                 r"<title>.*?</title>",
                 # Callable replacement: a title containing a backslash
                 # escape (\1, \g) would be read as a group reference in
                 # a plain replacement string. Bound as a default arg so
                 # it captures this iteration's value, not the loop var.
-                lambda _m, _t=page_title: f"<title>{_t}</title>",
+                lambda _m, _t=title_text: f"<title>{_t}</title>",
                 content,
             )
 
@@ -930,7 +908,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # benefits search engines and the Share-button preview cards
             # equally. Values are HTML-attribute-escaped to survive
             # quotes / ampersands in trail-system names + descriptions.
-            og_title = config.get("title") or config.get("name") or "Trail Map"
+            og_title = page_title
             # The map's one descriptive text lives at welcome.body
             # (about.description was retired). `welcome: false` and
             # omitted both leave no prose - fall through to the title.
@@ -950,8 +928,6 @@ def copy_templates(config, output_dir, trails_geojson):
                 og_description = og_title
             # html.escape with quote=True turns " into &quot; so the
             # value is safe inside the `content="..."` attribute.
-            from html import escape as _html_escape
-
             content = content.replace("__OG_TITLE__", _html_escape(og_title, quote=True))
             content = content.replace(
                 "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
@@ -984,8 +960,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # fallback when the image is missing) AND the brand-title
             # span text (shown when no logo is configured at all). Same
             # value as the OG title.
-            brand_title = config.get("title") or config.get("name") or "Trail Map"
-            content = content.replace("__BRAND_TITLE__", _html_escape(brand_title, quote=True))
+            content = content.replace("__BRAND_TITLE__", _html_escape(page_title, quote=True))
 
             # Brand-img CLS-prevention dimensions. process_logo() stashes
             # the actual written pixel dimensions on config["_brand_img_dims"]
@@ -1037,7 +1012,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # status bar): the per-scheme accent shades. build.py always
             # resolves a palette; the literals mirror style.css's
             # framework defaults for any direct caller that didn't.
-            _tc_light = _accent_palette.get("light") or "#1d6fa5"
+            _tc_light = _accent_palette.get("light") or FRAMEWORK_DEFAULT_ACCENT
             _tc_dark = _accent_palette.get("dark") or "#258cd0"
             accent_js = ""
             for _av_name, _av_val in (
@@ -1177,7 +1152,7 @@ def copy_templates(config, output_dir, trails_geojson):
             # would remove the manifest link even though copy_assets
             # would happily generate a manifest from the logo,
             # leaving a build with icons on disk but no PWA install.)
-            if not resolve_icon_source(config, project_root):
+            if not resolve_icon_source(config):
                 content = re.sub(
                     r"\s*<!-- Icons start -->.*?<!-- Icons end -->\n",
                     "",
@@ -1202,15 +1177,13 @@ def copy_assets(config, output_dir):
     icon_path = config.get("icon", "")
     logo_src = None
     if logo_path:
-        candidate = os.path.join(project_root, logo_path)
-        if os.path.isfile(candidate):
-            logo_src = candidate
+        if os.path.isfile(logo_path):
+            logo_src = logo_path
         else:
-            console.warn(f"Logo not found: {candidate}")
+            console.warn(f"Logo not found: {logo_path}")
     elif icon_path:
-        candidate = os.path.join(project_root, icon_path)
-        if os.path.isfile(candidate):
-            logo_src = candidate
+        if os.path.isfile(icon_path):
+            logo_src = icon_path
             console.info("No logo configured - using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
@@ -1237,7 +1210,7 @@ def copy_assets(config, output_dir):
         src_rel = entry.get("path")
         if not isinstance(src_rel, str) or not src_rel:
             continue
-        candidate = os.path.join(project_root, src_rel)
+        candidate = src_rel
         if not os.path.isfile(candidate):
             console.warn(f"Additional logo not found: {candidate}")
             continue
@@ -1261,14 +1234,13 @@ def copy_assets(config, output_dir):
     # (icon: → logo: → none) is shared with the HTML icons-block strip in
     # copy_templates via resolve_icon_source(); the manifest is written
     # inside generate_icons().
-    icon_path = resolve_icon_source(config, project_root)
+    icon_path = resolve_icon_source(config)
     if icon_path and icon_path != config.get("icon", ""):
         # The fallback fired - the resolved source is the logo, not
         # an explicit icon: setting. Log it so the curator knows.
         console.info("No icon configured - using logo as icon source")
     if icon_path:
-        icon_src = os.path.join(project_root, icon_path)
-        generate_icons(icon_src, output_dir, config)
+        generate_icons(icon_path, output_dir, config)
     else:
         console.info("No icon configured - skipping icon generation")
 

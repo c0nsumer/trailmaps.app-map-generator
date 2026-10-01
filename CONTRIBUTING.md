@@ -17,10 +17,13 @@ Run the checks from the repo root:
 ```bash
 python -m pytest scripts/tests/ -q   # no network needed, runs in seconds
 ruff check scripts/ tools/ map_generator/
+corepack pnpm lint                   # one-time setup: corepack pnpm install
 ```
 
-Both must pass. The test suite runs entirely offline against the bundled
-`configs/example/` config.
+All three must pass. The test suite runs entirely offline against the bundled
+`configs/example/` config. The lint catches an undefined identifier in
+`templates/app.js` or `templates/sw.js`, which would otherwise fail only at
+runtime.
 
 ## Conventions
 

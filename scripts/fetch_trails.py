@@ -22,9 +22,8 @@ import console
 
 # Shared narrow-resolution loader (handles ``osm_file:`` only - the
 # full path-resolution path lives in build.py for the standard
-# pipeline). Imported under the historical name so call sites stay
-# unchanged.
-from config_io import load_config_for_fetch as load_config
+# pipeline).
+from config_io import load_config_for_fetch
 from osm_parser import (
     detect_super_expansions,
     extract_source_relations,
@@ -50,7 +49,7 @@ def _expand_through_supers(relation_ids, expansions):
 def _parse_relations(data):
     """Parse relation elements from an Overpass response into a dict.
 
-    Entries are the shared six-field info dict (osm_parser.relation_info
+    Entries are the shared five-field info dict (osm_parser.relation_info
     - same shape as the local-.osm path) plus `members`, preserved so
     super-relation expansion can identify type=relation member
     references. The original Overpass `out tags;` directive omits
@@ -330,10 +329,9 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         # orientation any more than `yes`/`-1` ways can.
         is_oneway = oneway in ("yes", "-1", "reversible")
         coords = list(ways_dict[start_way_id]["coords"])
-        # Track every source way fused into this segment so downstream
-        # validation (e.g. unscheduled oneway=reversible detection in
-        # build.py) can point users at specific OSM ways even when working
-        # from cached trails.geojson.
+        # Track every source way fused into this segment so the
+        # unscheduled oneway=reversible check in template_inject can point
+        # users at specific OSM ways on a rebuild from the cached base.
         member_way_ids = [start_way_id]
 
         # Extend forward from the end of the current chain
@@ -534,7 +532,7 @@ def build_geojson(relations, all_ways, way_relations):
 
         merged = merge_consecutive_ways(ways, way_rel_lookup)
 
-        for i, segment in enumerate(merged):
+        for segment in merged:
             # Normalize oneway=-1 to oneway=yes with reversed coordinates so
             # the runtime only ever has to handle a single canonical case for
             # static one-ways. `reversible` is passed through unchanged: its
@@ -556,14 +554,12 @@ def build_geojson(relations, all_ways, way_relations):
                     "route_id": rel_id,
                     "route_name": rel_info["name"],
                     "route_colour": rel_info["colour"],
-                    "route_ref": rel_info["ref"],
                     "trail_name": segment.get("trail_name", ""),
                     "shared_routes": segment["shared_routes"],
                     "imba_difficulty": segment.get("imba_difficulty", ""),
                     "oneway": oneway,
-                    "segment_index": i,
                     # Source OSM way IDs fused into this segment. Used by
-                    # build.py's reversible-without-schedule validator so
+                    # template_inject's reversible-without-schedule check so
                     # cached-GeoJSON rebuilds still produce actionable errors
                     # pointing at specific OSM ways.
                     "way_ids": segment.get("way_ids", []),
@@ -613,6 +609,28 @@ def _log_way_counts(relations, all_ways):
             console.warn(f"No ways found for {info['name']} ({rel_id})")
 
 
+def gather_relation_ids(config):
+    """Return (relation_ids, clipped_ids): the relations the fetch queries.
+
+    The winter / summer / emergency lists carry bucket semantics on top,
+    but for fetching they all mean "pull this relation", so they fold
+    into the main set; any overlap is harmless. The order is set
+    iteration order, and the Overpass queries (so their cache keys) are
+    built from it: changing the construction refetches every map.
+    tools/list_relations.py calls this to find the same cache entries.
+    """
+    relation_ids = list(
+        {
+            *(config.get("relations") or []),
+            *set(config.get("winter_relations") or []),
+            *set(config.get("summer_relations") or []),
+            *set(config.get("emergency_access_relations") or []),
+        }
+    )
+    clipped_ids = list(config.get("clipped_relations") or [])
+    return relation_ids, clipped_ids
+
+
 def _has_custom_geometry(config):
     """True when the config supplies route geometry without OSM relations:
     top-level `custom_routes` or inline `event_mode.routes`. Lets a
@@ -640,14 +658,30 @@ def _write_empty_trails(output_path, map_name):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(geojson, f, separators=(",", ":"))
-    # Mirror the main path's stale-sibling cleanup so a prior relation-based
-    # build's clip_endpoints.geojson doesn't linger and draw phantom
-    # continuation arrowheads on the route-only render.
+    _write_clip_endpoints(output_path, [])
+    return geojson
+
+
+def _write_clip_endpoints(output_path, clip_endpoints):
+    """Write the clip_endpoints.geojson sibling of ``output_path``.
+
+    The renderer reads it, when present, to draw continuation arrowheads
+    at clip-created endpoints. With no endpoints, a stale file from an
+    earlier build is removed instead, so a config that drops
+    `clipped_relations` (or a route-only map) draws no phantom arrows.
+    """
     endpoints_path = os.path.join(os.path.dirname(output_path) or ".", "clip_endpoints.geojson")
-    if os.path.exists(endpoints_path):
+    if clip_endpoints:
+        endpoints_geojson = {
+            "type": "FeatureCollection",
+            "features": clip_endpoints,
+        }
+        with open(endpoints_path, "w", encoding="utf-8") as f:
+            json.dump(endpoints_geojson, f, separators=(",", ":"))
+        console.info(f"Wrote {endpoints_path} ({len(clip_endpoints)} points)")
+    elif os.path.exists(endpoints_path):
         os.remove(endpoints_path)
         console.info(f"Removed stale {endpoints_path}")
-    return geojson
 
 
 def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
@@ -657,7 +691,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     responses for this map's queries without touching the shared
     cache directory's other entries.
     """
-    config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
+    config = (config_or_path if isinstance(config_or_path, dict)
+              else load_config_for_fetch(config_or_path))
     source_ids = list(config.get("relations") or [])
     if not source_ids:
         # No OSM relations. A race/event or route-only map supplies its
@@ -672,23 +707,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             "OSM relation IDs) or supply `custom_routes` / "
             "`event_mode.routes` geometry."
         )
-    # winter / summer / emergency lists carry bucket semantics on top,
-    # but from fetch_trails.py's perspective they all mean "pull this
-    # relation." Fold them into the unified source set so a relation
-    # listed only as (e.g.) winter_relations still gets fetched. Any
-    # overlap is harmless: the downstream dedup handles it.
     winter_relation_ids = set(config.get("winter_relations") or [])
-    summer_relation_ids = set(config.get("summer_relations") or [])
-    emergency_relation_ids = set(config.get("emergency_access_relations") or [])
-    relation_ids = list(
-        {
-            *source_ids,
-            *winter_relation_ids,
-            *summer_relation_ids,
-            *emergency_relation_ids,
-        }
-    )
-    clipped_relation_ids = config.get("clipped_relations") or []
+    relation_ids, clipped_relation_ids = gather_relation_ids(config)
 
     osm_file = config.get("osm_file")
     if osm_file:
@@ -698,7 +718,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
     # Tracks any super-relation IDs that get expanded during fetch.
     # Both code paths populate this; it's persisted to trails.geojson
-    # metadata so build.py can apply the same expansion when computing
+    # metadata so enrichment can apply the same expansion when computing
     # winter / summer / emergency bucket flags from the config.
     super_relation_expansions = {}
 
@@ -770,7 +790,8 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         _log_expansions("expanded", super_relation_expansions)
 
         if not members and not clipped_relations:
-            console.step(f"\n  ERROR: Relations {sorted(source_ids)} returned no usable data.")
+            console.blank()
+            console.error(f"Relations {sorted(source_ids)} returned no usable data.")
             console.info("Check that the relation IDs are correct and exist:")
             for rid in sorted(source_ids):
                 console.info(f"  https://www.openstreetmap.org/relation/{rid}")
@@ -807,10 +828,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # the fetch-time super-relation map BEFORE tagging, so a curator
     # listing one super-relation in `winter_relations` propagates
     # seasonal=winter to every child route - the parent itself is gone
-    # (replaced by children in `relations`). Same logic applies in
-    # build.py for summer/emergency bucket flags via the persisted
-    # expansion mapping. Shared by both fetch paths - this block used
-    # to be maintained twice.
+    # (replaced by children in `relations`). Enrichment applies the same
+    # logic to summer/emergency bucket flags via the persisted expansion
+    # mapping. Shared by both fetch paths.
     winter_relation_ids = _expand_through_supers(winter_relation_ids, super_relation_expansions)
     for rel_id in winter_relation_ids:
         if rel_id in relations:
@@ -821,106 +841,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     shared_count = sum(1 for wids in way_relations.values() if len(wids) > 1)
     console.info(f"{shared_count} ways are shared by multiple relations")
 
-    # Validate oneway=reversible ways. These are trails that change direction
-    # by schedule (the canonical OSM tag for that case) and have no inherent
-    # forward direction - they are only meaningful with a direction schedule
-    # on one of their parent relations (or a system-wide default schedule).
-    # Fail the build with a precise list of offending ways otherwise; the
-    # framework would otherwise silently render them as static one-ways in
-    # OSM-digitization order, which is wrong half the time.
-    #
-    # Resolution mirrors template_inject.py's CONFIG emission:
-    #   - direction_schedule.reverse_days (non-empty) covers every
-    #     relation by default.
-    #   - direction_schedule.per_route[<rel>] is a per-relation override.
-    #     An entry with non-empty reverse_days schedules that relation;
-    #     an explicit empty reverse_days opts that relation out of the
-    #     system-wide default.
-    #   - A super-relation key fans out to every child route, except
-    #     where a child has its own explicit entry (which always wins).
-    #     Mirrors the two-pass logic in template_inject.py - leaves
-    #     first, then supers fill in unset children.
-    sched_block = config.get("direction_schedule") or {}
-    sched_raw = sched_block.get("per_route") or {}
-    default_active = bool(sched_block.get("reverse_days"))
-
-    # Build per-child resolved entries through the expansion table. The
-    # resolved set drives both validation here and CONFIG.directionSchedules
-    # in template_inject.py (re-derived there from the persisted metadata
-    # so the cached-build path stays consistent).
-    overrides_active = set()  # relations explicitly scheduled
-    overrides_optout = set()  # relations explicitly opted out (empty list)
-    deferred_supers = []  # super entries to fan out after leaves
-
-    def _classify(target_rid, days):
-        (overrides_active if days else overrides_optout).add(target_rid)
-
-    # Pass 1: leaves.
-    for k, v in sched_raw.items():
-        rid_int = int(k)
-        if rid_int in super_relation_expansions:
-            deferred_supers.append((rid_int, v))
-            continue
-        days = (v or {}).get("reverse_days") or []
-        _classify(rid_int, days)
-
-    # Pass 2: supers fan out to children that aren't already classified.
-    already_set = overrides_active | overrides_optout
-    for super_rid, v in deferred_supers:
-        days = (v or {}).get("reverse_days") or []
-        for child_id in super_relation_expansions[super_rid]:
-            if child_id in already_set:
-                continue
-            _classify(child_id, days)
-            already_set.add(child_id)
-
-    def _relation_is_scheduled(rid):
-        if rid in overrides_active:
-            return True
-        if rid in overrides_optout:
-            return False
-        return default_active
-
-    unscheduled_reversible = []
-    seen_way_ids = set()
-    for ways in all_ways.values():
-        for way_id, way in ways.items():
-            if way_id in seen_way_ids:
-                continue
-            seen_way_ids.add(way_id)
-            # Use the same resolver as the merge step: oneway:bicycle
-            # takes precedence so a bike-specific reversible declaration
-            # is caught by this validation too.
-            if _resolve_oneway(way.get("tags", {})) != "reversible":
-                continue
-            parent_rels = way_relations.get(way_id, set())
-            if not any(_relation_is_scheduled(r) for r in parent_rels):
-                unscheduled_reversible.append((way_id, sorted(parent_rels)))
-    if unscheduled_reversible:
-        lines = [
-            "ERROR: Found oneway=reversible way(s) without a direction",
-            "       schedule covering them. Reversible trails change direction",
-            "       by schedule and cannot render correctly without one.",
-            "",
-            "       Either set a system-wide schedule that covers every route:",
-            "",
-            "         direction_schedule:",
-            "           reverse_days: [tuesday, thursday, saturday]",
-            "",
-            "       …or schedule the specific parent relation:",
-            "",
-            "         direction_schedule:",
-            "           per_route:",
-            "             <relation_id>:",
-            "               reverse_days: [tuesday, thursday, saturday]",
-            "",
-            "       Offending ways (way_id → parent relation IDs):",
-        ]
-        for way_id, parents in unscheduled_reversible[:20]:
-            lines.append(f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}")
-        if len(unscheduled_reversible) > 20:
-            lines.append(f"         ... and {len(unscheduled_reversible) - 20} more")
-        sys.exit("\n".join(lines))
+    # oneway=reversible ways without a direction schedule are rejected by
+    # template_inject.inject_config_into_template, which runs on every
+    # build, so a config-only rebuild is checked as well.
 
     # Stage C: Merge ways and build GeoJSON
     console.step("Stage C: Merging ways and building GeoJSON...")
@@ -949,15 +872,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             coords = feature["geometry"]["coordinates"]
             route_id = feature["properties"]["route_id"]
             segments = clip_line_to_bbox(coords, bbox)
-            for j, (seg_coords, start_clipped, end_clipped) in enumerate(segments):
+            for seg_coords, start_clipped, end_clipped in segments:
                 clipped_feature = {
                     "type": "Feature",
                     "geometry": {"type": "LineString", "coordinates": seg_coords},
                     "properties": dict(feature["properties"]),
                 }
-                clipped_feature["properties"]["segment_index"] = (
-                    feature["properties"]["segment_index"] * 100 + j
-                )
                 clipped_features.append(clipped_feature)
 
                 # Record continuation arrowhead points for any clip-created
@@ -1054,7 +974,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             console.note("show_difficulty is enabled but no mtb:scale:imba tags found in data")
 
     # Also embed route (relation) metadata for the viewer + the
-    # super-relation expansion mapping so build.py can apply the
+    # super-relation expansion mapping so enrichment can apply the
     # same parent→children expansion to its summer/winter/emergency
     # config sets when computing per-route bucket flags.
     geojson["metadata"] = {
@@ -1087,23 +1007,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     size_kb = os.path.getsize(output_path) / 1024
     console.info(f"Wrote {output_path} ({size_kb:.1f} KB)")
 
-    # Write clip_endpoints.geojson sibling - the renderer reads it (when
-    # present) to draw continuation arrowheads at clip-created endpoints.
-    # Stale files are removed when the current build has none, so a config
-    # that drops `clipped_relations` doesn't leave orphan endpoints behind.
-    endpoints_path = os.path.join(os.path.dirname(output_path) or ".", "clip_endpoints.geojson")
-    if clip_endpoints:
-        endpoints_geojson = {
-            "type": "FeatureCollection",
-            "features": clip_endpoints,
-        }
-        with open(endpoints_path, "w", encoding="utf-8") as f:
-            json.dump(endpoints_geojson, f, separators=(",", ":"))
-        console.info(f"Wrote {endpoints_path} ({len(clip_endpoints)} points)")
-    elif os.path.exists(endpoints_path):
-        os.remove(endpoints_path)
-        console.info(f"Removed stale {endpoints_path}")
-
+    _write_clip_endpoints(output_path, clip_endpoints)
     return geojson
 
 
@@ -1114,6 +1018,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "trails.geojson")
     fetch_trails(config, output, args.cache_dir)

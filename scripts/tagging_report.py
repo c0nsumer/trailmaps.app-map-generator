@@ -368,7 +368,7 @@ def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
         return
     try:
         findings = audit(trails_geojson, pois_geojson, config)
-    except Exception as e:  # noqa: BLE001 - never fail a build over a note
+    except Exception as e:
         console.warn(f"OSM data notes failed: {e}")
         return
 

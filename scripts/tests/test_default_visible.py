@@ -19,8 +19,8 @@ import sys
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from template_inject import inject_config_into_template  # noqa: E402
-from validate_config import DEFAULT_FIRST_VISIT_LAYERS, DEFAULT_VISIBLE_LAYERS  # noqa: E402
+from template_inject import inject_config_into_template
+from validate_config import DEFAULT_FIRST_VISIT_LAYERS, DEFAULT_VISIBLE_LAYERS
 
 TRAILS = {"metadata": {"routes": {}}, "features": []}
 
@@ -32,7 +32,6 @@ BASE = {
     "title": "My Trails Map",
     "bbox": [0, 0, 1, 1],
     "pan_bbox": [0, 0, 1, 1],
-    "center": [0, 0],
 }
 
 

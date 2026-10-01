@@ -84,7 +84,8 @@ while [ $# -gt 0 ]; do
         --build-only)    DEPLOY=false ;;
         --deploy-only)   BUILD=false ;;
         --validate-only) VALIDATE_ONLY=true; BUILD=false; DEPLOY=false ;;
-        # --force is the deprecated spelling; build.py prints the note.
+        # --force is an older spelling of --refresh. build.py no longer
+        # accepts it, so it is translated here and never forwarded.
         --refresh|--force) REFRESH="--refresh" ;;
         --dry-run)       DRY_RUN=true ;;
         --dest)          shift; DEPLOY_DEST="${1:?--dest needs a value}" ;;
@@ -145,6 +146,24 @@ print(c.get("output_dir") or os.path.join("build", slug))
 PY
 }
 
+# The slug a config deploys under, falling back to the config's name.
+# Both arrive as argv, never pasted into the Python source.
+resolve_slug() {
+    "$PYTHON" - "$1" "$2" <<'PY'
+import sys, yaml
+with open(sys.argv[1]) as f:
+    c = yaml.safe_load(f) or {}
+print(c.get("slug", sys.argv[2]))
+PY
+}
+
+# True for an scp-style remote destination (user@host:path or host:path).
+# A local path that happens to contain a dot or a colon is not one.
+is_remote_dest() {
+    local dest="$1"
+    [[ "$dest" != /* && "$dest" != .* && "$dest" =~ ^([^@/:]+@)?[^@/:]+: ]]
+}
+
 format_seconds() {
     local s="$1"
     if [ "$s" -ge 60 ]; then
@@ -159,11 +178,10 @@ format_seconds() {
 # it fails fast instead of prompting.
 ssh_precheck() {
     local dest="$1"
-    local host="${dest%%:*}"
-    if [[ "$host" != *@* && "$host" != *.* ]]; then
-        # Doesn't look like a remote spec - skip the check.
+    if ! is_remote_dest "$dest"; then
         return 0
     fi
+    local host="${dest%%:*}"
     if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
             -o StrictHostKeyChecking=accept-new \
             "$host" true 2>/dev/null; then
@@ -184,7 +202,7 @@ ssh_precheck() {
 ensure_dest_dir() {
     local dest_prefix="$1"    # e.g. user@host:/path/to/dest  OR  /path/to/dest
     local subdir="$2"         # e.g. ramba
-    if [[ "$dest_prefix" == *:* ]]; then
+    if is_remote_dest "$dest_prefix"; then
         local host="${dest_prefix%%:*}"
         local path="${dest_prefix#*:}"
         local remote_full="${path%/}/${subdir}"
@@ -334,7 +352,11 @@ for name in "${configs[@]}"; do
         fi
 
         # Slug for the remote path (may differ from local config name).
-        slug=$("$PYTHON" -c "import yaml,sys; print(yaml.safe_load(open(sys.argv[1])).get('slug','$name'))" "$config_file")
+        if ! slug=$(resolve_slug "$config_file" "$name"); then
+            echo "ERROR: Could not read the slug from ${config_file}" >&2
+            failed+=("$name")
+            continue
+        fi
 
         echo "━━━ Deploying ${name} → ${DEPLOY_DEST}/${slug}/ ━━━"
         if ! ensure_dest_dir "$DEPLOY_DEST" "$slug"; then

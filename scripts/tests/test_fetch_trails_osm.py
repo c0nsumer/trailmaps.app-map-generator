@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from fetch_trails import fetch_trails  # noqa: E402
+from fetch_trails import fetch_trails
 
 TINY_OSM = """<?xml version='1.0' encoding='UTF-8'?>
 <osm version='0.6' generator='JOSM'>

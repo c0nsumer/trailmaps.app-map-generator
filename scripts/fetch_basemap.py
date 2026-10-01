@@ -16,17 +16,16 @@ from datetime import date, timedelta
 import cli
 import console
 import requests
-import yaml
+from config_io import load_config_for_fetch
 from pmtiles_util import extract, extract_minzoom, find_pmtiles_cli
 
 PROTOMAPS_BUILD_BASE = "https://build.protomaps.com"
 # How many days back to search for an available build
 MAX_SEARCH_DAYS = 30
 
-
-def load_config(config_path):
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+# Degrees added to each side of the extract so edge tiles are included.
+# build.py cuts the generated path lines to the same padded bounds.
+EXTRACT_PAD_DEG = 0.02
 
 
 def find_latest_protomaps_build():
@@ -58,7 +57,8 @@ def find_latest_protomaps_build():
 
 def fetch_basemap(config_or_path, output_path, planet_url=None):
     """Extract basemap tiles for the configured bounding box."""
-    config = config_or_path if isinstance(config_or_path, dict) else load_config(config_or_path)
+    config = (config_or_path if isinstance(config_or_path, dict)
+              else load_config_for_fetch(config_or_path))
     # Use the pan_bbox (looser envelope) so basemap tiles cover the full
     # area the user can pan to, not just the tight initial-view bbox.
     # Fall back to bbox when called with a pre-pan_bbox config.
@@ -66,8 +66,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     maxzoom = config.get("basemap_maxzoom", 15)
     minzoom = extract_minzoom(config)
 
-    # Pad the bbox slightly to ensure edge tiles are included
-    pad = 0.02
+    pad = EXTRACT_PAD_DEG
     padded_bbox = [
         bbox[0] - pad,  # west
         bbox[1] - pad,  # south
@@ -117,6 +116,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "basemap.pmtiles")
-    fetch_basemap(args.config, output, args.planet_url)
+    fetch_basemap(config, output, args.planet_url)

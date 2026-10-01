@@ -18,7 +18,7 @@ import tempfile
 # Make `scripts/` importable when running from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from validate_config import validate_config  # noqa: E402
+from validate_config import validate_config
 
 # A minimal valid LineString FeatureCollection, used to satisfy the
 # geometry path-existence + content checks in route-only test configs.
@@ -72,7 +72,7 @@ def test_reversed_bbox_rejected():
 
 
 def test_wrong_scalar_type_rejected():
-    assert any("zoom" in e for e in _errors(zoom="not-a-number"))
+    assert any("min_zoom" in e for e in _errors(min_zoom="not-a-number"))
 
 
 def test_min_zoom_above_basemap_maxzoom_rejected():

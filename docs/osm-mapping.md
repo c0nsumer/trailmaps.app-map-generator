@@ -48,10 +48,10 @@ renderer expands it one level deep at fetch time.
 | Tag | Used by | What this renderer does with it |
 |---|---|---|
 | [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | name | Route's display name, shown in the search/finder, in tap popups, and as a label on the map when labels are set to "routes." Falls back to `Route <id>` if missing. |
-| [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) | short code | Short reference / number for the route. Surfaced in the finder secondarily; doesn't drive any geometry. |
+| [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) | short code | Short reference / number for the route. This renderer does not display it. |
 | [`colour`](https://wiki.openstreetmap.org/wiki/Key:colour) | line color | A CSS-compatible color string (`#RRGGBB`, named colors like `red`, `rgb(...)`, etc.). Falls back to the per-map `default_trail_color` (typically `#808080`) when unset. The hex form is preferred; named colors render but vary slightly between consumers. |
 | [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (e.g. `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere, so set it. |
-| [`seasonal`](https://wiki.openstreetmap.org/wiki/Key:seasonal) | passthrough | Free-text seasonality info; passed through into route metadata. |
+| [`seasonal`](https://wiki.openstreetmap.org/wiki/Key:seasonal) | Winter bucket | `seasonal=winter` puts the route in the Winter bucket, as `winter_relations` does. Other values are ignored. |
 
 ### Relation members
 
@@ -201,11 +201,11 @@ corresponding `show_*` config gate is on.
 
 | OSM tagging | Category | What this renderer does with it |
 |---|---|---|
-| [`tourism=information`](https://wiki.openstreetmap.org/wiki/Tag:tourism%3Dinformation) + [`information=guidepost`](https://wiki.openstreetmap.org/wiki/Tag:information%3Dguidepost) | trail markers / guideposts | Renders as small numbered markers along trails. The [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) value is shown on the marker; [`name`](https://wiki.openstreetmap.org/wiki/Key:name) and [`ele`](https://wiki.openstreetmap.org/wiki/Key:ele) (elevation) are surfaced on tap. If the map sets `marker_shape: circle` or `marker_shape: diamond`, only the first two characters of `ref` are shown. A guidepost with neither `ref` nor `name` renders as an empty chip, since OSM holds no value to show. |
+| [`tourism=information`](https://wiki.openstreetmap.org/wiki/Tag:tourism%3Dinformation) + [`information=guidepost`](https://wiki.openstreetmap.org/wiki/Tag:information%3Dguidepost) | trail markers / guideposts | Renders as small numbered markers along trails. The [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) value is shown on the marker; [`name`](https://wiki.openstreetmap.org/wiki/Key:name) is surfaced on tap. If the map sets `marker_shape: circle` or `marker_shape: diamond`, only the first two characters of `ref` are shown. A guidepost with neither `ref` nor `name` renders as an empty chip, since OSM holds no value to show. |
 | [`highway=emergency_access_point`](https://wiki.openstreetmap.org/wiki/Tag:highway%3Demergency_access_point) | emergency access points | Rendered like guideposts but with a distinct emergency-marker style. Used for "the point you're closest to if you need rescue." The tag stands alone; no guidepost tags are needed. |
 | [`tourism=attraction`](https://wiki.openstreetmap.org/wiki/Tag:tourism%3Dattraction) | features | Scenic viewpoints, named rocks, monuments, etc. Surfaced on tap with `name` + [`description`](https://wiki.openstreetmap.org/wiki/Key:description). |
-| [`amenity=toilets`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets) | toilets | Renders the toilet marker. `name`, [`access`](https://wiki.openstreetmap.org/wiki/Key:access), [`fee`](https://wiki.openstreetmap.org/wiki/Key:fee), and [`opening_hours`](https://wiki.openstreetmap.org/wiki/Key:opening_hours) show in the popup when present. |
-| [`amenity=drinking_water`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water) | drinking water | Renders the water marker. `name` and `seasonal` show in the popup when present. |
+| [`amenity=toilets`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dtoilets) | toilets | Renders the toilet marker. |
+| [`amenity=drinking_water`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Ddrinking_water) | drinking water | Renders the water marker. |
 | [`amenity=bicycle_repair_station`](https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_repair_station) | bicycle repair stations | Renders the repair-station marker (a tools glyph on a black chip). `name` shows in search when present. |
 
 Parking and trailheads aren't fetched from OSM by default. The framework

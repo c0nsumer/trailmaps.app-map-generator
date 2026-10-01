@@ -348,7 +348,10 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     ]
     needed_faces = determine_needed_faces(all_chars, available_faces)
 
-    # Copy only needed PBF files from needed faces
+    # Copy only needed PBF files from needed faces. The directory is made
+    # here, not by the face loop, so the license copy below has a target
+    # even when no face is needed.
+    os.makedirs(fonts_dst, exist_ok=True)
     total_original = 0
     total_copied = 0
     range_filenames = {f"{s}-{e}.pbf" for s, e in needed_ranges}

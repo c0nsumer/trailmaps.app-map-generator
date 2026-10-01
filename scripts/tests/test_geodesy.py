@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from geodesy import natural_key  # noqa: E402
+from geodesy import natural_key
 
 
 def test_natural_key_numeric_aware():

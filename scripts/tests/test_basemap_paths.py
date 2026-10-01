@@ -13,8 +13,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import basemap_paths as bp  # noqa: E402
-from pmtiles_util import find_pmtiles_cli  # noqa: E402
+import basemap_paths as bp
+from pmtiles_util import find_pmtiles_cli
 
 # About 1 m per 0.00001 degree of latitude here, which keeps the
 # distances below readable.

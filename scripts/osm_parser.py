@@ -18,6 +18,28 @@ import xml.etree.ElementTree as ET
 
 import console
 
+# The POI categories both fetch paths collect: (tags that must all match,
+# whether a closed way counts too). Mappers often trace an amenity's
+# building rather than placing a node, so the amenities match as ways.
+POI_TAG_FILTERS = (
+    ((("tourism", "information"), ("information", "guidepost")), False),
+    ((("highway", "emergency_access_point"),), False),
+    ((("tourism", "attraction"),), False),
+    ((("amenity", "toilets"),), True),
+    ((("amenity", "drinking_water"),), True),
+    ((("amenity", "bicycle_repair_station"),), True),
+)
+
+
+def _poi_match(tags, ways_only=False):
+    """True when ``tags`` matches a POI_TAG_FILTERS entry (only the
+    entries that count as closed ways when ``ways_only``)."""
+    return any(
+        all(tags.get(k) == v for k, v in pairs)
+        for pairs, as_way in POI_TAG_FILTERS
+        if as_way or not ways_only
+    )
+
 
 def parse_osm_file(osm_path):
     """Parse a .osm XML file into nodes, ways, and relations.
@@ -74,7 +96,7 @@ def parse_osm_file(osm_path):
 
 
 def relation_info(rel_id, tags):
-    """The standard six-field relation info dict every downstream stage
+    """The standard five-field relation info dict every downstream stage
     consumes (merging, GeoJSON building, enrichment).
 
     Single source of truth for BOTH fetch paths: this module's
@@ -89,7 +111,6 @@ def relation_info(rel_id, tags):
         # relation_colors → default_trail_color → #808080 build-time default.
         "colour": tags.get("colour"),
         "ref": tags.get("ref", ""),
-        "route": tags.get("route", ""),
         "seasonal": tags.get("seasonal", ""),
     }
 
@@ -141,8 +162,8 @@ def extract_source_relations(parsed, relation_ids):
     (fetch_trails) errors on the empty result.
 
     Returns (resolved, expansions) where:
-        resolved: {rel_id: {"id", "name", "colour", "ref", "route",
-                            "seasonal"}, ...} - leaf-route entries
+        resolved: {rel_id: {"id", "name", "colour", "ref", "seasonal"},
+                   ...} - leaf-route entries
                   only (parents replaced by children)
         expansions: {parent_id: [child_id, ...]} for any input IDs
                     that were expanded as super-relations. Empty when
@@ -227,14 +248,12 @@ def _way_centroid(way, nodes):
     return (sum(c[0] for c in coords) / n, sum(c[1] for c in coords) / n)
 
 
-def extract_guideposts(parsed, bbox):
-    """Extract trail-relevant POI nodes within a bounding box.
+def extract_pois(parsed, bbox):
+    """Extract the POI_TAG_FILTERS categories within a bounding box.
 
-    Despite the legacy name, this also yields tourism=attraction,
-    amenity=toilets, amenity=drinking_water, and
-    amenity=bicycle_repair_station - both the node form AND
-    closed-way (building polygon) form for the amenity tags,
-    matching the Overpass query in fetch_pois_from_osm(). Building
+    Yields the node form of every category and the closed-way
+    (building polygon) form of the amenity tags, matching the Overpass
+    query in fetch_pois_from_osm(). Building
     polygons are reduced to a single (lon, lat) via _way_centroid()
     and emitted as ``type: way`` elements with a ``center`` field so
     the output shape matches what Overpass returns with ``out center;``.
@@ -256,16 +275,7 @@ def extract_guideposts(parsed, bbox):
         if not (west <= lon <= east and south <= lat <= north):
             continue
 
-        is_guidepost = (
-            tags.get("tourism") == "information" and tags.get("information") == "guidepost"
-        )
-        is_emergency = tags.get("highway") == "emergency_access_point"
-        is_feature = tags.get("tourism") == "attraction"
-        is_toilet = tags.get("amenity") == "toilets"
-        is_water = tags.get("amenity") == "drinking_water"
-        is_repair = tags.get("amenity") == "bicycle_repair_station"
-
-        if is_guidepost or is_emergency or is_feature or is_toilet or is_water or is_repair:
+        if _poi_match(tags):
             elements.append(
                 {
                     "type": "node",
@@ -283,7 +293,7 @@ def extract_guideposts(parsed, bbox):
     # (matches Overpass's bbox-on-center semantics).
     for way_id, way in ways.items():
         tags = way["tags"]
-        if tags.get("amenity") not in ("toilets", "drinking_water", "bicycle_repair_station"):
+        if not _poi_match(tags, ways_only=True):
             continue
         c = _way_centroid(way, nodes)
         if c is None:
