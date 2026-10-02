@@ -8891,13 +8891,18 @@ let _offTrailFixes = 0;
 const TRAIL_CHIP_FIXES = 2;
 const TRAIL_CHIP_SWITCH_M = 5;
 
-// On the trail within the fix's own accuracy, clamped: a 40 m fix under
-// trees still names the trail, a 200 m fix does not name one 150 m
-// away, and a sharp fix still allows for a way mapped a few meters off
-// the tread. A fix with no usable accuracy gets the strict floor.
+// The chip states a fact, so it only speaks when the fix is good and
+// the trail runs through the fix's own error circle: accuracy no worse
+// than TRAIL_CHIP_MAX_ACCURACY_M, and the trail within that accuracy
+// plus a few meters for a way mapped a little off the tread. A coarse
+// fix (the first cell or Wi-Fi fixes after Locate comes on, a pocket
+// under deep canopy) is treated as "do not know", which hides the chip
+// after two of them rather than naming a trail hundreds of meters off.
+const TRAIL_CHIP_MAX_ACCURACY_M = 25;
+const TRAIL_CHIP_SLACK_M = 5;
 function trailChipThresholdM(accuracy) {
-    const acc = Number.isFinite(accuracy) ? accuracy : 0;
-    return Math.max(20, Math.min(acc, 60));
+    if (!Number.isFinite(accuracy) || accuracy > TRAIL_CHIP_MAX_ACCURACY_M) return -1;
+    return accuracy + TRAIL_CHIP_SLACK_M;
 }
 
 function updateTrailChip(lng, lat, accuracy) {
