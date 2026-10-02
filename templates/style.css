@@ -174,6 +174,8 @@
     /* Locate FAB tint while following the user, and the primary toast
      * action. The same cyan as the stock locate control. */
     --locate-active: #33b5e5;
+    /* The rider's dot on the map and the "you" mark on the trail chip. */
+    --user-dot: #3498db;
     /* Off-state grays for Options rows: the swatch border, glyph and
      * slash, and the row label. Dark arms sit near --sheet-text-muted at
      * reduced opacity so an off row still reads as quieter than an on
@@ -606,10 +608,22 @@ body::after {
     max-width: calc(100vw - 136px);
 }
 
-/* The trail chip: the sentence at regular weight, the name carrying
- * the weight, so the eye lands on the name. */
+/* The trail chip is a readout, not a selection, so it looks like what
+ * drives it: a hairline in the Locate blue and the rider's own dot as
+ * its mark. The sentence at regular weight, the name carrying the
+ * weight, so the eye lands on the name. */
 .trail-chip {
     font-weight: 400;
+    border-color: var(--locate-active);
+}
+.trail-chip-you {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--user-dot);
+    border: 2px solid #fff;
+    box-shadow: var(--swatch-hairline);
+    flex-shrink: 0;
 }
 .trail-chip-name {
     font-weight: 600;
@@ -2729,7 +2743,7 @@ body::after {
 }
 
 .maplibregl-user-location-dot {
-    background-color: #3498db;
+    background-color: var(--user-dot);
 }
 
 /* Push the user-location marker (dot + accuracy circle) above POI
