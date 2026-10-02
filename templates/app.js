@@ -8974,10 +8974,16 @@ function renderTrailChip() {
     const glyph = isRatedDifficulty(rating) ? difficultyIconDataUrl(rating) : null;
     const label = chip.querySelector(".highlight-chip-label");
     const swatch = chip.querySelector(".highlight-chip-swatch");
-    const text = `You are on ${name}`;
     // Compared first because the chip is aria-live: rewriting the same
     // text on every fix would re-announce it once a second.
-    if (label && label.textContent !== text) label.textContent = text;
+    if (label && label.dataset.name !== name) {
+        label.dataset.name = name;
+        label.textContent = "You are on ";
+        const strong = document.createElement("span");
+        strong.className = "trail-chip-name";
+        strong.textContent = name;
+        label.appendChild(strong);
+    }
     if (swatch) {
         if (glyph) {
             if (swatch.getAttribute("src") !== glyph) swatch.src = glyph;

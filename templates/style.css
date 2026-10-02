@@ -600,7 +600,19 @@ body::after {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    max-width: calc(100vw - 32px);
+    /* Never under the top-right FAB column or its mirror on the left:
+     * 12 px inset + 48 px FAB + 8 px breathing room per side. A long
+     * name ellipsizes inside the label instead. */
+    max-width: calc(100vw - 136px);
+}
+
+/* The trail chip: the sentence at regular weight, the name carrying
+ * the weight, so the eye lands on the name. */
+.trail-chip {
+    font-weight: 400;
+}
+.trail-chip-name {
+    font-weight: 600;
 }
 
 .highlight-chip-swatch {
@@ -660,7 +672,6 @@ body::after {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 60vw;
 }
 
 /* Per-route stats ("8.2 mi · 410 ft ↑") rendered next to the route
