@@ -259,7 +259,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `scrim_opacity` | No | `0.40` | Opacity (0-1) of the dark scrim. The scrim is used both for the in-map spotlight wash while a route or a rating is highlighted (only when `map_dim_on_highlight` is `true`) **and** for the Search / Options / About menu backdrops. One value, so the wash and the menus share a consistent density as the rider moves between them. Lower keeps more of the map legible; higher is a stronger dim. |
 | `highlight_glow` | No | `true` | Draw a yellow halo around the highlighted route's or rating's own lanes, which are lifted above the rest. The selection, a dark one included, then reads as "selected" at a glance. Set `false` for the lift alone, with no halo. |
 | `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honor any hash on page load. This enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
-| `share_button` | No | `true` | Show the **Share this view** row in the Options overlay. It captures the current view plus any active highlight as a deep-link URL. A highlight can be a route, a trail, or a place selected from the Finder: a single POI, a name group, or a whole POI category. The link is offered via the native share sheet (mobile) or clipboard (desktop). Opening the link restores the view and the highlight. A trail link fits the map to the trail and opens the trail's popup. Works regardless of `url_hash`. Set `false` to remove the row for private or family maps. Open Graph and Twitter Card meta tags are emitted regardless, so shared links still preview well. The same section offers a **QR code** row, under the same key, that shows the share link as a code encoded on the device. |
+| `share_button` | No | `true` | Show the **Share this map** row in the Options overlay. It opens a sheet with the current view as a QR code and a button that sends the link through the device's share sheet, or copies it where there is none. The link and the code carry the view plus any highlighted route or trail. The code is encoded on the device. Set `false` to remove the row, the sheet and the encoder from the page. |
 
 The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
 
@@ -1310,7 +1310,7 @@ visitor can clear them at any time through their browser.
 `url_hash` is the one setting that changes what leaves the browser, and only when
 the visitor chooses to share. With `url_hash: true` the map writes its current
 `#zoom/lat/lon` to the address bar, so a copied or bookmarked URL carries that
-position. The default `false` leaves the hash empty. The **Share this view**
+position. The default `false` leaves the hash empty. The **Share this map**
 action (see `share_button`) builds a position link on demand regardless of
 `url_hash`. Neither path involves the server: the position lives only in the URL
 the visitor passes along.

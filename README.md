@@ -31,7 +31,7 @@ Oaks Map as of 2026-Jul-05*
   - Locate: show the user's position from the device GNSS sensors.
   - Reset View: return to the map's initial framing.
   - Options: toggle labels, color scheme, units, season, and POI layers;
-    install the PWA; show the share link as a QR code; open About.
+    install the PWA; share the map as a link or a QR code; open About.
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
     routes, trails, and POIs on the map. For difficulty-mode relations (`color_by:

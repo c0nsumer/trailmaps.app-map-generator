@@ -4057,6 +4057,9 @@ body.modal-open .qr-overlay.is-open {
     height: auto;
     display: block;
 }
+.qr-share-link {
+    margin-top: 4px;
+}
 .qr-url {
     margin: 0;
     font-size: 12px;

@@ -3129,10 +3129,10 @@ function shareBaseUrl() {
     return url.toString();
 }
 
-// Draws the share link as a QR code into the QR sheet. Encoded on the
-// device from the same string Share this view would share, so the two
-// never disagree, and the URL is printed under the code so the person
-// holding the phone can see what it opens. Medium error correction and
+// Draws the share link as a QR code into the Share sheet. Encoded on
+// the device from the same string the sheet's Share link button sends,
+// so the two never disagree, and the URL is printed under the code so
+// the person holding the phone can see what it opens. Medium error correction and
 // a four-module quiet zone, black on white, so a screenshot still scans.
 function renderQrSheet() {
     const box = document.getElementById("qr-code");
@@ -3244,17 +3244,18 @@ function fallbackCopyShareUrl(url) {
 // during boot. Does nothing when share_button: false at build time
 // (the whole button is stripped from index.html before render, so
 // getElementById returns null and we early-return).
-function setupShareButton(openQrSheet) {
+function setupShareButton(openShareSheet) {
     const btn = document.getElementById("share-btn");
     if (!btn) return;
     btn.classList.remove("hidden");
-    btn.addEventListener("click", shareCurrentView);
-    // The QR row needs the encoder module; a missing vendor file
-    // leaves the row hidden rather than a dead tap.
-    const qrBtn = document.getElementById("qr-btn");
-    if (qrBtn && window.uqr && openQrSheet) {
-        qrBtn.classList.remove("hidden");
-        qrBtn.addEventListener("click", openQrSheet);
+    // The sheet needs the encoder module; without it the row still
+    // shares the link directly, the way it did before the sheet.
+    const sheet = window.uqr && openShareSheet;
+    btn.addEventListener("click", sheet ? openShareSheet : shareCurrentView);
+    const link = document.getElementById("qr-share-link");
+    if (link) {
+        link.textContent = navigator.share ? "Share link" : "Copy link";
+        link.addEventListener("click", shareCurrentView);
     }
 }
 
@@ -10509,9 +10510,9 @@ function setupFloatingChrome() {
         setOverlayOpen(gpxOverlay, gpxBtn, false);
         dialogFocusOut(gpxOverlay);
     }
-    // QR sheet: opened from the Options Share row, so Options closes
-    // first (single-overlay invariant). Rendered on every open so the
-    // code always matches the current view and highlight.
+    // Share sheet: opened from the Options Share row, so Options
+    // closes first (single-overlay invariant). Rendered on every open
+    // so the code always matches the current view and highlight.
     const qrOverlay = document.getElementById("qr-overlay");
     function closeQrOverlay() {
         setOverlayOpen(qrOverlay, null, false);

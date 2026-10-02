@@ -501,14 +501,14 @@
     <!-- GPX end -->
 
     <!-- Share start -->
-    <!-- QR sheet: the share link as a code, drawn by app.js when the
-         Options QR row opens it. Same backdrop/panel pattern as the GPX
+    <!-- Share sheet: the share link as a QR code plus a share/copy
+         button, drawn by app.js when the Options Share row opens it. Same backdrop/panel pattern as the GPX
          sheet; stripped with the rest of the Share markup when
          share_button is false. -->
     <div id="qr-overlay" class="qr-overlay" role="dialog" aria-modal="true" aria-labelledby="qr-overlay-title" hidden>
         <div class="qr-overlay-panel" tabindex="-1">
             <div class="qr-overlay-header">
-                <h2 id="qr-overlay-title" class="qr-overlay-title">Scan to open this map</h2>
+                <h2 id="qr-overlay-title" class="qr-overlay-title">Share this map</h2>
                 <button id="qr-close" class="overlay-close-btn" type="button" aria-label="Close QR code">
                     <!-- mdi:close (Apache 2.0, Pictogrammers) -->
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -519,6 +519,9 @@
             <div class="qr-overlay-body">
                 <div id="qr-code" class="qr-code" role="img" aria-label="QR code for the share link"></div>
                 <p id="qr-url" class="qr-url"></p>
+                <!-- Label set by app.js: "Share link" where the native
+                     share sheet exists, "Copy link" elsewhere. -->
+                <button id="qr-share-link" class="modal-cta qr-share-link" type="button">Share link</button>
             </div>
         </div>
     </div>
@@ -829,20 +832,7 @@
             <section class="opt-section">
                 <div class="opt-section-body">
                     <!-- Share start -->
-                    <button id="share-btn" class="opt-action-row hidden" type="button">
-                        <span class="opt-action-icon" aria-hidden="true">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
-                                <polyline points="16 6 12 2 8 6"/>
-                                <line x1="12" y1="2" x2="12" y2="15"/>
-                            </svg>
-                        </span>
-                        <span class="opt-action-text">
-                            <span class="opt-action-title">Share this view</span>
-                            <span class="opt-action-help">Copy a link to the current map view, including any highlighted route or trail.</span>
-                        </span>
-                    </button>
-                    <button id="qr-btn" class="opt-action-row hidden" type="button" aria-controls="qr-overlay">
+                    <button id="share-btn" class="opt-action-row hidden" type="button" aria-controls="qr-overlay">
                         <span class="opt-action-icon" aria-hidden="true">
                             <!-- mdi:qrcode (Apache 2.0, Pictogrammers) -->
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -850,8 +840,8 @@
                             </svg>
                         </span>
                         <span class="opt-action-text">
-                            <span class="opt-action-title">QR code</span>
-                            <span class="opt-action-help">Show a code another phone can scan to open this map, with the same view and highlight as the share link.</span>
+                            <span class="opt-action-title">Share this map</span>
+                            <span class="opt-action-help">A code another phone can scan, or a link to send. Both open this view, including any highlighted route or trail.</span>
                         </span>
                     </button>
                     <!-- Share end -->

@@ -172,13 +172,13 @@ def _index_html():
         return f.read()
 
 
-def test_share_button_default_keeps_the_share_row_qr_row_and_sheet():
+def test_share_button_default_keeps_the_share_row_and_sheet():
     out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG))
-    assert 'id="share-btn"' in out and 'id="qr-btn"' in out and 'id="qr-overlay"' in out
-    assert "vendor/uqr.mjs" in out
+    for needle in ('id="share-btn"', 'id="qr-overlay"', 'id="qr-share-link"', "vendor/uqr.mjs"):
+        assert needle in out
 
 
 def test_share_button_false_strips_every_share_block():
     out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG, share_button=False))
-    for needle in ('id="share-btn"', 'id="qr-btn"', 'id="qr-overlay"', "vendor/uqr.mjs"):
+    for needle in ('id="share-btn"', 'id="qr-overlay"', 'id="qr-share-link"', "vendor/uqr.mjs"):
         assert needle not in out
