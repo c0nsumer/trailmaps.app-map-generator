@@ -208,8 +208,7 @@ that rules out:
 
 The most valuable check is **possible unconnected ways**: two of a route's ways
 ending within 10 m of each other without sharing a node, so they look joined
-but aren't. That's what makes a loop fail to close for elevation. It also
-breaks routing for every other consumer of the data. Each finding links to
+but aren't. It breaks routing for every consumer of the data. Each finding links to
 the spot on openstreetmap.org. Ordinary branch junctions share a node exactly and
 are excluded, so the check stays quiet on healthy data.
 
@@ -225,9 +224,6 @@ tiles.
 - First-ever build of a new map: 5 to 10 min (downloads basemap,
   terrain, sprites).
 - Re-build with cached data, no `--refresh`: under 30 seconds.
-- Build with `show_elevation: true` and a fresh cache: extra
-  ~30 sec to 2 min for USGS 3DEP API calls (one batch per route at
-  25m sampling; auto-retries transient 502s).
 - `--refresh` on a large map: 10 to 20 min.
 
 If a build takes much longer, the slowest steps are usually terrain
@@ -520,7 +516,6 @@ go offline or change.
 MapLibre GL JS 6 ships as three module files: `maplibre-gl.mjs`,
 `maplibre-gl-shared.mjs`, and `maplibre-gl-worker.mjs`. They must keep
 their upstream names, because they import each other by those names.
-Vendor libraries are bundled regardless of the `pwa` setting.
 
 ## Font trimming
 
@@ -574,7 +569,7 @@ scripts/            (abridged; supporting modules not listed)
   font_trimmer.py     Automatic font subsetting based on map data
   validate_config.py  Pre-flight YAML validation
   serve.py            Dev server with Range request support
-  compute_route_stats.py     Per-route distance + USGS 3DEP elevation
+  compute_route_stats.py     Per-route distance
   osm_diff.py         Diff a trail re-fetch against the previous snapshot
   tagging_report.py   OSM data-quality notes (gaps, not style preferences)
 

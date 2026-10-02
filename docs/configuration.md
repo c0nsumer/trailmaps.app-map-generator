@@ -3,7 +3,7 @@
 Every map is described by a single YAML file. This document is the canonical
 reference for every supported key. It also holds deep dives on the features
 that need more than a one-line description: custom routes, direction schedules,
-route buckets, dash patterns, base layers, the About and Welcome modals, logo
+route buckets, dash patterns, the About and Welcome modals, logo
 and icon assets, and privacy posture.
 
 Two starter YAML files live under `configs/reference/`:
@@ -31,13 +31,10 @@ Both files stay in identical key order, so you can diff them at any time. Use
   - [Direction schedules](#direction-schedules)
   - [Display](#display)
   - [Marker and accent colors](#marker-and-accent-colors)
-  - [Base layers](#base-layers)
   - [Branding](#branding)
   - [User-supplied points](#user-supplied-points)
-  - [PWA](#pwa)
   - [About modal](#about-modal)
   - [Welcome modal](#welcome-modal)
-  - [Output](#output)
 - [Route buckets](#route-buckets)
 - [Custom routes (full guide)](#custom-routes-full-guide)
 - [Routes panel](#routes-panel)
@@ -48,7 +45,6 @@ Both files stay in identical key order, so you can diff them at any time. Use
 - [Dash patterns](#dash-patterns)
 - [Trailhead and parking entries](#trailhead-and-parking-entries)
 - [About this map block](#about-this-map-block)
-- [Base layers (full guide)](#base-layers-full-guide)
 - [Logo and icon assets](#logo-and-icon-assets)
 - [Privacy](#privacy)
 
@@ -163,10 +159,8 @@ schema and rules.
 | `bbox` | No | auto | Bounding box `[west, south, east, north]` used for the **initial view fit**. If omitted, it is auto-computed from trail geometry with a ~3% proportional buffer. |
 | `pan_bbox` | No | computed | Explicit pan envelope `[west, south, east, north]`; overrides `pan_padding` when set. Usually unnecessary: use `pan_padding` unless the auto-symmetric expansion is wrong for your site (e.g. asymmetric pan room to cover a parking lot north of the trails but nothing south). |
 | `pan_padding` | No | `0.5` | How much looser the pan wall is than `bbox`, as a fraction of the bbox's greater dimension added on each side. `0.5` is about 4x the pannable area; `0` pins the wall to `bbox`. Also widens basemap and terrain tile extraction to match. See the notes below. |
-| `min_zoom` | No | `10` | Minimum zoom level. |
-| `max_zoom` | No | `18` | Maximum zoom level. |
-| `basemap_maxzoom` | No | `15` | Max zoom for basemap tile extraction. |
-| `terrain_maxzoom` | No | `12` | Max zoom for terrain tile extraction. |
+
+The zoom range is fixed. The camera runs from zoom 10 to 18. Basemap tiles are extracted up to zoom 15, and terrain tiles up to zoom 12.
 
 #### Pan area: `bbox` vs. `pan_bbox`
 
@@ -218,10 +212,9 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
-| `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Custom base layers unaffected. |
-| `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. Custom base layers unaffected. |
+| `suppress_basemap_pois` | No | `false` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. |
+| `suppress_basemap_oneway_arrows` | No | `false` | Hide the one-way direction arrows the Protomaps basemap stamps on any `oneway=yes` road or path (its `roads_oneway` layer). Independent of `show_direction_arrows`, which governs the framework's own trail arrows. |
 | `show_distance` | No | `false` | When true, computes distance at build time. For route-mode relations this shows per-route distance in the Finder rows and highlight chip. For difficulty-mode relations it also gates the per-rating totals in the key and the per-trail distance in the finder and the trail popup. It is shown in the rider's [units](#units). The finder's trail rows show each named trail's visible length in both color modes. The trail popup shows the same length after a finder pick. After a tap on the map, it shows the length of the tapped section of the trail. For an unnamed way, the popup shows the length of the tapped segment. |
-| `show_elevation` | No | `false` | When true, samples USGS 3DEP at build time for per-route gain and loss. US only. Per route only; ignored for difficulty-mode relations, with a build warning when no relation is in route mode. See [`elevation.md`](elevation.md) for the accuracy caveats and why it won't match a phone or GPS. |
 | `poi_proximity_m` | No | `50` | Maximum distance (m) from a visible trail at which a feature or trail-marker POI renders. Tight (~10m) keeps only on-trail POIs; loose (~75m+) admits nearby attractions but risks bbox-incidental ones. The Features toggle auto-hides when no feature POI qualifies. |
 
 ### Per-route style overrides
@@ -255,11 +248,6 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`), or if it is `"routes"` when no relation is in route mode. |
 | `default_color_scheme` | No | `"light"` | First-visit color scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colors are scheme-independent. |
 | `invert_logo_dark` | No | `true` | Whether the brand logo auto-inverts in dark mode. The default suits monochrome and limited-palette logos. If the logo is colorful or photographic and inverting it looks wrong, set `false`. |
-| `map_dim_on_highlight` | No | `true` | When a route or a rating is highlighted (from the Finder, the key, or a share link), dim every non-highlighted route / trail. A trail picked in the Finder opens its popup instead, with the map fit to it, and does not dim the map. Name labels stay visible so connecting trails can still be read for wayfinding. Set `false` to keep the rest of the network at full saturation. |
-| `scrim_opacity` | No | `0.40` | Opacity (0-1) of the dark scrim. The scrim is used both for the in-map spotlight wash while a route or a rating is highlighted (only when `map_dim_on_highlight` is `true`) **and** for the Search / Options / About menu backdrops. One value, so the wash and the menus share a consistent density as the rider moves between them. Lower keeps more of the map legible; higher is a stronger dim. |
-| `highlight_glow` | No | `true` | Draw a yellow halo around the highlighted route's or rating's own lanes, which are lifted above the rest. The selection, a dark one included, then reads as "selected" at a glance. Set `false` for the lift alone, with no halo. |
-| `url_hash` | No | `false` | When `true`, write `#zoom/lat/lon` to the URL hash as the rider pans / zooms, and honor any hash on page load. This enables shareable deep-links and reload-preserved position. Default `false` drops the hash entirely. See [Privacy](#privacy) for the trade-off. |
-| `share_button` | No | `true` | Show the **Share this map** row in the Options overlay. It opens a sheet with the current view as a QR code and a button that sends the link through the device's share sheet, or copies it where there is none. The link and the code carry the view plus any highlighted route or trail. The code is encoded on the device. Set `false` to remove the row, the sheet and the encoder from the page. |
 
 The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
 
@@ -293,12 +281,6 @@ row).
 | `feature_ring_color` | No | `"#ffffff"` | Feature marker outer ring color. |
 | `accent_color` | No | `"#1D6FA5"` | UI accent color: active toggle pill, search input focus ring, link color, FAB pressed state, segmented-control active fill, etc. From one base color the build derives a per-mode palette: a deep light-mode shade and a lightened dark-mode shade. Each shade is paired with its own text color (white or near-black, whichever contrasts more), so the accent stays legible in both schemes. `style.css` selects the active pair by `data-color-scheme`. Three accepted forms. Omitted: the framework default `#1D6FA5`. A 6-digit hex (e.g. `"#FF5733"`): used verbatim as the light shade, with the dark shade derived from it, so light mode is unchanged. The literal `"auto"`: derives the base from the logo via Pillow (most common saturated color, cached per source hash), then deepens and saturates it for a vivid light shade and lightens it to clear WCAG AA against the `#1c1c1e` dark sheet. SVG-only logos fall back to the `icon:` raster as the derive source. If neither is raster, `"auto"` falls back to the default. For a curator-chosen accent (explicit hex or successful `"auto"`), the build warns when the light shade fails AA against the white sheet or the dark shade fails AA against the dark sheet (the links / focus-rings role). The on-accent text color is chosen for contrast automatically and is not part of that check. |
 
-### Base layers
-
-| Key | Required | Default | Description |
-|-----|----------|---------|-------------|
-| `base_layers` | No | `[]` | Additional raster base layers. When empty, the basemap selector is hidden in the UI; when populated, the selector appears with "Default" (Protomaps light) and each configured layer. See [Base layers (full guide)](#base-layers-full-guide). |
-
 ### Branding
 
 See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
@@ -319,13 +301,6 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 | `parking` | No | `[]` | List of parking locations. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
 | `hubs` | No | `[]` | List of trail-hub locations: named on-trail intersections riders use as wayfinding landmarks ("meet me at Bottle Junction"). Distinct POI type from trailheads. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
 
-### PWA
-
-| Key | Required | Default | Description |
-|-----|----------|---------|-------------|
-| `pwa` | No | `true` | Enable PWA support (service worker, offline caching, install row). When false, no service worker or install UI is generated. Vendor libraries are always bundled locally regardless of this setting. See [Deployment](deployment.md#pwa-and-offline-support). |
-| `pwa_install_prompt` | No | `true` | When `true` (the default), surface PWA install affordances on platforms that support them. On Chrome / Android: the page does not call `preventDefault()` on `beforeinstallprompt`, so Chrome's native mini-infobar appears. The custom Install action row (in the Options overlay, above About) is visible alongside it as a persistent fallback for second-visit installs. On iOS Safari: the Install action row opens manual Add-to-Home-Screen instructions. Set `false` to suppress install promotion entirely: no `beforeinstallprompt` handler is registered, and the custom Install row is hidden everywhere. Use `false` for personal / family maps where install nagging would be unwanted. Requires `pwa: true`. |
-
 ### About modal
 
 | Key | Required | Default | Description |
@@ -337,12 +312,6 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `welcome` | No | framework default | Welcome/Help modal. It auto-opens on first visit and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` is the map's one descriptive text. It renders in this modal, and its first paragraph doubles as the `og:description` social-preview snippet. The `title` applies to the first-visit auto-open. Opened from the Help row, the modal is titled "How to use this map" to match the row. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
-
-### Output
-
-| Key | Required | Default | Description |
-|-----|----------|---------|-------------|
-| `output_dir` | No | `build/<slug>` | Custom output directory path. |
 
 ## Route buckets
 
@@ -501,7 +470,7 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
   toggles exactly like the finder; event maps list featured routes only.
 - **Tapping a row** highlights that route (tap again to clear), the same
   behavior as a finder route row.
-- **Row stats** follow `show_distance` / `show_elevation`, and
+- **Row stats** follow `show_distance` and
   are shown in the rider's [units](#units).
 - **Boot state.** The panel opens either as the key card or as a compact round
   list-icon chip. The choice depends on how many rows there are and whether
@@ -525,9 +494,9 @@ or **Key** on a map with both modes.
 
 Units are the rider's choice, not a config setting. The Options **Units** row
 switches between miles and kilometers. The choice covers everything the app
-computes: route distance and elevation, the map scale, the off-screen distance
+computes: route distance, the map scale, the off-screen distance
 to the rider's location, and contour labels. Miles pairs with feet for short
-distances, elevation, and contours. Kilometers pairs with meters.
+distances and contours. Kilometers pairs with meters.
 
 Names in the trail data are never converted. A guidepost named "Mile 5.0"
 keeps that name under either setting.
@@ -700,7 +669,6 @@ Several config keys depend on the color modes:
 | `default_labels` / `forced_labels` | `"routes"` is rejected when no relation is in route mode. |
 | `default_labels` | If unset, defaults to `"trails"` when no relation is in route mode. On an event map it defaults to `"routes"`. Otherwise it defaults to `"none"`. |
 | `show_trails` | Rejected if `false` when no relation is in route mode. The map then lists trails only. |
-| `show_elevation` | Computed for route-mode relations. The build warns only when no relation is in route mode. |
 | `relation_colors` / `dashed_relations` | Apply to route-mode relations. On a difficulty-mode relation the entry is ignored, and the build warns. |
 | `clipped_relations` | Honored. Continuation arrows at the map edge take the lane's key color: the route's color, or the rating's color. The arrow of a single-color dashed route draws without an outline, as its lanes do. Distances for a clipped relation or a truncated trail carry "shown"; the tap popup says "Length shown:". |
 | `route_key` | Same meaning: `false` hides the key, Search only. |
@@ -1110,8 +1078,8 @@ The framework-supplied rows and sections, always shown:
 - **Offline** row: a diagnostic line that always states something a
   troubleshooting user can relay. When the service worker is active, it reads
   "Saved for offline use." or "Saving for offline use, N% done." Otherwise it
-  gives an explicit reason offline isn't working: "Not enabled for this map."
-  (`pwa: false`), "Requires a secure (HTTPS) connection.", "Not supported by
+  gives an explicit reason offline isn't working:
+  "Requires a secure (HTTPS) connection.", "Not supported by
   this browser.", "Not active for this page load." (first visit before the
   worker activates, or a hard refresh), "Status unavailable." (worker didn't
   answer).
@@ -1119,56 +1087,11 @@ The framework-supplied rows and sections, always shown:
   (the name links to the engine repo), then one credit line per data source
   and library. OSM, Protomaps, Material Design Icons, MapLibre GL JS,
   maplibre-gl-lanes, uqr, and SIL Open Font License always appear; Mapterhorn
-  and maplibre-contour when terrain is enabled; USGS 3DEP when route
-  elevation is computed and shown.
+  and maplibre-contour when terrain is enabled.
   See the framework-level credit list in [`README.md`](../README.md#credits).
 
 Any curator-supplied row or section whose source data is absent is omitted
 entirely.
-
-## Base layers (full guide)
-
-Custom raster tile layers appear in the basemap selector alongside the default
-Protomaps light basemap. When no base layers are configured, the selector is
-hidden entirely. Each entry supports:
-
-| Key | Required | Default | Description |
-|---|---|---|---|
-| `id` | Yes | : | Unique identifier (used internally) |
-| `name` | Yes | : | Display name in the basemap dropdown |
-| `url` | Yes | : | Tile URL template with `{z}`, `{x}`, `{y}` placeholders |
-| `attribution` | No | `""` | HTML attribution string |
-| `tile_size` | No | `256` | Tile size in pixels |
-| `max_zoom` | No | : | Maximum zoom level for the tile source |
-| `headers` | No | : | Map of HTTP headers for authenticated tile requests |
-
-Example with satellite imagery:
-
-```yaml
-base_layers:
-  - id: satellite
-    name: "Satellite"
-    url: "https://tiles.example.com/{z}/{x}/{y}.jpg"
-    attribution: "&copy; Example Imagery"
-    max_zoom: 19
-
-  - id: usgs-topo
-    name: "USGS Topo"
-    url: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"
-    attribution: "&copy; USGS"
-    tile_size: 256
-
-  - id: premium-imagery
-    name: "Premium Imagery"
-    url: "https://api.example.com/tiles/{z}/{x}/{y}.png"
-    attribution: "&copy; Premium Provider"
-    headers:
-      Authorization: "Bearer YOUR_API_TOKEN"
-```
-
-When a custom layer is selected, the Protomaps vector basemap is replaced with
-the raster tile layer. Trail overlays, hillshade, and all interactive features
-continue to work on top of the raster basemap.
 
 ## Logo and icon assets
 
@@ -1310,10 +1233,7 @@ visitor can clear them at any time through their browser.
 While Locate is on, the chip that names the trail under the rider is resolved on
 the device from the position fix the map already has for the Locate dot.
 
-`url_hash` is the one setting that changes what leaves the browser, and only when
-the visitor chooses to share. With `url_hash: true` the map writes its current
-`#zoom/lat/lon` to the address bar, so a copied or bookmarked URL carries that
-position. The default `false` leaves the hash empty. The **Share this map**
-action (see `share_button`) builds a position link on demand regardless of
-`url_hash`. Neither path involves the server: the position lives only in the URL
-the visitor passes along.
+The map never writes its position to the address bar. The **Share this map**
+action builds a position link on demand, and only when the visitor chooses to
+share. That path does not involve the server: the position lives only in the
+URL the visitor passes along.

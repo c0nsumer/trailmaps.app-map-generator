@@ -178,10 +178,9 @@ A rider who closes and re-opens the map gets the new build on the next launch.
 
 ## PWA and offline support
 
-When `pwa: true` (the default), every generated map is a fully installable
-Progressive Web App that works offline after the first visit. Set `pwa: false`
-to disable the service worker and install UI while still keeping locally bundled
-vendor libraries.
+Every generated map is a fully installable Progressive Web App that works
+offline after the first visit. This is always on. There is no config key to
+turn it off.
 
 **How it works:**
 
@@ -207,13 +206,13 @@ and offline capability layers on top.
 
 ### Install affordance behavior by platform
 
-The `pwa_install_prompt` config key controls install promotion:
+Install promotion is always on.
 
-| Platform | `pwa_install_prompt: true` (default) | `pwa_install_prompt: false` |
-|---|---|---|
-| Chrome / Android | Native mini-infobar appears (we don't call `preventDefault`); custom Install row in Options is also visible as a persistent fallback | No `beforeinstallprompt` handler registered; no infobar; Install row hidden |
-| iOS Safari | Install row in Options opens manual Add-to-Home-Screen instructions | Install row hidden |
-| Other browsers | Install row hidden (no support) | Install row hidden |
+| Platform | Behavior |
+|---|---|
+| Chrome / Android | Native mini-infobar appears (we don't call `preventDefault`); custom Install row in Options is also visible as a persistent fallback |
+| iOS Safari | Install row in Options opens manual Add-to-Home-Screen instructions |
+| Other browsers | Install row hidden (no support) |
 
 ## PMTiles and HTTP Range requests
 
@@ -241,7 +240,7 @@ still pays the slow first-load cost.
 ## Open Graph and share previews
 
 Every generated map emits Open Graph and Twitter Card meta tags referencing the
-icon and title, regardless of `share_button`. When the map URL is shared on
+icon and title. When the map URL is shared on
 Slack, Discord, iMessage, Android Messages, Facebook, X, or any other platform
 that consumes OG tags, the preview card shows:
 

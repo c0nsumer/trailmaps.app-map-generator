@@ -61,7 +61,7 @@ from fetch_pois import POI_SHOW_FLAGS, fetch_pois
 from fetch_terrain import fetch_terrain
 from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
-from pmtiles_util import extract_minzoom
+from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates
 from validate_config import validate_config
@@ -202,7 +202,7 @@ def _minify_html(src):
 
     Safe to run only on a BUILT copy, never on templates/index.html:
     template_inject deletes optional blocks by matching paired
-    `<!-- Share start -->` / `<!-- Share end -->` markers, so a stripped
+    `<!-- GPX start -->` / `<!-- GPX end -->` markers, so a stripped
     template would silently ship every optional block on every map. The
     build reaches this in _stage_templates, after copy_templates has already
     consumed those markers.
@@ -678,7 +678,7 @@ def load_config(config_path):
     Resolved keys: ``logo``, ``icon``, ``osm_file``, every
     ``custom_routes[].geometry``, ``additional_logos[].path``,
     ``event_mode.routes[].geometry`` and ``event_mode.gpx.routes[].file``.
-    All other paths (``output_dir``, ``base_layers[].url``, etc.) stay in
+    All other paths (``--output-dir``, vendor library URLs, etc.) stay in
     their original form, since they are repo-relative or external URLs.
     """
     config = read_config_yaml(config_path)
@@ -870,34 +870,6 @@ def print_summary(output_dir):
     console.step("=" * 60)
 
 
-def _dry_run_elevation_line(config):
-    """Say which relations the elevation step will sample, in the terms
-    the config can state before the fetch.
-
-    Mirrors compute_and_attach: elevation is per route and runs for
-    route-mode relations only. The exception lists may name
-    super-relations that fan out only after the fetch, so the line names
-    the lists rather than counting relations.
-    """
-    default_route = config.get("color_by", "route") == "route"
-    route_list = [str(x) for x in (config.get("color_by_route") or [])]
-    diff_list = [str(x) for x in (config.get("color_by_difficulty") or [])]
-    api = "USGS 3DEP getSamples (network calls, ~1 per route at 5m sampling)"
-    if default_route and not diff_list:
-        return f"elevation gain + loss: {api}"
-    if default_route:
-        return (
-            f"elevation gain + loss: {api} for route-mode relations; skipped for "
-            f"color_by_difficulty ({', '.join(diff_list)}), resolved after the fetch"
-        )
-    if route_list:
-        return (
-            f"elevation gain + loss: {api} for color_by_route only "
-            f"({', '.join(route_list)}), resolved after the fetch"
-        )
-    return "elevation gain + loss: skipped, no relation is in route mode"
-
-
 def _print_dry_run_summary(config, args, output_dir, cache_dir):
     """Print what the build WOULD do.
 
@@ -970,28 +942,21 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     if args.no_basemap:
         console.info("basemap: SKIPPED (--no-basemap)")
     else:
-        bm_zoom = config.get("basemap_maxzoom", 15)
         console.info(
-            f"basemap: pan_bbox extracted, zoom {extract_minzoom(config)}-{bm_zoom}, "
+            f"basemap: pan_bbox extracted, zoom {EXTRACT_MINZOOM}-{BASEMAP_MAXZOOM}, "
             "path and service-road lines generated")
     if args.no_terrain or not config.get("show_terrain", True):
         reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
     else:
-        tr_zoom = config.get("terrain_maxzoom", 12)
         console.info(
-            f"terrain: pan_bbox extracted, zoom {extract_minzoom(config)}-{tr_zoom}")
+            f"terrain: pan_bbox extracted, zoom {EXTRACT_MINZOOM}-{TERRAIN_MAXZOOM}")
     console.blank()
 
     # ---- Route stats ----
-    want_dist = bool(config.get("show_distance"))
-    want_elev = bool(config.get("show_elevation"))
-    if want_dist or want_elev:
+    if config.get("show_distance"):
         console.step("Per-route stats:")
-        if want_dist:
-            console.info("distance: computed (haversine, no API)")
-        if want_elev:
-            console.info(_dry_run_elevation_line(config))
+        console.info("distance: computed (haversine, no API)")
         console.blank()
 
     # ---- Branding assets ----
@@ -1012,14 +977,6 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
             f"additional_logos[{i}]: {_display_path(path)}"
             f"{'' if invert else ' (invert_dark: false)'}"
         )
-    console.blank()
-
-    # ---- PWA / sharing ----
-    console.step("Runtime features:")
-    console.info(f"pwa: {bool(config.get('pwa', True))}")
-    console.info(f"pwa_install_prompt: {bool(config.get('pwa_install_prompt', True))}")
-    console.info(f"share_button: {bool(config.get('share_button', True))}")
-    console.info(f"url_hash: {bool(config.get('url_hash', False))}")
     console.blank()
 
     console.step("Dry run complete - no files written, no network calls made.")
@@ -1079,9 +1036,8 @@ def _build_parser():
     parser.add_argument("--no-basemap", action="store_true", help="Skip basemap extraction")
     parser.add_argument(
         "--output-dir",
-        help="Write build output to this directory. Overrides "
-        "the config 'output_dir' field and the default "
-        "'build/<slug>/' layout. Resolved against the "
+        help="Write build output to this directory instead of the "
+        "default 'build/<slug>/' layout. Resolved against the "
         "current working directory if relative.",
     )
     parser.add_argument(
@@ -1133,16 +1089,14 @@ def _build_parser():
 
 def _resolve_dirs(config, args, project_root):
     """Return (output_dir, cache_dir) for this build."""
-    # Path resolution precedence: CLI flag > config field > legacy default.
+    # Path resolution precedence: CLI flag > default.
     # CLI-flag paths resolve against the current working directory so the
-    # caller (orchestrator or shell) controls layout entirely; config-field
-    # and default paths resolve against project_root so the legacy
+    # caller (orchestrator or shell) controls layout entirely; the default
+    # path resolves against project_root so the legacy
     # `python scripts/build.py configs/<slug>/<slug>.yaml` invocation keeps
     # writing to `build/<slug>/` under the repo regardless of cwd.
     if args.output_dir:
         output_dir = os.path.abspath(args.output_dir)
-    elif config.get("output_dir"):
-        output_dir = os.path.join(project_root, config["output_dir"])
     else:
         output_dir = os.path.join(project_root, "build", config["slug"])
 
@@ -1326,7 +1280,7 @@ def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
     """Enrich trails_geojson in place and write it to trails_path."""
     # Enrich trails.geojson with the three non-exclusive bucket flags
     # (summer/winter/emergency) on every route, append any user-defined
-    # custom_routes, and compute per-route distance/elevation stats.
+    # custom_routes, and compute per-route distance stats.
     # Idempotent - safe to re-run against a trails.geojson that's
     # already been enriched.
     enriched = _enrich_trails_geojson(config, trails_geojson, cache_dir)
@@ -1500,7 +1454,7 @@ def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_min
     lines to print after the fetches finish."""
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_bbox = config.get("pan_bbox") or config["bbox"]
-    basemap_maxzoom = config.get("basemap_maxzoom", 15)
+    basemap_maxzoom = BASEMAP_MAXZOOM
     basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom, tiles_minzoom)
 
     if args.no_basemap:
@@ -1558,7 +1512,7 @@ def _plan_terrain(config, args, terrain_path, tiles_minzoom):
     """Return (task, messages): the terrain fetch to run (or None) and the
     lines to print after the fetches finish."""
     terrain_bbox = config.get("pan_bbox") or config["bbox"]
-    terrain_maxzoom = config.get("terrain_maxzoom", 12)
+    terrain_maxzoom = TERRAIN_MAXZOOM
     terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom, tiles_minzoom)
 
     if not config.get("show_terrain", True):
@@ -1598,7 +1552,7 @@ def _plan_tiles(config, args, output_dir, cache_dir, trails_geojson):
     # messages stay tidy. Only the actual fetch + signature-save runs
     # concurrently; subprocess output from the two fetches will
     # interleave on stdout, which is acceptable for build logs.
-    tiles_minzoom = extract_minzoom(config)
+    tiles_minzoom = EXTRACT_MINZOOM
     terrain_path = os.path.join(output_dir, "terrain.pmtiles")
 
     fetch_tasks = []
@@ -1690,44 +1644,29 @@ def _pwa_warnings(output_dir):
 
 
 def _stage_pwa(config, args, output_dir):
-    """Service worker (or its removal), then precompression.
+    """Service worker, then precompression.
 
     MUST run after every other output file is written: the service worker
     needs the complete file list.
     """
-    if config.get("pwa", True):
-        console.step("Generating PWA assets...")
-        generate_service_worker(config, output_dir)
+    console.step("Generating PWA assets...")
+    generate_service_worker(config, output_dir)
 
-        # Minify the service worker we just wrote (see MINIFY_TARGETS_SW
-        # for why it cannot ride along with the other minify targets).
-        # Safe here: the SW's own bytes are deliberately excluded from
-        # CACHE_VERSION, so rewriting them does not invalidate the hash,
-        # and the precompress step then compresses the minified bytes.
-        if args.minify:
-            _minify_assets(output_dir, MINIFY_TARGETS_SW)
+    # Minify the service worker we just wrote (see MINIFY_TARGETS_SW
+    # for why it cannot ride along with the other minify targets).
+    # Safe here: the SW's own bytes are deliberately excluded from
+    # CACHE_VERSION, so rewriting them does not invalidate the hash,
+    # and the precompress step then compresses the minified bytes.
+    if args.minify:
+        _minify_assets(output_dir, MINIFY_TARGETS_SW)
 
-        pwa_warnings = _pwa_warnings(output_dir)
-        if pwa_warnings:
-            console.blank()
-            console.info("PWA WARNINGS - the app will not be installable until fixed:")
-            for w in pwa_warnings:
-                console.info(f"  • {w}")
-            console.blank()
-    else:
-        console.step("PWA disabled - skipping service worker generation")
-        # A previous build's sw.js must not survive the flip. Deployed,
-        # it answers already-installed riders' periodic update checks
-        # byte-identically, so their registered SW never updates and
-        # keeps serving the old cache indefinitely. Removing it makes
-        # the update check 404, which is the documented signal for the
-        # browser to unregister the worker. Sidecars go with it so the
-        # rsync tree carries no orphaned encodings.
-        for name in ("sw.js", "sw.js.gz", "sw.js.br"):
-            stale = os.path.join(output_dir, name)
-            if os.path.exists(stale):
-                os.remove(stale)
-                console.info(f"Removed stale {name} left by a previous build")
+    pwa_warnings = _pwa_warnings(output_dir)
+    if pwa_warnings:
+        console.blank()
+        console.info("PWA WARNINGS - the app will not be installable until fixed:")
+        for w in pwa_warnings:
+            console.info(f"  • {w}")
+        console.blank()
 
     # MUST be after the service worker - see precompress_assets.
     if args.precompress:

@@ -106,8 +106,8 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
     ranges no client ever fetches. See RENDERED_NAME_FIELDS.
 
     ``minzoom`` skips tiles below the zoom the app can reach (the camera
-    clamps to min_zoom). Extraction already drops those tiles
-    (pmtiles_util.extract_minzoom), but a cached pre-bound archive still
+    clamps to pmtiles_util.MIN_ZOOM). Extraction already drops those tiles
+    (pmtiles_util.EXTRACT_MINZOOM), but a cached pre-bound archive still
     carries z0-z5 world tiles whose place names would drag global-script
     glyph ranges into the trim; the guard keeps the scan honest either
     way.

@@ -131,9 +131,9 @@ fi
 
 # ── Helpers ───────────────────────────────────────────────────
 
-# Resolve the build output directory for a config. Honors the optional
-# `output_dir:` key, falling back to `build/<slug>`. Uses Python+yaml
-# rather than grep so quoting variants, comments, and overrides are
+# Resolve the build output directory for a config: always `build/<slug>`,
+# which is where build.py writes when no --output-dir is given. Uses
+# Python+yaml rather than grep so quoting variants and comments are
 # handled correctly.
 resolve_output_dir() {
     local cfg="$1"
@@ -142,7 +142,7 @@ import os, sys, yaml
 with open(sys.argv[1]) as f:
     c = yaml.safe_load(f) or {}
 slug = c.get("slug") or os.path.splitext(os.path.basename(sys.argv[1]))[0]
-print(c.get("output_dir") or os.path.join("build", slug))
+print(os.path.join("build", slug))
 PY
 }
 
@@ -334,7 +334,7 @@ for name in "${configs[@]}"; do
 
     # Deploy
     if $DEPLOY; then
-        # Resolve the actual build dir from the config (honors output_dir).
+        # Resolve the build dir from the config's slug.
         if ! build_dir_rel=$(resolve_output_dir "$config_file"); then
             echo "ERROR: Could not resolve output dir from ${config_file}" >&2
             failed+=("$name")

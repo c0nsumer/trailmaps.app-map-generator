@@ -29,7 +29,7 @@ from font_trimmer import (
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import logo_output_filename, process_logo
-from pmtiles_util import extract_minzoom
+from pmtiles_util import EXTRACT_MINZOOM
 from validate_config import (
     DEFAULT_FIRST_VISIT_LAYERS,
     DEFAULT_VISIBLE_LAYERS,
@@ -125,7 +125,7 @@ def _engine_app_version():
 # Hoisted to module scope so validate_config.py's `--check-spec` drift
 # lint can import it. Simple entries flow through `inject_config_into
 # _template` automatically; the keys with custom logic (routes,
-# directionSchedules, baseLayers, customRoutes, defaultTrailColor,
+# directionSchedules, customRoutes, defaultTrailColor,
 # about, logoUrl) are handled in a separate block right after the
 # loop and intentionally do NOT appear in CONFIG_SPEC. The set
 # `validate_config.HANDLED_SPECIALLY` lists those YAML keys so the
@@ -145,8 +145,6 @@ CONFIG_SPEC = [
     # from `bbox` + `pan_padding`) drives maxBounds.
     ("bbox", "bbox", None),
     ("pan_bbox", "panBbox", None),
-    ("min_zoom", "minZoom", 10),
-    ("max_zoom", "maxZoom", 18),
     # Build-time data gates. `show_markers` covers guideposts and
     # emergency access points, which render identically.
     ("show_markers", "showMarkers", True),
@@ -199,26 +197,6 @@ CONFIG_SPEC = [
     ("show_distance", "showDistance", False),
     ("suppress_basemap_pois", "suppressBasemapPois", False),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
-    # Highlighting dims everything else (basemap tint, other arrows and
-    # difficulty hidden, POI markers faded). Name labels stay visible for
-    # wayfinding. False keeps every route at full brightness.
-    ("map_dim_on_highlight", "mapDimOnHighlight", True),
-    # Opacity (0..1) of the dark scrim for BOTH the highlight wash (when
-    # map_dim_on_highlight is true) AND the menu backdrops (via the
-    # --scrim-opacity CSS var). One value, so moving between a highlight
-    # and an open menu reads as one continuous wash. Lower keeps the
-    # connecting trails legible.
-    ("scrim_opacity", "scrimOpacity", 0.40),
-    # Soft amber glow beneath a highlighted route/trail, so dark/black
-    # routes do not get lost.
-    ("highlight_glow", "highlightGlow", True),
-    # True makes MapLibre write and honor `#zoom/lat/lon`: shareable
-    # views that survive reload, at the cost of leaking the last-viewed
-    # location in the address bar and screenshots.
-    ("url_hash", "urlHash", False),
-    # Share button (Web Share API, clipboard fallback). False strips the
-    # whole share section from index.html at build time.
-    ("share_button", "shareButton", True),
     # Marker colors flow to CSS custom properties on :root, so the
     # peek-bar swatch, the on-map marker and the popup badge stay in
     # lockstep.
@@ -237,12 +215,6 @@ CONFIG_SPEC = [
     ("hub_border_color", "hubBorderColor", "white"),
     ("feature_color", "featureColor", "#8e44ad"),
     ("feature_ring_color", "featureRingColor", "#ffffff"),
-    # PWA
-    ("pwa", "pwa", True),
-    # False registers no beforeinstallprompt handler, which also silences
-    # Chrome's "page must call prompt()" warning, and hides the custom
-    # Install button everywhere.
-    ("pwa_install_prompt", "pwaInstallPrompt", True),
 ]
 
 
@@ -560,7 +532,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
         str(rel_id): spec
         for rel_id, spec in effective_schedules.items()
     }
-    config_obj["baseLayers"] = config.get("base_layers") or []
     config_obj["customRoutes"] = [
         {
             "id": entry["id"],
@@ -866,17 +837,6 @@ def _process_index_html(content, config):
         "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
     )
 
-    # Strip the Share button section when share_button: false.
-    # Default true - the section's `hidden` class is only used
-    # to keep the section invisible until app.js reveals it.
-    if not config.get("share_button", True):
-        content = re.sub(
-            r"\s*<!-- Share start -->.*?<!-- Share end -->\n",
-            "",
-            content,
-            flags=re.DOTALL,
-        )
-
     # Strip the GPX download FAB + sheet when the map has no
     # event_mode.gpx entries (the common case) - same pattern
     # as the Share strip so non-event maps carry no dead markup.
@@ -1061,21 +1021,6 @@ def _process_index_html(content, config):
             flags=re.DOTALL,
         )
 
-    # Strip PWA install UI and SW registration when PWA is disabled
-    if not config.get("pwa", True):
-        content = re.sub(
-            r"\s*<!-- PWA start -->.*?<!-- PWA end -->\n",
-            "",
-            content,
-            flags=re.DOTALL,
-        )
-        content = re.sub(
-            r"\s*<!-- SW start -->.*?<!-- SW end -->\n",
-            "",
-            content,
-            flags=re.DOTALL,
-        )
-
     # Strip icon links when no icon source is resolvable.
     # Uses the same fallback logic as copy_assets so a config
     # with `logo:` set but no `icon:` keeps the manifest /
@@ -1218,7 +1163,7 @@ def copy_assets(config, output_dir):
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
-    copy_trimmed_fonts(output_dir, fonts_src, minzoom=extract_minzoom(config))
+    copy_trimmed_fonts(output_dir, fonts_src, minzoom=EXTRACT_MINZOOM)
 
     # Self-hosted UI webfont - DOM chrome text (the PBF fonts above are
     # map-canvas glyphs; these are @font-face files for HTML/CSS). Copied

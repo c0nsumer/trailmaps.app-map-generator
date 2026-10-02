@@ -72,10 +72,6 @@ KNOWN_KEYS = {
     "bbox": list,
     "pan_bbox": list,
     "pan_padding": (int, float),
-    "min_zoom": (int, float),
-    "max_zoom": (int, float),
-    "basemap_maxzoom": (int, float),
-    "terrain_maxzoom": (int, float),
     # Show/hide toggles gate data-fetching and build-time asset generation;
     # UI visibility lives in localStorage. show_markers covers the merged
     # guideposts + emergency-access-point layer.
@@ -94,7 +90,6 @@ KNOWN_KEYS = {
     "suppress_basemap_pois": bool,
     "suppress_basemap_oneway_arrows": bool,
     "show_distance": bool,
-    "show_elevation": bool,
     "poi_proximity_m": (int, float),
     "relation_colors": dict,
     "relation_names": dict,
@@ -113,11 +108,6 @@ KNOWN_KEYS = {
     "forced_labels": str,
     "default_color_scheme": str,
     "invert_logo_dark": bool,
-    "map_dim_on_highlight": bool,
-    "scrim_opacity": (int, float),
-    "highlight_glow": bool,
-    "url_hash": bool,
-    "share_button": bool,
     "marker_color": str,
     "marker_text_color": str,
     "marker_border_color": str,
@@ -134,7 +124,6 @@ KNOWN_KEYS = {
     "feature_color": str,
     "feature_ring_color": str,
     "accent_color": str,
-    "base_layers": list,
     "logo": str,
     "icon": str,
     # Event and sponsor logos stacked under the primary `logo:`. Display-only:
@@ -143,11 +132,8 @@ KNOWN_KEYS = {
     "trailheads": list,
     "parking": list,
     "hubs": list,
-    "pwa": bool,
-    "pwa_install_prompt": bool,
     "about": dict,
     "welcome": (dict, bool),
-    "output_dir": str,
 }
 
 # Keys that intentionally DO NOT flow through CONFIG_SPEC into the runtime
@@ -163,13 +149,11 @@ BUILD_ONLY_KEYS = {
     "winter_relations",
     "summer_relations",
     "emergency_access_relations",
-    # Route stats: gates the build-time computation in
-    # compute_route_stats.py. The values themselves flow into the
-    # runtime via per-route metadata (CONFIG.routes[id].distance_m /
-    # elevation_gain_m), not through CONFIG_SPEC. show_distance is also
-    # in CONFIG_SPEC because difficulty maps sum per-rating distances at
-    # runtime; show_elevation stays a pure build-time gate.
-    "show_elevation",
+    # Route stats: gates the build-time distance computation in
+    # compute_route_stats.py. The values flow into the runtime via
+    # per-route metadata (CONFIG.routes[id].distance_m), not through
+    # CONFIG_SPEC. show_distance is also in CONFIG_SPEC because difficulty
+    # maps sum per-rating distances at runtime.
     # Style overrides folded into per-route metadata at build time
     # (relation_colors / dashed_relations / direction_schedule are
     # consumed in inject_config_into_template's pre-pass and emerge
@@ -186,16 +170,12 @@ BUILD_ONLY_KEYS = {
     "relation_names",
     # Build-time bbox / tile-extract knobs
     "pan_padding",  # consumed by expand_bbox_for_pan; runtime sees pan_bbox
-    "basemap_maxzoom",  # consumed by fetch_basemap.py
-    "terrain_maxzoom",  # consumed by fetch_terrain.py
     # User-supplied points consumed by fetch_pois.py and baked into
     # pois.geojson; the runtime reads pois.geojson, not CONFIG.parking /
     # CONFIG.trailheads / CONFIG.hubs.
     "parking",
     "trailheads",
     "hubs",
-    # Build output destination
-    "output_dir",
 }
 
 # Keys whose YAML name doesn't match a CONFIG_SPEC entry directly because
@@ -203,7 +183,6 @@ BUILD_ONLY_KEYS = {
 # emitting a derived field (or set of fields) into CONFIG. Listed here so
 # the drift lint accepts them as covered.
 HANDLED_SPECIALLY = {
-    "base_layers",  # → CONFIG.baseLayers
     "custom_routes",  # → CONFIG.customRoutes (subset of fields)
     "default_trail_color",  # → CONFIG.defaultTrailColor + dash + cap
     "about",  # → CONFIG.about (object passed through)
@@ -371,6 +350,54 @@ _RETIRED_KEYS = {
         "removed. Each viewer picks miles or kilometers in Options, "
         "and the default follows their device's region. Delete the line."
     ),
+    "show_elevation": (
+        "removed. Per-route elevation gain and loss are gone, along with the "
+        "USGS 3DEP lookup behind them. Distance stays under `show_distance`. "
+        "Delete the line."
+    ),
+    "base_layers": (
+        "removed. The Options basemap selector and custom raster basemaps are "
+        "gone; every map uses the generated vector basemap. Delete the line."
+    ),
+    "url_hash": (
+        "removed. The map never writes its view into the URL hash now. "
+        "Delete the line."
+    ),
+    "map_dim_on_highlight": (
+        "removed. Highlighting a route always dims the rest of the map. "
+        "Delete the line."
+    ),
+    "highlight_glow": (
+        "removed. The highlight glow is always on. Delete the line."
+    ),
+    "scrim_opacity": (
+        "removed. The scrim opacity is fixed at 0.40. Delete the line."
+    ),
+    "share_button": (
+        "removed. The Share section is always shipped. Delete the line."
+    ),
+    "pwa": (
+        "removed. Every map ships a manifest and service worker. Delete the line."
+    ),
+    "pwa_install_prompt": (
+        "removed. Install affordances are always shown. Delete the line."
+    ),
+    "min_zoom": (
+        "removed. The minimum zoom is fixed at 10. Delete the line."
+    ),
+    "max_zoom": (
+        "removed. The maximum zoom is fixed at 18. Delete the line."
+    ),
+    "basemap_maxzoom": (
+        "removed. The basemap extract stops at zoom 15. Delete the line."
+    ),
+    "terrain_maxzoom": (
+        "removed. The terrain extract stops at zoom 12. Delete the line."
+    ),
+    "output_dir": (
+        "removed. Builds go to build/<slug>; pass `--output-dir` on the "
+        "command line to put them elsewhere. Delete the line."
+    ),
     "default_direction_schedule": _DIRECTION_SCHEDULE_MOVED,
     "direction_schedules": _DIRECTION_SCHEDULE_MOVED,
     "direction_arrows_required": (
@@ -530,43 +557,6 @@ def _validate_geometry(report, config):
                 f"unusually large ({pm} m); the proximity filter is "
                 "effectively disabled and unrelated bbox POIs may render",
             )
-
-    # scrim_opacity: alpha (0..1) of the shared scrim (in-map highlight
-    # wash + menu backdrops). Outside that range is meaningless - the app
-    # clamps, but flag it at build so a typo (e.g. 40 instead of 0.40) is
-    # caught rather than silently turning the whole map black.
-    if "scrim_opacity" in config and _is_number(config["scrim_opacity"]):
-        op = config["scrim_opacity"]
-        if not 0 <= op <= 1:
-            report.err("scrim_opacity", f"must be in [0,1], got {op}")
-
-    for k in ("min_zoom", "max_zoom", "basemap_maxzoom", "terrain_maxzoom"):
-        if k in config and _is_number(config[k]):
-            if not 0 <= config[k] <= 22:
-                report.err(k, f"zoom must be in [0,22], got {config[k]}")
-
-    if "min_zoom" in config and "max_zoom" in config:
-        try:
-            if config["min_zoom"] > config["max_zoom"]:
-                report.err(
-                    "min_zoom", f"min_zoom ({config['min_zoom']}) > max_zoom ({config['max_zoom']})"
-                )
-        except TypeError:
-            pass  # already reported as a type error above
-
-    # Extraction ships only zooms >= floor(min_zoom) - 1 (pmtiles_util.
-    # extract_minzoom), so a min_zoom above basemap_maxzoom would bound
-    # the archive to a zoom range the extractor can't satisfy.
-    if "min_zoom" in config and "basemap_maxzoom" in config:
-        try:
-            if config["min_zoom"] > config["basemap_maxzoom"]:
-                report.err(
-                    "min_zoom",
-                    f"min_zoom ({config['min_zoom']}) > "
-                    f"basemap_maxzoom ({config['basemap_maxzoom']})",
-                )
-        except TypeError:
-            pass  # already reported as a type error above
 
 
 def _reject_unknown_keys(report, where, mapping, allowed):
@@ -866,60 +856,6 @@ def _validate_additional_logos(report, config):
                 f"must be true or false, got {entry['invert_dark']!r}",
             )
         _reject_unknown_keys(report, where, entry, {"path", "invert_dark"})
-
-
-def _validate_base_layers(report, config):
-    """base_layers: optional list of custom raster basemaps offered in the
-    Options basemap selector. Each entry is a mapping the runtime reads
-    as given (CONFIG.baseLayers): `id`, `name` and `url` are required,
-    the URL must carry the {z}/{x}/{y} placeholders, and the optional
-    `attribution`, `tile_size`, `max_zoom` and `headers` are typed. A
-    misspelled key or a bad value would otherwise ship silently and show
-    up as a broken layer in the selector."""
-    bl = config.get("base_layers")
-    if bl is None:
-        return
-    if not isinstance(bl, list):
-        report.err("base_layers", f"expected list, got {type(bl).__name__}")
-        return
-    seen_ids = set()
-    for i, entry in enumerate(bl):
-        where = f"base_layers[{i}]"
-        if not isinstance(entry, dict):
-            report.err(where, f"expected mapping with id/name/url keys, got {type(entry).__name__}")
-            continue
-        for key in ("id", "name", "url"):
-            v = entry.get(key)
-            if not isinstance(v, str) or not v.strip():
-                report.err(where, f"missing required `{key}:` (non-empty string)")
-        url = entry.get("url")
-        if isinstance(url, str):
-            missing = [t for t in ("{z}", "{x}", "{y}") if t not in url]
-            if missing:
-                report.err(f"{where}.url", f"must contain {', '.join(missing)}")
-        layer_id = entry.get("id")
-        if isinstance(layer_id, str):
-            if layer_id in seen_ids:
-                report.err(f"{where}.id", f"duplicate id {layer_id!r}")
-            seen_ids.add(layer_id)
-        if "attribution" in entry and not isinstance(entry["attribution"], str):
-            report.err(f"{where}.attribution", f"expected string, got {entry['attribution']!r}")
-        if "tile_size" in entry and not (_is_int(entry["tile_size"]) and entry["tile_size"] > 0):
-            report.err(f"{where}.tile_size", f"must be a positive integer, got {entry['tile_size']!r}")
-        if "max_zoom" in entry and not (
-            _is_int(entry["max_zoom"]) and 0 <= entry["max_zoom"] <= 24
-        ):
-            report.err(f"{where}.max_zoom", f"must be an integer 0..24, got {entry['max_zoom']!r}")
-        if "headers" in entry:
-            h = entry["headers"]
-            if not isinstance(h, dict) or not all(
-                isinstance(k, str) and isinstance(v, str) for k, v in h.items()
-            ):
-                report.err(f"{where}.headers", "must be a mapping of header name to string value")
-        _reject_unknown_keys(
-            report, where, entry,
-            {"id", "name", "url", "attribution", "tile_size", "max_zoom", "headers"},
-        )
 
 
 def _asset_paths(config):
@@ -1808,7 +1744,7 @@ def _validate_difficulty_map(report, config):
     A difficulty-mode relation colors every way by its own IMBA rating.
     `event_mode` is rejected while any relation is in difficulty mode
     (`color_by: difficulty` or a non-empty `color_by_difficulty`). The
-    routes label mode, the hidden Trails section and per-route elevation
+    routes label mode and the hidden Trails section
     only make sense when some relation is in route mode, so those checks
     fire when `color_by: difficulty` leaves `color_by_route` empty.
     """
@@ -1839,12 +1775,6 @@ def _validate_difficulty_map(report, config):
             "no relation is in route mode, so the map lists trails only; the Trails "
             "section can't be hidden - remove show_trails or list a relation in "
             "color_by_route",
-        )
-
-    if config.get("show_elevation") is True:
-        report.warn(
-            "show_elevation",
-            "elevation is per route and no relation is in route mode",
         )
 
 
@@ -1950,7 +1880,6 @@ def validate_config(config, *, config_path=None):
     _validate_relation_names(report, config)
     _validate_point_lists(report, config)
     _validate_additional_logos(report, config)
-    _validate_base_layers(report, config)
     _validate_paths(report, config, config_dir)
     _validate_custom_routes(report, config)
     _validate_event_mode(report, config)

@@ -137,14 +137,11 @@ hours.
 
 ## Console warning: beforeinstallpromptevent preventDefault() called
 
-The default `pwa_install_prompt: true` registers a
-`beforeinstallprompt` handler so we can show our own Install row in
-the Options overlay. We deliberately do not call `preventDefault()`,
+Every map registers a `beforeinstallprompt` handler so we can show
+our own Install row in the Options overlay. We deliberately do not call `preventDefault()`,
 which lets Chrome's native mini-infobar appear. Chrome logs this
 warning anyway because it expects either `preventDefault()` or an
 immediate `prompt()` call. The warning is benign and can be ignored.
-Set `pwa_install_prompt: false` to opt out of install promotion
-entirely (no handler registered, no warning, no Install row).
 
 ## Off-screen indicator points to the wrong location
 

@@ -66,17 +66,7 @@ def test_reversed_bbox_rejected():
 
 
 def test_wrong_scalar_type_rejected():
-    assert any("min_zoom" in e for e in _errors(min_zoom="not-a-number"))
-
-
-def test_min_zoom_above_basemap_maxzoom_rejected():
-    # Extraction ships only zooms >= floor(min_zoom) - 1, so this config
-    # would demand a zoom range the extractor can't produce.
-    assert any("basemap_maxzoom" in e for e in _errors(min_zoom=16, basemap_maxzoom=15))
-
-
-def test_min_zoom_at_basemap_maxzoom_accepted():
-    assert _errors(min_zoom=15, basemap_maxzoom=15) == []
+    assert any("show_distance" in e for e in _errors(show_distance="yes"))
 
 
 # --- geometry source: relations | custom_routes | event_mode.routes -------
@@ -394,12 +384,11 @@ def test_color_by_legacy_values_rejected_as_ordinary_junk():
         assert "must be one of" in errors[0], errors
 
 
-# --- show_distance / show_elevation (renamed from show_route_*) ------------
+# --- show_distance ---------------------------------------------------------
 
 
-def test_show_distance_and_show_elevation_are_valid():
+def test_show_distance_is_valid():
     assert _errors(show_distance=True) == []
-    assert _errors(show_elevation=True) == []
 
 
 # --- difficulty-map-only validation rules -----------------------------------
@@ -447,16 +436,6 @@ def test_difficulty_map_empty_relation_colors_does_not_warn():
 def test_routes_map_relation_colors_no_difficulty_warning():
     warnings = _warnings(relation_colors={12345678: "#ff0000"})
     assert not any("relation_colors" in w for w in warnings), warnings
-
-
-def test_difficulty_map_warns_on_show_elevation():
-    warnings = _warnings(color_by="difficulty", show_elevation=True)
-    assert any("show_elevation" in w for w in warnings), warnings
-
-
-def test_routes_map_show_elevation_no_difficulty_warning():
-    warnings = _warnings(show_elevation=True)
-    assert not any("show_elevation" in w for w in warnings), warnings
 
 
 # --- color_by_route / color_by_difficulty ------------------------------------
@@ -528,11 +507,8 @@ def test_route_mode_relation_lifts_the_no_route_mode_checks():
         default_labels="routes",
         forced_labels="routes",
         show_trails=False,
-        show_elevation=True,
     )
     assert _errors(**kwargs) == []
-    warnings = _warnings(**kwargs)
-    assert not any("show_elevation" in w for w in warnings), warnings
 
 
 def test_trail_labels_on_an_inline_only_event_map_warn():
@@ -559,30 +535,30 @@ def test_every_known_key_reaches_the_runtime_or_is_declared_build_only():
 
 
 # ---------------------------------------------------------------------------
-# base_layers entries
+# Retired keys from the 2026-10 prune
 # ---------------------------------------------------------------------------
 
-_LAYER = {"id": "sat", "name": "Satellite", "url": "https://t.example/{z}/{x}/{y}.png"}
+_PRUNED = {
+    "show_elevation": True,
+    "base_layers": [],
+    "url_hash": True,
+    "map_dim_on_highlight": False,
+    "highlight_glow": False,
+    "scrim_opacity": 0.5,
+    "share_button": False,
+    "pwa": False,
+    "pwa_install_prompt": False,
+    "min_zoom": 9,
+    "max_zoom": 19,
+    "basemap_maxzoom": 14,
+    "terrain_maxzoom": 11,
+    "output_dir": "build/x",
+}
 
 
-def test_base_layer_entry_is_valid():
-    assert not _errors(base_layers=[dict(_LAYER, tile_size=512, max_zoom=18,
-                                         attribution="x", headers={"A": "b"})])
-
-
-def test_base_layer_missing_url_and_bad_placeholders():
-    errs = _errors(base_layers=[{"id": "a", "name": "A"},
-                                dict(_LAYER, url="https://t.example/tiles.png")])
-    assert any("base_layers[0]" in e and "url" in e for e in errs)
-    assert any("base_layers[1].url" in e and "{z}" in e for e in errs)
-
-
-def test_base_layer_types_duplicates_and_unknown_keys():
-    errs = _errors(base_layers=[dict(_LAYER, tile_size="256", max_zoom=30, headers="x"),
-                                dict(_LAYER, tilesize=256)])
-    joined = "\n".join(errs)
-    assert "base_layers[0].tile_size" in joined
-    assert "base_layers[0].max_zoom" in joined
-    assert "base_layers[0].headers" in joined
-    assert "base_layers[1].id" in joined and "duplicate" in joined
-    assert "tilesize" in joined
+def test_pruned_keys_are_retired_with_their_own_message():
+    for key, value in _PRUNED.items():
+        errors = [e for e in _errors(**{key: value}) if key in e]
+        assert len(errors) == 1, (key, errors)
+        assert "removed" in errors[0] and "Delete the line" in errors[0], errors[0]
+        assert "unknown top-level key" not in errors[0], errors[0]

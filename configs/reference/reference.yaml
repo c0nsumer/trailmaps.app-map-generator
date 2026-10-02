@@ -86,18 +86,6 @@ relations:
 # pannable area; 0 pins the wall to bbox. Also widens tile extraction.
 # pan_padding: 0.5
 
-# Minimum zoom level.
-# min_zoom: 10
-
-# Maximum zoom level.
-# max_zoom: 18
-
-# Max zoom for basemap tile extraction.
-# basemap_maxzoom: 15
-
-# Max zoom for terrain tile extraction.
-# terrain_maxzoom: 12
-
 # ============================================================
 # Build-time data gates
 # ============================================================
@@ -152,10 +140,6 @@ relations:
 # For difficulty-mode relations this also gates the per-rating and per-trail
 # distances shown in the key, the finder, and the tap popup.
 # show_distance: false
-
-# Sample USGS 3DEP for per-route gain / loss (US only). See docs/elevation.md.
-# Per route only; ignored for difficulty-mode relations.
-# show_elevation: false
 
 # Max distance (m) from a visible trail for a feature / marker POI to render.
 # poi_proximity_m: 50
@@ -235,24 +219,6 @@ relations:
 # Auto-invert the logo in dark mode. Set false for colorful / photographic logos.
 # invert_logo_dark: true
 
-# Dim non-highlighted routes / trails when one is highlighted.
-# map_dim_on_highlight: true
-
-# Scrim opacity (0..1) shared by the in-map highlight wash AND the
-# Search / Options / About menu backdrops; lower keeps connecting trails
-# legible for wayfinding, higher is a stronger dim. Default 0.40.
-# scrim_opacity: 0.40
-
-# Yellow halo around the highlighted route's or rating's own lanes,
-# which helps dark ones read as selected. Set false for no halo.
-# highlight_glow: true
-
-# Write #zoom/lat/lon to the URL hash as the rider moves and restore it on load.
-# url_hash: false
-
-# Show the "Share this view" row in the Options overlay.
-# share_button: true
-
 # The bottom-right corner always shows the routes panel - the map's key. It
 # lists each visible route as a color swatch + name + stats (tap a row to
 # highlight it), with a Search button pinned at the bottom that opens the full
@@ -327,14 +293,6 @@ relations:
 # accent_color: "#1D6FA5"
 
 # ============================================================
-# Base layers
-# ============================================================
-
-# Additional raster base layers in the basemap selector. See
-# docs/configuration.md (Base layers).
-# base_layers: []
-
-# ============================================================
 # Branding
 # ============================================================
 
@@ -379,16 +337,6 @@ relations:
 # hubs: []
 
 # ============================================================
-# PWA
-# ============================================================
-
-# Enable the service worker, offline caching, and the install row.
-# pwa: true
-
-# Surface install affordances; false suppresses install promotion. Requires pwa: true.
-# pwa_install_prompt: true
-
-# ============================================================
 # About modal
 # ============================================================
 
@@ -419,10 +367,3 @@ relations:
 #   body: |
 #     Plain-text intro. Paragraphs are separated by blank lines.
 #   show_controls_hint: true
-
-# ============================================================
-# Output
-# ============================================================
-
-# Custom build output directory.
-# output_dir: build/my-trails

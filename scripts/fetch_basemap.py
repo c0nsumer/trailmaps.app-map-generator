@@ -17,7 +17,7 @@ import cli
 import console
 import requests
 from config_io import load_config_for_fetch
-from pmtiles_util import extract, extract_minzoom, find_pmtiles_cli
+from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, extract, find_pmtiles_cli
 
 PROTOMAPS_BUILD_BASE = "https://build.protomaps.com"
 # How many days back to search for an available build
@@ -63,8 +63,8 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
     # area the user can pan to, not just the tight initial-view bbox.
     # Fall back to bbox when called with a pre-pan_bbox config.
     bbox = config.get("pan_bbox") or config["bbox"]
-    maxzoom = config.get("basemap_maxzoom", 15)
-    minzoom = extract_minzoom(config)
+    maxzoom = BASEMAP_MAXZOOM
+    minzoom = EXTRACT_MINZOOM
 
     pad = EXTRACT_PAD_DEG
     padded_bbox = [

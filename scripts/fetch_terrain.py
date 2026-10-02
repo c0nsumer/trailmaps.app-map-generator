@@ -15,13 +15,13 @@ import os
 import cli
 import console
 from config_io import load_config_for_fetch
-from pmtiles_util import extract, extract_minzoom, find_pmtiles_cli
+from pmtiles_util import EXTRACT_MINZOOM, TERRAIN_MAXZOOM, extract, find_pmtiles_cli
 
 # Mapterhorn (Protomaps terrain) - pre-built Terrarium-encoded RGB PMTiles
 MAPTERHORN_URL = "https://download.mapterhorn.com/planet.pmtiles"
 
 
-def extract_from_mapterhorn(bbox, output_path, maxzoom=12, minzoom=0):
+def extract_from_mapterhorn(bbox, output_path, maxzoom=TERRAIN_MAXZOOM, minzoom=0):
     """Extract terrain tiles from Mapterhorn (Protomaps' terrain PMTiles).
 
     This is the simplest approach - Mapterhorn provides pre-built terrain
@@ -59,8 +59,8 @@ def fetch_terrain(config_or_path, output_path):
     # Use pan_bbox (looser envelope) so terrain covers the whole area the
     # user can pan to, matching the basemap extraction footprint.
     bbox = config.get("pan_bbox") or config["bbox"]
-    maxzoom = config.get("terrain_maxzoom", 12)
-    minzoom = extract_minzoom(config)
+    maxzoom = TERRAIN_MAXZOOM
+    minzoom = EXTRACT_MINZOOM
 
     console.step(f"Generating terrain tiles for {config['name']}...")
     console.info(f"Bbox: {bbox}")

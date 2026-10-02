@@ -3,6 +3,12 @@
 
 /*__CONFIG__*/
 
+// Camera zoom bounds, the same for every map. MIN_ZOOM must match
+// MIN_ZOOM in scripts/pmtiles_util.py, which derives the tile extract
+// floor from it.
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 18;
+
 // First act: take down the static boot-failure note (index.html). It
 // stays up exactly when this line never runs: JavaScript off, this file
 // missing, truncated, or unparseable on an old browser. Done here and
@@ -650,10 +656,8 @@ function applyMapPaintForScheme(scheme) {
 // Shared "recede the background" scrim density, used by BOTH the in-map
 // highlight wash (the dim-tint layer) and the CSS overlay backdrops
 // (--scrim-opacity, published in init() from this value), so the
-// highlight wash and the menu backdrops read as one density. Driven by
-// scrim_opacity; clamped to a valid alpha.
-const SCRIM_OPACITY = Math.max(0, Math.min(1,
-    typeof CONFIG.scrimOpacity === "number" ? CONFIG.scrimOpacity : 0.40));
+// highlight wash and the menu backdrops read as one density.
+const SCRIM_OPACITY = 0.40;
 
 // Apply a chosen scheme to the live page. Three concerns:
 //   1. Persist preference to LS so subsequent visits use it.
@@ -1225,7 +1229,7 @@ function clearTapLift() {
 // the popup closes. Only under an active dim: with no selection there
 // is nothing to exempt from.
 function syncTapLiftBrightness() {
-    if (!highlightDimActive()) return;
+    if (highlight == null) return;
     syncLaneHighlight();
     updateLabels();
 }
@@ -1793,16 +1797,16 @@ function decorCadenceLadder(targetPx, floorM, fromZoom, toZoom) {
 }
 
 // Icon ladder: first rung one stop above the map minimum (the run tier
-// owns the map-wide overview), last at maxZoom or wherever the cadence
+// owns the map-wide overview), last at MAX_ZOOM or wherever the cadence
 // floor engages.
 const DECOR_LADDER = decorCadenceLadder(DECOR_TARGET_SPACING_PX,
-    DECOR_CADENCE_FLOOR_M, CONFIG.minZoom + 1, CONFIG.maxZoom);
+    DECOR_CADENCE_FLOOR_M, MIN_ZOOM + 1, MAX_ZOOM);
 
 // Ground spacing between overview (run-tier) markers, the same screen
 // target, anchored at the map's minimum zoom where the whole system is
 // in view. Every run still gets at least one marker regardless.
 const DECOR_OVERVIEW_SPACING_M =
-    DECOR_TARGET_SPACING_PX * decorMetersPerPixel(CONFIG.minZoom);
+    DECOR_TARGET_SPACING_PX * decorMetersPerPixel(MIN_ZOOM);
 
 // Zoom at which the curve-following on-path labels become ELIGIBLE
 // (their minzoom). Historically held at 16 because on-path labels at
@@ -1818,10 +1822,9 @@ const DECOR_OVERVIEW_SPACING_M =
 // diamond field, 15 is the fallback stop.
 const POINT_LABEL_MAX_ZOOM = 14;
 
-// On-path line layers' minzoom. Clamped one stop under the map's own maxZoom
-// so a low-maxZoom regional map that never reaches 16 still gets an on-path
-// band rather than overview-only.
-const LABEL_CROSSOVER_ZOOM = Math.min(POINT_LABEL_MAX_ZOOM, CONFIG.maxZoom - 1);
+// On-path line layers' minzoom. Clamped one stop under MAX_ZOOM so the
+// on-path band can never vanish into overview-only.
+const LABEL_CROSSOVER_ZOOM = Math.min(POINT_LABEL_MAX_ZOOM, MAX_ZOOM - 1);
 
 // Overview point labels (the single on-path name per route/trail) stay
 // eligible until one stop INTO the on-path band, then hand off via this
@@ -2438,7 +2441,7 @@ function buildDecorFilter(kind) {
         ["==", ["get", "kind"], kind],
         ["<=", ["get", "min_zoom"], ["zoom"]],
     ];
-    if (!highlightDimActive()) return base;
+    if (highlight == null) return base;
     if (highlight.kind === "rating") {
         return ["all", ...base.slice(1), ratingIdentityMatch()];
     }
@@ -2469,7 +2472,7 @@ function buildChevronFilter(rev) {
             ["in", id, sharedOf]])]
         : false;
     f.push(rev ? revExpr : ["!", revExpr]);
-    if (highlightDimActive()) {
+    if (highlight != null) {
         if (highlight.kind === "rating") {
             f.push(ratingIdentityMatch());
         } else {
@@ -2561,7 +2564,6 @@ let visibleRoutes = new Set(); // route IDs currently shown (strings)
 // changes, so a cache that wants to know "has visibility changed since
 // I last computed" (refreshTrailLengths) needs this counter instead.
 let visibleRoutesVersion = 0;
-let basemapMode = "default"; // "default" or "custom:<id>"
 // Labels: 3-state mode (routes / trails / none). CONFIG.defaultLabels
 // is the per-map default (defaults to "none" framework-wide). Once
 // the rider picks a mode, LS persists their choice.
@@ -2605,7 +2607,7 @@ let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 let highlight = null; // { kind: "route"|"rating", key: string } | null
 
 // Indexes derived once at startup
-let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM, elevationGainM, elevationLossM }]
+let routeIndex = []; // [{ id, name, color, summer, winter, emergency, isCustom, distanceM }]
 let trailIndex = []; // [{ name, routeIds: [string] }]
 let poiIndex = [];   // [{ uid, type, name, lng, lat, ref }]
 // Active filter for the search overlay: "all" | "route" | "trail" | "poi".
@@ -2984,7 +2986,6 @@ document.addEventListener("visibilitychange", () => {
 const REQUIRED_CONFIG_KEYS = [
     "name", "slug", "title",
     "bbox", "panBbox",
-    "minZoom", "maxZoom",
     "routes",
 ];
 
@@ -3241,9 +3242,7 @@ function fallbackCopyShareUrl(url) {
 }
 
 // Reveal + wire up the Share button. Called from setupFloatingChrome
-// during boot. Does nothing when share_button: false at build time
-// (the whole button is stripped from index.html before render, so
-// getElementById returns null and we early-return).
+// during boot.
 function setupShareButton(openShareSheet) {
     const btn = document.getElementById("share-btn");
     if (!btn) return;
@@ -3264,14 +3263,10 @@ function setupShareButton(openShareSheet) {
 // null if no share hash is present / parseable. Side effect: strips
 // the hash from the URL via history.replaceState so that
 //   (a) the share-link doesn't persist in the address bar,
-//   (b) MapLibre's own hash machinery (when CONFIG.urlHash=true)
-//       starts fresh from the current state instead of competing
-//       with our share format,
-//   (c) a refresh doesn't re-trigger the share path with stale data.
+//   (b) a refresh doesn't re-trigger the share path with stale data.
 //
 // Format chosen for: human-readable, URL-encoded for safety,
-// distinguishable from MapLibre's "#zoom/lat/lon" so the two
-// conventions can coexist.
+// distinguishable from MapLibre's "#zoom/lat/lon" hash format.
 function consumeShareHash() {
     const raw = (window.location.hash || "").replace(/^#/, "");
     if (!raw.startsWith("share=")) return null;
@@ -3312,8 +3307,7 @@ function consumeShareHash() {
             else if (kindCode === "p") highlight = { kind: "poi", key };
         }
     }
-    // Strip the hash regardless of url_hash setting; MapLibre will
-    // start writing fresh hash if urlHash is true.
+    // Strip it: the share view is one-shot, not ambient state.
     try {
         const url = new URL(window.location.href);
         url.hash = "";
@@ -3505,7 +3499,7 @@ async function init() {
     // Publish the shared scrim density to CSS so the overlay backdrops
     // (--overlay-scrim) match the in-map highlight wash (dim-tint) exactly
     // one continuous wash as the rider moves between a highlight and an
-    // open menu. Both read from the same SCRIM_OPACITY / scrim_opacity.
+    // open menu. Both read from the same SCRIM_OPACITY.
     document.documentElement.style.setProperty(
         "--scrim-opacity", String(SCRIM_OPACITY));
     try {
@@ -3614,9 +3608,6 @@ async function init() {
     // Build map style (Protomaps flavor follows the active scheme)
     const style = buildStyle();
 
-    // Build transformRequest for base layers that require auth headers
-    const headersByDomain = buildHeaderMap();
-
     // Detect a "#share=..." URL (from the Share button on another
     // session) BEFORE map construction. If present, we use its center
     // /zoom as the initial view and stash any highlight for application
@@ -3625,14 +3616,10 @@ async function init() {
     const shareState = consumeShareHash();
     // Update-reload continuity: a one-shot stash written by
     // reloadForUpdate() just before an update reload. Consumed
-    // (deleted) unconditionally so it can never linger, but USED
-    // only when nothing more explicit owns the view: a share link
-    // beats it, and any surviving URL hash (MapLibre's own format on
-    // url_hash maps, which persists across the reload and restores
-    // the view by itself) means we must stand down.
+    // (deleted) unconditionally so it can never linger, but a share
+    // link beats it.
     const resumeView = consumeResumeView();
-    const viewState = shareState
-        || (window.location.hash ? null : resumeView);
+    const viewState = shareState || resumeView;
     if (viewState && viewState.highlight) {
         _pendingShareHighlight = viewState.highlight;
     }
@@ -3669,8 +3656,8 @@ async function init() {
         // layers. Side effect: symbol labels appear/disappear instantly
         // instead of fading in.
         fadeDuration: 0,
-        minZoom: CONFIG.minZoom,
-        maxZoom: CONFIG.maxZoom,
+        minZoom: MIN_ZOOM,
+        maxZoom: MAX_ZOOM,
         maxBounds: [
             [CONFIG.panBbox[0], CONFIG.panBbox[1]],
             [CONFIG.panBbox[2], CONFIG.panBbox[3]],
@@ -3680,14 +3667,10 @@ async function init() {
         pitchWithRotate: false,
         touchPitch: false,
         attributionControl: false,
-        // URL hash (#zoom/lat/lon), makes views shareable and reload-
-        // preserved, but leaks last-viewed location via URL / screen-
-        // share. Controlled per-map via CONFIG.urlHash; default false
-        // (URL stays clean). Opt in per-map by setting `url_hash: true`
-        // in the YAML. The Share button generates one-shot share
-        // links via a separate "#share=..." format that's read on load
-        // regardless of urlHash setting and then stripped.
-        hash: CONFIG.urlHash,
+        // No MapLibre URL hash (#zoom/lat/lon): it would leak the
+        // last-viewed location via the address bar and screen shares.
+        // Share links use the one-shot "#share=..." format instead,
+        // read on load and then stripped.
     };
     if (viewState) {
         mapOptions.center = viewState.center;
@@ -3698,17 +3681,6 @@ async function init() {
             [CONFIG.bbox[2], CONFIG.bbox[3]],
         ];
         mapOptions.fitBoundsOptions = { padding: HOME_VIEW_PADDING };
-    }
-
-    if (Object.keys(headersByDomain).length > 0) {
-        mapOptions.transformRequest = (url) => {
-            for (const [domain, headers] of Object.entries(headersByDomain)) {
-                if (url.includes(domain)) {
-                    return { url, headers };
-                }
-            }
-            return { url };
-        };
     }
 
     // The routes are drawn by maplibre-gl-lanes and by nothing else. Its
@@ -4670,12 +4642,8 @@ function _welcomeOptionsDescription() {
     // enumerate Auto, the welcome is a quick orientation, not
     // a feature spec.
     items.push("switch between light and dark mode");
-    // Same gate as the "Map style" section reveal: any configured
-    // base layer means the Basemap selector is showing (a Default
-    // option is always added alongside, so there's a real choice).
-    if ((CONFIG.baseLayers || []).length) items.push("change the map style");
-    if (CONFIG.shareButton) items.push("share the view");
-    if (CONFIG.pwa && CONFIG.pwaInstallPrompt) items.push("install as an app");
+    items.push("share the view");
+    items.push("install as an app");
     // The two informational rows at the tail of Options: the Help row
     // that reopens this very modal (worth telling a first-visit rider
     // the guide isn't a one-shot) and the technical About modal.
@@ -5077,20 +5045,6 @@ function buildAboutModalContent() {
             "maplibre-contour",
             " (BSD-3-Clause).");
     }
-    // USGS 3DEP credit is shown only when the map actually displays
-    // route elevation. Detected at runtime by looking for any route
-    // metadata entry with computed elevation_gain_m - present iff
-    // show_elevation was true at build time AND the 3DEP fetch
-    // succeeded. Avoids crediting a data source whose output isn't
-    // actually surfaced to the rider.
-    const hasRouteElevation = Object.values(CONFIG.routes || {}).some(
-        (r) => typeof r.elevation_gain_m === "number");
-    if (hasRouteElevation) {
-        credit("Route elevation profiles from ",
-            "https://www.usgs.gov/3d-elevation-program",
-            "USGS 3DEP",
-            " (US government, public domain).");
-    }
     credit("UI iconography from ",
         "https://pictogrammers.com/library/mdi/",
         "Material Design Icons",
@@ -5126,34 +5080,8 @@ function getBaseUrl() {
     return `${loc.protocol}//${loc.host}${path}`;
 }
 
-function isCustomLayer() {
-    return basemapMode.startsWith("custom:");
-}
-
-function getCustomLayer() {
-    const id = basemapMode.replace("custom:", "");
-    return (CONFIG.baseLayers || []).find((l) => l.id === id);
-}
-
-function buildHeaderMap() {
-    const headersByDomain = {};
-    for (const layer of CONFIG.baseLayers || []) {
-        if (layer.headers) {
-            try {
-                const domain = new URL(layer.url.replace("{z}", "0").replace("{x}", "0").replace("{y}", "0")).hostname;
-                headersByDomain[domain] = layer.headers;
-            } catch (e) { /* skip malformed URLs */ }
-        }
-    }
-    return headersByDomain;
-}
-
 function buildStyle() {
     const base = getBaseUrl();
-
-    if (isCustomLayer()) {
-        return buildCustomStyle(getCustomLayer(), base);
-    }
 
     // Protomaps flavor follows current color scheme: "light" or
     // "dark". The bootstrap script in <head> sets data-color-scheme
@@ -5178,10 +5106,7 @@ function buildStyle() {
 }
 
 // The Protomaps vector basemap source. Shared by initial style
-// construction (buildStyle) and the return-to-Default path in
-// rebuildBasemapLayers, which must REPLACE sources.basemap: after a
-// custom base layer was active, the current style's basemap source is
-// a raster tile source, and vector layers pointed at it error out.
+// construction (buildStyle) and rebuildBasemapLayers.
 function vectorBasemapSource() {
     // Attribution: each source gets its own © assertion so it reads
     // unambiguously about who owns what. Terrain credit (Mapterhorn)
@@ -5207,31 +5132,6 @@ function vectorBasemapSource() {
     };
 }
 
-function buildCustomStyle(layer, base) {
-    const sourceConfig = {
-        type: "raster",
-        tiles: [layer.url],
-        tileSize: layer.tile_size || 256,
-        attribution: layer.attribution || "",
-    };
-    if (layer.max_zoom) sourceConfig.maxzoom = layer.max_zoom;
-
-    return {
-        version: 8,
-        glyphs: `${base}fonts/{fontstack}/{range}.pbf`,
-        sprite: `${base}sprites/v4/light`,
-        sources: { basemap: sourceConfig },
-        layers: [
-            {
-                id: "custom-raster",
-                type: "raster",
-                source: "basemap",
-                paint: {},
-            },
-        ],
-    };
-}
-
 // ============================================================
 // Terrain / Hillshade (tones follow the per-scheme paint tokens)
 // ============================================================
@@ -5242,9 +5142,8 @@ function buildCustomStyle(layer, base) {
 // of course the routes. Lakes stop looking bumpy and stop carrying
 // stray contour lines, and no road, path or route is shaded or crossed
 // by contour ink. Contour LABELS are symbols and stay up with the
-// other labels. A custom raster base layer has no water layer;
-// terrain then goes under the first symbol layer, which is above the
-// raster.
+// other labels. Should a flavor ever ship without a water layer,
+// terrain falls back to sitting under the first symbol layer.
 function firstSymbolLayerId() {
     const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
     return firstSymbol ? firstSymbol.id : undefined;
@@ -6148,7 +6047,7 @@ function washMarkerElement(rootEl, type, dimmed) {
 // User-location markers are never enumerated here, so they never dim.
 // Safe to call repeatedly.
 function updateMarkerDimState() {
-    const active = highlightDimActive();
+    const active = highlight != null;
     for (const [type, arr] of Object.entries(POI_MARKER_ARRAYS)) {
         // Event POIs keep full brightness; they are not part of the dim pass.
         if (type === "event") continue;
@@ -6506,11 +6405,10 @@ async function loadTrails() {
     // Added here above the lanes, and moved by promoteBasemapLabels to
     // sit above the basemap but under its labels and the lanes: a
     // highlight is a lift inside the lane layer, which dims the other
-    // lanes itself, so the wash must never cover the lanes. When
-    // `CONFIG.mapDimOnHighlight` is true AND a route or rating is highlighted,
-    // refreshSpotlightDim() sets its opacity to SCRIM_OPACITY so the
-    // basemap recedes behind the wash and the lifted lanes read as a
-    // spotlight. It stays steady while a menu opens over it (the menu
+    // lanes itself, so the wash must never cover the lanes. When a
+    // route or rating is highlighted, refreshSpotlightDim() sets its
+    // opacity to SCRIM_OPACITY so the basemap recedes behind the wash
+    // and the lifted lanes read as a spotlight. It stays steady while a menu opens over it (the menu
     // suppresses its own scrim instead, see .has-spotlight in
     // style.css).
     map.addLayer({
@@ -6818,9 +6716,9 @@ function washDim(cssColor) {
 // both fill and halo unevenly, which was worse). `matchExprFn` is a THUNK, not
 // a built expression: routeIdentityMatch / trailIdentityMatch read
 // `highlight.key`, which is null when no highlight is active, so they
-// must not run until the highlightDimActive() check below has passed.
+// must not run until the highlight check below has passed.
 function labelDimExpr(normal, matchExprFn) {
-    return highlightDimActive()
+    return highlight != null
         ? ["case", matchExprFn(), normal, washDim(normal)]
         : normal;
 }
@@ -6888,7 +6786,7 @@ function updateLabels() {
         const visible = labelMode === "routes" && visibleRoutes.has(routeId);
         map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
         if (visible) {
-            if (highlightDimActive() && highlight.kind === "route") {
+            if (highlight && highlight.kind === "route") {
                 // This layer holds only routeId's own ways, so a route
                 // highlight is a uniform match, no per-feature expression
                 // needed.
@@ -7008,8 +6906,7 @@ const TAP_GLOW_COLOR = "#FFEC00";
 // reaches 5 px past the casing with a 3 px fade, a little less than the
 // tap glow: the plugin paints the halo OVER the neighboring lanes, so a
 // reach wider than the lane spacing (5 px at z14) would hide a bundle
-// mate outright. `highlight_glow: false` keeps the lift and drops the
-// halo.
+// mate outright.
 const ROUTE_LIFT_HALO_WIDTH = 5;
 const ROUTE_LIFT_HALO_BLUR = 3;
 // The continuation arrows of a lifted route get a yellow rim from a
@@ -7032,9 +6929,9 @@ function syncLaneHighlight() {
         laneLayer.setHighlight(null);
         return;
     }
-    const washed = highlightDimActive() && !anyModalOpen();
+    const washed = highlight != null && !anyModalOpen();
     laneLayer.setHighlight(lifted, {
-        halo: CONFIG.highlightGlow !== false ? TAP_GLOW_COLOR : null,
+        halo: TAP_GLOW_COLOR,
         haloWidth: ROUTE_LIFT_HALO_WIDTH,
         haloBlur: ROUTE_LIFT_HALO_BLUR,
         outline: null,
@@ -7736,12 +7633,10 @@ function updateTrailDisplay() {
 // ============================================================
 // Spotlight dim
 // ============================================================
-// Gated behind `CONFIG.mapDimOnHighlight` (per-map YAML, default ON,
-// opt out with `map_dim_on_highlight: false`). When active,
-// highlighting a route or a rating dims the rest of the map:
+// Highlighting a route or a rating dims the rest of the map:
 //   - The `dim-tint` background layer fades in, washing the basemap +
 //     non-highlighted trail casings/fills toward black (strength is
-//     SCRIM_OPACITY, from scrim_opacity).
+//     SCRIM_OPACITY).
 //   - Difficulty icons, one-way arrows, and clip-arrows narrow HARD to
 //     the highlighted route or rating only (filtered out elsewhere, so they
 //     don't punch through the tint on other lines).
@@ -7763,13 +7658,8 @@ function updateTrailDisplay() {
 //     let the basemap show through the marker.
 // The wash and the menu backdrops share one scrim density and are never
 // both animated at once; see refreshSpotlightDim().
-// Clearing the highlight, or toggling the config off, restores normal
-// visibility in one pass via applyDimState().
-
-function highlightDimActive() {
-    // Default ON, opt out with `map_dim_on_highlight: false` in YAML.
-    return CONFIG.mapDimOnHighlight !== false && highlight != null;
-}
+// Clearing the highlight restores normal visibility in one pass via
+// applyDimState().
 
 // Per-route clip-arrow visibility. Clip-arrow layers are route-scoped
 // (one layer per route), so this is straight visibility toggling.
@@ -7784,7 +7674,7 @@ function highlightDimActive() {
 // re-applies the arrow's scheme-contrasting halo, so a scheme toggle
 // lands here (applyMapPaintForScheme).
 function updateClipArrowsDim() {
-    const dim = highlightDimActive();
+    const dim = highlight != null;
     const kind = dim ? highlight.kind : null;
     const key = dim ? highlight.key : null;
     const byRating = kind === "rating";
@@ -7849,7 +7739,7 @@ function anyModalOpen() {
 // stays on behind a Search sheet, the highlighted route still reads.)
 function refreshSpotlightDim() {
     if (!map) return;
-    const on = highlightDimActive() && !anyModalOpen();
+    const on = highlight != null && !anyModalOpen();
     // Guard the layer, not the whole function: the body class must stay
     // in sync even when dim-tint is momentarily absent (style rebuild),
     // or a stale .has-spotlight would leave every overlay scrimless.
@@ -7930,9 +7820,9 @@ function highlightRoute(routeId) {
     fitToRouteOrTrail({ routeId });
 
     // Show chip with per-route stats. routeIndex carries the same
-    // distance/elevation values as the Finder rows; routeStatsText
-    // returns "" when neither stat is enabled or available, in which
-    // case the chip just shows label + swatch.
+    // distance value as the Finder rows; routeStatsText returns ""
+    // when distance is off or unavailable, in which case the chip
+    // just shows label + swatch.
     const indexEntry = routeIndex.find((r) => r.id === routeId);
     showHighlightChip({
         label: info.name,
@@ -7943,7 +7833,6 @@ function highlightRoute(routeId) {
         line: routeSwatchModel(info),
     });
 
-    // Spotlight dim (no-op unless CONFIG.mapDimOnHighlight is on)
     applyDimState();
 
     // Mark this route's panel key row as the selected one.
@@ -8849,7 +8738,7 @@ function showHighlightChip({ label, color, stats, line, glyph, poiType, markerLa
     // ×, so without this a screen reader announces "Epic Loop, button"
     // with no hint that activating it clears the highlight.
     chip.setAttribute("aria-label", `Clear highlight: ${label}`);
-    // stats is the pre-formatted "8.2 mi · 410 ft ↑" text from
+    // stats is the pre-formatted "8.2 mi" text from
     // routeStatsText(), empty string or missing means hide the span
     if (statsEl) {
         if (stats) {
@@ -9144,8 +9033,8 @@ function appendRouteRows(list, rows) {
         btn.appendChild(name);
 
         // Same gating as finder rows: routeStatsText returns "" when
-        // neither distance nor elevation is enabled/available, and we
-        // omit the span entirely rather than render an empty one.
+        // distance is off or unavailable, and we omit the span
+        // entirely rather than render an empty one.
         const stats = routeStatsText(r);
         if (stats) {
             const statsEl = document.createElement("span");
@@ -9364,18 +9253,11 @@ function buildRouteIndex() {
             // only on event maps (the muted background network isn't a
             // route a rider chooses between).
             featured: !!info.featured,
-            // Per-route stats from compute_route_stats.py. Any may
-            // be absent: distance is gated by show_distance,
-            // elevation by show_elevation + a successful
-            // USGS 3DEP fetch at build time. Gain and loss are
-            // computed in the same pass, so they're either both
-            // present or both absent. Stored as integer meters in
+            // Per-route distance from compute_route_stats.py, absent
+            // when show_distance is off. Stored as integer meters in
             // CONFIG.routes; render-time formatting uses
-            // formatDistance / formatElevationPair which respect
-            // distanceUnits.
+            // formatDistance, which respects distanceUnits.
             distanceM: typeof info.distance_m === "number" ? info.distance_m : null,
-            elevationGainM: typeof info.elevation_gain_m === "number" ? info.elevation_gain_m : null,
-            elevationLossM: typeof info.elevation_loss_m === "number" ? info.elevation_loss_m : null,
         });
     }
     // Sort alphabetically by name (case-insensitive) for the list display.
@@ -11363,37 +11245,6 @@ function setupFloatingChrome() {
         wireRadiogroupKeys(labelGroup);
     }
 
-    const basemapField = document.getElementById("basemap-field");
-    const basemapSelect = document.getElementById("basemap-select");
-    const baseLayers = CONFIG.baseLayers || [];
-    // The basemap selector lives inside the "Map style" collapsible
-    // accordion section. Keep both in sync, when there are no
-    // configured base layers, hide the whole section.
-    const styleSection = document.getElementById("section-style");
-    if (basemapSelect && baseLayers.length > 0) {
-        // Default first
-        const defaultOpt = document.createElement("option");
-        defaultOpt.value = "default";
-        defaultOpt.textContent = "Default";
-        basemapSelect.appendChild(defaultOpt);
-        for (const layer of baseLayers) {
-            const opt = document.createElement("option");
-            opt.value = `custom:${layer.id}`;
-            opt.textContent = layer.name;
-            basemapSelect.appendChild(opt);
-        }
-        basemapSelect.value = basemapMode;
-        if (basemapField) basemapField.classList.remove("hidden");
-        if (styleSection) styleSection.classList.remove("hidden");
-        basemapSelect.addEventListener("change", (e) => {
-            basemapMode = e.target.value;
-            rebuildBasemapLayers();
-        });
-    } else {
-        if (basemapField) basemapField.classList.add("hidden");
-        if (styleSection) styleSection.classList.add("hidden");
-    }
-
     // (Section accordions removed, with ~14 rows total across three
     // sections, the panel scrolls cleanly without needing per-section
     // collapse. Section headers are now plain <h3> labels, no click
@@ -11906,24 +11757,16 @@ function groupPoisForFinder(matchedPois, query) {
     return out;
 }
 
-// Build the stats string ("8.2 mi · ↑410 / ↓380 ft") for a route.
-// Returns "" when neither stat is available (gates off, build
-// couldn't fetch elevation, etc.) so the caller can decide to omit
-// the stats span entirely. Distance and elevation are independent;
-// gain and loss come together (computed in one pass). Distance gets
-// " shown" when the route is truncated at the map edge
-// (isTruncatedRoute): the clip cut it before its full length, so the
-// number is the map's window, not the route's. Elevation is left
-// alone; gain/loss over the shown portion is still honest.
+// Build the stats string ("8.2 mi") for a route. Returns "" when the
+// distance is unavailable (show_distance off) so the caller can omit
+// the stats span entirely. Distance gets " shown" when the route is
+// truncated at the map edge (isTruncatedRoute): the clip cut it
+// before its full length, so the number is the map's window, not the
+// route's.
 function routeStatsText(r) {
-    const parts = [];
-    if (typeof r.distanceM === "number") {
-        const text = formatDistance(r.distanceM);
-        parts.push(isTruncatedRoute(r.id) ? `${text} shown` : text);
-    }
-    const elev = formatElevationPair(r.elevationGainM, r.elevationLossM);
-    if (elev) parts.push(elev);
-    return parts.join(" · ");
+    if (typeof r.distanceM !== "number") return "";
+    const text = formatDistance(r.distanceM);
+    return isTruncatedRoute(r.id) ? `${text} shown` : text;
 }
 
 // Shared route-swatch builder for the key rows (rebuildRoutePanel),
@@ -12735,7 +12578,6 @@ function rememberBasemapStockFilters(layers) {
 }
 
 function applyBasemapDrawnPathFilter() {
-    if (isCustomLayer()) return;
     const flags = [seasonMode === "winter" ? "tm_w" : "tm_s"];
     if (emergencyOn) flags.push("tm_e");
     // The line layers and the minor-road labels use the legacy filter
@@ -12799,9 +12641,8 @@ function suppressBasemapOnewayArrows() {
 }
 
 // ============================================================
-// Basemap rebuild: user picks a different basemap from the (optional)
-// base_layers selector, or the color scheme changes (applyColorScheme
-// calls this to swap the Protomaps flavor in place).
+// Basemap rebuild: the color scheme changes (applyColorScheme calls
+// this to swap the Protomaps flavor in place).
 // ============================================================
 function rebuildBasemapLayers() {
     const base = getBaseUrl();
@@ -12816,51 +12657,25 @@ function rebuildBasemapLayers() {
     const overlayLayers = currentStyle.layers.filter(
         (l) =>
             l.source !== "basemap" &&
-            l.id !== "custom-raster" &&
             (l.type !== "background" || l.id === "dim-tint")
     );
 
-    let basemapSource;
-    let baseLayers;
-    let spritePath;
+    // Same flavor logic as buildStyle, picks dark/light
+    // Protomaps tiles to match the current color scheme.
+    const flavor = basemapFlavor();
+    const basemapLayers = styleBasemapLayers(
+        basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" }), flavor);
+    rememberBasemapStockFilters(basemapLayers);
 
-    if (isCustomLayer()) {
-        const layer = getCustomLayer();
-        basemapSource = {
-            type: "raster",
-            tiles: [layer.url],
-            tileSize: layer.tile_size || 256,
-            attribution: layer.attribution || "",
-        };
-        if (layer.max_zoom) basemapSource.maxzoom = layer.max_zoom;
-        baseLayers = [{ id: "custom-raster", type: "raster", source: "basemap", paint: {} }];
-        spritePath = `${base}sprites/v4/light`;
-    } else {
-        // Same flavor logic as buildStyle, picks dark/light
-        // Protomaps tiles to match the current color scheme.
-        const flavor = basemapFlavor();
-        baseLayers = styleBasemapLayers(
-            basemaps.layers("basemap", resolvedNamedFlavor(flavor), { lang: "en" }), flavor);
-        rememberBasemapStockFilters(baseLayers);
-        spritePath = `${base}sprites/v4/${flavor}`;
-        basemapSource = vectorBasemapSource();
-    }
-
-    // The basemap source is rebuilt on every pass, never carried over:
-    // carrying currentStyle.sources over unchanged worked for scheme
-    // toggles (vector -> vector) but broke the return from a custom base
-    // layer, since the carried-over source was still the raster tile
-    // source, so every Protomaps vector layer errored on the type
-    // mismatch and the basemap went blank.
-    const newSources = { basemap: basemapSource };
+    const newSources = { basemap: vectorBasemapSource() };
     for (const [key, val] of Object.entries(currentStyle.sources)) {
         if (key !== "basemap") newSources[key] = val;
     }
     const newStyle = {
         ...currentStyle,
         sources: newSources,
-        sprite: spritePath,
-        layers: [...baseLayers, ...overlayLayers],
+        sprite: `${base}sprites/v4/${flavor}`,
+        layers: [...basemapLayers, ...overlayLayers],
     };
     map.setStyle(newStyle, { diff: true });
 
@@ -12910,7 +12725,8 @@ function rebuildBasemapLayers() {
 // complete). Net rider experience: old map paints instantly, a thin
 // bar runs a few seconds, one quick refresh, current data, a
 // one-shot "Map updated" toast (via a sessionStorage flag set just
-// before the reload). View state survives via the URL hash.
+// before the reload). View state survives via the resume-view stash
+// (reloadForUpdate).
 //
 // Found mid-session (deploy while the map is open). Auto-reloading a
 // map someone is actively using would be hostile, so this keeps the
@@ -12930,7 +12746,7 @@ function rebuildBasemapLayers() {
 //
 // CACHE_VERSION (content-hashed at build time) ticks on any deploy,
 // code, data, PMTiles, icons, so this fires for any rebuild.
-if (CONFIG.pwa && "serviceWorker" in navigator) {
+if ("serviceWorker" in navigator) {
     const SW_SILENT_SWAP_WINDOW_MS = 60000;
     const SW_CORE_POLL_MS = 1000;
     // sessionStorage (not LS): scoped to this tab, survives exactly
@@ -13308,15 +13124,10 @@ async function refreshOfflineStatus() {
         stopOfflineStatusPolling();
     };
 
-    // Environment gates, most specific first. The curator's choice,
-    // then the browser's abilities. The HTTPS case matters for
-    // self-hosters: browsers expose service workers only in secure
-    // contexts, so a plain-HTTP deploy looks like "no SW support"
-    // unless called out explicitly.
-    if (!CONFIG.pwa) {
-        settle("Not enabled for this map.", "off");
-        return;
-    }
+    // Environment gates: the browser's abilities. The HTTPS case
+    // matters for self-hosters: browsers expose service workers only
+    // in secure contexts, so a plain-HTTP deploy looks like "no SW
+    // support" unless called out explicitly.
     if (!("serviceWorker" in navigator)) {
         if (!window.isSecureContext) {
             settle("Requires a secure (HTTPS) connection.", "insecure");
@@ -13378,18 +13189,7 @@ function stopOfflineStatusPolling() {
 }
 
 // ============================================================
-// PWA Install row in the Options overlay. Gated on CONFIG.pwa (a build
-// without PWA support has nothing to install) and on
-// CONFIG.pwaInstallPrompt (default true).
-//
-// pwaInstallPrompt: false registers no beforeinstallprompt handler at
-// all: a handler that never calls prompt() earns a Chrome console
-// warning ("Banner not shown: beforeinstallpromptevent.preventDefault()
-// called..."), and Chrome's own mini-infobar, omnibox icon and three-dot
-// "Install app" keep working without us. For personal/family maps where
-// install promotion would be unwanted.
-//
-// Otherwise, show-when-armed:
+// PWA Install row in the Options overlay. Show-when-armed:
 //   * Register beforeinstallprompt without preventDefault so
 //     Chrome's native mini-infobar still appears, AND stash the
 //     event so the button click can call prompt() on it.
@@ -13409,118 +13209,116 @@ function stopOfflineStatusPolling() {
 //   * On 'appinstalled' (any UI triggered it), hide the row in
 //     this tab for immediate feedback.
 // ============================================================
-if (CONFIG.pwa && CONFIG.pwaInstallPrompt) {
-    let deferredInstallPrompt = null;
-    // Two signals, no persistent state of our own:
-    //
-    //   standalone, definitive "currently running as the PWA";
-    //                short-circuits everything (no install UI ever).
-    //   beforeinstallprompt, Chrome's authoritative "the PWA is
-    //                installable AND not currently installed" signal.
-    //                Its firing un-hides our Install button; its
-    //                silence (and the HTML default `hidden` class
-    //                on #install-btn) keeps the button hidden.
-    //                Uninstall is handled automatically: Chrome
-    //                re-fires beforeinstallprompt on the rider's
-    //                next visit after they remove the app.
-    const standalone = window.matchMedia("(display-mode: standalone)").matches;
-    const isIOS = isIOSDevice();
+let deferredInstallPrompt = null;
+// Two signals, no persistent state of our own:
+//
+//   standalone, definitive "currently running as the PWA";
+//                short-circuits everything (no install UI ever).
+//   beforeinstallprompt, Chrome's authoritative "the PWA is
+//                installable AND not currently installed" signal.
+//                Its firing un-hides our Install button; its
+//                silence (and the HTML default `hidden` class
+//                on #install-btn) keeps the button hidden.
+//                Uninstall is handled automatically: Chrome
+//                re-fires beforeinstallprompt on the rider's
+//                next visit after they remove the app.
+const standalone = window.matchMedia("(display-mode: standalone)").matches;
+const isIOS = isIOSDevice();
 
-    function setInstallButtonShown(shown) {
-        const btn = document.getElementById("install-btn");
-        if (btn) btn.classList.toggle("hidden", !shown);
-    }
+function setInstallButtonShown(shown) {
+    const btn = document.getElementById("install-btn");
+    if (btn) btn.classList.toggle("hidden", !shown);
+}
 
-    function setInstallButtonEnabled(enabled) {
-        const btn = document.getElementById("install-btn");
-        if (!btn) return;
-        btn.disabled = !enabled;
-        btn.classList.toggle("is-disabled", !enabled);
-    }
+function setInstallButtonEnabled(enabled) {
+    const btn = document.getElementById("install-btn");
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.classList.toggle("is-disabled", !enabled);
+}
 
-    if (!standalone) {
-        window.addEventListener("beforeinstallprompt", (e) => {
-            // NOTE: deliberately NOT calling e.preventDefault(). That
-            // lets Chrome's native mini-infobar appear (free, one-shot
-            // install affordance). We stash the event so the click
-            // handler can call prompt() on it, Chrome allows both
-            // UIs as long as we eventually call prompt() (which
-            // silences the "page must call prompt()" warning).
-            deferredInstallPrompt = e;
-            setInstallButtonShown(true);
-            setInstallButtonEnabled(true);
+if (!standalone) {
+    window.addEventListener("beforeinstallprompt", (e) => {
+        // NOTE: deliberately NOT calling e.preventDefault(). That
+        // lets Chrome's native mini-infobar appear (free, one-shot
+        // install affordance). We stash the event so the click
+        // handler can call prompt() on it, Chrome allows both
+        // UIs as long as we eventually call prompt() (which
+        // silences the "page must call prompt()" warning).
+        deferredInstallPrompt = e;
+        setInstallButtonShown(true);
+        setInstallButtonEnabled(true);
+    });
+}
+
+// 'appinstalled' fires regardless of which UI triggered the install
+// (mini-infobar, omnibox icon, our button). Hide the install UI in
+// this tab so the rider sees immediate feedback that the install
+// succeeded.
+window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    setInstallButtonShown(false);
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    // Wire the install button. The HTML keeps it `hidden` by
+    // default; beforeinstallprompt above un-hides it when fired.
+    const installBtn = document.getElementById("install-btn");
+    if (installBtn) {
+        installBtn.addEventListener("click", async () => {
+            if (!deferredInstallPrompt) return;
+            setInstallButtonEnabled(false);
+            deferredInstallPrompt.prompt();
+            const result = await deferredInstallPrompt.userChoice;
+            if (result.outcome === "accepted") {
+                setInstallButtonShown(false);
+            }
+            // Either way, the BeforeInstallPromptEvent is
+            // single-use. Discard it; if Chrome re-fires the event
+            // later (its own heuristics) the listener above will
+            // re-arm.
+            deferredInstallPrompt = null;
         });
     }
 
-    // 'appinstalled' fires regardless of which UI triggered the install
-    // (mini-infobar, omnibox icon, our button). Hide the install UI in
-    // this tab so the rider sees immediate feedback that the install
-    // succeeded.
-    window.addEventListener("appinstalled", () => {
-        deferredInstallPrompt = null;
-        setInstallButtonShown(false);
-    });
-
-    document.addEventListener("DOMContentLoaded", () => {
-        // Wire the install button. The HTML keeps it `hidden` by
-        // default; beforeinstallprompt above un-hides it when fired.
+    // iOS Safari: show the install row with platform-specific title
+    // and help text ("Add to home screen" plus the manual
+    // Share-menu path, instead of the Android-side "Install this
+    // app" / "Add to your home screen for offline access."). iOS has no
+    // programmatic install API - there's no real "install," just a
+    // home-screen shortcut - so the wording avoids overclaiming, and
+    // the actual flow lives in the browser chrome (Share → Add to
+    // Home Screen). The row is tagged .is-static to suppress the
+    // tap-target affordance. The icon stays for visual consistency
+    // with Android (riders see the same "this is the install
+    // option" cue regardless of platform).
+    if (isIOS && !standalone) {
         const installBtn = document.getElementById("install-btn");
         if (installBtn) {
-            installBtn.addEventListener("click", async () => {
-                if (!deferredInstallPrompt) return;
-                setInstallButtonEnabled(false);
-                deferredInstallPrompt.prompt();
-                const result = await deferredInstallPrompt.userChoice;
-                if (result.outcome === "accepted") {
-                    setInstallButtonShown(false);
-                }
-                // Either way, the BeforeInstallPromptEvent is
-                // single-use. Discard it; if Chrome re-fires the event
-                // later (its own heuristics) the listener above will
-                // re-arm.
-                deferredInstallPrompt = null;
-            });
-        }
-
-        // iOS Safari: show the install row with platform-specific title
-        // and help text ("Add to home screen" plus the manual
-        // Share-menu path, instead of the Android-side "Install this
-        // app" / "Add to your home screen for offline access."). iOS has no
-        // programmatic install API - there's no real "install," just a
-        // home-screen shortcut - so the wording avoids overclaiming, and
-        // the actual flow lives in the browser chrome (Share → Add to
-        // Home Screen). The row is tagged .is-static to suppress the
-        // tap-target affordance. The icon stays for visual consistency
-        // with Android (riders see the same "this is the install
-        // option" cue regardless of platform).
-        if (isIOS && !standalone) {
-            const installBtn = document.getElementById("install-btn");
-            if (installBtn) {
-                installBtn.classList.add("is-static");
-                const title = installBtn.querySelector(".opt-action-title");
-                if (title) {
-                    title.textContent = "Add to home screen";
-                }
-                const help = installBtn.querySelector(".opt-action-help");
-                if (help) {
-                    // "Safari's Share menu" is bolded as one phrase on
-                    // purpose. The earlier copy bolded a bare "Share",
-                    // which read as a reference to something on this
-                    // page - and the nearest match is our own "Share
-                    // this view" row directly above, which riders were
-                    // tapping instead (reported 2026-08-29). Naming the
-                    // owner inside the emphasized phrase is the whole
-                    // fix; where Safari keeps that menu (a toolbar
-                    // button before iOS 26, the three-dots menu after)
-                    // is a question riders were not actually stuck on.
-                    help.innerHTML = "Use <strong>Safari's Share menu</strong>, "
-                                   + "then tap <strong>Add to Home Screen</strong>.";
-                }
+            installBtn.classList.add("is-static");
+            const title = installBtn.querySelector(".opt-action-title");
+            if (title) {
+                title.textContent = "Add to home screen";
             }
-            setInstallButtonShown(true);
+            const help = installBtn.querySelector(".opt-action-help");
+            if (help) {
+                // "Safari's Share menu" is bolded as one phrase on
+                // purpose. The earlier copy bolded a bare "Share",
+                // which read as a reference to something on this
+                // page - and the nearest match is our own "Share
+                // this view" row directly above, which riders were
+                // tapping instead (reported 2026-08-29). Naming the
+                // owner inside the emphasized phrase is the whole
+                // fix; where Safari keeps that menu (a toolbar
+                // button before iOS 26, the three-dots menu after)
+                // is a question riders were not actually stuck on.
+                help.innerHTML = "Use <strong>Safari's Share menu</strong>, "
+                               + "then tap <strong>Add to Home Screen</strong>.";
+            }
         }
-    });
-}
+        setInstallButtonShown(true);
+    }
+});
 
 // ============================================================
 // Map scale (under the brand, only while the rider moves the map)
@@ -13639,7 +13437,7 @@ function formatDistance(meters) {
 // units: a period for decimals, and a comma for thousands only from five
 // digits up ("1000 km", "12,000 km"). Four digits read fine ungrouped.
 // Reaches five digits in practice for the off-screen distance to a rider
-// on another continent and for gain on a long route in feet.
+// on another continent.
 function formatCount(n) {
     return Math.abs(n) >= 10000 ? n.toLocaleString("en-US") : String(n);
 }
@@ -13674,33 +13472,6 @@ function setDistanceUnits(units) {
     }
     updateLocationIndicator();
     applyContourUnits();
-}
-
-// Compact paired gain/loss display for route stats. Either or both
-// values may be null (unknown / not computed). Returns "" if neither
-// is present so the caller can omit the elevation portion entirely.
-//
-// Format: "↑NNN / ↓NNN ft", the unit is shared across both numbers
-// rather than repeated, both for compactness and to make "this is one
-// physical quantity, two facets of it" visually clear. Single-value
-// case (e.g. only gain available) collapses to "↑NNN ft" naturally.
-//
-// Why both directions: for loops gain ≈ loss; for one-way routes the
-// asymmetry is informative without us having to claim a riding
-// direction (OSM doesn't tell us, and our segment-walk gives an
-// arbitrary feature-order direction anyway). Showing both lets riders
-// who know the trail interpret correctly.
-function formatElevationPair(gainM, lossM) {
-    const haveGain = typeof gainM === "number";
-    const haveLoss = typeof lossM === "number";
-    if (!haveGain && !haveLoss) return "";
-    const isMetric = distanceUnits === "km";
-    const unit = isMetric ? "m" : "ft";
-    const conv = (m) => formatCount(isMetric ? Math.round(m) : Math.round(m * 3.28084));
-    const parts = [];
-    if (haveGain) parts.push(`↑${conv(gainM)}`);
-    if (haveLoss) parts.push(`↓${conv(lossM)}`);
-    return `${parts.join(" / ")} ${unit}`;
 }
 
 // ============================================================

@@ -339,13 +339,11 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         routes[cid] = info
         changed = True
 
-    # ----- Per-route distance / elevation stats -----
+    # ----- Per-route distance stats -----
     # After the custom routes are appended, so they are measured too.
-    # Imported here: compute_route_stats imports resolve_color_modes
-    # from this module, so a top-level import would be circular.
     from compute_route_stats import compute_and_attach
 
-    if compute_and_attach(trails_geojson, config, cache_dir):
+    if compute_and_attach(trails_geojson, config):
         changed = True
 
     return changed

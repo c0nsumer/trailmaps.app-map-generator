@@ -102,7 +102,6 @@
         import * as maplibre from "./vendor/maplibre-gl.mjs";
         window.maplibregl = maplibre;
     </script>
-    <!-- Share start -->
     <!-- QR encoder for the Share sheet. Its own module so a missing
          file hides the QR row (app.js checks window.uqr) instead of
          keeping the map from starting. -->
@@ -110,7 +109,6 @@
         import { renderSVG } from "./vendor/uqr.mjs";
         window.uqr = { renderSVG };
     </script>
-    <!-- Share end -->
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
     <!-- Isolines from the shipped terrain raster-dem; loaded
@@ -370,7 +368,7 @@
         </button>
         <button id="toggle-options" class="fab" type="button" aria-label="Options" aria-pressed="false" aria-controls="options-overlay">
             <!-- mdi:cog (Apache 2.0, Pictogrammers). The Options overlay
-                 covers settings-shaped affordances (layer toggles, basemap,
+                 covers settings-shaped affordances (layer toggles,
                  appearance, share, install, about); the cog reads as
                  "settings" universally, where mdi:tune (sliders) reads
                  more like an audio equalizer / image-filter adjust. -->
@@ -520,11 +518,9 @@
     </div>
     <!-- GPX end -->
 
-    <!-- Share start -->
     <!-- Share sheet: the share link as a QR code plus a share/copy
          button, drawn by app.js when the Options Share row opens it. Same backdrop/panel pattern as the GPX
-         sheet; stripped with the rest of the Share markup when
-         share_button is false. -->
+         sheet. -->
     <div id="qr-overlay" class="qr-overlay" role="dialog" aria-modal="true" aria-labelledby="qr-overlay-title" hidden>
         <div class="qr-overlay-panel" tabindex="-1">
             <div class="qr-overlay-header">
@@ -545,7 +541,6 @@
             </div>
         </div>
     </div>
-    <!-- Share end -->
 
     <!-- Options overlay - same backdrop/panel pattern as the Search
          overlay. On mobile the panel fills the viewport and hides the
@@ -830,19 +825,6 @@
                 </div>
             </section>
 
-            <!-- Map style - basemap selector. Hidden when no base_layers configured. -->
-            <section class="opt-section hidden" id="section-style">
-                <h3 class="opt-section-header">
-                    <span class="opt-section-title">Map style</span>
-                </h3>
-                <div class="opt-section-body">
-                    <div class="opt-row opt-row-field" id="basemap-field">
-                        <label class="opt-field-label" for="basemap-select">Basemap</label>
-                        <select id="basemap-select" class="opt-select"></select>
-                    </div>
-                </div>
-            </section>
-
             <!-- Share / Install / Offline status / About - full-row
                  entries sharing one anatomy (icon badge + title + help
                  line). Three are buttons; the offline row is the
@@ -851,7 +833,6 @@
                  is the only break from the toggle rows above. -->
             <section class="opt-section">
                 <div class="opt-section-body">
-                    <!-- Share start -->
                     <button id="share-btn" class="opt-action-row hidden" type="button" aria-controls="qr-overlay">
                         <span class="opt-action-icon" aria-hidden="true">
                             <!-- mdi:qrcode (Apache 2.0, Pictogrammers) -->
@@ -864,9 +845,7 @@
                             <span class="opt-action-help">Get a QR code or share a link to this map view.</span>
                         </span>
                     </button>
-                    <!-- Share end -->
 
-                    <!-- PWA start -->
                     <button id="install-btn" class="opt-action-row install-btn hidden" type="button">
                         <span class="install-btn-icon" aria-hidden="true">
                             <!-- loading="lazy": this button lives in the closed
@@ -883,7 +862,6 @@
                             <span class="opt-action-help">Add to your home screen for offline access.</span>
                         </span>
                     </button>
-                    <!-- PWA end -->
 
                     <!-- Help. Reopens the Welcome/Help modal on demand -
                          the controls guide must not be a one-shot locked
@@ -929,7 +907,7 @@
          Reuses about-modal styling for consistency (same backdrop +
          content card + close button). The body is built by app.js so
          the per-map title (CONFIG.title) and features (gated by
-         show_trails / share_button / pwa_install_prompt) are
+         show_trails and the map's routes) are
          reflected in the copy. -->
     <div id="welcome-modal" class="about-modal hidden" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
         <div class="about-modal-backdrop"></div>
@@ -972,7 +950,6 @@
     </div>
 
     <script src="app.js" defer></script>
-    <!-- SW start -->
     <script>
     if ('serviceWorker' in navigator) {
         // Sample BEFORE register(): false on a first/uncontrolled visit (no SW
@@ -989,6 +966,5 @@
         navigator.serviceWorker.register('sw.js');
     }
     </script>
-    <!-- SW end -->
 </body>
 </html>

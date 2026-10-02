@@ -53,7 +53,7 @@
        highlight wash (the dim-tint layer, via app.js) and the Search /
        Options / About+Welcome overlay backdrops below, so moving between
        a highlight and an open menu reads as one continuous wash.
-       --scrim-opacity is overwritten at runtime from scrim_opacity
+       --scrim-opacity is overwritten at runtime from SCRIM_OPACITY
        (see init() in app.js); 0.40 is the pre-JS fallback. Black in both
        schemes, so it lives here in :root with no dark-mode override. */
     --scrim-opacity: 0.40;
@@ -702,7 +702,7 @@ body::after {
     white-space: nowrap;
 }
 
-/* Per-route stats ("8.2 mi · 410 ft ↑") rendered next to the route
+/* Per-route stats ("8.2 mi") rendered next to the route
    name. Muted color so the name stays the visual anchor; smaller font
    size since the stats are reference data, not the main message.
    Hidden via .hidden when no stats are available so the chip still
@@ -1161,40 +1161,6 @@ body::after {
     align-items: center;
     min-height: 44px;
     padding: 4px 0;
-}
-
-/* ----- Field rows (Labels / Basemap selects in Options overlay) ---- */
-.opt-row-field {
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.opt-field-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--sheet-text);
-}
-
-.opt-select {
-    flex: 0 1 auto;
-    padding: 8px 28px 8px 10px;
-    border: 1px solid var(--sheet-border);
-    border-radius: var(--radius-control);
-    background: var(--input-bg);
-    color: var(--sheet-text);
-    font-family: inherit;
-    /* 16px specifically - iOS Safari auto-zooms the visual viewport
-     * before opening the native <select> picker if computed font-size
-     * is < 16px, and the post-picker blur often fails to restore
-     * scale to 1.0. Same trigger and same mitigation as
-     * .search-overlay-input. */
-    font-size: 16px;
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
-    min-height: 36px;
 }
 
 /* ----- Action rows (Install / About) ------------------------------- */
@@ -1841,7 +1807,7 @@ body::after {
     white-space: nowrap;
 }
 
-/* Per-route stats ("8.2 mi · 410 ft ↑") in the Finder row. Muted,
+/* Per-route stats ("8.2 mi") in the Finder row. Muted,
    smaller, never wraps, never shrinks - the row truncates the route
    name first if space is tight. */
 .finder-row-stats {

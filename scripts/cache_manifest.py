@@ -41,6 +41,8 @@ _SLUG_RE = re.compile(r"[a-z0-9_-]+")
 # structurally out of reach.
 _PRUNABLE = (
     re.compile(r"overpass_[0-9a-f]{12}\.json"),
+    # Elevation caches from builds before that pipeline was removed: a
+    # manifest still naming them lets the next prune delete them.
     re.compile(r"route_stats/elev_[^/]+_[0-9a-f]{16}\.json"),
     re.compile(r"derive_accent/[0-9a-f]{16}\.json"),
 )

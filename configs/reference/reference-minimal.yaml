@@ -22,10 +22,6 @@ relations:
 # bbox: [-87.66, 46.47, -87.59, 46.53]
 # pan_bbox: [-87.70, 46.44, -87.55, 46.56]
 # pan_padding: 0.5
-# min_zoom: 10
-# max_zoom: 18
-# basemap_maxzoom: 15
-# terrain_maxzoom: 12
 
 # --- Build-time data gates ---
 # show_markers: true
@@ -43,7 +39,6 @@ relations:
 # suppress_basemap_pois: false
 # suppress_basemap_oneway_arrows: false
 # show_distance: false
-# show_elevation: false
 # poi_proximity_m: 50
 
 # --- Per-route style overrides ---
@@ -66,11 +61,6 @@ relations:
 # forced_labels:
 # default_color_scheme: light
 # invert_logo_dark: true
-# map_dim_on_highlight: true
-# scrim_opacity: 0.40
-# highlight_glow: true
-# url_hash: false
-# share_button: true
 
 # --- Marker and accent colors ---
 # marker_color: "#795548"
@@ -90,9 +80,6 @@ relations:
 # feature_ring_color: "#ffffff"
 # accent_color: "#1D6FA5"
 
-# --- Base layers ---
-# base_layers: []
-
 # --- Branding ---
 # logo: logo.webp
 # icon: icon.png
@@ -104,10 +91,6 @@ relations:
 # trailheads: []
 # parking: []
 # hubs: []
-
-# --- PWA ---
-# pwa: true
-# pwa_install_prompt: true
 
 # --- About modal ---
 # about:
@@ -124,6 +107,3 @@ relations:
 #   body: |
 #     Plain-text intro. Paragraphs are separated by blank lines.
 #   show_controls_hint: true
-
-# --- Output ---
-# output_dir: build/my-trails

@@ -1,8 +1,8 @@
 """Tests for the PMTiles extraction zoom lower bound.
 
 The property under test: archives never ship tiles below the zoom the
-app can actually reach (min_zoom clamps the camera inside maxBounds),
-and a min_zoom config edit - or upgrading past a pre-minzoom build -
+app can actually reach (MIN_ZOOM clamps the camera inside maxBounds),
+and a minimum-zoom change - or upgrading past a pre-minzoom build -
 re-extracts instead of silently reusing the old archive.
 
 Run from repo root:
@@ -17,26 +17,34 @@ from cache_signatures import (
     _pmtiles_needs_regen,
     _save_signature,
 )
-from pmtiles_util import extract_minzoom
+from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, MIN_ZOOM, TERRAIN_MAXZOOM
 
 BBOX = [-88.0, 46.0, -87.0, 47.0]
 
 
-def test_extract_minzoom_default():
-    # Default min_zoom is 10 (template_inject.py), so the floor is 9.
-    assert extract_minzoom({}) == 9
+def test_zoom_constants():
+    assert (MIN_ZOOM, EXTRACT_MINZOOM) == (10, 9)
+    assert (BASEMAP_MAXZOOM, TERRAIN_MAXZOOM) == (15, 12)
 
 
-def test_extract_minzoom_explicit():
-    assert extract_minzoom({"min_zoom": 12}) == 11
+def test_signatures_match_the_pre_constant_defaults():
+    # Fleet rebuilds must not re-extract: the sidecar text a build wrote
+    # when the zoom values came from config defaults (min_zoom 10,
+    # basemap_maxzoom 15, terrain_maxzoom 12) must equal what the
+    # constants produce now.
+    import math
 
-
-def test_extract_minzoom_fractional_floors_first():
-    assert extract_minzoom({"min_zoom": 10.5}) == 9
-
-
-def test_extract_minzoom_never_negative():
-    assert extract_minzoom({"min_zoom": 0}) == 0
+    old_min = max(0, math.floor(10) - 1)
+    for old_max, new_max in ((15, BASEMAP_MAXZOOM), (12, TERRAIN_MAXZOOM)):
+        assert _bbox_signature(BBOX, old_max, old_min) == _bbox_signature(
+            BBOX, new_max, EXTRACT_MINZOOM
+        )
+    assert _bbox_signature(BBOX, BASEMAP_MAXZOOM, EXTRACT_MINZOOM) == (
+        "bbox=-88.0000,46.0000,-87.0000,47.0000;maxzoom=15;minzoom=9"
+    )
+    assert _bbox_signature(BBOX, TERRAIN_MAXZOOM, EXTRACT_MINZOOM).endswith(
+        ";maxzoom=12;minzoom=9"
+    )
 
 
 def test_signature_includes_minzoom():

@@ -21,11 +21,10 @@ Oaks Map as of 2026-Jul-05*
 
 - Builds standalone static site under `build/<slug>/`, deployable to any HTTP
   server that supports Range requests (Caddy, nginx, Apache).
-- Optional: A fully installable Progressive Web App. After the first visit, the
+- A fully installable Progressive Web App. After the first visit, the
   map is usable offline, including PMTiles range requests served from cache.
 - Self-hosted basemap tiles (Protomaps), optional terrain hillshade with
-  contour lines
-  (Mapterhorn), and optional custom raster basemaps.
+  contour lines (Mapterhorn).
 - On-map controls: Locate, Reset View, and Options buttons (top-right), plus
   the routes panel (bottom-right):
   - Locate: show the user's position from the device GNSS sensors.
@@ -39,7 +38,7 @@ Oaks Map as of 2026-Jul-05*
     routes, trails, and POIs on the map. For difficulty-mode relations (`color_by:
     difficulty`) the key lists IMBA ratings, and a row highlights
     every trail of that rating.
-- Optional per-route distance and USGS 3DEP elevation gain / loss (US only).
+- Optional per-route distance.
 - Trail markers, trailheads, trail hubs, parking, features, toilets, drinking water, and
   bicycle repair stations as configurable POI layers; direction arrows on
   one-way ways; per-route dash patterns; per-trail IMBA difficulty symbols.
@@ -178,10 +177,9 @@ is useful to copy to start a new map.
 
 | Document | What's in it |
 |---|---|
-| [`docs/configuration.md`](docs/configuration.md) | Full YAML config reference. Every key, every accepted value, and deep dives on route buckets, custom routes, direction schedules, dash patterns, the About / Welcome modals, base layers, logo / icon assets, and privacy posture. |
+| [`docs/configuration.md`](docs/configuration.md) | Full YAML config reference. Every key, every accepted value, and deep dives on route buckets, custom routes, direction schedules, dash patterns, the About / Welcome modals, logo / icon assets, and privacy posture. |
 | [`docs/building.md`](docs/building.md) | Build pipeline: prerequisites, CLI flags, the `build_and_deploy.sh` and `clean_config.py` helpers, the data cache, local `.osm` file support, vendor bundling, font trimming, and the project layout. |
 | [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behavior by platform, PMTiles Range requests, Open Graph share previews. |
-| [`docs/elevation.md`](docs/elevation.md) | USGS 3DEP elevation: the data source, why both gain and loss are shown, accuracy caveats, and why the numbers won't match Strava or a GPS. |
 | [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
 | [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common build and runtime issues, and known cosmetic upstream warnings. |
@@ -236,7 +234,6 @@ their licenses and origins are listed here:
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Trail data, basemap source data | ODbL 1.0 |
 | [Protomaps](https://protomaps.com) (basemap tiles + JS) | Self-hosted vector basemap delivery | BSD-3-Clause (code), CC0 + ODbL (data) |
 | [Mapterhorn](https://mapterhorn.com) | Terrain DEM aggregation (USGS 3DEP, EU-DEM, JAXA AW3D30) | Public-domain inputs aggregated under permissive license |
-| [USGS 3D Elevation Program (3DEP)](https://www.usgs.gov/3d-elevation-program) | Per-route elevation profiles | Public domain (US government work) |
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
 | [maplibre-contour](https://github.com/onthegomap/maplibre-contour) | In-browser contour lines from the terrain tiles | BSD-3-Clause |
 | [maplibre-gl-lanes](https://github.com/c0nsumer/maplibre-gl-lanes) | Routes that share a path drawn as ordered parallel lanes | MIT |
@@ -246,7 +243,7 @@ their licenses and origins are listed here:
 | [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (Noto Sans via Protomaps) and the self-hosted Inter UI webfont | OFL 1.1 |
 | [Pillow](https://python-pillow.org/) | Build-time icon and logo image processing | HPND |
 | [PyYAML](https://pyyaml.org/) | YAML config parsing | MIT |
-| [requests](https://requests.readthedocs.io/) | HTTP client for Overpass / 3DEP fetches | Apache 2.0 |
+| [requests](https://requests.readthedocs.io/) | HTTP client for Overpass fetches | Apache 2.0 |
 | [shapely](https://shapely.readthedocs.io/) | Dependency of mapbox-vector-tile | BSD-3-Clause |
 | [pyclipper](https://github.com/fonttools/pyclipper) | Dependency of mapbox-vector-tile | MIT |
 | [mapbox-vector-tile](https://github.com/mapbox/mapbox-vector-tile-py) | Vector tile parsing in build scripts | BSD-3-Clause |

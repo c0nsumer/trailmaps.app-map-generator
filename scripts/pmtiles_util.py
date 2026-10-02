@@ -6,26 +6,26 @@ the precache list and shipped to riders, so the path only ever holds a
 complete archive or nothing.
 """
 
-import math
 import os
 import shutil
 import subprocess
 
 import console
 
+# Fixed per-map zoom bounds. The app's own min/max zoom live in the
+# runtime template; MIN_ZOOM here must match the camera clamp there.
+MIN_ZOOM = 10
+BASEMAP_MAXZOOM = 15
+TERRAIN_MAXZOOM = 12
 
-def extract_minzoom(config):
-    """Lowest tile zoom worth shipping, shared by basemap and terrain.
-
-    The app clamps to min_zoom (default 10, template_inject.py) inside
-    maxBounds, so tiles below that are unreachable: at map zoom z the
-    512px vector basemap loads tiles at floor(z) and the 256px
-    raster-dem at floor(z)+1, so ``floor(min_zoom) - 1`` keeps one
-    spare level under both archives. Without the bound, both ship
-    z0-z9 world tiles (~0.5-0.6 MB basemap + ~2.6-3.1 MB terrain per
-    map) that no rider can ever pan out far enough to see.
-    """
-    return max(0, math.floor(config.get("min_zoom", 10)) - 1)
+# Lowest tile zoom worth shipping, shared by basemap and terrain. The app
+# clamps to MIN_ZOOM inside maxBounds, so tiles below that are
+# unreachable: at map zoom z the 512px vector basemap loads tiles at
+# floor(z) and the 256px raster-dem at floor(z)+1, so MIN_ZOOM - 1 keeps
+# one spare level under both archives. Without the bound, both ship
+# z0-z9 world tiles (~0.5-0.6 MB basemap + ~2.6-3.1 MB terrain per
+# map) that no rider can ever pan out far enough to see.
+EXTRACT_MINZOOM = max(0, MIN_ZOOM - 1)
 
 
 def find_pmtiles_cli():
