@@ -96,14 +96,14 @@ VENDOR_LIBS = {
     # as packaged by Anthony Fu. index.html imports it and sets
     # window.uqr; the QR row stays hidden when it is missing.
     "uqr.mjs": "https://unpkg.com/uqr@0.1.3/dist/index.mjs",
+    # Draws every route, so a page without it cannot start. The
+    # classic-script build (global maplibreLanes) with its workers
+    # inlined, so it needs no sibling files. 1.3.0 is the floor: the
+    # inside-corner bevel that ended the low-zoom lane spike, the
+    # loop-removal cut anchor, every route at every overview zoom, and
+    # the dash phase fixed to the map.
+    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.3.0/dist/maplibre-gl-lanes.js",
 }
-
-
-# Pinned by copy under vendor/ (see vendor/README.md): an unreleased
-# plugin build that npm does not carry yet. Shipped to every map: it is
-# what draws the routes. Once it is released, this returns to
-# VENDOR_LIBS as "https://unpkg.com/maplibre-gl-lanes@<version>/dist/maplibre-gl-lanes.js".
-LANES_VENDOR_FILE = "maplibre-gl-lanes.js"
 
 
 # ---------------------------------------------------------------------------
@@ -366,17 +366,13 @@ def download_vendor_libs(output_dir, cache_dir):
             console.info(f"Removed stale vendor cache entry {name}")
 
     bundled = len(VENDOR_LIBS)
-    lanes_dst = os.path.join(vendor_dst, LANES_VENDOR_FILE)
-    lanes_src = os.path.join(os.path.dirname(SCRIPTS_DIR), "vendor", LANES_VENDOR_FILE)
-    _copy_vendor_script(lanes_src, lanes_dst)
-    bundled += 1
 
     # The same walk ships anything else left in vendor/ by an earlier
     # build. When a library is renamed or dropped here (maplibre-gl.js,
     # 1 MB, became three .mjs files with MapLibre 6) the old file would
     # otherwise ride along to every phone for as long as the build
     # directory lives. Precompressed siblings go with their file.
-    expected = {*VENDOR_LIBS, LANES_VENDOR_FILE}
+    expected = set(VENDOR_LIBS)
     for name in os.listdir(vendor_dst):
         base = name
         for ext in (".br", ".gz"):
