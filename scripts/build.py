@@ -91,6 +91,11 @@ VENDOR_LIBS = {
     # hit lost that tile's contours on the worker:false path this app
     # uses (fixed in onthegomap/maplibre-contour#437).
     "maplibre-contour.js": "https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js",
+    # QR code encoder for the Options Share sheet (renderQrSheet in
+    # app.js): ES module, about 27 KB, MIT, Project Nayuki's generator
+    # as packaged by Anthony Fu. index.html imports it and sets
+    # window.uqr; the QR row stays hidden when it is missing.
+    "uqr.mjs": "https://unpkg.com/uqr@0.1.3/dist/index.mjs",
 }
 
 

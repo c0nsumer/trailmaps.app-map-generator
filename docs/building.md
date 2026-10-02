@@ -510,7 +510,7 @@ python scripts/osm_parser.py configs/mytrails/osm.osm 12345678
 ## Vendor bundling
 
 The build downloads all JavaScript and CSS dependencies (MapLibre GL
-JS, PMTiles, Protomaps basemaps, maplibre-contour) from their CDNs and
+JS, PMTiles, Protomaps basemaps, maplibre-contour, uqr) from their CDNs and
 bundles them into `vendor/` in the output directory. maplibre-gl-lanes
 ships from a pinned copy in the repository's own `vendor/` directory
 while its next release is unpublished. See `vendor/README.md`. The

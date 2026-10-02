@@ -31,7 +31,7 @@ Oaks Map as of 2026-Jul-05*
   - Locate: show the user's position from the device GNSS sensors.
   - Reset View: return to the map's initial framing.
   - Options: toggle labels, color scheme, units, season, and POI layers;
-    install the PWA; open About.
+    install the PWA; show the share link as a QR code; open About.
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
     routes, trails, and POIs on the map. For difficulty-mode relations (`color_by:
@@ -238,6 +238,7 @@ their licenses and origins are listed here:
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
 | [maplibre-contour](https://github.com/onthegomap/maplibre-contour) | In-browser contour lines from the terrain tiles | BSD-3-Clause |
 | [maplibre-gl-lanes](https://github.com/c0nsumer/maplibre-gl-lanes) | Routes that share a path drawn as ordered parallel lanes | MIT |
+| [uqr](https://github.com/unjs/uqr) (Anthony Fu, from [Project Nayuki's QR Code generator](https://github.com/nayuki/QR-Code-generator)) | QR code for the share link, encoded on the device | MIT |
 | [PMTiles](https://github.com/protomaps/PMTiles) | Single-file tile archive format and JS reader | BSD-3-Clause |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers) | UI iconography (inline SVG) | Apache 2.0 |
 | [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (Noto Sans via Protomaps) and the self-hosted Inter UI webfont | OFL 1.1 |

@@ -3321,9 +3321,11 @@ body::after {
 body:has(.search-overlay.is-open) .fab-stack,
 body:has(.options-overlay.is-open) .fab-stack,
 body:has(.gpx-overlay.is-open) .fab-stack,
+body:has(.qr-overlay.is-open) .fab-stack,
 body:has(.search-overlay.is-open) .route-panel,
 body:has(.options-overlay.is-open) .route-panel,
-body:has(.gpx-overlay.is-open) .route-panel {
+body:has(.gpx-overlay.is-open) .route-panel,
+body:has(.qr-overlay.is-open) .route-panel {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease-out;
@@ -3851,9 +3853,11 @@ body.fabs-labeled .fab-label {
 body.has-spotlight .search-overlay.is-open,
 body.has-spotlight .options-overlay.is-open,
 body.has-spotlight .gpx-overlay.is-open,
+body.has-spotlight .qr-overlay.is-open,
 body.modal-open .search-overlay.is-open,
 body.modal-open .options-overlay.is-open,
-body.modal-open .gpx-overlay.is-open {
+body.modal-open .gpx-overlay.is-open,
+body.modal-open .qr-overlay.is-open {
     background: transparent;
 }
 
@@ -3945,7 +3949,8 @@ body.modal-open .gpx-overlay.is-open {
  * half sheet. Rows reuse .finder-row for divider / hover / tap
  * styling consistency with the Search results list. */
 
-.gpx-overlay {
+.gpx-overlay,
+.qr-overlay {
     position: fixed;
     inset: 0;
     z-index: 6;
@@ -3957,16 +3962,19 @@ body.modal-open .gpx-overlay.is-open {
     pointer-events: none;
 }
 
-.gpx-overlay.is-open {
+.gpx-overlay.is-open,
+.qr-overlay.is-open {
     background: var(--overlay-scrim);
     pointer-events: auto;
 }
 
-.gpx-overlay[hidden] {
+.gpx-overlay[hidden],
+.qr-overlay[hidden] {
     display: none;
 }
 
-.gpx-overlay-panel {
+.gpx-overlay-panel,
+.qr-overlay-panel {
     background: var(--sheet-bg);
     border-top: 1px solid var(--sheet-border);
     border-top-left-radius: 14px;
@@ -3983,11 +3991,13 @@ body.modal-open .gpx-overlay.is-open {
     max-height: min(60dvh, 480px);
 }
 
-.gpx-overlay.is-open .gpx-overlay-panel {
+.gpx-overlay.is-open .gpx-overlay-panel,
+.qr-overlay.is-open .qr-overlay-panel {
     transform: translateY(0);
 }
 
-.gpx-overlay-header {
+.gpx-overlay-header,
+.qr-overlay-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3996,7 +4006,8 @@ body.modal-open .gpx-overlay.is-open {
     flex-shrink: 0;
 }
 
-.gpx-overlay-title {
+.gpx-overlay-title,
+.qr-overlay-title {
     font-size: 16px;
     font-weight: 600;
     color: var(--sheet-text);
@@ -4024,13 +4035,47 @@ body.modal-open .gpx-overlay.is-open {
     color: var(--sheet-text-muted);
 }
 
+/* QR sheet body: the code on a white card (the encoder draws its own
+ * four-module quiet zone, so no padding here) and the link under it,
+ * selectable so it can be copied by hand. The code stays black on
+ * white in dark mode on purpose: scanners want that contrast. */
+.qr-overlay-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 16px 20px;
+}
+.qr-code {
+    width: min(70vw, 280px);
+    background: #fff;
+    border-radius: var(--radius-control);
+    line-height: 0;
+}
+.qr-code svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.qr-url {
+    margin: 0;
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+    text-align: center;
+    overflow-wrap: anywhere;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .search-overlay,
     .options-overlay,
     .gpx-overlay,
+    .qr-overlay,
     .search-overlay-panel,
     .options-overlay-panel,
-    .gpx-overlay-panel {
+    .gpx-overlay-panel,
+    .qr-overlay-panel {
         transition: none;
     }
 }
@@ -4336,7 +4381,8 @@ body.modal-open .gpx-overlay.is-open {
      * vertically-centered.) */
     .search-overlay,
     .options-overlay,
-    .gpx-overlay {
+    .gpx-overlay,
+    .qr-overlay {
         align-items: center;
     }
 
@@ -4363,7 +4409,8 @@ body.modal-open .gpx-overlay.is-open {
     /* GPX sheet - same card treatment + bottom anchor as Search,
      * but content-sized (no fixed height; the mobile max-height cap
      * carries over). */
-    .gpx-overlay-panel {
+    .gpx-overlay-panel,
+    .qr-overlay-panel {
         width: min(440px, calc(100vw - 48px));
         border: 1px solid var(--sheet-border);
         border-radius: var(--radius-surface);

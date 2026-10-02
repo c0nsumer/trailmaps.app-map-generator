@@ -102,6 +102,15 @@
         import * as maplibre from "./vendor/maplibre-gl.mjs";
         window.maplibregl = maplibre;
     </script>
+    <!-- Share start -->
+    <!-- QR encoder for the Share sheet. Its own module so a missing
+         file hides the QR row (app.js checks window.uqr) instead of
+         keeping the map from starting. -->
+    <script type="module">
+        import { renderSVG } from "./vendor/uqr.mjs";
+        window.uqr = { renderSVG };
+    </script>
+    <!-- Share end -->
     <script src="vendor/pmtiles.js" defer></script>
     <script src="vendor/basemaps.js" defer></script>
     <!-- Isolines from the shipped terrain raster-dem; loaded
@@ -491,6 +500,30 @@
     </div>
     <!-- GPX end -->
 
+    <!-- Share start -->
+    <!-- QR sheet: the share link as a code, drawn by app.js when the
+         Options QR row opens it. Same backdrop/panel pattern as the GPX
+         sheet; stripped with the rest of the Share markup when
+         share_button is false. -->
+    <div id="qr-overlay" class="qr-overlay" role="dialog" aria-modal="true" aria-labelledby="qr-overlay-title" hidden>
+        <div class="qr-overlay-panel" tabindex="-1">
+            <div class="qr-overlay-header">
+                <h2 id="qr-overlay-title" class="qr-overlay-title">Scan to open this map</h2>
+                <button id="qr-close" class="overlay-close-btn" type="button" aria-label="Close QR code">
+                    <!-- mdi:close (Apache 2.0, Pictogrammers) -->
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                        <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="qr-overlay-body">
+                <div id="qr-code" class="qr-code" role="img" aria-label="QR code for the share link"></div>
+                <p id="qr-url" class="qr-url"></p>
+            </div>
+        </div>
+    </div>
+    <!-- Share end -->
+
     <!-- Options overlay - same backdrop/panel pattern as the Search
          overlay. On mobile the panel fills the viewport and hides the
          dim; on desktop it is a centered card with the dim visible
@@ -807,6 +840,18 @@
                         <span class="opt-action-text">
                             <span class="opt-action-title">Share this view</span>
                             <span class="opt-action-help">Copy a link to the current map view, including any highlighted route or trail.</span>
+                        </span>
+                    </button>
+                    <button id="qr-btn" class="opt-action-row hidden" type="button" aria-controls="qr-overlay">
+                        <span class="opt-action-icon" aria-hidden="true">
+                            <!-- mdi:qrcode (Apache 2.0, Pictogrammers) -->
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M3,11H5V13H3V11M11,5H13V9H11V5M9,11H13V15H11V13H9V11M15,11H17V13H19V11H21V13H19V15H21V19H19V21H17V19H13V21H11V17H15V15H17V13H15V11M19,19V15H17V19H19M15,3H21V9H15V3M17,5V7H19V5H17M3,3H9V9H3V3M5,5V7H7V5H5M3,15H9V21H3V15M5,17V19H7V17H5Z"/>
+                            </svg>
+                        </span>
+                        <span class="opt-action-text">
+                            <span class="opt-action-title">QR code</span>
+                            <span class="opt-action-help">Show a code another phone can scan to open this map, with the same view and highlight as the share link.</span>
                         </span>
                     </button>
                     <!-- Share end -->

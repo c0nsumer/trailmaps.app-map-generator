@@ -3104,9 +3104,51 @@ function buildShareUrl() {
         // the more deliberate thing to pass on.
         path += `/t/${encodeURIComponent(sharedTrailName())}`;
     }
-    const url = new URL(window.location.href);
+    const url = new URL(shareBaseUrl());
     url.hash = path;
     return url.toString();
+}
+
+// The address a shared link, QR code or location points at. A page
+// built for a site carries its canonical address in og:url (the
+// website build writes it), so a link shared from a staging copy or a
+// local test still opens the published map. Without the tag, the
+// page's own address with its query and hash removed: a self-hosted
+// map shares itself, a LAN test shares the LAN address.
+function shareBaseUrl() {
+    const meta = document.querySelector('meta[property="og:url"]');
+    const canonical = meta && meta.getAttribute("content");
+    if (canonical) {
+        try {
+            return new URL(canonical, window.location.href).toString();
+        } catch (e) { /* malformed tag: fall through to the page */ }
+    }
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+}
+
+// Draws the share link as a QR code into the QR sheet. Encoded on the
+// device from the same string Share this view would share, so the two
+// never disagree, and the URL is printed under the code so the person
+// holding the phone can see what it opens. Medium error correction and
+// a four-module quiet zone, black on white, so a screenshot still scans.
+function renderQrSheet() {
+    const box = document.getElementById("qr-code");
+    const text = document.getElementById("qr-url");
+    if (!box || !text || !window.uqr) return;
+    const url = buildShareUrl();
+    box.innerHTML = window.uqr.renderSVG(url, {
+        ecc: "M", border: 4, pixelSize: 1, whiteColor: "#fff", blackColor: "#000",
+    });
+    const svg = box.querySelector("svg");
+    if (svg) {
+        svg.removeAttribute("width");
+        svg.removeAttribute("height");
+        svg.setAttribute("shape-rendering", "crispEdges");
+    }
+    text.textContent = url;
 }
 
 // Build the human-readable share-sheet title, appears as email
@@ -3202,11 +3244,18 @@ function fallbackCopyShareUrl(url) {
 // during boot. Does nothing when share_button: false at build time
 // (the whole button is stripped from index.html before render, so
 // getElementById returns null and we early-return).
-function setupShareButton() {
+function setupShareButton(openQrSheet) {
     const btn = document.getElementById("share-btn");
     if (!btn) return;
     btn.classList.remove("hidden");
     btn.addEventListener("click", shareCurrentView);
+    // The QR row needs the encoder module; a missing vendor file
+    // leaves the row hidden rather than a dead tap.
+    const qrBtn = document.getElementById("qr-btn");
+    if (qrBtn && window.uqr && openQrSheet) {
+        qrBtn.classList.remove("hidden");
+        qrBtn.addEventListener("click", openQrSheet);
+    }
 }
 
 // Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/d/<rating>|/p/<poiRef>]"
@@ -5042,6 +5091,12 @@ function buildAboutModalContent() {
         "https://pictogrammers.com/library/mdi/",
         "Material Design Icons",
         " by Pictogrammers (Apache 2.0).");
+    // The vendored module ships without its license header, so this
+    // credit carries the MIT attribution.
+    credit("QR codes encoded on your device by ",
+        "https://github.com/unjs/uqr",
+        "uqr",
+        " (Anthony Fu, from Project Nayuki's QR Code generator; MIT).");
     credit("Map rendering by ",
         "https://maplibre.org",
         "MapLibre GL JS",
@@ -10454,6 +10509,33 @@ function setupFloatingChrome() {
         setOverlayOpen(gpxOverlay, gpxBtn, false);
         dialogFocusOut(gpxOverlay);
     }
+    // QR sheet: opened from the Options Share row, so Options closes
+    // first (single-overlay invariant). Rendered on every open so the
+    // code always matches the current view and highlight.
+    const qrOverlay = document.getElementById("qr-overlay");
+    function closeQrOverlay() {
+        setOverlayOpen(qrOverlay, null, false);
+        dialogFocusOut(qrOverlay);
+    }
+    function openQrOverlay() {
+        if (!qrOverlay) return;
+        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
+            setOverlayOpen(optionsOverlay, optionsBtn, false);
+        }
+        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
+            setOverlayOpen(searchOverlay, searchBtn, false);
+        }
+        renderQrSheet();
+        setOverlayOpen(qrOverlay, null, true);
+        dialogFocusIn(qrOverlay, ".qr-overlay-panel");
+    }
+    if (qrOverlay) {
+        const qrClose = document.getElementById("qr-close");
+        if (qrClose) qrClose.addEventListener("click", closeQrOverlay);
+        qrOverlay.addEventListener("click", (e) => {
+            if (e.target === qrOverlay) closeQrOverlay();
+        });
+    }
     function openGpxOverlay() {
         // Single-overlay invariant, same as Search / Options.
         if (searchOverlay && searchOverlay.classList.contains("is-open")) {
@@ -10546,6 +10628,10 @@ function setupFloatingChrome() {
         }
         if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
             closeGpxOverlay();
+            return;
+        }
+        if (qrOverlay && qrOverlay.classList.contains("is-open")) {
+            closeQrOverlay();
             return;
         }
         if (searchOverlay && searchOverlay.classList.contains("is-open")) {
@@ -11113,7 +11199,7 @@ function setupFloatingChrome() {
     setupFinder();
 
     // ----- Share button -----
-    setupShareButton();
+    setupShareButton(openQrOverlay);
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");

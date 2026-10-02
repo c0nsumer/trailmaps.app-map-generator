@@ -13,7 +13,7 @@ import os
 import re
 
 from conftest import EMPTY_TRAILS, MINIMAL_CONFIG, inject_config
-from template_inject import copy_templates
+from template_inject import _process_index_html, copy_templates
 
 
 def _write_config(tmp_path, body):
@@ -160,3 +160,25 @@ def test_every_map_loads_the_lane_plugin_and_carries_the_boot_note(tmp_path):
     assert 'id="boot-fallback"' in html
     app = (tmp_path / "app.js").read_text(encoding="utf-8")
     assert app.index('getElementById("boot-fallback")') < app.index("setPoiColorVars")
+
+
+# ---------------------------------------------------------------------------
+# Share section (templates/index.html)
+# ---------------------------------------------------------------------------
+
+def _index_html():
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "index.html")
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def test_share_button_default_keeps_the_share_row_qr_row_and_sheet():
+    out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG))
+    assert 'id="share-btn"' in out and 'id="qr-btn"' in out and 'id="qr-overlay"' in out
+    assert "vendor/uqr.mjs" in out
+
+
+def test_share_button_false_strips_every_share_block():
+    out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG, share_button=False))
+    for needle in ('id="share-btn"', 'id="qr-btn"', 'id="qr-overlay"', "vendor/uqr.mjs"):
+        assert needle not in out
