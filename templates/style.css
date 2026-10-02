@@ -614,6 +614,15 @@ body::after {
 .trail-chip-name {
     font-weight: 600;
 }
+/* The way's route lanes as stacked key swatches, the mark the Routes
+ * key and the highlight chip already use, so the chip reads against
+ * the key at a glance. */
+.trail-chip-lanes {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+}
 
 .highlight-chip-swatch {
     display: inline-block;

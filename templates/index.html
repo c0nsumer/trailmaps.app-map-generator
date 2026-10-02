@@ -327,6 +327,10 @@
              because it is the one chip a blind rider cannot get by
              looking, and it changes every few minutes at most. -->
         <button id="trail-chip" class="highlight-chip trail-chip hidden" type="button" aria-live="polite">
+            <!-- The key's own marks: one line swatch per route-mode route
+                 on the way (which routes), then the rating glyph (how
+                 hard). Built by renderTrailChip. -->
+            <span class="trail-chip-lanes hidden" aria-hidden="true"></span>
             <img class="highlight-chip-swatch is-glyph hidden" alt="">
             <span class="highlight-chip-text">
                 <span class="highlight-chip-label"></span>

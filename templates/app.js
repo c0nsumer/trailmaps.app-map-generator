@@ -8984,6 +8984,23 @@ function renderTrailChip() {
         strong.textContent = name;
         label.appendChild(strong);
     }
+    // The route-mode routes on the way, as the key draws them: one
+    // line swatch each, stacked like the lanes, at most three. A rating
+    // lane is not repeated here; the glyph carries it.
+    const lanes = chip.querySelector(".trail-chip-lanes");
+    if (lanes) {
+        const ids = (_onTrail.feature.properties.shared_routes || [])
+            .map(String)
+            .filter((id) => CONFIG.routes[id] && isRouteMode(id))
+            .slice(0, 3);
+        const key = ids.join("|");
+        if (lanes.dataset.routes !== key) {
+            lanes.dataset.routes = key;
+            lanes.replaceChildren(...ids.map((id) =>
+                routeSwatchEl(routeSwatchModel(CONFIG.routes[id]), "highlight-chip-swatch is-line")));
+        }
+        lanes.classList.toggle("hidden", ids.length === 0);
+    }
     if (swatch) {
         if (glyph) {
             if (swatch.getAttribute("src") !== glyph) swatch.src = glyph;
