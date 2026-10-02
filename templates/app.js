@@ -8979,14 +8979,7 @@ function renderTrailChip() {
     const swatch = chip.querySelector(".highlight-chip-swatch");
     // Compared first because the chip is aria-live: rewriting the same
     // text on every fix would re-announce it once a second.
-    if (label && label.dataset.name !== name) {
-        label.dataset.name = name;
-        label.textContent = "You are on ";
-        const strong = document.createElement("span");
-        strong.className = "trail-chip-name";
-        strong.textContent = name;
-        label.appendChild(strong);
-    }
+    if (label && label.textContent !== name) label.textContent = name;
     // The visible route-mode routes on the way, as the key draws
     // them: one line swatch each, stacked like the lanes, at most
     // three. The same visibility rule as the popup's route rows, so a

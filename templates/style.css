@@ -613,16 +613,30 @@ body::after {
  * its mark. The sentence at regular weight, the name carrying the
  * weight, so the eye lands on the name. */
 .trail-chip {
-    font-weight: 400;
     border-color: var(--locate-active);
 }
+/* Two rows: a small muted "You are on" over the name, so the name gets
+ * the chip's width instead of sharing one line with the sentence and
+ * the marks. */
+.trail-chip .highlight-chip-text {
+    align-items: flex-start;
+}
+.trail-chip-kicker {
+    color: var(--sheet-text-muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.1;
+}
+/* The map's own dot, at chip scale: MapLibre draws a 15 px disc inside
+ * a 2 px white ring with a soft shadow; this is 10 px inside the same
+ * ring, the same proportions to the eye. */
 .trail-chip-you {
-    width: 10px;
-    height: 10px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--user-dot);
     border: 2px solid #fff;
-    box-shadow: var(--swatch-hairline);
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.35);
     flex-shrink: 0;
 }
 .trail-chip-name {
