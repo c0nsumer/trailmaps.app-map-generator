@@ -1179,7 +1179,7 @@ def _validate_accent_color(report, config):
     """Validate the optional `accent_color` key.
 
     Three forms accepted:
-      - omitted: framework default blue (#1D6FA5)
+      - omitted: same as "auto" (falls back to #1D6FA5 if no color derives)
       - 6-digit hex string: explicit accent (e.g. "#FF5733")
       - the literal string "auto": derive from the logo at build time
 

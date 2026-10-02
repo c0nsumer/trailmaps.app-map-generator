@@ -128,9 +128,9 @@ def derive_accent(image_path):
     return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
-# Framework default accent - used verbatim as the light shade when no
-# accent_color is configured, and as the base for the derived dark
-# shade. Keep in sync with --accent-light in templates/style.css :root.
+# Framework default accent - used verbatim as the light shade when
+# "auto" (the unset default) cannot derive a color, and as the base for
+# the derived dark shade. Keep in sync with --accent-light in templates/style.css :root.
 FRAMEWORK_DEFAULT_ACCENT = "#1D6FA5"
 
 # On-accent text tokens: white, or a near-black (softer than pure #000,
@@ -234,10 +234,10 @@ def resolve_accent_palette(config, project_root, cache_dir):
     a lightened dark-mode shade from one base, plus the best on-accent
     text color for each; style.css maps the active pair by
     [data-color-scheme]. Always returns a palette (never None): the
-    unset / failed-derivation cases fall back to the framework default.
+    failed-derivation case falls back to the framework default.
 
     Base selection:
-      - omitted → framework default #1d6fa5, used verbatim for light.
+      - omitted → same as "auto" (the default).
       - explicit hex → the hex, used verbatim for light (preserves
         curator intent exactly; only the dark shade is derived).
       - "auto" → logo/icon-derived pixel pick (cached as the RAW pick),
@@ -262,13 +262,14 @@ def _resolve_accent_base(config, project_root, cache_dir):
     says whether the LIGHT shade should be darkened for white-text
     legibility (True only for the "auto" pixel-pick - explicit hex and
     the framework default are trusted verbatim so light mode is
-    unchanged); is_default flags the framework-default fallback (unset,
-    or "auto" that couldn't produce a color) so the caller can skip the
+    unchanged); is_default flags the framework-default fallback ("auto",
+    set or unset, that couldn't produce a color) so the caller can skip the
     low-contrast warning for a color the curator didn't pick.
     """
     raw = config.get("accent_color")
     if raw is None:
-        return _hex_to_rgb(FRAMEWORK_DEFAULT_ACCENT), False, True
+        # Unset behaves as "auto": the logo-derived accent is the default.
+        raw = "auto"
     if raw != "auto":
         # Explicit hex: validator already checked the format.
         return _hex_to_rgb(raw.upper()), False, False
@@ -286,6 +287,9 @@ def _derive_accent_cached(config, project_root, cache_dir):
     changes never need a cache-version bump. Returns None (with a
     warning) when no raster source exists or no color qualifies.
     """
+    # An unset accent_color means "auto" by default; only an explicit
+    # "auto" earns a warning when it cannot derive a color.
+    explicit = config.get("accent_color") == "auto"
     logo_p = config.get("logo") or ""
     icon_p = config.get("icon") or ""
     candidates = []
@@ -300,6 +304,8 @@ def _derive_accent_cached(config, project_root, cache_dir):
             continue
         candidates.append(abs_path)
     if not candidates:
+        if not explicit:
+            return None
         console.warn(
             "accent_color: 'auto' requires a raster logo or icon "
             "(PNG/WebP/JPG); none found. Falling back to framework default."
@@ -331,6 +337,8 @@ def _derive_accent_cached(config, project_root, cache_dir):
 
     rgb = derive_accent(source)
     if rgb is None:
+        if not explicit:
+            return None
         console.warn(
             f"accent_color: 'auto' could not pick a colour from "
             f"{os.path.basename(source)} (logo may be greyscale or fully "

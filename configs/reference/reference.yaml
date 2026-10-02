@@ -131,7 +131,7 @@ relations:
 # show_direction_arrows: true
 
 # Hide POI and place=locality labels from the Protomaps basemap.
-# suppress_basemap_pois: false
+# suppress_basemap_pois: true
 
 # Hide the Protomaps basemap's oneway direction arrows (roads + paths).
 # suppress_basemap_oneway_arrows: false
@@ -203,7 +203,8 @@ relations:
 # default_visible: []
 
 # Layers forced ON with their toggle hidden. Same forms as default_visible.
-# forced_visible: []
+# Unset = direction arrows. [] = nothing forced.
+# forced_visible: [direction_arrows]
 
 # First-visit label mode: "routes", "trails", or "none". If no relation is in
 # route mode, an unset value reads as "trails". An event map reads an unset
@@ -216,8 +217,8 @@ relations:
 # First-visit color scheme: "light", "dark", or "auto" (follows the OS).
 # default_color_scheme: light
 
-# Auto-invert the logo in dark mode. Set false for colorful / photographic logos.
-# invert_logo_dark: true
+# Auto-invert the logo in dark mode. Set true for monochrome logos.
+# invert_logo_dark: false
 
 # The bottom-right corner always shows the routes panel - the map's key. It
 # lists each visible route as a color swatch + name + stats (tap a row to
@@ -288,9 +289,11 @@ relations:
 # Feature marker outer ring color.
 # feature_ring_color: "#ffffff"
 
-# UI accent: a 6-digit hex or "auto" (logo-derived); resolves to a per-mode
-# light / dark palette.
-# accent_color: "#1D6FA5"
+# UI accent: "auto" (logo-derived, the default) or a 6-digit hex; resolves to
+# a per-mode light / dark palette. If "auto" finds no raster logo or icon, the
+# accent is #1D6FA5. With neither logo: nor icon:, it derives from the
+# placeholder logo's green.
+# accent_color: auto
 
 # ============================================================
 # Branding

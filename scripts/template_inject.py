@@ -184,8 +184,8 @@ CONFIG_SPEC = [
     # Also injected into the inline <head> bootstrap script so first
     # paint already has the right scheme.
     ("default_color_scheme", "defaultColorScheme", "light"),
-    # False for colored logos that look bad inverted in dark mode.
-    ("invert_logo_dark", "invertLogoDark", True),
+    # True for monochrome logos that need inverting on the dark sheet.
+    ("invert_logo_dark", "invertLogoDark", False),
     ("color_by", "colorBy", "route"),
     # False: the bottom-right panel is a Search button alone. For a trail
     # system whose relations are the trails themselves (Copper Harbor:
@@ -195,7 +195,7 @@ CONFIG_SPEC = [
     # distance_m). A difficulty map sums per-rating distances at runtime,
     # so the runtime needs the flag itself.
     ("show_distance", "showDistance", False),
-    ("suppress_basemap_pois", "suppressBasemapPois", False),
+    ("suppress_basemap_pois", "suppressBasemapPois", True),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # Marker colors flow to CSS custom properties on :root, so the
     # peek-bar swatch, the on-map marker and the popup badge stay in
@@ -711,6 +711,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
         config_obj["forcedVisible"] = sorted(DEFAULT_VISIBLE_LAYERS)
     elif isinstance(raw_forced_visible, list):
         config_obj["forcedVisible"] = list(raw_forced_visible)
+    elif raw_forced_visible is None:
+        # Resolved here so the runtime always receives an explicit list.
+        # An explicit `forced_visible: []` still means nothing forced.
+        config_obj["forcedVisible"] = ["direction_arrows"]
     else:
         config_obj["forcedVisible"] = []
     # Accent palette: resolved at build time (see _accent_palette

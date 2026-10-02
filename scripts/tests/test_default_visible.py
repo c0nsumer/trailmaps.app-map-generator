@@ -27,6 +27,19 @@ def test_unset_default_visible_yields_first_visit_set():
     assert obj["defaultVisible"] == sorted(DEFAULT_FIRST_VISIT_LAYERS)
 
 
+def test_unset_display_defaults_match_the_fleet():
+    # Defaults chosen 2026-10-02 because most live maps set these values.
+    obj = inject_config(dict(MINIMAL_CONFIG))
+    assert obj["forcedVisible"] == ["direction_arrows"]
+    assert obj["suppressBasemapPois"] is True
+    assert obj["invertLogoDark"] is False
+
+
+def test_empty_forced_visible_forces_nothing():
+    obj = inject_config(dict(MINIMAL_CONFIG, forced_visible=[]))
+    assert obj["forcedVisible"] == []
+
+
 def test_null_default_visible_yields_first_visit_set():
     config = dict(MINIMAL_CONFIG, default_visible=None)
     obj = inject_config(config)

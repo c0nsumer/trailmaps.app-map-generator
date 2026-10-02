@@ -10259,10 +10259,9 @@ function setupFloatingChrome() {
     //
     // Tag the img with .invert-dark so the CSS rule
     // [data-color-scheme="dark"] #brand-img.invert-dark { filter: invert(1) ... }
-    // applies in dark mode. Default is on (matches historical
-    // behavior); curators with colored logos that look bad inverted
-    // set invert_logo_dark: false in YAML to opt out.
-    if (CONFIG.invertLogoDark !== false) {
+    // applies in dark mode. Default is off; curators with monochrome
+    // logos that need inverting set invert_logo_dark: true in YAML.
+    if (CONFIG.invertLogoDark === true) {
         const brandImg = document.getElementById("brand-img");
         if (brandImg) brandImg.classList.add("invert-dark");
     }

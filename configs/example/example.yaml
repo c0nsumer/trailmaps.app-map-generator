@@ -36,7 +36,7 @@ clipped_relations:
 # show_difficulty: true
 # show_trails: true
 # show_direction_arrows: true
-# suppress_basemap_pois: false
+# suppress_basemap_pois: true
 # suppress_basemap_oneway_arrows: false
 # show_distance: false
 # poi_proximity_m: 50
@@ -60,11 +60,11 @@ dashed_relations:
 
 # --- Display ---
 # default_visible: []
-# forced_visible: []
+# forced_visible: [direction_arrows]
 # default_labels: none
 # forced_labels: trails
 # default_color_scheme: light
-invert_logo_dark: false
+# invert_logo_dark: false
 
 # --- Marker and accent colors ---
 # marker_color: "#795548"
@@ -82,7 +82,7 @@ invert_logo_dark: false
 # hub_border_color: "white"
 # feature_color: "#8e44ad"
 # feature_ring_color: "#ffffff"
-# accent_color: "#1D6FA5"
+# accent_color: auto
 
 # --- Branding ---
 logo: example_logo.png

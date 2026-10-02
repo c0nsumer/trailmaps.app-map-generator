@@ -1253,8 +1253,10 @@ def _warn_arrows_hidden(config, trails_geojson):
     raw_dv = config.get("default_visible")
     raw_fv = config.get("forced_visible")
     arrows_suppressed = config.get("show_direction_arrows", True) is False
+    # Unset forced_visible defaults to [direction_arrows].
     arrows_forced_on = (
-        raw_fv == "all"
+        raw_fv is None
+        or raw_fv == "all"
         or (isinstance(raw_fv, list) and "direction_arrows" in raw_fv)
     )
     # Only an explicit default_visible list (including []) can leave the
@@ -1271,8 +1273,8 @@ def _warn_arrows_hidden(config, trails_geojson):
                 f"Map has {oneway_count} one-way trail segment(s) "
                 "but direction_arrows is not in default_visible. Riders "
                 "won't see directional indicators on first visit. "
-                "Leaving default_visible unset turns arrows on, or add "
-                "'direction_arrows' to the default_visible list."
+                "Leave forced_visible or default_visible unset, or add "
+                "'direction_arrows' to one of the lists."
             )
 
 
@@ -1784,7 +1786,7 @@ def main(argv=None):
     # inject_config_into_template can emit them as the CONFIG.accent*
     # vars. resolve_accent_palette handles "auto" (Pillow-based logo
     # derivation, cached per-source-hash as the raw pick), explicit hex,
-    # and the unset framework default uniformly, and emits per-shade
+    # and unset (the same as "auto") uniformly, and emits per-shade
     # WCAG contrast warnings. Always returns a palette (never None).
     config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
     derive_accent_paths = cache_manifest.drain()

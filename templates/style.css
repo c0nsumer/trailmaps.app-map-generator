@@ -3151,13 +3151,13 @@ body::after {
 }
 
 /* Logo auto-invert in dark mode. JS adds .invert-dark to #brand-img
- * at boot iff CONFIG.invertLogoDark !== false (default true).
+ * at boot iff CONFIG.invertLogoDark is true (default false).
  * invert(1) hue-rotate(180deg) flips lightness without flipping
  * hue, so colored logo elements stay the right hue rather than
  * going green→magenta etc. For monochrome logos this is equivalent
  * to plain invert. The drop-shadow is preserved (filter chain
- * reapplies it after the invert). Curators with logos that look
- * bad inverted set invert_logo_dark: false in YAML to opt out.
+ * reapplies it after the invert). Curators with monochrome logos
+ * opt in with invert_logo_dark: true in YAML.
  */
 [data-color-scheme="dark"] #brand-img.invert-dark {
     filter: invert(1) hue-rotate(180deg)

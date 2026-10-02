@@ -148,11 +148,26 @@ def test_auto_palette_invariants_across_input_space():
 
 
 def test_resolve_palette_unset_uses_framework_default():
-    # No accent_color → framework-default palette (never None), with the
-    # default used verbatim for the light shade.
+    # No accent_color and nothing to derive from → framework-default
+    # palette (never None), with the default used verbatim for the light
+    # shade, and no warning (unset is the quiet default, not a request).
     p = resolve_accent_palette({}, "/tmp", "/tmp")
     assert set(p) == {"light", "dark", "onLight", "onDark"}
     assert p["light"] == "#1D6FA5"
+
+
+def test_resolve_palette_unset_behaves_like_auto(tmp_path):
+    # Unset is "auto": the logo-derived palette, identical to the
+    # explicit form.
+    logo = tmp_path / "logo.png"
+    Image.new("RGBA", (4, 4), (200, 30, 30, 255)).save(logo)
+    cache_dir = str(tmp_path / "cache")
+    unset = resolve_accent_palette({"logo": "logo.png"}, str(tmp_path), cache_dir)
+    auto = resolve_accent_palette(
+        {"accent_color": "auto", "logo": "logo.png"}, str(tmp_path), cache_dir
+    )
+    assert unset == auto
+    assert unset["light"] != "#1D6FA5"
 
 
 def test_resolve_palette_explicit_hex_light_verbatim():
