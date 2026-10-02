@@ -11407,16 +11407,7 @@ function setupFloatingChrome() {
     // ----- Trail chip -----
     // A <button>, so Enter and Space already arrive as a click.
     const trailChip = document.getElementById("trail-chip");
-    if (trailChip) {
-        trailChip.addEventListener("click", openTrailChipPopup);
-        // TEMPORARY comparison switch for Steve's device pass: ?chip=1
-        // hides the "You are on" kicker (one row, the dot as the
-        // sentence); the default is two rows. Remove with the losing
-        // variant once he has chosen.
-        if (new URLSearchParams(window.location.search).get("chip") === "1") {
-            trailChip.dataset.variant = "1";
-        }
-    }
+    if (trailChip) trailChip.addEventListener("click", openTrailChipPopup);
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");

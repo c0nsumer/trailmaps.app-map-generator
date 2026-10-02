@@ -627,16 +627,6 @@ body::after {
     font-weight: 400;
     line-height: 1.1;
 }
-/* Variant 1 (comparison, ?chip=1): one row, the kicker kept for
- * screen readers only. */
-.trail-chip[data-variant="1"] .trail-chip-kicker {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-}
 /* The map's own dot, at chip scale: MapLibre draws a 15 px disc inside
  * a 2 px white ring with a soft shadow; this is 10 px inside the same
  * ring, the same proportions to the eye. */
