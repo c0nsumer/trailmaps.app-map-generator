@@ -8973,40 +8973,10 @@ function renderTrailChip() {
         chip.classList.add("hidden");
         return;
     }
-    const rating = _onTrail.feature.properties.imba_difficulty;
-    const glyph = isRatedDifficulty(rating) ? difficultyIconDataUrl(rating) : null;
     const label = chip.querySelector(".highlight-chip-label");
-    const swatch = chip.querySelector(".highlight-chip-swatch");
     // Compared first because the chip is aria-live: rewriting the same
     // text on every fix would re-announce it once a second.
     if (label && label.textContent !== name) label.textContent = name;
-    // The visible route-mode routes on the way, as the key draws
-    // them: one line swatch each, stacked like the lanes, at most
-    // three. The same visibility rule as the popup's route rows, so a
-    // route toggled off is not named here either. A rating lane is not
-    // repeated; the glyph carries it.
-    const lanes = chip.querySelector(".trail-chip-lanes");
-    if (lanes) {
-        const ids = (_onTrail.feature.properties.shared_routes || [])
-            .map(String)
-            .filter((id) => CONFIG.routes[id] && visibleRoutes.has(id) && isRouteMode(id))
-            .slice(0, 3);
-        const key = ids.join("|");
-        if (lanes.dataset.routes !== key) {
-            lanes.dataset.routes = key;
-            lanes.replaceChildren(...ids.map((id) =>
-                routeSwatchEl(routeSwatchModel(CONFIG.routes[id]), "highlight-chip-swatch is-line")));
-        }
-        lanes.classList.toggle("hidden", ids.length === 0);
-    }
-    if (swatch) {
-        if (glyph) {
-            if (swatch.getAttribute("src") !== glyph) swatch.src = glyph;
-            swatch.classList.remove("hidden");
-        } else {
-            swatch.classList.add("hidden");
-        }
-    }
     chip.classList.remove("hidden");
 }
 
@@ -11437,7 +11407,16 @@ function setupFloatingChrome() {
     // ----- Trail chip -----
     // A <button>, so Enter and Space already arrive as a click.
     const trailChip = document.getElementById("trail-chip");
-    if (trailChip) trailChip.addEventListener("click", openTrailChipPopup);
+    if (trailChip) {
+        trailChip.addEventListener("click", openTrailChipPopup);
+        // TEMPORARY comparison switch for Steve's device pass: ?chip=1
+        // hides the "You are on" kicker (one row, the dot as the
+        // sentence); the default is two rows. Remove with the losing
+        // variant once he has chosen.
+        if (new URLSearchParams(window.location.search).get("chip") === "1") {
+            trailChip.dataset.variant = "1";
+        }
+    }
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");
