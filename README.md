@@ -29,6 +29,8 @@ Oaks Map as of 2026-Jul-05*
 - On-map controls: Locate, Reset View, and Options buttons (top-right), plus
   the routes panel (bottom-right):
   - Locate: show the user's position from the device GNSS sensors.
+    - While Locate is on, a chip names the trail under the rider. Tap it to
+      open that trail's details.
   - Reset View: return to the map's initial framing.
   - Options: toggle labels, color scheme, units, season, and POI layers;
     install the PWA; share the map as a link or a QR code; open About.

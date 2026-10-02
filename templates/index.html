@@ -305,18 +305,34 @@
         <span class="off-screen-indicator-dist"></span>
     </div>
 
-    <!-- Highlight chip - floating at top of map when a route or trail is highlighted. -->
-    <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
-        <span class="highlight-chip-swatch" aria-hidden="true"></span>
-        <span class="highlight-chip-text">
-            <span class="highlight-chip-label">Highlighting</span>
-        </span>
-        <span class="highlight-chip-stats hidden" aria-hidden="true"></span>
-        <svg class="highlight-chip-close" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            <line x1="2" y1="2" x2="12" y2="12"/>
-            <line x1="12" y1="2" x2="2" y2="12"/>
-        </svg>
-    </button>
+    <!-- Top-of-map chips. The highlight chip shows while a route, trail,
+         rating or POI is highlighted; the trail chip names the trail under
+         the rider while Locate is on. They answer different questions and
+         can show at once, so they stack rather than share one slot, and
+         whichever is alone sits at the top. -->
+    <div id="chip-stack" class="chip-stack">
+        <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
+            <span class="highlight-chip-swatch" aria-hidden="true"></span>
+            <span class="highlight-chip-text">
+                <span class="highlight-chip-label">Highlighting</span>
+            </span>
+            <span class="highlight-chip-stats hidden" aria-hidden="true"></span>
+            <svg class="highlight-chip-close" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <line x1="2" y1="2" x2="12" y2="12"/>
+                <line x1="12" y1="2" x2="2" y2="12"/>
+            </svg>
+        </button>
+        <!-- No close X: there is nothing to dismiss. The chip leaves when
+             the rider leaves the trail or turns Locate off. aria-live
+             because it is the one chip a blind rider cannot get by
+             looking, and it changes every few minutes at most. -->
+        <button id="trail-chip" class="highlight-chip trail-chip hidden" type="button" aria-live="polite">
+            <img class="highlight-chip-swatch is-glyph hidden" alt="">
+            <span class="highlight-chip-text">
+                <span class="highlight-chip-label"></span>
+            </span>
+        </button>
+    </div>
 
     <!-- Floating button stack, top-right, 12 px corner inset like the
          brand on the left. Locate stays on top because riders check it

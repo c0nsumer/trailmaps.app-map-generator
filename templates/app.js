@@ -3925,6 +3925,7 @@ async function init() {
     geolocate.on("geolocate", (e) => {
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
+        updateTrailChip(userLocation[0], userLocation[1], e.coords.accuracy);
         // Keep the compass wedge glued to the dot. The course read
         // below uses two fields THIS fix already carries (the OS
         // computes heading/speed per fix; no history is kept or
@@ -3962,6 +3963,7 @@ async function init() {
     geolocate.on("outofmaxbounds", () => {
         userLocation = null;
         updateLocationIndicator();
+        resetTrailChip();
         geolocate.trigger();
         showToast(`You are outside the ${CONFIG.name} area`);
     });
@@ -4054,6 +4056,7 @@ async function init() {
             userLocation = null;
             _locateActivationZoomPending = false;
             updateLocationIndicator();
+            resetTrailChip();
             // Tracking is off: retire the compass wedge and stop the
             // sensor stream (battery; also prevents a ghost wedge if
             // tracking restarts before any fresh fix arrives).
@@ -5931,12 +5934,18 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
     return Math.sqrt(projX * projX + projY * projY) * 111320;
 }
 
-// Min distance (meters) from (lng, lat) to the line geometry of every
-// routesData feature `predicate(props)` accepts. MultiLineString parts
-// are walked in place rather than flattened, since this runs per POI on
-// every visibility and highlight change.
-function minDistanceToFeatures(lng, lat, predicate) {
+// The one segment walk behind every "how near is the trail" question:
+// the nearest segment of every routesData feature `predicate(props)`
+// accepts. Returns {feature, distM, a, b} with the segment's endpoints,
+// or null when no segment was walked. MultiLineString parts are walked
+// in place rather than flattened, and the winner is only recorded, not
+// boxed, until the walk ends, since this runs per POI on every
+// visibility and highlight change. It stops at an exact hit, the one
+// distance nothing can beat.
+function nearestFeatureSegment(lng, lat, predicate) {
     let minDist = Infinity;
+    let bestF = null, bestCoords = null, bestI = -1;
+    outer:
     for (const f of routesData.features) {
         if (!predicate(f.properties)) continue;
         const parts = f.geometry.type === "LineString"
@@ -5949,17 +5958,65 @@ function minDistanceToFeatures(lng, lat, predicate) {
                     coords[i + 1][0], coords[i + 1][1]);
                 if (d < minDist) {
                     minDist = d;
-                    if (d === 0) return 0;
+                    bestF = f;
+                    bestCoords = coords;
+                    bestI = i;
+                    if (d === 0) break outer;
                 }
             }
         }
     }
-    return minDist;
+    if (!bestF) return null;
+    return { feature: bestF, distM: minDist, a: bestCoords[bestI], b: bestCoords[bestI + 1] };
+}
+
+// Min distance (meters) from (lng, lat) to the line geometry of every
+// routesData feature `predicate(props)` accepts.
+function minDistanceToFeatures(lng, lat, predicate) {
+    const best = nearestFeatureSegment(lng, lat, predicate);
+    return best ? best.distM : Infinity;
+}
+
+function isVisibleTrail(props) {
+    return visibleRoutes.has(props.route_id);
 }
 
 function distanceToVisibleTrails(lng, lat) {
     if (!routesData) return Infinity;
-    return minDistanceToFeatures(lng, lat, (props) => visibleRoutes.has(props.route_id));
+    return minDistanceToFeatures(lng, lat, isVisibleTrail);
+}
+
+// The nearest feature `predicate(props)` accepts, as {feature, distM,
+// point}, where point is the nearest [lng, lat] on that feature's
+// centerline, or null. The projection repeats pointToSegmentDistance's
+// local flat-earth math for the one winning segment only, so the walk
+// stays as cheap as the POI proximity pass.
+function nearestTrail(lng, lat, predicate) {
+    if (!routesData) return null;
+    const best = nearestFeatureSegment(lng, lat, predicate);
+    if (!best) return null;
+    const [ax, ay] = best.a;
+    const [bx, by] = best.b;
+    const cosLat = Math.cos(((lat + ay + by) / 3) * Math.PI / 180);
+    const dx = (bx - ax) * cosLat;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0
+        ? Math.max(0, Math.min(1, ((lng - ax) * cosLat * dx + (lat - ay) * dy) / lenSq))
+        : 0;
+    return {
+        feature: best.feature,
+        distM: best.distM,
+        point: [ax + t * (bx - ax), ay + t * (by - ay)],
+    };
+}
+
+// Centerlines, not lanes: on a routes map the lanes are offset into a
+// bundle beside the way, so the way itself is what the rider is on.
+// Visible is the POI proximity predicate, so a hidden bucket (winter
+// off) never names a trail the map does not draw.
+function nearestVisibleTrail(lng, lat) {
+    return nearestTrail(lng, lat, isVisibleTrail);
 }
 
 // Min distance (meters) from (lng, lat) to the currently-highlighted
@@ -8811,6 +8868,160 @@ function hideHighlightChip() {
 }
 
 // ============================================================
+// Trail chip: "You are on <trail>" while Locate is on
+// ============================================================
+// Rides Locate the way the wake lock and the heading wedge do: no
+// control, no setting. Resolved once per geolocate fix (about 1 Hz),
+// never per frame, and the DOM is touched only when the name or the
+// rating glyph changes.
+//
+// The trail the rider is on, as {name, feature, point}; name "" for an
+// unnamed way, which is tracked like any other so the junction
+// hysteresis applies to it, but never shown ("You are on Unnamed" is
+// noise). null when off every trail.
+let _onTrail = null;
+// A different trail that beat the current one by TRAIL_CHIP_SWITCH_M
+// on the last fix, as {name, count}, and the run of fixes beyond the
+// threshold. Two in a row either way: at 1 Hz the chip lags a junction
+// by about two seconds, which reads as settled rather than slow, and a
+// single wild fix under tree cover cannot flip or drop the name.
+let _onTrailCandidate = null;
+let _offTrailFixes = 0;
+const TRAIL_CHIP_FIXES = 2;
+const TRAIL_CHIP_SWITCH_M = 5;
+
+// On the trail within the fix's own accuracy, clamped: a 40 m fix under
+// trees still names the trail, a 200 m fix does not name one 150 m
+// away, and a sharp fix still allows for a way mapped a few meters off
+// the tread. A fix with no usable accuracy gets the strict floor.
+function trailChipThresholdM(accuracy) {
+    const acc = Number.isFinite(accuracy) ? accuracy : 0;
+    return Math.max(20, Math.min(acc, 60));
+}
+
+function updateTrailChip(lng, lat, accuracy) {
+    const nearest = nearestVisibleTrail(lng, lat);
+    if (!nearest || nearest.distM > trailChipThresholdM(accuracy)) {
+        _onTrailCandidate = null;
+        _offTrailFixes += 1;
+        if (_offTrailFixes >= TRAIL_CHIP_FIXES) {
+            _onTrail = null;
+            renderTrailChip();
+        }
+        return;
+    }
+    _offTrailFixes = 0;
+    const name = nearest.feature.properties.trail_name || "";
+    if (!_onTrail) {
+        // Arriving from off-trail (or the first fix) has no name to
+        // hold against, so it shows at once.
+        _onTrail = { name, feature: nearest.feature, point: nearest.point };
+        _onTrailCandidate = null;
+        renderTrailChip();
+        return;
+    }
+    if (name === _onTrail.name) {
+        // Same trail: follow the rider along it, so a tap opens the
+        // section under the wheels and a rating change on the next way
+        // updates the glyph.
+        _onTrail = { name, feature: nearest.feature, point: nearest.point };
+        _onTrailCandidate = null;
+        renderTrailChip();
+        return;
+    }
+    // A different trail is nearest. It takes over only when it beats
+    // the current one by the margin on consecutive fixes; the second
+    // walk runs only here, at a junction, not on every fix.
+    const held = _onTrail.name;
+    const current = nearestTrail(lng, lat,
+        (props) => isVisibleTrail(props) && (props.trail_name || "") === held);
+    const currentDist = current ? current.distM : Infinity;
+    if (currentDist - nearest.distM < TRAIL_CHIP_SWITCH_M) {
+        _onTrailCandidate = null;
+        if (current) _onTrail = { name: held, feature: current.feature, point: current.point };
+        return;
+    }
+    _onTrailCandidate = _onTrailCandidate && _onTrailCandidate.name === name
+        ? { name, count: _onTrailCandidate.count + 1 }
+        : { name, count: 1 };
+    if (_onTrailCandidate.count >= TRAIL_CHIP_FIXES) {
+        _onTrail = { name, feature: nearest.feature, point: nearest.point };
+        _onTrailCandidate = null;
+        renderTrailChip();
+    } else if (current) {
+        _onTrail = { name: held, feature: current.feature, point: current.point };
+    }
+}
+
+// Locate off: the chip goes at once, with no hysteresis, and the next
+// Locate starts fresh rather than holding against a stale trail.
+function resetTrailChip() {
+    _onTrail = null;
+    _onTrailCandidate = null;
+    _offTrailFixes = 0;
+    renderTrailChip();
+}
+
+function renderTrailChip() {
+    const chip = document.getElementById("trail-chip");
+    if (!chip) return;
+    const name = _onTrail ? _onTrail.name : "";
+    if (!name) {
+        chip.classList.add("hidden");
+        return;
+    }
+    const rating = _onTrail.feature.properties.imba_difficulty;
+    const glyph = isRatedDifficulty(rating) ? difficultyIconDataUrl(rating) : null;
+    const label = chip.querySelector(".highlight-chip-label");
+    const swatch = chip.querySelector(".highlight-chip-swatch");
+    const text = `You are on ${name}`;
+    // Compared first because the chip is aria-live: rewriting the same
+    // text on every fix would re-announce it once a second.
+    if (label && label.textContent !== text) label.textContent = text;
+    if (swatch) {
+        if (glyph) {
+            if (swatch.getAttribute("src") !== glyph) swatch.src = glyph;
+            swatch.classList.remove("hidden");
+        } else {
+            swatch.classList.add("hidden");
+        }
+    }
+    chip.classList.remove("hidden");
+}
+
+// Opens the trail popup for the section under the rider, the card a
+// map tap there gives. The point is on the centerline, so it is snapped
+// to the lane drawn for it the way openTrailPopupOnRun snaps a finder
+// pick, with the same name check and raw-properties fallback, and the
+// popup anchors at the rider's own point rather than the lane's.
+function openTrailChipPopup() {
+    if (!_onTrail || !_onTrail.name) return;
+    const { name, feature, point } = _onTrail;
+    // A rider who panned away would otherwise get a popup off screen.
+    if (!map.getBounds().contains(point)) map.easeTo({ center: point });
+    const tolerancePx = 30;
+    const named = (hit) => (hit && hit.properties
+        && hit.properties.trail_name === name ? hit : null);
+    let hit = null;
+    if (laneLayer) {
+        hit = named(laneLayer.queryLaneAt(point, map.getZoom(), tolerancePx))
+            || named(laneLayer.queryLane(map.project(point), tolerancePx));
+    }
+    if (hit) {
+        openTrailPopup(hit, point, { scope: "section" });
+        return;
+    }
+    const p = feature.properties;
+    const route = p.route_id;
+    openTrailPopup({
+        route,
+        routes: p.shared_routes || [route],
+        edge: null,
+        properties: p,
+    }, point, { scope: "section" });
+}
+
+// ============================================================
 // Routes panel, key card + search entry, bottom-right
 // ============================================================
 // The map's ONE routes surface, progressive disclosure over the
@@ -11201,6 +11412,11 @@ function setupFloatingChrome() {
 
     // ----- Share button -----
     setupShareButton(openQrOverlay);
+
+    // ----- Trail chip -----
+    // A <button>, so Enter and Space already arrive as a click.
+    const trailChip = document.getElementById("trail-chip");
+    if (trailChip) trailChip.addEventListener("click", openTrailChipPopup);
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");

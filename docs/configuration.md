@@ -1307,6 +1307,9 @@ independent (for example, `<slug>.mtb.colorScheme`). The one exception is
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.
 
+While Locate is on, the chip that names the trail under the rider is resolved on
+the device from the position fix the map already has for the Locate dot.
+
 `url_hash` is the one setting that changes what leaves the browser, and only when
 the visitor chooses to share. With `url_hash: true` the map writes its current
 `#zoom/lat/lon` to the address bar, so a copied or bookmarked URL carries that
