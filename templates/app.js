@@ -7670,6 +7670,7 @@ function _refreshVisibilityDependents() {
     rebuildFinderList();
     rebuildRoutePanel();
     pruneInvisibleHighlights();
+    renderTrailChip();
     // If the highlighted entity is no longer visible, clear it. One
     // chain, because clearing a route highlight leaves `highlight` null.
     if (highlight) {
@@ -8966,7 +8967,9 @@ function renderTrailChip() {
     const chip = document.getElementById("trail-chip");
     if (!chip) return;
     const name = _onTrail ? _onTrail.name : "";
-    if (!name) {
+    // A way whose own route was toggled off since the last fix hides
+    // with it; the next fix resolves against what is drawn.
+    if (!name || !isVisibleTrail(_onTrail.feature.properties)) {
         chip.classList.add("hidden");
         return;
     }
@@ -8984,14 +8987,16 @@ function renderTrailChip() {
         strong.textContent = name;
         label.appendChild(strong);
     }
-    // The route-mode routes on the way, as the key draws them: one
-    // line swatch each, stacked like the lanes, at most three. A rating
-    // lane is not repeated here; the glyph carries it.
+    // The visible route-mode routes on the way, as the key draws
+    // them: one line swatch each, stacked like the lanes, at most
+    // three. The same visibility rule as the popup's route rows, so a
+    // route toggled off is not named here either. A rating lane is not
+    // repeated; the glyph carries it.
     const lanes = chip.querySelector(".trail-chip-lanes");
     if (lanes) {
         const ids = (_onTrail.feature.properties.shared_routes || [])
             .map(String)
-            .filter((id) => CONFIG.routes[id] && isRouteMode(id))
+            .filter((id) => CONFIG.routes[id] && visibleRoutes.has(id) && isRouteMode(id))
             .slice(0, 3);
         const key = ids.join("|");
         if (lanes.dataset.routes !== key) {
