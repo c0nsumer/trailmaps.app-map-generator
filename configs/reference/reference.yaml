@@ -319,12 +319,12 @@ relations:
 # unchanged no matter how many logos you add here. Like the primary logo they sit
 # in a click-through overlay - taps pass through to the map underneath. Each entry:
 #   - path:        (required) image file, raster or SVG, same pipeline as logo:
-#   - invert_dark: (optional, default true) auto-invert in dark mode; set false
-#                  for colored / photographic sponsor logos that look wrong inverted.
+#   - invert_dark: (optional, default false) auto-invert in dark mode; set true
+#                  for a plain dark mark that would vanish on the dark sheet.
 # additional_logos:
 #   - path: event-logo.svg
+#     invert_dark: true
 #   - path: sponsor-acme.webp
-#     invert_dark: false
 
 # ============================================================
 # User-supplied points

@@ -542,7 +542,7 @@ stack secondary images under the primary logo in the brand mark:
 icon: sponsor_logo.webp            # primary: drives icons + accent
 additional_logos:
   - path: club_logo.webp
-    invert_dark: false             # colorful mark; don't invert in dark mode
+    invert_dark: true              # plain dark mark; invert in dark mode
 ```
 
 These are display-only; icons, accent derivation, and share previews stay

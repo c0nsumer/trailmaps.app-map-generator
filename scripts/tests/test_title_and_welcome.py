@@ -176,3 +176,14 @@ def test_index_always_ships_the_share_row_and_sheet():
     out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG))
     for needle in ('id="share-btn"', 'id="qr-overlay"', 'id="qr-share-link"', "vendor/uqr.mjs"):
         assert needle in out
+
+
+def test_additional_logos_do_not_invert_by_default():
+    # Same default as invert_logo_dark on the primary (2026-10-03).
+    config = dict(MINIMAL_CONFIG, _additional_logos_rendered=[
+        {"url": "logo-2.webp"},
+        {"url": "logo-3.webp", "invert_dark": True},
+    ])
+    out = _process_index_html(_index_html(), config)
+    assert 'src="logo-2.webp" alt="" class="brand-logo-secondary"' in out
+    assert 'src="logo-3.webp" alt="" class="brand-logo-secondary invert-dark"' in out

@@ -986,10 +986,10 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
         if not isinstance(entry, dict):
             continue
         path = entry.get("path") or ""
-        invert = entry.get("invert_dark", True)
+        invert = entry.get("invert_dark", False)
         console.info(
             f"additional_logos[{i}]: {_display_path(path)}"
-            f"{'' if invert else ' (invert_dark: false)'}"
+            f"{' (invert_dark: true)' if invert else ''}"
         )
     console.blank()
 

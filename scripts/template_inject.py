@@ -1002,7 +1002,7 @@ def _process_index_html(content, config):
         tags = []
         for extra in rendered_additional:
             cls = "brand-logo-secondary"
-            if extra.get("invert_dark", True):
+            if extra.get("invert_dark", False):
                 cls += " invert-dark"
             dims = ""
             if extra.get("width") and extra.get("height"):
@@ -1127,10 +1127,10 @@ def copy_assets(config, output_dir):
                 "url": out_name,
                 "width": w,
                 "height": h,
-                # Per-logo dark-mode invert, default true (matches the
-                # framework default for the primary logo). Colored /
-                # photographic sponsor logos set invert_dark: false.
-                "invert_dark": entry.get("invert_dark", True),
+                # Per-logo dark-mode invert, default false to match
+                # invert_logo_dark on the primary: most sponsor marks are
+                # colored, and a plain dark one opts in.
+                "invert_dark": entry.get("invert_dark", False),
             }
         )
     config["_additional_logos_rendered"] = rendered_additional

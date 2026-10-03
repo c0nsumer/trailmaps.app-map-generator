@@ -289,7 +289,7 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 |-----|----------|---------|-------------|
 | `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x48 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
 | `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically, provided the logo is a Pillow-readable raster (PNG/WebP/JPEG/…). An SVG logo can't be rasterized into icons; if the logo is an SVG, set `icon:` explicitly. Most maps only need to set one of the two. |
-| `additional_logos` | No | `[]` | Secondary brand images (an event logo, one or more sponsor logos) stacked vertically **under** the primary logo in the top-left brand mark. They render top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`) and `invert_dark:` (optional, default `true`; set `false` for colorful or photographic marks that look wrong inverted). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
+| `additional_logos` | No | `[]` | Secondary brand images (an event logo, one or more sponsor logos) stacked vertically **under** the primary logo in the top-left brand mark. They render top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`) and `invert_dark:` (optional, default `false`; set `true` for a plain dark mark that would vanish in dark mode). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
 
 If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green). Every map still gets favicons, an installable PWA icon, and a brand mark. An explicit `logo:` or `icon:` always takes precedence.
 
@@ -1185,8 +1185,8 @@ logos, stacked vertically under the primary logo in the top-left brand mark:
 logo: club-logo.webp
 additional_logos:
   - path: event-logo.svg
+    invert_dark: true              # plain dark mark; invert in dark mode
   - path: sponsor-acme.webp
-    invert_dark: false             # colorful mark; don't invert in dark mode
 ```
 
 Each entry's `path:` goes through the same pipeline as the primary `logo:`
@@ -1194,8 +1194,8 @@ Each entry's `path:` goes through the same pipeline as the primary `logo:`
 files are written as `logo-2`, `logo-3`, … in listed order. Secondaries share
 the primary logo's bounding box, rendered a touch smaller, so the stack reads
 as one consistently-scaled brand column. Each image still keeps its own aspect
-ratio inside that box. `invert_dark:` (default `true`) controls the per-logo
-dark-mode auto-invert. Unlike `invert_logo_dark` on the primary, it is on by default.
+ratio inside that box. `invert_dark:` (default `false`) controls the per-logo
+dark-mode auto-invert, the same default as `invert_logo_dark` on the primary.
 
 These are display-only. Favicon / PWA icon generation, `accent_color: auto`
 derivation, the About-modal image, and social-share previews are all keyed to

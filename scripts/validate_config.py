@@ -828,9 +828,9 @@ def _validate_additional_logos(report, config):
 
         - path: str (required) - config-relative image path (raster or SVG),
           processed through the same pipeline as `logo:`.
-        - invert_dark: bool (optional, default true) - auto-invert this
-          logo in dark mode. Set false for colored / photographic sponsor
-          logos that shouldn't be inverted.
+        - invert_dark: bool (optional, default false) - auto-invert this
+          logo in dark mode. Set true for a plain dark mark that would
+          vanish on the dark sheet.
 
     Display-only: these never drive icon/favicon generation, accent-color
     derivation, the About modal, or og:image - all of that stays keyed to

@@ -3266,8 +3266,8 @@ body::after {
 }
 
 /* Per-logo dark-mode invert, baked in at build time as .invert-dark
- * (default on; sponsors with colored/photographic marks set
- * invert_dark: false in YAML to opt out). Same lightness-flip as the
+ * (default off; a plain dark mark sets invert_dark: true in YAML to
+ * opt in). Same lightness-flip as the
  * primary logo so hues survive the invert. */
 [data-color-scheme="dark"] .brand-logo-secondary.invert-dark {
     filter: invert(1) hue-rotate(180deg)

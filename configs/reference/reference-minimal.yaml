@@ -85,7 +85,7 @@ relations:
 # icon: icon.png
 # additional_logos:
 #   - path: sponsor.webp
-#     invert_dark: false
+#     invert_dark: true
 
 # --- User-supplied points ---
 # trailheads: []
