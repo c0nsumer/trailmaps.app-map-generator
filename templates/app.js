@@ -3705,6 +3705,7 @@ async function init() {
     }
 
     map.setMissingStyleImageResolver(registerGroundPattern);
+    watchLaneContextLoss();
     initMapScale();
 
     // Disable two-finger twist rotation on touch devices.
@@ -7186,28 +7187,73 @@ function refreshLaneGraph() {
         if (token !== laneOrderToken) return;
         laneGraph = next;
         laneSwapPending = true;
-        if (laneLayer) {
-            laneLayer.setGraph(next);
-        } else {
-            laneLayer = new L.LaneLayer({
-                id: LANE_LAYER_ID,
-                graph: next,
-                sizes: laneStyleAt,
-                casingColor: laneCasingColor(),
-                onBuild: onLaneBuild,
-            });
-            map.addLayer(laneLayer, laneLayerAnchor());
-            // promoteBasemapLabels ran before the lanes existed and put
-            // the labels between the tap lift and the anchor, where the
-            // lanes just landed; the lift belongs directly under them,
-            // and the wash directly under the lift.
-            moveTapLiftUnderLanes();
-            placeWashUnderLift();
-            placeClipArrowsAboveLanes();
-            // A share link can select a route before the lanes exist.
-            syncLaneHighlight();
-        }
+        if (laneLayer) laneLayer.setGraph(next);
+        // With the context lost there is no style to add to; the
+        // restore adds the layer with this graph (watchLaneContextLoss).
+        else if (!laneContextLost) addLaneLayer();
     }).catch((e) => console.error("lanes: ordering failed", e));
+}
+
+// Adds a fresh lane layer for laneGraph and restacks around it. Runs
+// at boot, once the first ordering lands, and after a WebGL context
+// restore, which rebuilds the style without the lanes.
+function addLaneLayer() {
+    laneLayer = new window.maplibreLanes.LaneLayer({
+        id: LANE_LAYER_ID,
+        graph: laneGraph,
+        sizes: laneStyleAt,
+        casingColor: laneCasingColor(),
+        onBuild: onLaneBuild,
+    });
+    map.addLayer(laneLayer, laneLayerAnchor());
+    // promoteBasemapLabels ran before the lanes existed and put the
+    // labels between the tap lift and the anchor, where the lanes just
+    // landed; the lift belongs directly under them, and the wash
+    // directly under the lift. A restored style keeps that stack minus
+    // the lanes, and the same moves rebuild it exactly.
+    moveTapLiftUnderLanes();
+    placeWashUnderLift();
+    placeClipArrowsAboveLanes();
+    // A share link can select a route before the lanes exist, and a
+    // restore must re-apply the lift and dim to the new layer.
+    syncLaneHighlight();
+}
+
+// Android discards a backgrounded PWA's WebGL context and hands it
+// back on resume. MapLibre then restores the style from a snapshot
+// taken at loss, which keeps every layer, source, image and runtime
+// paint/filter edit except custom layers: the lanes came back missing
+// until a force-quit. Style.destroy runs the lane layer's onRemove, so
+// the plugin's per-context share is already released and a new layer
+// on the restored context starts clean.
+let laneContextLost = false;
+
+function watchLaneContextLoss() {
+    map.on("webglcontextlost", () => {
+        // The old layer is gone with the style; dropping it makes the
+        // tap, cursor and symbol paths stand down until the restore.
+        laneContextLost = true;
+        laneLayer = null;
+    });
+    map.on("webglcontextrestored", () => {
+        const restore = () => {
+            laneContextLost = false;
+            // The new layer counts builds from zero, so a build number
+            // cached from the old one could match and skip the refresh.
+            laneSymbolsBuild = -1;
+            laneSymbolsZoom = null;
+            // No graph yet means the first ordering is still in flight;
+            // it adds the layer when it lands.
+            if (!laneGraph || laneLayer) return;
+            laneSwapPending = true;
+            addLaneLayer();
+        };
+        // The restored style loads a frame after this event (setStyle
+        // with an object waits a frame before parsing), and addLayer
+        // throws until it has.
+        if (map.isStyleLoaded()) restore();
+        else map.once("style.load", restore);
+    });
 }
 
 // Lane geometry is laid out in the plugin's worker, so the build a
