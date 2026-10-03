@@ -3886,6 +3886,11 @@ async function init() {
     //     fires, so the animation dies before a frame draws.
     map.on("movestart", (e) => {
         if (!e.geolocateSource) {
+            // A rotation or window resize is not a user move: the
+            // control keeps ACTIVE_LOCK for one (it skips moves carrying
+            // ResizeObserverEntry data), so clearing follow here left
+            // the button active while every fix was cancelled.
+            if (e[0] instanceof ResizeObserverEntry) return;
             _followUserOnGeolocate = false;
             return;
         }
