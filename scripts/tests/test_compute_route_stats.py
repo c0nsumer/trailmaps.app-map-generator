@@ -62,9 +62,9 @@ def test_compute_distances_counts_each_route_once():
 
 def test_attach_writes_distance_only_when_enabled():
     g = _fc()
-    assert not compute_and_attach(g, {})
+    assert not compute_and_attach(g, {"show_distance": False})
     assert "distance_m" not in g["metadata"]["routes"]["100"]
-    assert compute_and_attach(g, {"show_distance": True})
+    assert compute_and_attach(g, {})
     assert g["metadata"]["routes"]["100"]["distance_m"] > 0
 
 

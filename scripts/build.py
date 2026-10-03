@@ -968,7 +968,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     console.blank()
 
     # ---- Route stats ----
-    if config.get("show_distance"):
+    if config.get("show_distance", True):
         console.step("Per-route stats:")
         console.info("distance: computed (haversine, no API)")
         console.blank()

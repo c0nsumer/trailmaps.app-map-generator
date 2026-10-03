@@ -194,7 +194,7 @@ CONFIG_SPEC = [
     # Also a build-time gate (compute_route_stats.py writes per-route
     # distance_m). A difficulty map sums per-rating distances at runtime,
     # so the runtime needs the flag itself.
-    ("show_distance", "showDistance", False),
+    ("show_distance", "showDistance", True),
     ("suppress_basemap_pois", "suppressBasemapPois", True),
     ("suppress_basemap_oneway_arrows", "suppressBasemapOnewayArrows", False),
     # Marker colors flow to CSS custom properties on :root, so the

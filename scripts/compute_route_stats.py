@@ -133,7 +133,7 @@ def compute_and_attach(trails_geojson, config):
     way. Geometry that repeats a route's ways inflates its stats.
     """
     routes = trails_geojson.setdefault("metadata", {}).setdefault("routes", {})
-    if not routes or not config.get("show_distance"):
+    if not routes or not config.get("show_distance", True):
         return False
 
     console.detail("computing per-route distance...")

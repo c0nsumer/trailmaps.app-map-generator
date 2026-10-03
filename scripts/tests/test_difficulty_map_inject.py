@@ -40,8 +40,8 @@ def test_explicit_default_labels_is_honored_on_a_difficulty_map():
 def test_show_distance_reaches_the_runtime():
     # Difficulty maps sum per-rating key distances at runtime, so the
     # build-time stats gate is emitted too.
-    assert inject_config(dict(MINIMAL_CONFIG))["showDistance"] is False
-    assert inject_config(dict(MINIMAL_CONFIG, show_distance=True))["showDistance"] is True
+    assert inject_config(dict(MINIMAL_CONFIG))["showDistance"] is True
+    assert inject_config(dict(MINIMAL_CONFIG, show_distance=False))["showDistance"] is False
 
 
 # ----- relation_colors and OSM colour on a difficulty map -----
