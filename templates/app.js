@@ -8787,11 +8787,16 @@ const TRAIL_CHIP_SWITCH_M = 5;
 // fix (the first cell or Wi-Fi fixes after Locate comes on, a pocket
 // under deep canopy) is treated as "do not know", which hides the chip
 // after two of them rather than naming a trail hundreds of meters off.
+// The floor keeps a sharp fix from being stricter than a coarse one:
+// Android reports 3 to 5 m in the open, and the way's mapping offset
+// plus real GPS error routinely exceeds that, which silenced the chip
+// on the trail itself.
 const TRAIL_CHIP_MAX_ACCURACY_M = 25;
 const TRAIL_CHIP_SLACK_M = 5;
+const TRAIL_CHIP_MIN_M = 20;
 function trailChipThresholdM(accuracy) {
     if (!Number.isFinite(accuracy) || accuracy > TRAIL_CHIP_MAX_ACCURACY_M) return -1;
-    return accuracy + TRAIL_CHIP_SLACK_M;
+    return Math.max(TRAIL_CHIP_MIN_M, accuracy + TRAIL_CHIP_SLACK_M);
 }
 
 function updateTrailChip(lng, lat, accuracy) {
