@@ -1920,12 +1920,8 @@ def main(argv=None):
     }, trails_fetch_ran)
 
     total = print_summary(output_dir)
-    if console.is_verbose():
-        console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
-        console.step("Then open: http://localhost:8080\n")
-    else:
+    if not console.is_verbose():
         console.step(f"Built in {_fmt_elapsed(time.monotonic() - started)}: {_fmt_size(total)}")
-        console.summary(f"Serve: python scripts/serve.py {console.rel_path(output_dir)}")
 
 
 if __name__ == "__main__":

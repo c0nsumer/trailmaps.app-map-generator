@@ -146,7 +146,6 @@ OSM data notes
   Basemap: paths regenerated (1.2 MB)
   Terrain: extracted from Mapterhorn (3.1 MB)
 Built in 38s: 8.8 MB
-  Serve: python scripts/serve.py build/ramba
 ```
 
 The final size counts only what a deploy ships. It leaves out the
