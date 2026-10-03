@@ -125,9 +125,10 @@ changed bbox re-extracts tiles.
   errors remain.
 - `--verbose` prints the full build log. It adds the per-relation
   listing, every file written, the cache file behind each Overpass
-  response, and the final table of output files. The default output
-  condenses these into one line per stage. `--quiet` and `--verbose`
-  cannot be combined.
+  response, and the final table of output files. It does not replay
+  the `pmtiles` progress bar, which prints only if an extract fails.
+  The default output condenses these into one line per stage. `--quiet`
+  and `--verbose` cannot be combined.
 
 ### Reading the build output
 

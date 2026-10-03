@@ -1057,7 +1057,7 @@ def _build_parser():
     parser.add_argument(
         "--cache-dir",
         help="Use this directory for the Overpass / derive-accent "
-        "/ route-stats cache. Defaults to 'cache/' at the "
+        "cache. Defaults to 'cache/' at the "
         "repo root. Resolved against the current working "
         "directory if relative.",
     )
@@ -1809,7 +1809,9 @@ def main(argv=None):
     # after validation (which judges the curator's real config) so it
     # also shows up in --dry-run's branding summary below.
     if apply_default_brand(config, project_root):
-        console.detail("No logo/icon configured - using the bundled placeholder bike icon")
+        # Shown by default: it fires only on brandless maps, and the
+        # accent then derives from the placeholder's green.
+        console.info("No logo/icon configured - using the bundled placeholder bike icon")
 
     output_dir, cache_dir = _resolve_dirs(config, args, project_root)
 

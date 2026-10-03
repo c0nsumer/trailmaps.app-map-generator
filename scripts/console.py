@@ -16,7 +16,8 @@ Vocabulary::
     error    a serious problem                    "  error: ..."
 
 step, note and blank take ``detail=True`` to become verbose-only while keeping
-their exact format, so --verbose reproduces the full log line for line.
+their exact format, so --verbose reproduces the full log line for line. The
+one exception is the pmtiles CLI's progress bar, which never prints on success.
 
 Verbosity is set once from the CLI via :func:`set_verbosity`:
 
