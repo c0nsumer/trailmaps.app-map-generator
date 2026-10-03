@@ -101,7 +101,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
     # Atomic: extracts to a .tmp sibling and renames into place only on
     # success, so a failed/interrupted extract can't leave a partial
-    # basemap.pmtiles for the service-worker sweep to precache and ship.
+    # basemap.pmtiles for the service worker to precache and ship.
     if not extract(pmtiles_cli, planet, output_path, padded_bbox, maxzoom, minzoom):
         sys.exit(1)
 

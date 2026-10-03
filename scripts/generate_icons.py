@@ -135,10 +135,9 @@ def generate_png_icons(source_img, output_dir):
         count += 1
 
     # Retired icons: output dirs persist between builds (that's what
-    # makes basemap reuse work) and the service-worker precache list
-    # is built by walking the tree, so a file dropped from ICON_SIZES
-    # would otherwise keep shipping to riders forever on rebuilt maps.
-    # Same pattern as build.py's stale-terrain removal.
+    # makes basemap reuse work), so a file dropped from ICON_SIZES would
+    # otherwise keep deploying on rebuilt maps. Same pattern as build.py's
+    # stale-terrain removal.
     for stale in ("icons/android-chrome-256x256.png",):
         stale_path = os.path.join(output_dir, stale)
         if os.path.exists(stale_path):
@@ -380,16 +379,17 @@ def generate_manifest(config, output_dir, bg_color=None):
 def generate_icons(source_path, output_dir, config):
     """Main entry point: generate all icon variants from a single source image.
 
-    Returns True if icons were generated, False if Pillow is unavailable.
+    Returns the output_dir-relative paths written, for the service worker's
+    precache list; empty if nothing was generated.
     """
     if Image is None:
         console.warn("Pillow not installed - skipping icon generation")
         console.info("         Install: pip install Pillow")
-        return False
+        return []
 
     if not os.path.isfile(source_path):
         console.warn(f"Icon source not found: {source_path}")
-        return False
+        return []
 
     try:
         img = Image.open(source_path)
@@ -402,7 +402,7 @@ def generate_icons(source_path, output_dir, config):
         console.warn(f"Cannot read icon source {source_path}")
         console.info(f"         {type(e).__name__}: {e}")
         console.info("         Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
-        return False
+        return []
 
     # Auto-pad non-square sources to a transparent square (side = max(w, h))
     # so any aspect ratio flows through. The print line tells the curator
@@ -438,7 +438,12 @@ def generate_icons(source_path, output_dir, config):
     if has_svg:
         parts.append("pinned-tab SVG")
     console.detail(f"Generated icons: {', '.join(parts)}")
-    return True
+    written = [name for name, _w, _h, _on_white in ICON_SIZES]
+    written += ["icons/android-chrome-maskable-512x512.png", "favicon.ico",
+                "icons/site.webmanifest"]
+    if has_svg:
+        written.append("icons/safari-pinned-tab.svg")
+    return written
 
 
 if __name__ == "__main__":

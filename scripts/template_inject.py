@@ -39,6 +39,19 @@ from validate_config import (
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
+def ship(config, *rel_paths):
+    """Record output paths this build produced for the map to use.
+
+    The service worker precaches and hashes only what is recorded here,
+    never whatever else sits in output_dir: the orchestrator writes its
+    own files there after the engine runs (social card, poster, QR), and
+    a file an earlier build wrote but this one did not would otherwise
+    ship forever. A path ending in "/" claims the whole directory, which
+    is right only for directories the build clears before writing.
+    """
+    config.setdefault("_shipped", set()).update(rel_paths)
+
 # How many IMBA ratings the runtime can draw a glyph for: mtb:scale:imba
 # 0-5, mirroring IMBA_RATINGS / RATING_NAMES in templates/app.js. Used to
 # reject out-of-range tag values from CONFIG.difficultyRatings so the key
@@ -49,8 +62,7 @@ _IMBA_RATING_COUNT = 6
 # Protomaps ships five basemap sprite flavors, but templates/app.js only ever
 # requests two (see basemapFlavor()). The other three are ~80 KB per map of
 # atlas that no code path can reach - and because the service worker precaches
-# the whole build tree, that was bandwidth every rider spent, not just server
-# disk.
+# all of sprites/, that was bandwidth every rider spent, not just server disk.
 #
 # DRIFT WARNING, in both directions:
 #   * Adding a flavor to basemapFlavor() in app.js REQUIRES adding it to
@@ -1068,6 +1080,7 @@ def copy_templates(config, output_dir, trails_geojson):
         dst = os.path.join(output_dir, filename)
         with open(dst, "w", encoding="utf-8") as f:
             f.write(content)
+        ship(config, filename)
         console.detail(f"Copied {filename}")
 
 
@@ -1101,6 +1114,7 @@ def copy_assets(config, output_dir):
         # copy_templates falls back to omitting the attributes in that
         # case, accepting the small CLS risk over emitting wrong dims.
         config["_brand_img_dims"] = process_logo(logo_src, out_path)
+        ship(config, out_name)
 
     # Secondary brand images (event + sponsor logos). Each is processed
     # through the SAME pipeline as the primary logo (raster → WebP,
@@ -1122,6 +1136,7 @@ def copy_assets(config, output_dir):
         ext = os.path.splitext(candidate)[1].lower()
         out_name = f"logo-{idx}.svg" if ext == ".svg" else f"logo-{idx}.webp"
         w, h = process_logo(candidate, os.path.join(output_dir, out_name))
+        ship(config, out_name)
         rendered_additional.append(
             {
                 "url": out_name,
@@ -1145,7 +1160,7 @@ def copy_assets(config, output_dir):
         # an explicit icon: setting. Log it so the curator knows.
         console.info("No icon configured - using logo as icon source")
     if icon_path:
-        generate_icons(icon_path, output_dir, config)
+        ship(config, *generate_icons(icon_path, output_dir, config))
     else:
         console.info("No icon configured - skipping icon generation")
 
@@ -1153,8 +1168,7 @@ def copy_assets(config, output_dir):
     # with filenames preserved (riders get a file identical, name
     # included, to one distributed by the event's official source).
     # Stale gpx/ from a prior build is removed first so deleting the
-    # config key cleanly drops the files from the output (and from the
-    # SW precache list, which walks the build tree after this).
+    # config key cleanly drops the files from the output.
     gpx_dst = os.path.join(output_dir, "gpx")
     if os.path.isdir(gpx_dst):
         shutil.rmtree(gpx_dst)
@@ -1163,17 +1177,18 @@ def copy_assets(config, output_dir):
         os.makedirs(gpx_dst, exist_ok=True)
         for gpx_src, gpx_base, _meta in gpx_entries:
             shutil.copy2(gpx_src, os.path.join(gpx_dst, gpx_base))
+        ship(config, "gpx/")
         console.detail(f"Copied {len(gpx_entries)} GPX download file(s)")
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
     copy_trimmed_fonts(output_dir, fonts_src, minzoom=EXTRACT_MINZOOM)
+    ship(config, "fonts/")
 
     # Self-hosted UI webfont - DOM chrome text (the PBF fonts above are
     # map-canvas glyphs; these are @font-face files for HTML/CSS). Copied
     # verbatim minus the .coverage.json sidecars, which are build-side
-    # metadata for the coverage check below and must not ship. The SW
-    # precache walk picks up whatever lands here automatically. Stale dir
+    # metadata for the coverage check below and must not ship. Stale dir
     # removed first so renaming/removing an asset drops it from output.
     webfonts_src = os.path.join(project_root, "assets", "webfonts")
     webfonts_dst = os.path.join(output_dir, "webfonts")
@@ -1189,6 +1204,7 @@ def copy_assets(config, output_dir):
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, os.path.join(webfonts_dst, item))
                 copied += 1
+        ship(config, "webfonts/")
         console.detail(f"Copied {copied} webfont file(s)")
 
         # Chrome-font coverage check. Every string that can reach DOM
@@ -1253,6 +1269,8 @@ def copy_assets(config, output_dir):
     else:
         console.warn(f"Sprites not found at {sprites_src}")
         console.info("Download from: https://github.com/protomaps/basemaps-assets")
+    if sprites_injected_dirs:
+        ship(config, "sprites/")
 
     # Inject the SDF clip-continuation arrowhead into each copied atlas so
     # the renderer can tint it per-route via icon-color. Idempotent - a no-op

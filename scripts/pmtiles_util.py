@@ -51,7 +51,7 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
     failed extract can never leave a partial archive at the deploy
     path. Any ``.tmp`` residue (this run's failure, or a previous
     run's interruption) is removed. ``.tmp`` files are also excluded
-    from the service-worker sweep and the deploy rsync as a second
+    from the service-worker precache and the deploy rsync as a second
     fence (see _is_build_only_artifact in build.py).
 
     The CLI's stdout/stderr is captured and printed only on failure:

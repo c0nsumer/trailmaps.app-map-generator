@@ -157,9 +157,9 @@ on `index.html` and `sw.js`, and a sane TTL on everything else.
 
 ## Service worker update cadence
 
-Deploying a new build changes `CACHE_VERSION`, a hash of every output file. Any
-code, data, or asset change therefore produces a new service worker. Riders
-pick it up two ways:
+Deploying a new build changes `CACHE_VERSION`, a hash of every file the build
+produced for the map. Any code, data, or asset change therefore produces a new
+service worker. Riders pick it up two ways:
 
 - **On a page load or refresh**, the browser re-fetches `sw.js`. If it differs,
   the browser installs the new worker.
@@ -185,7 +185,8 @@ turn it off.
 **How it works:**
 
 1. **Service worker.** Each build ends by generating a service worker (`sw.js`)
-   with a precache list of every file in the output. On first visit, all assets
+   with a precache list of every file the build produced for the map. Other
+   files in the output directory are not precached. On first visit, all assets
    are cached. Subsequent visits and offline use are served entirely from the
    cache.
 

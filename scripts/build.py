@@ -65,7 +65,7 @@ from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
-from template_inject import copy_assets, copy_templates
+from template_inject import copy_assets, copy_templates, ship
 from validate_config import validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
@@ -78,7 +78,7 @@ VENDOR_LIBS = {
     # those names. index.html loads the entry with a module script that
     # sets window.maplibregl for the classic scripts after it. A file
     # missing here still works online and fails offline, since the
-    # service worker precache is a walk of the build directory.
+    # service worker precaches only what the build wrote to vendor/.
     "maplibre-gl.css": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.css",
     "maplibre-gl.mjs": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl.mjs",
     "maplibre-gl-shared.mjs": "https://unpkg.com/maplibre-gl@6.10.0/dist/maplibre-gl-shared.mjs",
@@ -311,8 +311,8 @@ def _copy_vendor_script(src, dst):
     """Copy a vendored file into a build, minus its source map pointer.
 
     Upstream builds end in `//# sourceMappingURL=<name>.js.map`. A build
-    ships no maps (several MB, and the service worker sweep would precache
-    them onto every phone), so an open inspector would log a 404 per
+    ships no maps (several MB, and the service worker precaches all of
+    vendor/ onto every phone), so an open inspector would log a 404 per
     library. For a profiling session, drop the matching .map beside the
     script on a test map by hand. Only the build's copy loses the
     comment; the cached and repo copies stay verbatim.
@@ -391,10 +391,10 @@ def download_vendor_libs(output_dir, cache_dir):
 
 
 def generate_service_worker(config, output_dir):
-    """Generate service worker with precache list from build output.
+    """Generate service worker with precache list from the shipped files.
 
-    Must run LAST - after all other files are in place so the precache
-    list is complete.
+    Must run LAST - after every stage has written and recorded (ship) its
+    output, so the precache list is complete.
     """
     project_root = os.path.dirname(SCRIPTS_DIR)
     sw_template = os.path.join(project_root, "templates", "sw.js")
@@ -406,12 +406,16 @@ def generate_service_worker(config, output_dir):
     with open(sw_template, encoding="utf-8") as f:
         sw_content = f.read()
 
-    # Walk the build tree once to collect every deployed file (the
-    # CACHE_VERSION hash covers all of them), then filter that down to
-    # PRECACHE_URLS by keeping only the 0-255 glyph PBFs: about 30 entries
-    # instead of ~537, which avoids a parallel-glyph storm competing with
-    # MapLibre's first render. Other glyph ranges flow through the SW's
-    # cache-on-fetch handler.
+    # Expand the paths this build recorded (template_inject.ship) into
+    # every shipped file - the CACHE_VERSION hash covers all of them -
+    # then filter that down to PRECACHE_URLS by keeping only the 0-255
+    # glyph PBFs: about 30 entries instead of ~537, which avoids a
+    # parallel-glyph storm competing with MapLibre's first render. Other
+    # glyph ranges flow through the SW's cache-on-fetch handler.
+    #
+    # Nothing else in output_dir counts: the orchestrator's own files
+    # (social card, poster, QR) and anything an earlier build left behind
+    # never reach a rider's cache or move the version.
     #
     # Build-only artifacts (see _is_build_only_artifact) are dropped before
     # the hash and the precache list. The SW would otherwise fetch each one
@@ -424,24 +428,31 @@ def generate_service_worker(config, output_dir):
             return True
         return rel_url.endswith("/0-255.pbf")
 
-    all_files = []  # every deployed file in output_dir, for the hash
-    for root, _dirs, files in os.walk(output_dir):
-        for fname in sorted(files):
-            if fname == "sw.js":
-                continue
-            # Sidecars never enter the precache list or the hash: the
-            # runtime requests the original URL and the server negotiates
-            # the encoding. A rebuild over a prior output would otherwise
-            # see stale ones here.
-            if fname.endswith((".gz", ".br")):
-                continue
-            path = os.path.join(root, fname)
-            rel = os.path.relpath(path, output_dir)
-            # URLs and the glyph filter expect forward slashes.
-            rel_url = rel.replace(os.sep, "/")
-            if _is_build_only_artifact(rel_url):
-                continue
-            all_files.append(rel_url)
+    candidates = []
+    for entry in sorted(config.get("_shipped", ())):
+        if not entry.endswith("/"):
+            if os.path.isfile(os.path.join(output_dir, entry)):
+                candidates.append(entry)
+            else:
+                console.warn(f"Service worker: recorded output {entry} is missing")
+            continue
+        for root, _dirs, files in os.walk(os.path.join(output_dir, entry)):
+            for fname in sorted(files):
+                rel = os.path.relpath(os.path.join(root, fname), output_dir)
+                # URLs and the glyph filter expect forward slashes.
+                candidates.append(rel.replace(os.sep, "/"))
+
+    all_files = []  # every shipped file, for the hash
+    for rel_url in sorted(set(candidates)):
+        # Sidecars never enter the precache list or the hash: the
+        # runtime requests the original URL and the server negotiates
+        # the encoding. A rebuild over a prior output would otherwise
+        # see stale ones here.
+        if rel_url.endswith((".gz", ".br")):
+            continue
+        if _is_build_only_artifact(rel_url):
+            continue
+        all_files.append(rel_url)
 
     precache_urls = ["./"]
     # Large archives go last in the precache list; the same list feeds
@@ -449,10 +460,6 @@ def generate_service_worker(config, output_dir):
     pmtiles_files = []
     for rel_url in all_files:
         if not _is_precachable_glyph(rel_url):
-            continue
-        # og-image.png is a ~580 KB social-preview card that only link
-        # scrapers fetch. It stays in all_files, so the hash covers it.
-        if rel_url == "og-image.png":
             continue
         # The "./" seed already precaches the document in the form every
         # entry point navigates to. Adding "index.html" would store it
@@ -478,7 +485,7 @@ def generate_service_worker(config, output_dir):
     # CACHE_VERSION hashes all_files.
     precache_urls.extend(pmtiles_files)
 
-    # CACHE_VERSION hashes the CONTENTS of every deployed file, so any
+    # CACHE_VERSION hashes the CONTENTS of every shipped file, so any
     # change to code, data or assets makes the SW activate handler evict
     # the old cache. Names plus data_date missed edits to app.js or
     # style.css alone, and riders kept the stale JS/CSS.
@@ -1341,6 +1348,7 @@ def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
     _round_geojson_precision(trails_geojson)
     with open(trails_path, "w", encoding="utf-8") as f:
         json.dump(trails_geojson, f, separators=(",", ":"))
+    ship(config, os.path.basename(trails_path))
     custom_count = len(config.get("custom_routes") or [])
     bits = []
     if enriched:
@@ -1393,6 +1401,7 @@ def _stage_pois(config, args, output_dir, cache_dir):
             json.dump({"type": "FeatureCollection", "features": []}, f)
     else:
         fetch_pois(config, pois_path, cache_dir, refresh=args.refresh or args.refresh_pois)
+    ship(config, "pois.geojson")
     return pois_path
 
 
@@ -1516,9 +1525,8 @@ def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_min
     # basemap.pmtiles is the Protomaps extract with its path and
     # service-road lines replaced by generated ones
     # (basemap_paths.py). The plain extract is kept in the cache
-    # dir, outside output_dir where the service worker sweep would
-    # ship it, so a trail change re-runs the join without
-    # extracting again.
+    # dir, outside output_dir where it would deploy with the map,
+    # so a trail change re-runs the join without extracting again.
     try:
         basemap_paths.require_tools()
     except basemap_paths.BasemapPathsError as e:
@@ -1577,11 +1585,10 @@ def _plan_terrain(config, args, terrain_path, tiles_minzoom):
     if not config.get("show_terrain", True):
         messages = [_TileNote("Terrain: Disabled in config (show_terrain: false)",
                               "Terrain: disabled (show_terrain: false)")]
-        # A previous build's archive must not survive the flip: the SW
-        # sweep hashes and precaches everything in output_dir, so a
-        # stale terrain.pmtiles (up to ~30 MB) would keep shipping to
-        # every rider's phone for a layer the runtime never enables
-        # (showTerrain gates the HEAD probe in app.js).
+        # A previous build's archive must not survive the flip: a stale
+        # terrain.pmtiles (up to ~30 MB) would keep deploying for a
+        # layer the runtime never enables (showTerrain gates the HEAD
+        # probe in app.js).
         if os.path.exists(terrain_path):
             _clear_signature(terrain_path)
             os.remove(terrain_path)
@@ -1690,6 +1697,8 @@ def _stage_templates(config, args, output_dir, cache_dir, trails_geojson):
     # CDN deps served locally for offline use.
     console.step("Bundling vendor libraries...", detail=True)
     download_vendor_libs(output_dir, cache_dir)
+    # download_vendor_libs prunes anything not in VENDOR_LIBS.
+    ship(config, "vendor/")
     console.blank(detail=True)
 
 
@@ -1859,6 +1868,8 @@ def main(argv=None):
     config["_has_clip_endpoints"] = os.path.exists(
         os.path.join(output_dir, "clip_endpoints.geojson")
     )
+    if config["_has_clip_endpoints"]:
+        ship(config, "clip_endpoints.geojson")
 
     # Accent palette: stash the resolved 4-value palette (light + dark
     # shades, each with its on-accent text color) so
@@ -1908,6 +1919,12 @@ def main(argv=None):
     # archive left by a previous build still reads True, matching what
     # the runtime's probe would have concluded.
     config["_has_terrain"] = os.path.exists(terrain_path)
+    # Same reasoning for both archives: a --no-basemap / --no-terrain build
+    # serves the one a previous build left, so it ships if it is there.
+    if config["_has_terrain"]:
+        ship(config, os.path.basename(terrain_path))
+    if os.path.exists(os.path.join(output_dir, "basemap.pmtiles")):
+        ship(config, "basemap.pmtiles")
 
     _stage_templates(config, args, output_dir, cache_dir, trails_geojson)
     _stage_pwa(config, args, output_dir)

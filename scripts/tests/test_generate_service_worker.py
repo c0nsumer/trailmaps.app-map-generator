@@ -3,7 +3,7 @@ versioning, and config injection that every PWA rider depends on.
 
 A regression here ships silently (the SW is generated, never executed at
 build time), so the contract is pinned offline against a synthetic output
-tree.
+tree and a synthetic record of what the build shipped.
 
 Run from repo root:
     python -m pytest scripts/tests/test_generate_service_worker.py -v
@@ -18,20 +18,29 @@ import pytest
 import build
 
 # A representative build tree: page + app code, one precachable glyph and
-# one cache-on-fetch glyph, a tile archive, plus every class of file the
-# sweep must exclude (build-only artifacts, precompression sidecars).
+# one cache-on-fetch glyph, a tile archive, plus every class of file that
+# must stay out: build-only artifacts and precompression sidecars (also
+# inside a shipped directory), files the orchestrator writes after the
+# engine runs, and a file an earlier build left behind.
 TREE = {
     "index.html": b"<html>page</html>",
     "app.js": b"console.log('app');",
     "fonts/Noto Sans Regular/0-255.pbf": b"glyphs-basic",
     "fonts/Noto Sans Regular/256-511.pbf": b"glyphs-extended",
+    "fonts/Noto Sans Regular/0-255.pbf.gz": b"precompression sidecar",
+    "fonts/Noto Sans Regular/glyphs.tmp": b"interrupted write",
     "basemap.pmtiles": b"tile-archive-bytes",
-    "og-image.png": b"scraper-only social card",
     "trails.src.geojson": b"build-only base",
     "basemap.pmtiles.sig": b"signature sidecar",
     "extract.tmp": b"interrupted atomic write",
     "app.js.gz": b"precompression sidecar",
+    "og-image.jpg": b"orchestrator social card",
+    "poster.pdf": b"orchestrator poster",
+    "logo-9.webp": b"a removed additional logo",
 }
+
+# What the build recorded via template_inject.ship.
+SHIPPED = {"index.html", "app.js", "fonts/", "basemap.pmtiles"}
 
 
 def _make_tree(root, files=TREE):
@@ -49,8 +58,8 @@ def _tree(tmp_path):
     _make_tree(str(tmp_path))
 
 
-def _generate(root, slug="t"):
-    build.generate_service_worker({"slug": slug}, root)
+def _generate(root, slug="t", shipped=SHIPPED):
+    build.generate_service_worker({"slug": slug, "_shipped": set(shipped)}, root)
     with open(os.path.join(root, "sw.js"), encoding="utf-8") as f:
         sw = f.read()
     m = re.search(r"const SW_CONFIG = (\{.*?\n\});", sw, re.S)
@@ -77,7 +86,9 @@ def test_precache_list_contents(tmp_path):
     assert "fonts/Noto Sans Regular/256-511.pbf" not in urls
     # Build-only artifacts and sidecars never reach the list.
     for excluded in ("trails.src.geojson", "basemap.pmtiles.sig",
-                     "extract.tmp", "app.js.gz", "sw.js"):
+                     "extract.tmp", "app.js.gz", "sw.js",
+                     "fonts/Noto Sans Regular/0-255.pbf.gz",
+                     "fonts/Noto Sans Regular/glyphs.tmp"):
         assert excluded not in urls, excluded
     # The multi-MB archives trail the list so small assets cache first,
     # and they feed the Range handler's suffix-match set.
@@ -107,17 +118,25 @@ def test_index_html_precached_only_as_root_seed(tmp_path):
     assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
 
 
-def test_og_image_excluded_from_precache_but_hashed(tmp_path):
-    # The orchestrator-injected social card is scraper-only: the app
-    # never renders it, so it must not cost every fresh install ~580 KB.
-    # It still deploys, so a regenerated card must bust the cache.
+def test_unrecorded_files_neither_precached_nor_hashed(tmp_path):
+    # Files the build did not record - the orchestrator's social card and
+    # poster, a logo an earlier build wrote - never cost a rider bandwidth,
+    # and regenerating one must not bust every rider's cache.
     root = str(tmp_path)
     v1, _ = _generate(root)
-    assert "og-image.png" not in v1["PRECACHE_URLS"]
-    with open(os.path.join(root, "og-image.png"), "wb") as f:
-        f.write(b"regenerated card")
+    for unrecorded in ("og-image.jpg", "poster.pdf", "logo-9.webp"):
+        assert unrecorded not in v1["PRECACHE_URLS"], unrecorded
+        assert unrecorded not in v1["PRECACHE_BYTES"], unrecorded
+    with open(os.path.join(root, "poster.pdf"), "wb") as f:
+        f.write(b"regenerated poster")
     v2, _ = _generate(root)
-    assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
+    assert v1["CACHE_VERSION"] == v2["CACHE_VERSION"]
+
+
+def test_recorded_but_missing_file_is_skipped(tmp_path):
+    root = str(tmp_path)
+    cfg, _ = _generate(root, shipped=SHIPPED | {"pois.geojson"})
+    assert "pois.geojson" not in cfg["PRECACHE_URLS"]
 
 
 def test_cache_version_covers_non_precached_files(tmp_path):
