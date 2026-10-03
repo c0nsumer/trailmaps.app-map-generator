@@ -7227,6 +7227,7 @@ function addLaneLayer() {
 // the plugin's per-context share is already released and a new layer
 // on the restored context starts clean.
 let laneContextLost = false;
+let schemeRebuildPending = false;
 
 function watchLaneContextLoss() {
     map.on("webglcontextlost", () => {
@@ -7242,6 +7243,10 @@ function watchLaneContextLoss() {
             // cached from the old one could match and skip the refresh.
             laneSymbolsBuild = -1;
             laneSymbolsZoom = null;
+            if (schemeRebuildPending) {
+                schemeRebuildPending = false;
+                rebuildBasemapLayers();
+            }
             // No graph yet means the first ordering is still in flight;
             // it adds the layer when it lands.
             if (!laneGraph || laneLayer) return;
@@ -12697,6 +12702,17 @@ function suppressBasemapOnewayArrows() {
 function rebuildBasemapLayers() {
     const base = getBaseUrl();
     const currentStyle = map.getStyle();
+    // A scheme flip delivered while the WebGL context is lost (an OS
+    // auto dark/light switch lands on resume) finds no style, or an
+    // unloaded one for a frame after the restore. Rebuilding then threw
+    // and left the basemap in the old flavor; the restore runs it once
+    // the style is back. The restore is the only drain, which is safe
+    // because both callers are wired after the first style load, so a
+    // missing style can only mean a loss window.
+    if (laneContextLost || !currentStyle) {
+        schemeRebuildPending = true;
+        return;
+    }
 
     // Collect non-basemap layers (trails, hillshade, highlights, etc.).
     // The type check drops the basemap flavor's own background layer,
