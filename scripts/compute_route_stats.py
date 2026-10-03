@@ -136,7 +136,7 @@ def compute_and_attach(trails_geojson, config):
     if not routes or not config.get("show_distance"):
         return False
 
-    console.info("computing per-route distance...")
+    console.detail("computing per-route distance...")
     changed = False
     for rid, dist in compute_distances(trails_geojson).items():
         if rid in routes and routes[rid].get("distance_m") != dist:

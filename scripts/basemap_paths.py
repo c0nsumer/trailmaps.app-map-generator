@@ -729,7 +729,7 @@ def generate(
     source = f"{fetched} ways from Overpass" + (
         f", {local} from {os.path.basename(osm_file_path)}" if local else ""
     )
-    console.info(
+    console.detail(
         f"Basemap paths, service roads and streets: {source}; {stats['lines']} lines in "
         f"{stats['pieces']} features, "
         f"{stats['drawn_m'] / 1000:.1f} km flagged as drawn by this map"

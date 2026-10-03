@@ -1068,7 +1068,7 @@ def copy_templates(config, output_dir, trails_geojson):
         dst = os.path.join(output_dir, filename)
         with open(dst, "w", encoding="utf-8") as f:
             f.write(content)
-        console.info(f"Copied {filename}")
+        console.detail(f"Copied {filename}")
 
 
 def copy_assets(config, output_dir):
@@ -1089,7 +1089,7 @@ def copy_assets(config, output_dir):
     elif icon_path:
         if os.path.isfile(icon_path):
             logo_src = icon_path
-            console.info("No logo configured - using icon as logo")
+            console.detail("No logo configured - using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)
@@ -1163,7 +1163,7 @@ def copy_assets(config, output_dir):
         os.makedirs(gpx_dst, exist_ok=True)
         for gpx_src, gpx_base, _meta in gpx_entries:
             shutil.copy2(gpx_src, os.path.join(gpx_dst, gpx_base))
-        console.info(f"Copied {len(gpx_entries)} GPX download file(s)")
+        console.detail(f"Copied {len(gpx_entries)} GPX download file(s)")
 
     # Fonts (trimmed based on map data)
     fonts_src = os.path.join(project_root, "assets", "fonts")
@@ -1189,7 +1189,7 @@ def copy_assets(config, output_dir):
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, os.path.join(webfonts_dst, item))
                 copied += 1
-        console.info(f"Copied {copied} webfont file(s)")
+        console.detail(f"Copied {copied} webfont file(s)")
 
         # Chrome-font coverage check. Every string that can reach DOM
         # chrome is build-time-known: trail/POI names (popups, routes
@@ -1232,7 +1232,7 @@ def copy_assets(config, output_dir):
                 shutil.rmtree(sprites_dst)
             os.makedirs(sprites_dst, exist_ok=True)
             shutil.copytree(ver_src, ver_dst, ignore=_unused_sprite_files)
-            console.info(
+            console.detail(
                 f"Copied sprites ({sprite_version}, "
                 f"{'/'.join(_SPRITE_FLAVORS_USED)})")
             sprites_injected_dirs.append(ver_dst)
@@ -1243,7 +1243,7 @@ def copy_assets(config, output_dir):
         if os.path.exists(sprites_dst):
             shutil.rmtree(sprites_dst)
         shutil.copytree(sprites_src, sprites_dst, ignore=_unused_sprite_files)
-        console.info(
+        console.detail(
             f"Copied sprites (all versions, {'/'.join(_SPRITE_FLAVORS_USED)})")
         # Inject into every version directory found.
         for entry in sorted(os.listdir(sprites_dst)):

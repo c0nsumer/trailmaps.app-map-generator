@@ -386,4 +386,4 @@ def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
         console.step("OSM data notes")
         for line in lines:
             console.info(f"  {line}")
-        console.info(f"  details: {path}")
+        console.info(f"  details: {console.rel_path(path)}")

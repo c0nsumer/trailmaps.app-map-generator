@@ -599,6 +599,6 @@ def report_refresh_diff(prev, cur, cache_dir, slug):
         with open(path, "w", encoding="utf-8") as f:
             f.write(format_report(diff, slug))
         if diff.get("changed"):
-            console.info(f"  full report: {path}")
+            console.info(f"  full report: {console.rel_path(path)}")
     except OSError as e:
         console.warn(f"could not write OSM diff report: {e}")

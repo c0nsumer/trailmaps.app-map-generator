@@ -35,7 +35,7 @@ def find_latest_protomaps_build():
     HEAD requests until an available build is found.
     """
     tomorrow = date.today() + timedelta(days=1)
-    console.info("Finding latest Protomaps build...")
+    console.detail("Finding latest Protomaps build...")
     for days_back in range(MAX_SEARCH_DAYS):
         check_date = tomorrow - timedelta(days=days_back)
         filename = check_date.strftime("%Y%m%d") + ".pmtiles"
@@ -43,7 +43,7 @@ def find_latest_protomaps_build():
         try:
             resp = requests.head(url, timeout=10, allow_redirects=True)
             if resp.status_code == 200:
-                console.info(
+                console.detail(
                     f"Found build: {filename}"
                     + (" (today)" if days_back == 0 else f" ({days_back}d old)")
                 )
@@ -81,10 +81,10 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
             console.error("Could not find an available Protomaps basemap build.")
             sys.exit(1)
 
-    console.step(f"Extracting basemap for {config['name']}...")
-    console.info(f"Bbox: {padded_bbox} (padded from {bbox})")
-    console.info(f"Zoom range: {minzoom}-{maxzoom}")
-    console.info(f"Source: {planet}")
+    console.step(f"Extracting basemap for {config['name']}...", detail=True)
+    console.detail(f"Bbox: {padded_bbox} (padded from {bbox})")
+    console.detail(f"Zoom range: {minzoom}-{maxzoom}")
+    console.detail(f"Source: {planet}")
 
     pmtiles_cli = find_pmtiles_cli()
     if not pmtiles_cli:
@@ -106,7 +106,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
         sys.exit(1)
 
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
-    console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
+    console.detail(f"Wrote {output_path} ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":
@@ -115,6 +115,7 @@ if __name__ == "__main__":
         "planet_url", nargs="?", help="Planet build URL (default: auto-detect the latest)"
     )
     args = parser.parse_args()
+    console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "basemap.pmtiles")

@@ -150,7 +150,7 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
                                     chars.update(v)
                     count += 1
                 below = f" (skipped {skipped} below zoom {minzoom})" if skipped else ""
-                console.info(f"Scanned {count} basemap tiles{below}")
+                console.detail(f"Scanned {count} basemap tiles{below}")
             finally:
                 mm.close()
     except (FileNotFoundError, OSError, ValueError) as e:
@@ -318,7 +318,7 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
         shutil.rmtree(fonts_dst)
 
     # Collect all text from map data
-    console.info("Scanning map data for font trimming...")
+    console.detail("Scanning map data for font trimming...")
     all_chars = set()
 
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
@@ -371,7 +371,7 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
                 total_copied += os.path.getsize(src_path)
                 copied += 1
 
-        console.info(f"Font: {face} - {copied}/{len(all_pbfs)} ranges")
+        console.detail(f"Font: {face} - {copied}/{len(all_pbfs)} ranges")
 
     # Also copy non-font files (like OFL.txt license)
     for item in os.listdir(fonts_src):
@@ -389,14 +389,14 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
 
     skipped_faces = set(available_faces) - needed_faces
     saved_mb = (total_original - total_copied) / (1024 * 1024)
-    console.info(
+    console.detail(
         f"Fonts: {total_copied / (1024 * 1024):.1f} MB "
         f"(trimmed {saved_mb:.1f} MB, "
         f"{len(needed_faces)}/{len(available_faces)} faces, "
         f"{len(needed_ranges)}/256 ranges)"
     )
     if skipped_faces:
-        console.info(f"Skipped faces: {', '.join(sorted(skipped_faces))}")
+        console.detail(f"Skipped faces: {', '.join(sorted(skipped_faces))}")
 
     warn_uncovered_canvas_ranges(all_chars, needed_ranges, needed_faces, fonts_src)
 

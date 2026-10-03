@@ -133,4 +133,4 @@ def inject_clip_arrow(sprites_dir, sdf_1x_path, sdf_2x_path):
         msg = f"Injected clip-arrow into {injected} atlas(es)"
         if skipped:
             msg += f" ({skipped} already had it)"
-        console.info(msg)
+        console.detail(msg)

@@ -62,16 +62,16 @@ def fetch_terrain(config_or_path, output_path):
     maxzoom = TERRAIN_MAXZOOM
     minzoom = EXTRACT_MINZOOM
 
-    console.step(f"Generating terrain tiles for {config['name']}...")
-    console.info(f"Bbox: {bbox}")
-    console.info(f"Zoom range: {minzoom}-{maxzoom}")
+    console.step(f"Generating terrain tiles for {config['name']}...", detail=True)
+    console.detail(f"Bbox: {bbox}")
+    console.detail(f"Zoom range: {minzoom}-{maxzoom}")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-    console.info("Attempting Mapterhorn extract (pre-built terrain tiles)...")
+    console.detail("Attempting Mapterhorn extract (pre-built terrain tiles)...")
     if extract_from_mapterhorn(bbox, output_path, maxzoom, minzoom):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
-        console.info(f"Wrote {output_path} ({size_mb:.1f} MB)")
+        console.detail(f"Wrote {output_path} ({size_mb:.1f} MB)")
         return True
 
     console.warn("Could not generate terrain tiles.")
@@ -82,6 +82,7 @@ def fetch_terrain(config_or_path, output_path):
 if __name__ == "__main__":
     parser = cli.config_output_parser("Generate terrain/hillshade PMTiles for the configured bbox.")
     args = parser.parse_args()
+    console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "terrain.pmtiles")

@@ -63,7 +63,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
 
     def _copy_verbatim(dims=(None, None)):
         shutil.copy2(source_path, output_path)
-        console.info(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.detail(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
         return dims
 
     svg_open = re.search(r"<svg\b[^>]*>", text)
@@ -147,7 +147,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         shutil.copy2(source_path, output_path)
         return (None, None)
 
-    console.info(
+    console.detail(
         f"Wrote logo.svg ({new_w}×{new_h} from viewBox, "
         f"{os.path.getsize(output_path)} bytes, vector)"
     )
@@ -224,7 +224,7 @@ def process_logo(source_path, output_path):
 
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size
-        console.info(f"Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
+        console.detail(f"Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
         return (out_w, out_h)
     except Exception as e:
         console.warn(f"Failed to process logo ({e}) - copying source verbatim")

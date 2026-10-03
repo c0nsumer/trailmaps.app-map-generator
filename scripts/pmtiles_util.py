@@ -54,8 +54,9 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
     from the service-worker sweep and the deploy rsync as a second
     fence (see _is_build_only_artifact in build.py).
 
-    Echoes the CLI's stdout/stderr through console.info - pmtiles
-    reports its progress on stderr.
+    The CLI's stdout/stderr is captured and printed only on failure:
+    pmtiles reports a redrawn progress bar on stderr, which is pure noise
+    in a build log when the extract succeeds.
     """
     tmp_path = output_path + ".tmp"
     if os.path.exists(tmp_path):
@@ -71,7 +72,7 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
         f"--minzoom={minzoom}",
         f"--maxzoom={maxzoom}",
     ]
-    console.info(f"Running: {' '.join(cmd)}")
+    console.detail(f"Running: {' '.join(cmd)}")
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
 
@@ -80,14 +81,6 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
             console.info(f"stdout: {result.stdout}")
             console.info(f"stderr: {result.stderr}")
             return False
-
-        if result.stdout:
-            console.info(f"{result.stdout.strip()}")
-        if result.stderr:
-            # pmtiles outputs progress to stderr
-            for line in result.stderr.strip().split("\n"):
-                if line.strip():
-                    console.info(f"{line.strip()}")
 
         if not os.path.exists(tmp_path):
             console.error(f"pmtiles extract produced no output: {tmp_path}")

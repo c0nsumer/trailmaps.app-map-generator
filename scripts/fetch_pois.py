@@ -22,6 +22,7 @@ import console
 from config_io import load_config_for_fetch
 from geodesy import haversine_m
 from osm_parser import POI_TAG_FILTERS
+from overpass import describe_outcomes, drain_outcomes
 from overpass import query as overpass_query
 
 # Every show_* flag that gates a POI category in build_pois_geojson.
@@ -128,7 +129,7 @@ def _dedup_osm_pois(features):
         else:
             out.append(f)
     if collapsed:
-        console.info(
+        console.detail(
             f"Collapsed {collapsed} duplicate OSM POI(s) within "
             f"{DEDUP_M:.0f}m (typical pattern: amenity tagged on both "
             f"a building way and an entrance node)."
@@ -356,10 +357,12 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     osm_file = config.get("osm_file")
 
     if osm_file:
-        console.step(f"Loading POIs for {config['name']} from {osm_file}...")
+        console.step(f"Loading POIs for {config['name']} from {osm_file}...", detail=True)
     else:
-        console.step(f"Fetching POIs for {config['name']}...")
-    console.info(f"Bbox: {bbox}")
+        console.step(f"Fetching POIs for {config['name']}...", detail=True)
+    console.detail(f"Bbox: {bbox}")
+    # Discard outcomes from any earlier query so the summary below describes this fetch only.
+    drain_outcomes()
 
     if osm_file:
         from osm_parser import extract_pois, parse_osm_file
@@ -403,45 +406,52 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("amenity") == "bicycle_repair_station"
     )
-    console.info(
+    console.detail(
         f"Found {marker_count} trail markers (guideposts + emergency access points) in OSM"
     )
-    console.info(f"Found {feature_count} features (tourism=attraction) in OSM")
-    console.info(f"Found {toilet_count} toilets (amenity=toilets) in OSM")
-    console.info(f"Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
-    console.info(
+    console.detail(f"Found {feature_count} features (tourism=attraction) in OSM")
+    console.detail(f"Found {toilet_count} toilets (amenity=toilets) in OSM")
+    console.detail(f"Found {water_count} drinking-water sources (amenity=drinking_water) in OSM")
+    console.detail(
         f"Found {repair_count} bicycle repair stations (amenity=bicycle_repair_station) in OSM"
     )
-    console.info(f"Config defines {len(config_parking)} parking areas")
-    console.info(f"Config defines {len(config_trailheads)} trailheads")
-    console.info(f"Config defines {len(config_hubs)} trail hubs")
+    console.detail(f"Config defines {len(config_parking)} parking areas")
+    console.detail(f"Config defines {len(config_trailheads)} trailheads")
+    console.detail(f"Config defines {len(config_hubs)} trail hubs")
     if config_event_pois:
-        console.info(f"event_mode defines {len(config_event_pois)} event POI(s)")
+        console.detail(f"event_mode defines {len(config_event_pois)} event POI(s)")
 
     # Warn when show_* is enabled but no data exists for that POI type
     if config.get("show_markers", True) and marker_count == 0:
         console.note(
-            "show_markers is enabled but no guideposts or emergency access points found in data"
+            "show_markers is enabled but no guideposts or emergency access points found in data",
+            detail=True,
         )
     if config.get("show_features", True) and feature_count == 0:
-        console.note("show_features is enabled but no tourism=attraction nodes found in data")
+        console.note(
+            "show_features is enabled but no tourism=attraction nodes found in data", detail=True)
     if config.get("show_toilets", True) and toilet_count == 0:
-        console.note("show_toilets is enabled but no amenity=toilets nodes or ways found in data")
+        console.note(
+            "show_toilets is enabled but no amenity=toilets nodes or ways found in data",
+            detail=True)
     if config.get("show_drinking_water", True) and water_count == 0:
         console.note(
-            "show_drinking_water is enabled but no amenity=drinking_water nodes or ways found in data"
+            "show_drinking_water is enabled but no amenity=drinking_water nodes or ways "
+            "found in data",
+            detail=True,
         )
     if config.get("show_bicycle_repair_stations", True) and repair_count == 0:
         console.note(
             "show_bicycle_repair_stations is enabled but no amenity=bicycle_repair_station "
-            "nodes or ways found in data"
+            "nodes or ways found in data",
+            detail=True,
         )
     if config.get("show_parking", True) and len(config_parking) == 0:
-        console.note("show_parking is enabled but no parking areas defined in config")
+        console.note("show_parking is enabled but no parking areas defined in config", detail=True)
     if config.get("show_trailheads", True) and len(config_trailheads) == 0:
-        console.note("show_trailheads is enabled but no trailheads defined in config")
+        console.note("show_trailheads is enabled but no trailheads defined in config", detail=True)
     if config.get("show_hubs", True) and len(config_hubs) == 0:
-        console.note("show_hubs is enabled but no hubs defined in config")
+        console.note("show_hubs is enabled but no hubs defined in config", detail=True)
 
     geojson = build_pois_geojson(
         osm_data,
@@ -451,14 +461,17 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         config_event_pois=config_event_pois,
         config=config,
     )
-    console.info(f"Generated {len(geojson['features'])} POI features")
+    console.detail(f"Generated {len(geojson['features'])} POI features")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(geojson, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(output_path) / 1024
-    console.info(f"Wrote {output_path} ({size_kb:.1f} KB)")
+    console.detail(f"Wrote {output_path} ({size_kb:.1f} KB)")
+    source = f"from {os.path.basename(osm_file)}" if osm_file else describe_outcomes(
+        drain_outcomes())
+    console.summary(f"POIs: {len(geojson['features'])} features ({source})")
     return geojson
 
 
@@ -468,6 +481,7 @@ if __name__ == "__main__":
         "--cache-dir", default="cache", help="Cache directory (default: cache)"
     )
     args = parser.parse_args()
+    console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
     output = args.output or os.path.join("build", config["slug"], "pois.geojson")

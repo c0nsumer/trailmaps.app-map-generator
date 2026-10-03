@@ -124,6 +124,42 @@ def _check_snapshot_freshness(data):
         )
 
 
+# One entry per completed query since the last drain_outcomes(): the cache
+# entry's mtime for a cache hit, None for a network fetch. Stage summaries
+# fold this into "cached 8h ago" / "fetched" so the per-query log lines can
+# stay verbose-only while a fetch still shows up in the default output.
+_outcomes = []
+
+
+def _age_str(mtime):
+    age = datetime.now() - datetime.fromtimestamp(mtime)
+    if age.days > 0:
+        return f"{age.days}d ago"
+    hours = age.seconds // 3600
+    return f"{hours}h ago" if hours > 0 else "just now"
+
+
+def drain_outcomes():
+    """Return and clear the outcomes recorded since the last drain."""
+    out = list(_outcomes)
+    _outcomes.clear()
+    return out
+
+
+def describe_outcomes(outcomes):
+    """Summarize drained outcomes: "cached 8h ago", "fetched", or both."""
+    cached = [m for m in outcomes if m is not None]
+    fetched = len(outcomes) - len(cached)
+    if not outcomes:
+        return "no Overpass queries"
+    if not fetched:
+        # Oldest entry: the summary must not make stale data look fresh.
+        return f"cached {_age_str(min(cached))}"
+    if not cached:
+        return "fetched"
+    return f"fetched {fetched} of {len(outcomes)} queries, rest cached"
+
+
 def query(query_str, cache_dir=None, label="", require_elements=False, refresh=False):
     """Execute an Overpass API query with caching and retry.
 
@@ -160,16 +196,11 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
         cache_manifest.record(cp)
         if refresh:
             if os.path.exists(cp):
-                console.info(f"Bypassing cached response (refresh requested): {cp}")
+                console.detail(f"Bypassing cached response (refresh requested): {cp}")
         elif os.path.exists(cp):
             mtime = os.path.getmtime(cp)
-            age = datetime.now() - datetime.fromtimestamp(mtime)
             date_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
-            if age.days > 0:
-                age_str = f"{age.days}d ago"
-            else:
-                hours = age.seconds // 3600
-                age_str = f"{hours}h ago" if hours > 0 else "just now"
+            age_str = _age_str(mtime)
             try:
                 with open(cp, encoding="utf-8") as f:
                     cached = json.load(f)
@@ -188,7 +219,8 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                 # offline and reproducible. Re-querying OSM is an explicit
                 # act (--refresh / --refresh-trails / --refresh-pois), not
                 # a side effect of the cache aging past a threshold.
-                console.info(f"Using cached response ({date_str}, {age_str}): {cp}")
+                console.detail(f"Using cached response ({date_str}, {age_str}): {cp}")
+                _outcomes.append(mtime)
                 return cached
     else:
         cp = None
@@ -237,6 +269,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                     )
                     console.info("Continuing with empty data; downstream may produce an empty map.")
                     _check_snapshot_freshness(data)
+                    _outcomes.append(None)
                     return data
                 raise EmptyResponseError(
                     f"0 elements returned (attempt {empty_attempts}/"
@@ -250,6 +283,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             if cp:
                 _write_cache(cp, data)
 
+            _outcomes.append(None)
             return data
         except (EmptyResponseError, StaleSnapshotError, PartialResponseError) as e:
             last_error = e

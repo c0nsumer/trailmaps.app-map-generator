@@ -21,7 +21,9 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 if sys.version_info < (3, 11):  # noqa: UP036 - runtime gate FOR older Pythons
     sys.exit(
@@ -253,7 +255,7 @@ def _minify_assets(output_dir, targets=None):
     for fname, lib in targets if targets is not None else MINIFY_TARGETS:
         path = os.path.join(output_dir, fname)
         if not os.path.exists(path):
-            console.info(f"{fname}: not present, skipping")
+            console.detail(f"{fname}: not present, skipping")
             continue
         try:
             before = os.path.getsize(path)
@@ -278,7 +280,7 @@ def _minify_assets(output_dir, targets=None):
                 continue
             after = os.path.getsize(path)
             pct = (1 - after / before) * 100 if before else 0
-            console.info(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
+            console.detail(f"{fname}: {before:,} → {after:,} bytes (-{pct:.0f}%)")
         except ImportError:
             # The html target has no minifier of its own; it leans on both.
             missing = "rjsmin rcssmin" if lib == "html" else lib
@@ -363,7 +365,7 @@ def download_vendor_libs(output_dir, cache_dir):
         path = os.path.join(vendor_cache, name)
         if name not in cache_names and os.path.isfile(path):
             os.remove(path)
-            console.info(f"Removed stale vendor cache entry {name}")
+            console.detail(f"Removed stale vendor cache entry {name}")
 
     bundled = len(VENDOR_LIBS)
 
@@ -381,11 +383,11 @@ def download_vendor_libs(output_dir, cache_dir):
         path = os.path.join(vendor_dst, name)
         if base not in expected and os.path.isfile(path):
             os.remove(path)
-            console.info(f"Removed stale vendor/{name}")
+            console.detail(f"Removed stale vendor/{name}")
 
     if downloaded:
         console.info(f"Downloaded {downloaded} vendor libraries")
-    console.info(f"Bundled {bundled} vendor libraries")
+    console.detail(f"Bundled {bundled} vendor libraries")
 
 
 def generate_service_worker(config, output_dir):
@@ -535,7 +537,7 @@ def generate_service_worker(config, output_dir):
     with open(sw_path, "w", encoding="utf-8") as f:
         f.write(sw_content)
 
-    console.info(f"Generated service worker ({len(precache_urls)} files, cache {cache_version})")
+    console.detail(f"Generated service worker ({len(precache_urls)} files, cache {cache_version})")
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +657,7 @@ def precompress_assets(output_dir):
             comp_total += len(gz)
 
     if count:
-        console.info(
+        console.detail(
             f"Precompressed {count} assets "
             f"({'gzip + brotli' if _brotli is not None else 'gzip'}): "
             f"{orig_total / 1024:.0f} KB -> {comp_total / 1024:.0f} KB gzip "
@@ -835,11 +837,12 @@ def expand_bbox_for_pan(bbox, pan_padding):
 
 
 def print_summary(output_dir):
-    """Print a summary of the build output."""
-    console.step("\n" + "=" * 60)
-    console.step("BUILD SUMMARY")
-    console.step("=" * 60)
+    """Print the per-file build summary and return the bytes a deploy ships."""
+    console.step("\n" + "=" * 60, detail=True)
+    console.step("BUILD SUMMARY", detail=True)
+    console.step("=" * 60, detail=True)
     total = 0
+    deploy_total = 0
     fonts_size = 0
     fonts_count = 0
     fonts_dir = os.path.join(output_dir, "fonts")
@@ -848,6 +851,9 @@ def print_summary(output_dir):
             path = os.path.join(root, f)
             size = os.path.getsize(path)
             total += size
+            # What a deploy ships: no precompressed sidecars, no bookkeeping files.
+            if not f.endswith((".gz", ".br")) and not _is_build_only_artifact(f):
+                deploy_total += size
             # Aggregate font PBFs into a single summary line
             if root.startswith(fonts_dir + os.sep) and f.endswith(".pbf"):
                 fonts_size += size
@@ -855,19 +861,27 @@ def print_summary(output_dir):
                 continue
             rel = os.path.relpath(path, output_dir)
             if size > 1024 * 1024:
-                console.info(f"{rel:40s} {size / (1024 * 1024):8.1f} MB")
+                console.detail(f"{rel:40s} {size / (1024 * 1024):8.1f} MB")
             else:
-                console.info(f"{rel:40s} {size / 1024:8.1f} KB")
+                console.detail(f"{rel:40s} {size / 1024:8.1f} KB")
 
     if fonts_count > 0:
         label = f"fonts/ ({fonts_count} PBF files)"
         if fonts_size > 1024 * 1024:
-            console.info(f"{label:40s} {fonts_size / (1024 * 1024):8.1f} MB")
+            console.detail(f"{label:40s} {fonts_size / (1024 * 1024):8.1f} MB")
         else:
-            console.info(f"{label:40s} {fonts_size / 1024:8.1f} KB")
+            console.detail(f"{label:40s} {fonts_size / 1024:8.1f} KB")
 
-    console.info(f"{'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
-    console.step("=" * 60)
+    console.detail(f"{'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
+    console.step("=" * 60, detail=True)
+    return deploy_total
+
+
+def _fmt_elapsed(seconds):
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    return f"{seconds // 60}m {seconds % 60:02d}s"
 
 
 def _print_dry_run_summary(config, args, output_dir, cache_dir):
@@ -1078,10 +1092,21 @@ def _build_parser():
         "`precompressed`, nginx `gzip_static`) serve them with no "
         "request-time CPU. Skip for fast local-iteration builds.",
     )
-    parser.add_argument(
+    # Default output is one line per pipeline stage plus every note, warning
+    # and error. The orchestrator streams it for dozens of maps, so the
+    # per-file and per-relation detail is opt-in.
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
         "--quiet",
         action="store_true",
-        help="Suppress progress output; show only notes, warnings, and errors.",
+        help="Suppress progress output; show only warnings and errors.",
+    )
+    verbosity.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print the full build log: per-relation listings, every file "
+        "written, cache paths, and the final file table. The default prints "
+        "one line per stage.",
     )
     parser.set_defaults(minify=True, precompress=True)
     return parser
@@ -1167,10 +1192,14 @@ def _stage_trails(config, args, output_dir, cache_dir):
         trails_geojson = _fetch_and_snapshot(
             config, trails_path, trails_src_path, cache_dir, refresh_trails)
     else:
-        console.step(f"Trails: reusing base {trails_src_path}")
+        console.step(f"Trails: reusing base {trails_src_path}", detail=True)
         try:
             with open(trails_src_path, encoding="utf-8") as f:
                 trails_geojson = json.load(f)
+            console.summary(
+                f"Trails: {len(trails_geojson.get('features') or [])} features "
+                "(reused from the previous build)"
+            )
         except (json.JSONDecodeError, UnicodeDecodeError):
             # A truncated base with no sidecar (a first build killed
             # between the snapshot copy and the signature save) escapes
@@ -1229,11 +1258,13 @@ def _event_mode_prepass(config):
         em_routes_count = len(em.get("routes") or [])
         em_featured_count = len(em.get("featured") or [])
         bg_summary = _event_mode_background_style(config)
-        console.step(
+        msg = (
             f"Event mode: featuring {em_routes_count} inline route(s) "
             f"+ {em_featured_count} reference(s); background "
             f"{bg_summary['color']} dashed {bg_summary['pattern']}."
         )
+        console.step(msg, detail=True)
+        console.summary(msg)
         _apply_event_mode_to_custom_routes(config)
 
 
@@ -1324,14 +1355,14 @@ def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
     if arrows_restricted:
         bits.append("event-mode arrow restriction")
     if bits:
-        console.info(f"Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
+        console.detail(f"Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
 
 
 def _stage_bbox(config, trails_geojson):
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
-        console.info(f"Computed bbox from trails: {config['bbox']}")
+        console.detail(f"Computed bbox from trails: {config['bbox']}")
 
     # pan_bbox drives maxBounds and the basemap/terrain extraction
     # footprint; the tight `bbox` still frames the initial view. An
@@ -1341,10 +1372,10 @@ def _stage_bbox(config, trails_geojson):
         pan_padding = config.get("pan_padding", 0.5)
         config["pan_bbox"] = expand_bbox_for_pan(config["bbox"], pan_padding)
         if pan_padding > 0:
-            console.info(f"Pan envelope (pad {pan_padding}): {config['pan_bbox']}")
+            console.detail(f"Pan envelope (pad {pan_padding}): {config['pan_bbox']}")
     else:
-        console.info(f"Pan envelope (explicit): {config['pan_bbox']}")
-    console.blank()
+        console.detail(f"Pan envelope (explicit): {config['pan_bbox']}")
+    console.blank(detail=True)
 
 
 def _stage_pois(config, args, output_dir, cache_dir):
@@ -1355,7 +1386,8 @@ def _stage_pois(config, args, output_dir, cache_dir):
     # hits the Overpass cache, so a cached map pays under a second.
     pois_path = os.path.join(output_dir, "pois.geojson")
     if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
-        console.step("POIs: Skipped (all POI layers disabled)")
+        console.step("POIs: Skipped (all POI layers disabled)", detail=True)
+        console.summary("POIs: skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
         with open(pois_path, "w", encoding="utf-8") as f:
             json.dump({"type": "FeatureCollection", "features": []}, f)
@@ -1451,16 +1483,36 @@ def _do_terrain(config, terrain_path, terrain_sig):
         )
 
 
+class _TileNote(NamedTuple):
+    """What a basemap/terrain step reports once the fetches finish.
+
+    verbose is the line --verbose prints, or None when the step already
+    printed its own. summary is the default-level line; path, when set,
+    adds the file's size to it.
+    """
+
+    verbose: str | None
+    summary: str
+    path: str | None = None
+
+
+def _fmt_size(n_bytes):
+    if n_bytes >= 1024 * 1024:
+        return f"{n_bytes / (1024 * 1024):.1f} MB"
+    return f"{n_bytes / 1024:.0f} KB"
+
+
 def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_minzoom):
     """Return (task, messages): the basemap fetch to run (or None) and the
-    lines to print after the fetches finish."""
+    notes to print after the fetches finish."""
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     basemap_bbox = config.get("pan_bbox") or config["bbox"]
     basemap_maxzoom = BASEMAP_MAXZOOM
     basemap_sig = _bbox_signature(basemap_bbox, basemap_maxzoom, tiles_minzoom)
 
     if args.no_basemap:
-        return None, ["Basemap: Skipped (--no-basemap)"]
+        return None, [_TileNote(
+            "Basemap: Skipped (--no-basemap)", "Basemap: skipped (--no-basemap)")]
     # basemap.pmtiles is the Protomaps extract with its path and
     # service-road lines replaced by generated ones
     # (basemap_paths.py). The plain extract is kept in the cache
@@ -1498,27 +1550,33 @@ def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_min
                    or not basemap_paths.archive_ok(basemap_path))
     if args.refresh or extract_stale or refresh_paths or paths_stale:
         if not args.refresh and extract_stale and extract_reason:
-            console.step(f"Basemap: re-extracting ({extract_reason})")
+            console.step(f"Basemap: re-extracting ({extract_reason})", detail=True)
         elif not refresh_paths and paths_stale:
-            console.step("Basemap: regenerating paths (trails, area or path data changed)")
+            console.step(
+                "Basemap: regenerating paths (trails, area or path data changed)", detail=True)
         task = functools.partial(
             _do_basemap, config, args.refresh, extract_stale, refresh_paths, trails_geojson,
             extract_path, basemap_path, cache_dir, paths_bounds, tiles_minzoom,
             basemap_maxzoom, basemap_sig, ways_cache)
-        return task, []
+        what = ("extracted from Protomaps, paths regenerated" if args.refresh or extract_stale
+                else "paths regenerated")
+        return task, [_TileNote(None, f"Basemap: {what}", basemap_path)]
     size_mb = os.path.getsize(basemap_path) / (1024 * 1024)
-    return None, [f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)"]
+    return None, [_TileNote(
+        f"Basemap: Using existing {basemap_path} ({size_mb:.1f} MB)",
+        "Basemap: reused", basemap_path)]
 
 
 def _plan_terrain(config, args, terrain_path, tiles_minzoom):
     """Return (task, messages): the terrain fetch to run (or None) and the
-    lines to print after the fetches finish."""
+    notes to print after the fetches finish."""
     terrain_bbox = config.get("pan_bbox") or config["bbox"]
     terrain_maxzoom = TERRAIN_MAXZOOM
     terrain_sig = _bbox_signature(terrain_bbox, terrain_maxzoom, tiles_minzoom)
 
     if not config.get("show_terrain", True):
-        messages = ["Terrain: Disabled in config (show_terrain: false)"]
+        messages = [_TileNote("Terrain: Disabled in config (show_terrain: false)",
+                              "Terrain: disabled (show_terrain: false)")]
         # A previous build's archive must not survive the flip: the SW
         # sweep hashes and precaches everything in output_dir, so a
         # stale terrain.pmtiles (up to ~30 MB) would keep shipping to
@@ -1527,27 +1585,32 @@ def _plan_terrain(config, args, terrain_path, tiles_minzoom):
         if os.path.exists(terrain_path):
             _clear_signature(terrain_path)
             os.remove(terrain_path)
-            messages.append(
-                "Terrain: Removed stale terrain.pmtiles left by a previous build")
+            messages.append(_TileNote(
+                "Terrain: Removed stale terrain.pmtiles left by a previous build",
+                "Terrain: removed stale terrain.pmtiles left by a previous build"))
         return None, messages
     if args.no_terrain:
-        return None, ["Terrain: Skipped (--no-terrain)"]
+        return None, [_TileNote(
+            "Terrain: Skipped (--no-terrain)", "Terrain: skipped (--no-terrain)")]
     needs_regen, reason = _pmtiles_needs_regen(
         terrain_path, terrain_bbox, terrain_maxzoom, tiles_minzoom)
     if args.refresh or needs_regen:
         if not args.refresh and reason:
-            console.step(f"Terrain: regenerating ({reason})")
-        return functools.partial(_do_terrain, config, terrain_path, terrain_sig), []
+            console.step(f"Terrain: regenerating ({reason})", detail=True)
+        task = functools.partial(_do_terrain, config, terrain_path, terrain_sig)
+        return task, [_TileNote(None, "Terrain: extracted from Mapterhorn", terrain_path)]
     size_mb = os.path.getsize(terrain_path) / (1024 * 1024)
-    return None, [f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)"]
+    return None, [_TileNote(
+        f"Terrain: Using existing {terrain_path} ({size_mb:.1f} MB)",
+        "Terrain: reused", terrain_path)]
 
 
 def _plan_tiles(config, args, output_dir, cache_dir, trails_geojson):
     """Decide what the basemap and terrain steps must do.
 
     Returns (fetch_tasks, post_messages, terrain_path): fetch_tasks is a
-    list of (label, callable) for _run_tiles; post_messages print after
-    every task completes.
+    list of (label, callable) for _run_tiles; post_messages (_TileNote)
+    print after every task completes.
     """
     # Plan-then-execute split: decision logic (skip / use cached /
     # regenerate) runs synchronously up front so the pre-fetch console
@@ -1589,9 +1652,19 @@ def _run_tiles(fetch_tasks, post_messages):
         for _label, fn in fetch_tasks:
             fn()
 
-    for line in post_messages:
-        console.step(line)
-    console.blank()
+    for note in post_messages:
+        if note.verbose:
+            console.step(note.verbose, detail=True)
+        # The size is read now, not at planning time: a task that just ran
+        # wrote the file. A missing file means a soft failure (terrain),
+        # whose warning is already on screen.
+        if note.path and os.path.exists(note.path):
+            console.summary(f"{note.summary} ({_fmt_size(os.path.getsize(note.path))})")
+        elif note.path:
+            console.summary(note.summary.split(":")[0] + ": not generated (see the warning above)")
+        else:
+            console.summary(note.summary)
+    console.blank(detail=True)
 
 
 def _stage_templates(config, args, output_dir, cache_dir, trails_geojson):
@@ -1601,23 +1674,23 @@ def _stage_templates(config, args, output_dir, cache_dir, trails_geojson):
     # width/height/fetchpriority attributes. Swapping the order leaves
     # brand_dims as None and the brand-img tag emits without dimension
     # hints (CLS regression).
-    console.step("Assembling output...")
+    console.step("Assembling output...", detail=True)
     copy_assets(config, output_dir)
     copy_templates(config, output_dir, trails_geojson)
-    console.blank()
+    console.blank(detail=True)
 
     # Minify after copy_templates (which writes the targets) and before
     # generate_service_worker, so the SW hash covers the minified bytes
     # the rider downloads.
     if args.minify:
-        console.step("Minifying assets...")
+        console.step("Minifying assets...", detail=True)
         _minify_assets(output_dir)
-        console.blank()
+        console.blank(detail=True)
 
     # CDN deps served locally for offline use.
-    console.step("Bundling vendor libraries...")
+    console.step("Bundling vendor libraries...", detail=True)
     download_vendor_libs(output_dir, cache_dir)
-    console.blank()
+    console.blank(detail=True)
 
 
 def _pwa_warnings(output_dir):
@@ -1651,7 +1724,7 @@ def _stage_pwa(config, args, output_dir):
     MUST run after every other output file is written: the service worker
     needs the complete file list.
     """
-    console.step("Generating PWA assets...")
+    console.step("Generating PWA assets...", detail=True)
     generate_service_worker(config, output_dir)
 
     # Minify the service worker we just wrote (see MINIFY_TARGETS_SW
@@ -1672,9 +1745,9 @@ def _stage_pwa(config, args, output_dir):
 
     # MUST be after the service worker - see precompress_assets.
     if args.precompress:
-        console.step("Precompressing static assets...")
+        console.step("Precompressing static assets...", detail=True)
         precompress_assets(output_dir)
-        console.blank()
+        console.blank(detail=True)
 
 
 def _stage_cache_manifest(config, args, cache_dir, cats, trails_fetch_ran):
@@ -1712,7 +1785,8 @@ def _stage_cache_manifest(config, args, cache_dir, cats, trails_fetch_ran):
 def main(argv=None):
     args = _build_parser().parse_args(argv)
 
-    console.set_verbosity(quiet=args.quiet)
+    console.set_verbosity(quiet=args.quiet, verbose=args.verbose)
+    started = time.monotonic()
 
     config = load_config(args.config)
     project_root = os.path.dirname(SCRIPTS_DIR)
@@ -1735,7 +1809,7 @@ def main(argv=None):
     # after validation (which judges the curator's real config) so it
     # also shows up in --dry-run's branding summary below.
     if apply_default_brand(config, project_root):
-        console.info("No logo/icon configured - using the bundled placeholder bike icon")
+        console.detail("No logo/icon configured - using the bundled placeholder bike icon")
 
     output_dir, cache_dir = _resolve_dirs(config, args, project_root)
 
@@ -1761,9 +1835,12 @@ def main(argv=None):
     # (plus the vendor-lib and accent-derivation caches), so the old
     # rmtree here threw away all the other maps' responses too.
 
-    console.step(f"Building map: {config['title']}")
-    console.step(f"Output: {output_dir}")
-    console.blank()
+    if console.is_verbose():
+        console.step(f"Building map: {config['title']}")
+        console.step(f"Output: {output_dir}")
+        console.blank()
+    else:
+        console.step(f"Building {config['title']} → {console.rel_path(output_dir)}")
 
     trails_geojson, trails_fetch_ran, trails_path, trails_src_path = _stage_trails(
         config, args, output_dir, cache_dir)
@@ -1799,7 +1876,7 @@ def main(argv=None):
 
     pois_path = _stage_pois(config, args, output_dir, cache_dir)
     overpass_pois_paths = cache_manifest.drain()
-    console.blank()
+    console.blank(detail=True)
     # MUST run below _stage_pois: pois.geojson is read from disk.
     config["_poi_counts"], pois_data = _count_pois(config, pois_path)
 
@@ -1840,9 +1917,13 @@ def main(argv=None):
         "derive_accent": derive_accent_paths,
     }, trails_fetch_ran)
 
-    print_summary(output_dir)
-    console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
-    console.step("Then open: http://localhost:8080\n")
+    total = print_summary(output_dir)
+    if console.is_verbose():
+        console.step(f"\nServe locally: python scripts/serve.py {output_dir} --port 8080")
+        console.step("Then open: http://localhost:8080\n")
+    else:
+        console.step(f"Built in {_fmt_elapsed(time.monotonic() - started)}: {_fmt_size(total)}")
+        console.summary(f"Serve: python scripts/serve.py {console.rel_path(output_dir)}")
 
 
 if __name__ == "__main__":

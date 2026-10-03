@@ -350,7 +350,7 @@ def _derive_accent_cached(config, project_root, cache_dir):
             json.dump({"raw": list(rgb), "source": os.path.basename(source)}, f)
     except OSError:
         pass
-    console.info(
+    console.detail(
         f"accent_color: derived raw {_rgb_to_hex(rgb)} from {os.path.basename(source)}"
     )
     return tuple(rgb)

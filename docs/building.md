@@ -81,6 +81,7 @@ python scripts/build.py configs/example/example.yaml --refresh-pois   # Re-fetch
 python scripts/build.py configs/example/example.yaml --no-terrain     # Skip terrain tile generation
 python scripts/build.py configs/example/example.yaml --no-basemap     # Skip basemap extraction
 python scripts/build.py configs/example/example.yaml --dry-run        # Validate + print the plan, write nothing
+python scripts/build.py configs/example/example.yaml --verbose        # Print the full build log
 ```
 
 Remote data never updates on its own. The build uses cached
@@ -120,8 +121,46 @@ changed bbox re-extracts tiles.
 - `--no-minify` and `--no-precompress` opt out of the default-on
   minification and `.gz`/`.br` precompression for fast local iteration.
   Leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
-- `--quiet` suppresses step and progress output, leaving only notes,
-  warnings, and errors.
+- `--quiet` suppresses step and progress output. Only warnings and
+  errors remain.
+- `--verbose` prints the full build log. It adds the per-relation
+  listing, every file written, the cache file behind each Overpass
+  response, and the final table of output files. The default output
+  condenses these into one line per stage. `--quiet` and `--verbose`
+  cannot be combined.
+
+### Reading the build output
+
+By default, the build prints one line per pipeline stage, plus every
+note, warning, and error. A cached rebuild looks like this:
+
+```
+Building RAMBA Trails Map → build/ramba
+  Trails: 14 relations → 494 features (cached 8h ago)
+  POIs: 15 features (cached 8h ago)
+OSM data notes
+    2 possible unconnected way pairs
+    4 relations with no colour
+    details: cache/osm_diff/ramba/data-notes.md
+  Basemap: paths regenerated (1.2 MB)
+  Terrain: extracted from Mapterhorn (3.1 MB)
+Built in 38s: 8.8 MB
+  Serve: python scripts/serve.py build/ramba
+```
+
+The final size counts only what a deploy ships. It leaves out the
+`.gz` and `.br` sidecars and the build-only files (`.sig`,
+`trails.src.geojson`).
+
+Each stage line says where its data came from. "cached 8h ago" means
+the build read a cached Overpass response of that age. "fetched" means
+it queried Overpass. Basemap and terrain lines say whether the build
+reused the existing file, regenerated it, or skipped it.
+
+Network activity always stays visible: Overpass queries, retries, and
+vendor library downloads print their own lines. Notes that a default-on
+layer has no data (for example, `show_hubs` is on but no hubs are
+defined) print only with `--verbose`.
 
 The basemap extraction automatically detects the latest available
 [Protomaps planet build](https://maps.protomaps.com/builds/), so
@@ -408,8 +447,9 @@ entry and logs it. Entries used by other maps are never touched.
 
 ### Checking cache age
 
-When the build runs, it logs the date and age of each cached
-response it uses:
+Every build prints the age of the cached data it used on the Trails
+and POIs lines. With `--verbose`, it also logs the date, age, and file
+of each cached response:
 
 ```
 Using cached response (2026-04-07 22:45, 2d ago): cache/overpass_798bc0f14a88.json

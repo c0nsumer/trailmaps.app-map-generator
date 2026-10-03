@@ -410,7 +410,7 @@ def generate_icons(source_path, output_dir, config):
     # pre-processing the source.
     if img.width != img.height:
         side = max(img.width, img.height)
-        console.info(
+        console.detail(
             f"Icon source {img.width}x{img.height} is not square - "
             f"padding to {side}x{side} with transparent background."
         )
@@ -437,7 +437,7 @@ def generate_icons(source_path, output_dir, config):
     parts = [f"{count} PNGs", "favicon.ico", "manifest"]
     if has_svg:
         parts.append("pinned-tab SVG")
-    console.info(f"Generated icons: {', '.join(parts)}")
+    console.detail(f"Generated icons: {', '.join(parts)}")
     return True
 
 
