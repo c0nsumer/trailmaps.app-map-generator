@@ -2726,6 +2726,12 @@ let _followUserOnGeolocate = false;
 // current zoom exactly (matches Google/Apple Maps and ride-recording
 // apps: re-centering never changes zoom).
 let _locateActivationZoomPending = false;
+// Follow-me was on when the WebGL context went away. MapLibre's
+// restore calls resize() with no event data, and both the control and
+// the movestart filter read that as a user move, so the rider came back
+// from an app switch located but no longer followed. The restore
+// re-engages from this; a real map touch in the gap clears it.
+let _followLostWithContext = false;
 // Floor, not target: activation zooms IN to this from an overview
 // but never zooms OUT someone already closer. 15 shows the rider's
 // immediate trail context (the fill/casing widths are tuned around
@@ -3892,6 +3898,11 @@ async function init() {
             // the button active while every fix was cancelled.
             if (e[0] instanceof ResizeObserverEntry) return;
             _followUserOnGeolocate = false;
+            // Only a real touch cancels a pending resume. A code move in
+            // the gap (a finder pick on desktop after a GPU reset) has no
+            // originalEvent, so the restore still eases back to the rider;
+            // the restore's own resize has neither marker either.
+            if (e.originalEvent) _followLostWithContext = false;
             return;
         }
         if (_followUserOnGeolocate) {
@@ -7240,6 +7251,11 @@ function watchLaneContextLoss() {
         // tap, cursor and symbol paths stand down until the restore.
         laneContextLost = true;
         laneLayer = null;
+        const cls = geolocateControl && document.querySelector(
+            ".maplibregl-ctrl-geolocate")?.classList;
+        _followLostWithContext = _followUserOnGeolocate && !!cls && (
+            cls.contains("maplibregl-ctrl-geolocate-active") ||
+            cls.contains("maplibregl-ctrl-geolocate-waiting"));
     });
     map.on("webglcontextrestored", () => {
         const restore = () => {
@@ -7251,6 +7267,10 @@ function watchLaneContextLoss() {
             if (schemeRebuildPending) {
                 schemeRebuildPending = false;
                 rebuildBasemapLayers();
+            }
+            if (_followLostWithContext) {
+                _followLostWithContext = false;
+                resumeFollowAfterContextLoss();
             }
             // No graph yet means the first ordering is still in flight;
             // it adds the layer when it lands.
@@ -7264,6 +7284,40 @@ function watchLaneContextLoss() {
         if (map.isStyleLoaded()) restore();
         else map.once("style.load", restore);
     });
+}
+
+// Runs after the restore's resize movestart has already dropped the
+// control to BACKGROUND, so nothing undoes it. Same flags and trigger()
+// as a Locate-tap re-engage: the _updateCamera override eases to the
+// last fix at the current zoom (rule 4). A loss during WAITING, or a
+// restore that found the camera mid-move (no movestart, still
+// ACTIVE_LOCK), only needs follow-me back; trigger() there would turn
+// tracking off.
+function resumeFollowAfterContextLoss() {
+    const cls = document.querySelector(".maplibregl-ctrl-geolocate")?.classList;
+    if (!geolocateControl || !cls) return;
+    if (cls.contains("maplibregl-ctrl-geolocate-background-error")) {
+        // A fix error landed between the restore's resize and now (GPS
+        // re-warming on resume). trigger() would turn Locate off from
+        // here, and the next good fix only returns the control to
+        // BACKGROUND, so wait for that fix and re-engage then. The flag
+        // stays armed meanwhile so a real touch still cancels it.
+        _followLostWithContext = true;
+        geolocateControl.once("geolocate", () => {
+            if (!_followLostWithContext) return;
+            _followLostWithContext = false;
+            resumeFollowAfterContextLoss();
+        });
+        return;
+    }
+    if (cls.contains("maplibregl-ctrl-geolocate-background")) {
+        _locateActivationZoomPending = false;
+        _followUserOnGeolocate = true;
+        geolocateControl.trigger();
+    } else if (cls.contains("maplibregl-ctrl-geolocate-active") ||
+            cls.contains("maplibregl-ctrl-geolocate-waiting")) {
+        _followUserOnGeolocate = true;
+    }
 }
 
 // Lane geometry is laid out in the plugin's worker, so the build a
