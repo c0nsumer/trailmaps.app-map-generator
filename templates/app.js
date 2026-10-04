@@ -576,6 +576,28 @@ function styleBasemapLayers(layers, scheme) {
             },
         });
     }
+
+    // The Xs say "keep off" but not why; the name label says it in
+    // words, as signage would. Folded into the one name label instead
+    // of a second line label, because two labels on a short path fight
+    // over placement and the name often lost. The wording follows the
+    // tag: "private" often means "with the owner's permission", which
+    // "No Access" would overstate. Generated ways carry a plain `name`
+    // only, so the flavor's multi-script expression is not needed here.
+    const labels = byId("roads_labels_minor");
+    if (labels) {
+        const access = ["get", "access"];
+        const note = ["match", access, "private", "Private", "No Access"];
+        // `case` types itself by its first branch, and the flavor's
+        // branch is `formatted`, so this one must be too.
+        labels.layout["text-field"] = ["case",
+            ["all",
+                ["match", access, ["private", "no"], true, false],
+                ["match", ["get", "kind"], ["other", "path"], true, false]],
+            ["format",
+                ["case", ["has", "name"], ["concat", ["get", "name"], " (", note, ")"], note], {}],
+            labels.layout["text-field"]];
+    }
     return layers;
 }
 
