@@ -836,6 +836,11 @@ def compute_bbox_from_trails(trails_geojson, buffer_frac=0.03, buffer_min=0.001,
     return bbox
 
 
+# Web Mercator's latitude limit, truncated so 4-decimal rounding never
+# lands past it.
+MERCATOR_MAX_LAT = 85.0511
+
+
 def expand_bbox_for_pan(bbox, pan_padding):
     """Expand bbox by pan_padding fraction of the larger extent on each side.
 
@@ -851,14 +856,18 @@ def expand_bbox_for_pan(bbox, pan_padding):
     Applies symmetrically in lon/lat so the pan envelope keeps the same
     shape as the source bbox (consistent with `compute_bbox_from_trails`,
     which also uses a single scalar padding derived from max extent).
+
+    The result is clamped to valid longitude and to the Web Mercator
+    latitude limit: MapLibre rejects a bounds latitude beyond 90, and no
+    tile exists past the Mercator limit.
     """
     extent = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
     pad = extent * pan_padding
     return [
-        round(bbox[0] - pad, 4),
-        round(bbox[1] - pad, 4),
-        round(bbox[2] + pad, 4),
-        round(bbox[3] + pad, 4),
+        round(max(bbox[0] - pad, -180.0), 4),
+        round(max(bbox[1] - pad, -MERCATOR_MAX_LAT), 4),
+        round(min(bbox[2] + pad, 180.0), 4),
+        round(min(bbox[3] + pad, MERCATOR_MAX_LAT), 4),
     ]
 
 
@@ -898,7 +907,10 @@ def print_summary(output_dir):
         else:
             console.detail(f"{label:40s} {fonts_size / 1024:8.1f} KB")
 
-    console.detail(f"{'TOTAL':40s} {total / (1024 * 1024):8.1f} MB")
+    console.detail(f"{'TOTAL (incl. .gz/.br, build-only files)':40s} "
+                   f"{total / (1024 * 1024):8.1f} MB")
+    console.detail(f"{'DEPLOYED (what a deploy uploads)':40s} "
+                   f"{deploy_total / (1024 * 1024):8.1f} MB")
     console.step("=" * 60, detail=True)
     return deploy_total
 
@@ -947,15 +959,15 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
             ids = config.get(key) or []
             if ids:
                 console.info(f"  {key}: {ids}")
-        custom = config.get("custom_routes") or []
-        if custom:
-            console.info(f"  custom_routes ({len(custom)}):")
-            for entry in custom:
-                geom = entry.get("geometry") or ""
-                if not geom:
-                    console.info(f"    - id={entry.get('id')}: NO GEOMETRY PATH")
-                    continue
-                console.info(f"    - id={entry.get('id')} geometry={_display_path(geom)}")
+    custom = config.get("custom_routes") or []
+    if custom:
+        console.info(f"  custom_routes ({len(custom)}):")
+        for entry in custom:
+            geom = entry.get("geometry") or ""
+            if not geom:
+                console.info(f"    - id={entry.get('id')}: NO GEOMETRY PATH")
+                continue
+            console.info(f"    - id={entry.get('id')} geometry={_display_path(geom)}")
     console.blank()
 
     # ---- POI fetching ----
@@ -984,7 +996,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
     else:
         console.info(
             f"basemap: pan_bbox extracted, zoom {EXTRACT_MINZOOM}-{BASEMAP_MAXZOOM}, "
-            "path and service-road lines generated")
+            "path, service-road and minor-street lines generated")
     if args.no_terrain or not config.get("show_terrain", True):
         reason = "--no-terrain" if args.no_terrain else "show_terrain: false"
         console.info(f"terrain: SKIPPED ({reason})")
@@ -1044,8 +1056,8 @@ def apply_default_brand(config, project_root):
     return True
 
 
-def _build_parser():
-    parser = argparse.ArgumentParser(description="Build MTB trail map")
+def _build_parser(prog=None):
+    parser = argparse.ArgumentParser(prog=prog, description="Build MTB trail map")
     parser.add_argument("config", help="Path to YAML config file")
     # Remote data never updates on its own - cached responses are served
     # regardless of age, so an unflagged rebuild is offline and
@@ -1082,10 +1094,11 @@ def _build_parser():
     )
     parser.add_argument(
         "--cache-dir",
-        help="Use this directory for the Overpass / derive-accent "
-        "cache. Defaults to 'cache/' at the "
-        "repo root. Resolved against the current working "
-        "directory if relative.",
+        help="Use this directory for every cached download and derived "
+        "file: Overpass responses, the derived accent, vendor libraries, "
+        "basemap extracts and path data, cache manifests and OSM refresh "
+        "diffs. Defaults to 'cache/' at the repo root. Resolved against "
+        "the current working directory if relative.",
     )
     parser.add_argument(
         "--dry-run",
@@ -1103,7 +1116,8 @@ def _build_parser():
         "--no-minify",
         dest="minify",
         action="store_false",
-        help="Disable minification of app.js and style.css (default: "
+        help="Disable minification of app.js, style.css, index.html and "
+        "sw.js (default: "
         "enabled). Use for local-iteration debug where readable output "
         "is more useful than smaller output; for deploy, leave it on.",
     )
@@ -1143,7 +1157,7 @@ def _resolve_dirs(config, args, project_root):
     # Path resolution precedence: CLI flag > default.
     # CLI-flag paths resolve against the current working directory so the
     # caller (orchestrator or shell) controls layout entirely; the default
-    # path resolves against project_root so the legacy
+    # path resolves against project_root so a plain
     # `python scripts/build.py configs/<slug>/<slug>.yaml` invocation keeps
     # writing to `build/<slug>/` under the repo regardless of cwd.
     if args.output_dir:
@@ -1542,8 +1556,8 @@ def _plan_basemap(config, args, output_dir, cache_dir, trails_geojson, tiles_min
     if args.no_basemap:
         return None, [_TileNote(
             "Basemap: Skipped (--no-basemap)", "Basemap: skipped (--no-basemap)")]
-    # basemap.pmtiles is the Protomaps extract with its path and
-    # service-road lines replaced by generated ones
+    # basemap.pmtiles is the Protomaps extract with its path,
+    # service-road and minor-street lines replaced by generated ones
     # (basemap_paths.py). The plain extract is kept in the cache
     # dir, outside output_dir where it would deploy with the map,
     # so a trail change re-runs the join without extracting again.
@@ -1688,7 +1702,7 @@ def _run_tiles(fetch_tasks, post_messages):
         if note.path and os.path.exists(note.path):
             console.summary(f"{note.summary} ({_fmt_size(os.path.getsize(note.path))})")
         elif note.path:
-            console.summary(note.summary.split(":")[0] + ": not generated (see the warning above)")
+            console.summary(note.summary.split(":")[0] + ": not generated (see above)")
         else:
             console.summary(note.summary)
     console.blank(detail=True)
@@ -1766,11 +1780,8 @@ def _stage_pwa(config, args, output_dir):
 
     pwa_warnings = _pwa_warnings(output_dir)
     if pwa_warnings:
-        console.blank()
-        console.info("PWA WARNINGS - the app will not be installable until fixed:")
         for w in pwa_warnings:
-            console.info(f"  • {w}")
-        console.blank()
+            console.warn(f"the app will not be installable until fixed: {w}")
 
     # MUST be after the service worker - see precompress_assets.
     clear_precompressed_sidecars(output_dir)
@@ -1812,8 +1823,10 @@ def _stage_cache_manifest(config, args, cache_dir, cats, trails_fetch_ran):
             console.info(f"Cache: pruned {removed} stale {noun} ({freed / 1024:.0f} KB)")
 
 
-def main(argv=None):
-    args = _build_parser().parse_args(argv)
+def main(argv=None, prog=None):
+    """``prog`` names the command in --help, for an entry point other than
+    this file."""
+    args = _build_parser(prog).parse_args(argv)
 
     console.set_verbosity(quiet=args.quiet, verbose=args.verbose)
     started = time.monotonic()
@@ -1822,13 +1835,13 @@ def main(argv=None):
     project_root = os.path.dirname(SCRIPTS_DIR)
 
     # Validate the config before doing anything expensive (Overpass fetches,
-    # tile generation). Errors abort the build; warnings (e.g. asset files
-    # not present yet) print but allow it to continue.
+    # tile generation). Errors abort the build; warnings (e.g. pan_padding
+    # above 5) print but allow it to continue.
     errors, warnings = validate_config(config, config_path=args.config)
     for line in warnings:
         console.raw(line)
     if errors:
-        console.step(f"\nConfig validation failed for {args.config}:")
+        console.raw(f"\nConfig validation failed for {args.config}:")
         for line in errors:
             console.raw(line)
         sys.exit(1)
@@ -1915,9 +1928,10 @@ def main(argv=None):
 
     # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
     # disk, not the in-memory trails_geojson: by this point enrichment has
-    # baked in custom routes (not OSM data, so not OSM's to fix) and applied
+    # baked in custom routes (not OSM data, so not OSM's to fix) and
     # rounded the coordinates, either of which would confuse the
-    # unconnected-way check. One extra JSON parse buys an audit of exactly what OSM said.
+    # unconnected-way check. One extra JSON parse buys an audit of exactly
+    # what OSM said.
     report_tagging_quality(_load_json_or_none(trails_src_path), pois_data,
                            config, cache_dir)
 

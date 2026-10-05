@@ -99,3 +99,12 @@ def test_read_config_yaml_exits_cleanly_on_missing_file_and_bad_yaml(tmp_path, c
     assert exc.value.code == 1
     out = capsys.readouterr()
     assert "bad.yaml" in out.out + out.err
+
+
+def test_pan_bbox_is_clamped_to_the_mercator_world():
+    from build import MERCATOR_MAX_LAT, expand_bbox_for_pan
+
+    w, s, e, n = expand_bbox_for_pan([-179.0, 85.0, 179.0, 85.04], 1.0)
+    assert (w, e) == (-180.0, 180.0)
+    assert n == MERCATOR_MAX_LAT and s >= -MERCATOR_MAX_LAT
+    assert expand_bbox_for_pan([-10, 40, 10, 50], 0.5) == [-20, 30, 20, 60]

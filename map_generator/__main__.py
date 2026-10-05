@@ -6,8 +6,8 @@ Usage:
 Thin shim: dispatches to ``scripts/build.py`` without duplicating its
 argparse surface. Any flag the implementation gains is automatically
 forwarded; the only thing this module knows about is the subcommand
-name. The legacy ``python scripts/build.py CONFIG_PATH ...`` invocation
-keeps working in parallel.
+name. ``python scripts/build.py CONFIG_PATH ...`` is interchangeable
+with it.
 """
 
 import os
@@ -26,7 +26,8 @@ def _print_usage(stream=sys.stderr):
     print(
         "usage: python -m map_generator <subcommand> [args...]\n"
         f"  subcommands: {', '.join(SUBCOMMANDS)}\n"
-        "  run `python -m map_generator <subcommand> --help` for flags",
+        "  run `python -m map_generator <subcommand> --help` for flags\n"
+        "  example: python -m map_generator build configs/example/example.yaml",
         file=stream,
     )
 
@@ -55,7 +56,7 @@ def main(argv=None):
     if cmd == "build":
         from scripts.build import main as build_main
 
-        return build_main(rest)
+        return build_main(rest, prog="python -m map_generator build")
 
 
 if __name__ == "__main__":
