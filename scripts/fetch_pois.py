@@ -215,7 +215,6 @@ def build_pois_geojson(
                     "properties": {
                         "poi_type": "feature",
                         "name": tags.get("name", ""),
-                        "description": tags.get("description", ""),
                     },
                 }
             )
