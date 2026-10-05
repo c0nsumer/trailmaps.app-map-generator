@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 
 import pytest
 
@@ -77,7 +78,9 @@ def test_precache_covers_every_built_file(tmp_path):
 
     with open(os.path.join(out_dir, "sw.js"), encoding="utf-8") as f:
         m = re.search(r"const SW_CONFIG = (\{.*?\n\});", f.read(), re.S)
-    precache = set(json.loads(m.group(1))["PRECACHE_URLS"])
+    # The list holds URLs (template_inject.url_path); compare as paths.
+    precache = {urllib.parse.unquote(u)
+                for u in json.loads(m.group(1))["PRECACHE_URLS"]}
 
     built = set()
     for root, _dirs, files in os.walk(out_dir):

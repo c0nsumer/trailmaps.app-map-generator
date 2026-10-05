@@ -65,7 +65,7 @@ from fetch_trails import fetch_trails
 from osm_diff import report_refresh_diff, stash_previous_snapshot
 from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
-from template_inject import copy_assets, copy_templates, ship
+from template_inject import copy_assets, copy_templates, ship, url_path
 from validate_config import validate_config
 
 # CDN libraries to bundle locally for offline/PWA support.
@@ -526,15 +526,18 @@ def generate_service_worker(config, output_dir):
             # treats a missing entry as weightless.
             pass
 
+    # Paths become URLs only here, after the last use of them as file
+    # paths, and through the helper the page's own links use (url_path
+    # says why the two must match).
     sw_config = {
         # Cache Storage is per-origin and production serves every map
         # as a path on one origin, so cache names must carry the slug
         # (see the CACHE_PREFIX comment in sw.js).
         "CACHE_SCOPE": config["slug"],
         "CACHE_VERSION": cache_version,
-        "PRECACHE_URLS": precache_urls,
-        "PRECACHE_BYTES": precache_bytes,
-        "PMTILES_FILES": pmtiles_files,
+        "PRECACHE_URLS": [url_path(u) for u in precache_urls],
+        "PRECACHE_BYTES": {url_path(u): n for u, n in precache_bytes.items()},
+        "PMTILES_FILES": [url_path(u) for u in pmtiles_files],
     }
 
     sw_config_json = json.dumps(sw_config, indent=2)

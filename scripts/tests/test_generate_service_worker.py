@@ -82,18 +82,40 @@ def test_precache_list_contents(tmp_path):
     assert urls[0] == "./"
     assert "app.js" in urls
     # Only the Basic Latin glyph range precaches; the rest cache-on-fetch.
-    assert "fonts/Noto Sans Regular/0-255.pbf" in urls
-    assert "fonts/Noto Sans Regular/256-511.pbf" not in urls
+    # Entries are URLs, spelled as a browser serializes the raw path.
+    assert "fonts/Noto%20Sans%20Regular/0-255.pbf" in urls
+    assert "fonts/Noto%20Sans%20Regular/256-511.pbf" not in urls
     # Build-only artifacts and sidecars never reach the list.
     for excluded in ("trails.src.geojson", "basemap.pmtiles.sig",
                      "extract.tmp", "app.js.gz", "sw.js",
-                     "fonts/Noto Sans Regular/0-255.pbf.gz",
-                     "fonts/Noto Sans Regular/glyphs.tmp"):
+                     "fonts/Noto%20Sans%20Regular/0-255.pbf.gz",
+                     "fonts/Noto%20Sans%20Regular/glyphs.tmp"):
         assert excluded not in urls, excluded
     # The multi-MB archives trail the list so small assets cache first,
     # and they feed the Range handler's suffix-match set.
     assert urls[-1] == "basemap.pmtiles"
     assert cfg["PMTILES_FILES"] == ["basemap.pmtiles"]
+
+
+def test_gpx_link_and_precache_entry_are_one_url(tmp_path):
+    # The Cache API matches on the URL, so the page's download link and
+    # the precache entry must be the same string whatever the official
+    # filename carries. A link that escaped "(" beside a raw precache
+    # entry missed the cache offline.
+    from template_inject import gpx_download_entries
+
+    names = ["LONG Race Course (2026 STC).gpx", "50% #1 loop? [draft] é.gpx"]
+    _make_tree(str(tmp_path), {"gpx/" + n: b"<gpx/>" for n in names})
+    cfg, _ = _generate(str(tmp_path), shipped=SHIPPED | {"gpx/"})
+    config = {"event_mode": {"gpx": {"routes": [
+        {"name": "Course", "file": "/abs/" + n} for n in names]}}}
+    links = [meta["url"] for _src, _base, meta in gpx_download_entries(config)]
+
+    assert links[0] == "gpx/LONG%20Race%20Course%20(2026%20STC).gpx"
+    assert "#" not in links[1] and "?" not in links[1]
+    for link in links:
+        assert link in cfg["PRECACHE_URLS"]
+        assert cfg["PRECACHE_BYTES"][link] == len(b"<gpx/>")
 
 
 def test_precache_bytes_keyed_by_url(tmp_path):

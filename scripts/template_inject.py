@@ -233,6 +233,27 @@ CONFIG_SPEC = [
 ]
 
 
+# Punctuation a browser leaves unescaped when it serializes a URL path
+# (beyond the letters, digits and "_.-~" that quote() always keeps).
+_URL_PATH_SAFE = "/!$&'()*+,;=:@[]|"
+
+
+def url_path(rel_path):
+    """A shipped file's path as the URL the page and the service worker use.
+
+    The Cache API matches on the serialized URL, so every request for a
+    file must spell it the way its precache entry does. That takes two
+    things. The result is what a browser makes of the raw path, because
+    MapLibre asks for "light@2x.png" and "Noto Sans Regular/0-255.pbf"
+    by their raw names: escaping "@" or "(" here would name a different
+    cache key, and the file would miss the cache offline although it
+    was precached. And "#", "?" and "%" are escaped, which a browser
+    would read as a fragment, a query or an escape, so a filename may
+    carry them.
+    """
+    return urllib.parse.quote(rel_path, safe=_URL_PATH_SAFE)
+
+
 def gpx_download_entries(config):
     """Resolve event_mode.gpx.routes into [(src_path, basename, meta)].
 
@@ -241,8 +262,8 @@ def gpx_download_entries(config):
     inject_config_into_template emits each meta dict ({name, url}) as
     CONFIG.gpxDownloads. Filenames are preserved verbatim so riders get
     a file identical - name included - to one distributed by the
-    event's official source; the url is percent-encoded because
-    official filenames may contain spaces. Entries are assumed
+    event's official source; the url is that path through url_path, the
+    spelling the service worker precaches it under. Entries are assumed
     validated (validate_config._validate_event_gpx) and paths resolved
     to absolute (build.load_config).
     """
@@ -257,7 +278,7 @@ def gpx_download_entries(config):
         if not src or not name:
             continue
         base = os.path.basename(src)
-        out.append((src, base, {"name": name, "url": "gpx/" + urllib.parse.quote(base)}))
+        out.append((src, base, {"name": name, "url": url_path("gpx/" + base)}))
     return out
 
 
