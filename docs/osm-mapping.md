@@ -160,14 +160,14 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup ("One-way (reverses by day)" when a `direction_schedule` covers the way). `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
+| [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `-1` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup ("One-way (reverses by day)" when a `direction_schedule` covers the way). `-1` draws the arrows in the reverse direction. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
 | [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa). This is the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
 
 | Tag | Value | What this renderer does with it |
 |---|---|---|
-| [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | string | Way-level trail name ("Pipe Dreams," "Old Camp Ridge"). Surfaced in the search/finder under "Trails" and in tap popups. When a trail name is the same as the parent route's name, the renderer dedupes; when they differ, both are shown. |
+| [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | string | Way-level trail name ("Pipe Dreams," "Old Camp Ridge"). Surfaced in the search/finder under "Trails" and in tap popups. |
 
 A trail system where each named singletrack is a separate way (or set of
 contiguous ways) with a `name=` tag gives the richest experience. Riders can
@@ -195,7 +195,7 @@ correctly so the data is useful elsewhere:
 ## POIs (points of interest)
 
 The framework fetches a small set of POI categories via an Overpass query over
-the **bounding box of the route relations**. The query is independent of the
+the map's bounding box. That is the config's `bbox` when set, and the box around the routes otherwise. The query is independent of the
 relations' member lists. They render as markers on the map when the
 corresponding `show_*` config gate is on.
 

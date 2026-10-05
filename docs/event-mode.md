@@ -86,7 +86,7 @@ to the background it's effectively a no-op. For a single route alone,
 `custom_routes` on its own is equivalent. Reach for `event_mode` when you also
 want featured-only [direction arrows](#direction-arrows) or always-on
 [event POIs](#event-pois). To suppress the OSM POIs/amenities that would
-otherwise be fetched within the route's bounding box, set the relevant `show_*`
+otherwise be fetched within the map's bounding box, set the relevant `show_*`
 gates to `false` (see
 [Build-time data gates](configuration.md#build-time-data-gates)).
 
@@ -148,8 +148,9 @@ tap, and respect the bucket model.
 **`featured`**: references to existing routes. Each entry resolves in one of
 two ways. A string ID matches a top-level
 [`custom_routes`](configuration.md#custom-routes-full-guide) entry. An
-integer OSM relation ID matches an entry in `relations`, `clipped_relations`,
-`winter_relations`, `summer_relations`, or `emergency_access_relations`. Use
+integer OSM relation ID must appear literally in `relations`, `clipped_relations`,
+`winter_relations`, `summer_relations`, or `emergency_access_relations`. A child
+of a listed super-relation does not count: list the child's own ID too. Use
 this when:
 
 - The route you want to feature already exists at top-level `custom_routes`.
@@ -246,9 +247,10 @@ Effect:
 - Every inline `event_mode.routes[i]` has its features stamped with
   `oneway: "yes"`. The existing direction-arrow renderer then draws arrows
   along the route in its digitized direction.
-- `direction_arrows` is added to `forced_visible` on the runtime. This hides
-  the rider's arrow-toggle row and forces the arrow layer always-visible.
-  Riders can't disable event-route arrows.
+- Unless the config sets `forced_visible`, `direction_arrows` is forced on by
+  default. That hides the rider's arrow-toggle row, so riders can't disable
+  event-route arrows. If `forced_visible` is set without `direction_arrows`,
+  the flag adds it.
 - **Arrows render only on the event route.** Any OSM-tagged oneway ways on the
   underlying trail system have their `oneway` property stripped at build time.
   The arrow renderer then skips them. Without this, an event map sitting on top
@@ -278,14 +280,14 @@ event_mode:
       color: "#FF8800"
       geometry: open-loop.geojson
       # no oneway, no arrows on this one
-  direction_arrows: true        # still required to hide the toggle
+  direction_arrows: true        # stamps oneway on inline routes, strips OSM oneway elsewhere
 ```
 
 Featured OSM relations (referenced via `event_mode.featured: [int]`) keep their
 normal OSM-tag-driven arrow behavior. Arrows render on ways tagged `oneway=yes`
 / `oneway=-1` / `oneway=reversible` per the standard rules. The
-`direction_arrows: true` flag affects the toggle-suppression but doesn't add
-arrows where the OSM tags don't already.
+`direction_arrows: true` flag doesn't add arrows where the OSM tags don't
+already.
 
 ## Event POIs
 
@@ -318,8 +320,7 @@ Each entry needs:
   overlay.
 - **`coordinates`** (required): `[longitude, latitude]`.
 - **`description`** (optional): one-line context shown below the name in the
-  popup. Trusted as plain text (no HTML escaping applied; same convention as
-  parking / trailhead popups).
+  popup. Shown as plain text. HTML is escaped, so markup appears literally.
 - **`directions`** (optional, default `false`): when `true`, the popup gains
   the same "Get Directions" link that parking and trailhead popups have. The
   link opens Apple Maps in Safari and Google Maps elsewhere, with the POI as
@@ -456,12 +457,14 @@ OSM as a relation:
 name: Wolf Den Group Ride 2026
 slug: wolf-den-2026
 title: "2026 Wolf Den Group Ride"
-relations: [12425503]              # RAMBA super-relation
+relations: [12425503, 8467566]    # RAMBA super-relation, then Wolf Den itself
 
 event_mode:
   featured: [8467566]              # Wolf Den (Al Quaal Loop), a child of RAMBA
 ```
 
+Validation requires the featured ID to appear in `relations`. Listing only the
+RAMBA super-relation fails, because Wolf Den is a child and not itself listed.
 Wolf Den renders in its OSM color; every other RAMBA child route goes muted. No
 GeoJSON needed; we're spotlighting an existing OSM loop.
 
