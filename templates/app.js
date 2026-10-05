@@ -8955,7 +8955,7 @@ let _onTrail = null;
 // single wild fix under tree cover cannot flip or drop the name.
 let _onTrailCandidate = null;
 let _offTrailFixes = 0;
-// The Options "Current Trail" row: the chip and the on-trail glow
+// The Options "Show Current Trail" row: the chip and the on-trail glow
 // together, since the glow shows only what the chip names. Off also
 // skips the per-fix walk.
 // show_current_trail: false removes both and the row.
@@ -11144,7 +11144,7 @@ function setupFloatingChrome() {
         emergencyOn = false;
     }
 
-    // ----- Current Trail toggle -------------------------------------
+    // ----- Show Current Trail toggle -------------------------------------
     // On resolves from the last fix instead of waiting for the next
     // one: a rider stopped at a junction gets no new fix to wait for.
     if (CURRENT_TRAIL_ENABLED) {

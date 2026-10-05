@@ -764,6 +764,18 @@
                         </div>
                     </div>
 
+                </div>
+            </section>
+
+            <!-- Preferences: how the app behaves, as opposed to what the
+                 map draws. No swatches: a swatch in "What to show" is the
+                 symbol the row puts on the map, and these rows have none,
+                 so their labels start at the section's own left edge. -->
+            <section class="opt-section">
+                <h3 class="opt-section-header">
+                    <span class="opt-section-title">Preferences</span>
+                </h3>
+                <div class="opt-section-body">
                     <!-- Appearance - color scheme (light / dark / auto).
                          Auto follows the rider's OS preference via
                          prefers-color-scheme; the Light/Dark options are
@@ -772,20 +784,8 @@
                          to applyColorScheme(), which persists to LS,
                          rebuilds the Protomaps basemap with the matching
                          flavor, and re-applies per-scheme map paint tokens
-                         (label colors, arrow icon variant). Lives at the
-                         bottom of "What to show" with Season - both are
-                         "viewing mode" controls rather than per-layer toggles. -->
+                         (label colors, arrow icon variant). -->
                     <div class="opt-row opt-toggle-row opt-toggle-row-segmented">
-                        <span class="layer-swatch appearance-swatch" aria-hidden="true">
-                            <!-- mdi:theme-light-dark (Apache 2.0,
-                                 Pictogrammers). Canonical Material
-                                 Design "theme switcher" glyph: a
-                                 split sun/moon. Reads as "appearance"
-                                 in either scheme. -->
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M7.5,2C5.71,3.15 4.5,5.18 4.5,7.5C4.5,9.82 5.71,11.85 7.53,13C4.46,13 2,10.54 2,7.5A5.5,5.5 0 0,1 7.5,2M19.07,3.5L20.5,4.93L4.93,20.5L3.5,19.07L19.07,3.5M12.89,5.93L11.41,5L9.97,6L10.39,4.3L9,3.24L10.75,3.12L11.33,1.47L12,3.1L13.73,3.13L12.38,4.26L12.89,5.93M9.59,9.54L8.43,8.81L7.31,9.59L7.65,8.27L6.56,7.44L7.92,7.35L8.37,6.06L8.88,7.33L10.24,7.36L9.19,8.23L9.59,9.54M19,13.5A5.5,5.5 0 0,1 13.5,19C12.28,19 11.15,18.6 10.24,17.93L17.93,10.24C18.6,11.15 19,12.28 19,13.5M14.6,20.08L17.37,18.93L17.13,22.28L14.6,20.08M18.93,17.38L20.08,14.61L22.28,17.15L18.93,17.38M20.08,12.42L18.94,9.64L22.28,9.88L20.08,12.42M17.4,8.07L14.62,6.93L17.16,4.73L17.4,8.07Z"/>
-                            </svg>
-                        </span>
                         <span class="opt-toggle-row-label" id="color-scheme-group-label">Appearance</span>
                         <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="color-scheme-group-label" id="color-scheme-segmented">
                             <button type="button" class="opt-segmented-btn" data-value="light" role="radio" aria-checked="true">Light</button>
@@ -794,20 +794,13 @@
                         </div>
                     </div>
 
-                    <!-- Current Trail: the "You are on" chip and the
+                    <!-- Show Current Trail: the "You are on" chip and the
                          blue glow under the trail the rider is on, both
-                         of which ride Locate. The swatch is a trail
-                         signpost, where a rider reads a trail's name.
-                         Hidden by app.js under show_current_trail: false. -->
+                         of which ride Locate. Hidden by app.js under
+                         show_current_trail: false. -->
                     <div class="opt-row opt-toggle-row" id="toggle-current-trail" data-on="true">
-                        <span class="layer-swatch current-trail-swatch" aria-hidden="true">
-                            <!-- mdi:routes (Apache 2.0, Pictogrammers). -->
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M11,10H5L3,8L5,6H11V3L12,2L13,3V4H19L21,6L19,8H13V10H19L21,12L19,14H13V20A2,2 0 0,1 15,22H9A2,2 0 0,1 11,20V10Z"/>
-                            </svg>
-                        </span>
-                        <span class="opt-toggle-row-label">Current Trail</span>
-                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Current Trail"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
+                        <span class="opt-toggle-row-label">Show Current Trail</span>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Show Current Trail"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Units for everything the app computes: route
@@ -816,12 +809,6 @@
                          map (mtb.units), and defaulted from the device's
                          region until the rider picks. -->
                     <div class="opt-row opt-toggle-row opt-toggle-row-segmented">
-                        <span class="layer-swatch units-swatch" aria-hidden="true">
-                            <!-- mdi:ruler (Apache 2.0, Pictogrammers). -->
-                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M1.39,18.36L3.16,16.6L4.58,18L5.64,16.95L4.22,15.54L5.64,14.12L8.11,16.6L9.17,15.54L6.7,13.06L8.11,11.65L9.53,13.06L10.59,12L9.17,10.59L10.59,9.17L13.06,11.65L14.12,10.59L11.65,8.11L13.06,6.7L14.47,8.11L15.54,7.05L14.12,5.64L15.54,4.22L18,6.7L19.07,5.64L16.6,3.16L18.36,1.39L22.61,5.64L5.64,22.61L1.39,18.36Z"/>
-                            </svg>
-                        </span>
                         <span class="opt-toggle-row-label" id="units-group-label">Units</span>
                         <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="units-group-label" id="units-segmented">
                             <button type="button" class="opt-segmented-btn" data-value="mi" role="radio" aria-checked="false">Miles</button>
