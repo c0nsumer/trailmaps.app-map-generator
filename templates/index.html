@@ -799,13 +799,19 @@
                         </div>
                     </div>
 
-                    <!-- Show Current Trail: the "You are on" chip and the
+                    <!-- Current Trail: the "You are on" chip and the
                          blue glow under the trail the rider is on, both
-                         of which ride Locate. Hidden by app.js under
-                         show_current_trail: false. -->
+                         of which ride Locate. A noun like its neighbors
+                         (Appearance, Units): "Show ..." read as a row
+                         of "What to show". The help line says why the
+                         row does nothing while Locate is off. Hidden by
+                         app.js under show_current_trail: false. -->
                     <div class="opt-row opt-toggle-row" id="toggle-current-trail" data-on="true">
-                        <span class="opt-toggle-row-label">Show Current Trail</span>
-                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Show Current Trail"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
+                        <span class="opt-toggle-row-text">
+                            <span class="opt-toggle-row-label">Current Trail</span>
+                            <span class="opt-toggle-row-help" id="current-trail-help">Names and highlights the trail you're on while Locate is on.</span>
+                        </span>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Current Trail" aria-describedby="current-trail-help"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Units for everything the app computes: route

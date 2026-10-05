@@ -882,7 +882,8 @@ body::after {
 /* A row with no swatch (the Preferences rows): the label starts under
  * the section title, 8px in from where a swatch would start, so the
  * missing swatch reads as the section's style and not as a gap. */
-.opt-toggle-row > .opt-toggle-row-label:first-child {
+.opt-toggle-row > .opt-toggle-row-label:first-child,
+.opt-toggle-row > .opt-toggle-row-text:first-child {
     margin-left: 8px;
 }
 
