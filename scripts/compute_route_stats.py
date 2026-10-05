@@ -65,7 +65,7 @@ def compute_distances(trails_geojson):
 
 def _chain_segments(coord_lines):
     """Orient and join segments whose endpoints touch into continuous
-    chains, minimizing the number of segment-break markers downstream.
+    chains, so tagging_report can tell which of a route's ways connect.
 
     OSM relations don't order their member ways, so a closed loop
     arrives as many disconnected pieces in arbitrary order and

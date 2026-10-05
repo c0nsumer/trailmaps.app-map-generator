@@ -196,3 +196,40 @@ def test_empty_and_malformed_input_do_not_crash():
         "geometry": {"type": "Point", "coordinates": [-87.6, 46.5]},
     }], "metadata": {"routes": {"1": {"name": "N", "colour": "red"}}}}
     assert audit(weird, None, _CFG)["total"] == 0
+
+
+def test_a_relation_without_a_name_tag_is_reported():
+    # relation_info names an untagged relation "Route <id>" before the snapshot.
+    snap = _snap([_feature([10], [[-87.60, 46.50], [-87.59, 46.50]], route_id="42")],
+                 routes={"42": {"name": "Route 42", "colour": "red"}})
+    assert audit(snap, None, _CFG)["routes_missing_name"] == ["42"]
+
+
+def test_the_colour_note_states_the_osm_fact_only():
+    snap = _snap([_feature([10], [[-87.60, 46.50], [-87.59, 46.50]])],
+                 routes={"1": {"name": "X", "colour": ""}})
+    report = format_report(audit(snap, None, _CFG), "t")
+    assert "no `colour` tag in OSM" in report
+    assert "falls back" not in report
+
+
+def test_a_clipped_route_cut_at_the_bbox_edge_is_not_a_gap():
+    # The clip leaves two pieces ~3 m apart on the bbox edge.
+    pieces = [
+        _feature([10], [[0.5, 0.99], [0.50002, 1.0]], route_id="7"),
+        _feature([10], [[0.50004, 1.0], [0.6, 0.99]], route_id="7"),
+    ]
+    routes = {"7": {"name": "Rail Trail", "colour": "red"}}
+    clipped = audit(_snap(pieces, routes), None, dict(_CFG, clipped_relations=[7]))
+    assert clipped["probable_gaps"] == []
+    # The same pieces on a source route are still checked.
+    source = audit(_snap(pieces, routes), None, dict(_CFG, relations=[7], clipped_relations=[7]))
+    assert len(source["probable_gaps"]) == 1
+
+
+def test_a_negative_josm_id_gets_no_osm_link():
+    snap = _snap([_feature([10], [[-87.60, 46.50], [-87.59, 46.50]], route_id="-5")],
+                 routes={"-5": {"name": "Route -5", "colour": ""}})
+    report = format_report(audit(snap, None, _CFG), "t")
+    assert "openstreetmap.org/relation/-5" not in report
+    assert "relation `-5` (not uploaded)" in report

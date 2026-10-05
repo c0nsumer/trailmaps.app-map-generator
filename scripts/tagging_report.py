@@ -29,6 +29,7 @@ import os
 
 import console
 from compute_route_stats import _chain_segments, _coords_for_route
+from fetch_trails import gather_relation_ids
 from geodesy import haversine_m, natural_key, point_to_polyline_m
 
 # A pair of chain endpoints closer than this, but not identical, is very
@@ -67,7 +68,10 @@ def _check_routes(routes):
     missing_colour = []
     for rid in sorted(routes, key=natural_key):
         info = routes[rid]
-        if not str(info.get("name") or "").strip():
+        name = str(info.get("name") or "").strip()
+        # osm_parser.relation_info names an untagged relation "Route <id>"
+        # before the snapshot is written.
+        if not name or name == f"Route {rid}":
             missing_name.append(rid)
         if not str(info.get("colour") or "").strip():
             missing_colour.append((rid, info.get("name") or ""))
@@ -114,16 +118,37 @@ def _check_ratings(features, show_difficulty):
     return unrated, invalid
 
 
-def _check_route_gaps(features, routes):
+def _clipped_route_ids(trails_geojson, config):
+    """Route ids drawn from ``clipped_relations``, through the snapshot's
+    super-relation expansions. A relation also listed as a source route
+    stays a source route, as in osm_parser.resolve_relations."""
+    meta = trails_geojson.get("metadata") or {}
+    expansions = meta.get("super_relation_expansions") or {}
+
+    def _resolve(ids):
+        return {str(c) for rid in ids for c in (expansions.get(str(rid)) or [rid])}
+
+    source_ids, clipped_ids = gather_relation_ids(config)
+    return _resolve(clipped_ids) - _resolve(source_ids)
+
+
+def _check_route_gaps(features, routes, skip_ids=()):
     """Chain each route's segments and look for near-miss endpoint pairs.
 
-    Reuses compute_route_stats' chainer so "connected" means the same thing
-    here as it does for elevation: exact node identity to ~1 cm, never a
-    proximity heuristic. Leftover chains from a genuine branch junction share
-    an endpoint exactly, so they fall below _GAP_MIN_M and drop out.
+    Uses compute_route_stats' chainer, so "connected" means exact node
+    identity to ~1 cm, never a proximity heuristic. Leftover chains from a
+    genuine branch junction share an endpoint exactly, so they fall below
+    _GAP_MIN_M and drop out.
+
+    ``skip_ids`` are clipped routes. The clip cuts a route that leaves the
+    bbox and comes back into pieces ending on the bbox edge, a gap of the
+    clip's making. The snapshot does not record the clip bbox, so the
+    whole route is skipped rather than its edge points guessed.
     """
     gaps = []
     for rid in sorted(routes, key=natural_key):
+        if rid in skip_ids:
+            continue
         chains = _chain_segments(_coords_for_route(features, rid))
         if len(chains) < 2:
             continue
@@ -234,7 +259,8 @@ def audit(trails_geojson, pois_geojson, config):
         "routes_missing_colour": missing_colour,
         "named_trails_missing_rating": unrated,
         "invalid_ratings": invalid,
-        "probable_gaps": _check_route_gaps(features, routes),
+        "probable_gaps": _check_route_gaps(
+            features, routes, _clipped_route_ids(trails_geojson, config)),
         "orphan_pois": _check_orphan_pois(pois_geojson, features),
         "difficulty_checked": bool(show_difficulty),
     }
@@ -276,6 +302,14 @@ def summarize(findings):
     return lines
 
 
+def _relation_link(rid):
+    """openstreetmap.org link for a relation. A negative id is a JOSM
+    object not yet uploaded, which has no page to link to."""
+    if str(rid).startswith("-"):
+        return f"relation `{rid}` (not uploaded)"
+    return f"https://www.openstreetmap.org/relation/{rid}"
+
+
 def format_report(findings, slug):
     out = [f"# OSM data notes - {slug}", ""]
     out.append("These are gaps and inconsistencies in the underlying OSM data,")
@@ -313,9 +347,8 @@ def format_report(findings, slug):
                   f"{g['distance_m']:.2f} m apart at "
                   f"https://www.openstreetmap.org/#map=19/{g['lat']:.6f}/{g['lon']:.6f}",
         note="Two of a route's ways end within 10 m of each other without "
-             "sharing a node, so they look joined but aren't. This is what "
-             "makes a loop fail to close for elevation, and what breaks "
-             "routing for every other data consumer.",
+             "sharing a node, so they look joined but aren't. This breaks "
+             "routing for every data consumer.",
     )
     section(
         "Out-of-range mtb:scale:imba values", findings["invalid_ratings"],
@@ -333,14 +366,13 @@ def format_report(findings, slug):
         )
     section(
         "Relations with no name", findings["routes_missing_name"],
-        lambda r: f"https://www.openstreetmap.org/relation/{r}",
+        _relation_link,
     )
     section(
         "Relations with no colour", findings["routes_missing_colour"],
-        lambda t: f"`{t[0]}` {t[1] or '(unnamed)'} - "
-                  f"https://www.openstreetmap.org/relation/{t[0]}",
-        note="The map falls back to its default trail color, so these routes "
-             "are indistinguishable from each other in the key.",
+        lambda t: f"`{t[0]}` {t[1] or '(unnamed)'} - {_relation_link(t[0])}",
+        note="These route relations have no `colour` tag in OSM, so a "
+             "consumer drawing them from OSM data alone has no route color.",
     )
     section(
         "Trail markers far from any trail", findings["orphan_pois"],
@@ -363,8 +395,8 @@ def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
     Never raises: a data-quality note must not be able to fail a build.
     """
     if not trails_geojson:
-        # No OSM snapshot to audit (unreadable, or a route-only map built
-        # entirely from custom_routes). Silence, not a warning.
+        # No readable OSM snapshot to audit. Silence, not a warning. A
+        # route-only map's snapshot is an empty skeleton, which audits clean.
         return
     try:
         findings = audit(trails_geojson, pois_geojson, config)
