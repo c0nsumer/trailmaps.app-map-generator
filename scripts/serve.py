@@ -95,6 +95,9 @@ def main():
     parser.add_argument("--port", "-p", type=int, default=8090, help="Port (default: 8090)")
     args = parser.parse_args()
 
+    if not os.path.isdir(args.directory):
+        console.error(f"not a directory: {args.directory}")
+        raise SystemExit(1)
     os.chdir(args.directory)
     server = HTTPServer(("", args.port), RangeRequestHandler)
     console.step(f"Serving {os.path.abspath('.')} at http://localhost:{args.port}")

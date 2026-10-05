@@ -17,11 +17,22 @@ def read_config_yaml(config_path):
     """Parse a config YAML and return its top-level mapping.
 
     An empty file reads as ``{}``. A file whose top level is a scalar or
-    a list exits with a message, because every caller reads it with
+    a list, a missing or unreadable file, and a YAML syntax error each exit
+    with a one-line message, because every caller reads it with
     ``config.get`` and would otherwise die with a traceback.
     """
-    with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except OSError as e:
+        console.error(f"cannot read config {config_path}: {e.strerror or e}")
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        mark = getattr(e, "problem_mark", None)
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        problem = getattr(e, "problem", None) or "invalid YAML"
+        console.error(f"{config_path}: {problem}{where}")
+        sys.exit(1)
     if config is None:
         return {}
     if not isinstance(config, dict):
