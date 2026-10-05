@@ -41,7 +41,7 @@ POI_SHOW_FLAGS = (
 
 
 def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
-    """Fetch trail-relevant POI nodes from Overpass API.
+    """Fetch trail-relevant POI nodes and ways from Overpass API.
 
     Categories collected:
       - guideposts (tourism=information + information=guidepost)
@@ -56,9 +56,10 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
 
     The amenity categories are queried as both nodes AND ways - OSM
     mappers commonly tag the amenity's building polygon (a closed
-    way) rather than placing a node. ``out center;`` asks Overpass
-    to compute the centroid of any non-node geometry so the rest of
-    the pipeline can treat them as point POIs.
+    way) rather than placing a node. Any way with a segment in the
+    bbox matches, open or closed. ``out center;`` asks Overpass for
+    the center of each way's bounding box so the rest of the
+    pipeline can treat them as point POIs.
     """
     south, west, north, east = bbox[1], bbox[0], bbox[3], bbox[2]
     # The query text is the cache key: keep the line order stable.
@@ -145,7 +146,10 @@ def build_pois_geojson(
     config_event_pois=None,
     config=None,
 ):
-    """Build GeoJSON from OSM guideposts, emergency access points, and config-defined parking.
+    """Build the POI GeoJSON from the OSM categories and the config-defined POIs.
+
+    The OSM categories are those fetch_pois_from_osm collects; the config
+    supplies parking, trailheads, hubs and event-mode POIs.
 
     Guideposts and emergency access points are merged into a single
     ``poi_type: "trail_marker"`` category. Nodes tagged as both are
@@ -161,9 +165,8 @@ def build_pois_geojson(
     provided, show_* flags gate each POI type at the GeoJSON-emit step
     - a type with show_X: false is excluded from the output entirely,
     so it doesn't appear in counts, search index, or anywhere else
-    downstream (not just suppressed from rendering). Backwards-
-    compatible default of None means "show everything," matching the
-    historical behavior for any caller not yet passing config."""
+    downstream (not just suppressed from rendering). None means "show
+    everything"."""
     cfg = config or {}
     show_markers = cfg.get("show_markers", True)
     show_features = cfg.get("show_features", True)
@@ -390,7 +393,6 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         for e in osm_data.get("elements", [])
         if e.get("tags", {}).get("tourism") == "attraction"
         and e.get("tags", {}).get("highway") != "emergency_access_point"
-        and e.get("tags", {}).get("information") != "guidepost"
     )
     toilet_count = sum(
         1 for e in osm_data.get("elements", []) if e.get("tags", {}).get("amenity") == "toilets"

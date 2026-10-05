@@ -1,8 +1,9 @@
 """Inject the SDF clip-continuation arrowhead into copied sprite atlases.
 
-The framework ships pre-built Protomaps sprite atlases (assets/sprites/v4/)
-in five theme variants × two pixel ratios. Those atlases are raster-only -
-none of the icons have `sdf: true` - so we can't tint any of them at runtime.
+The framework ships pre-built Protomaps sprite atlases (assets/sprites/v4/),
+and the build copies the light and dark variants at two pixel ratios. Those
+atlases are raster-only - none of the icons have `sdf: true` - so we can't
+tint any of them at runtime.
 
 This module extends each *copied* atlas in `build/{slug}/sprites/v4/` (we
 never modify the source assets in `assets/sprites/v4/`) with one extra
@@ -13,8 +14,8 @@ strip appended to the bottom of each atlas PNG; the JSON metadata gets a
 `icon-color`.
 
 Idempotent: if `clip-arrow` is already present in an atlas's JSON, that
-atlas is left alone. This keeps repeated builds cheap and prevents the
-PNG from growing on every rerun.
+atlas is left alone, so a second call on the same atlas never appends a
+second strip.
 """
 
 import json
@@ -56,9 +57,9 @@ def _inject_one(atlas_png_path, atlas_json_path, sdf_img, pixel_ratio):
 
     atlas = Image.open(atlas_png_path)
     if atlas.mode != "RGBA":
-        # Palette-mode atlases (white/black/grayscale @2x) need to become
-        # RGBA before they can carry a partial-alpha SDF tile. Conversion
-        # preserves all existing icon pixels.
+        # A palette-mode atlas must become RGBA before it can carry a
+        # partial-alpha SDF tile. Conversion preserves all existing icon
+        # pixels. The light and dark atlases the build copies are RGBA.
         atlas = atlas.convert("RGBA")
 
     tile = _sdf_to_rgba(sdf_img)
