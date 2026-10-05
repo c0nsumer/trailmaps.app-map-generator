@@ -1990,6 +1990,19 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
     return fallback;
 }
 
+// Feature properties for a difficulty diamond on `way`. color_key is
+// bucketed as the lanes are, so a rated way whose only visible parents
+// are route-mode (no rating lane) dims with its lane under a rating
+// highlight instead of falling back to its tag.
+function diamondProps(way) {
+    return {
+        imba_difficulty: way.imba,
+        trail_name: way.trailName,
+        shared_routes: way.sharedRoutes,
+        ...(way.colorKey != null && { color_key: way.colorKey }),
+    };
+}
+
 // Build the full decoration FeatureCollection for the current visible
 // route set. Order matters:
 //   Pass 1: line labels (symbol-placement: line; text follows the
@@ -2116,11 +2129,7 @@ function computeDecorations() {
         (w) => w.imba);
     placeOverviewRuns(diamondRuns, KIND.DIAMOND, DECOR_RADIUS_M.diamond,
         DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
-        (w) => ({
-            imba_difficulty: w.imba,
-            trail_name: w.trailName,
-            shared_routes: w.sharedRoutes,
-        }));
+        diamondProps);
 
     // ---- Pass 1.7: overview point labels, one name per visible route, and
     //      (trails mode) per named trail, pinned ON the trail at a low-clutter
@@ -2215,16 +2224,7 @@ function computeDecorations() {
             ];
             for (const cand of anchors) {
                 tryPlaceDecoration(way, cand, KIND.DIAMOND, DECOR_MZ_PER_WAY,
-                    decorations, placed, () => ({
-                        imba_difficulty: way.imba,
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                        // Bucketed as the lanes are, so a rated way whose
-                        // only visible parents are route-mode (no rating
-                        // lane) dims with its lane under a rating
-                        // highlight instead of falling back to its tag.
-                        ...(way.colorKey != null && { color_key: way.colorKey }),
-                    }));
+                    decorations, placed, () => diamondProps(way));
             }
         }
     }
@@ -2240,16 +2240,7 @@ function computeDecorations() {
             for (let arc = rung.cadenceM; arc < way.totalLength;
                  arc += rung.cadenceM) {
                 tryPlaceDecoration(way, [arc], KIND.DIAMOND, rung.minZoom,
-                    decorations, placed, () => ({
-                        imba_difficulty: way.imba,
-                        trail_name: way.trailName,
-                        shared_routes: way.sharedRoutes,
-                        // Bucketed as the lanes are, so a rated way whose
-                        // only visible parents are route-mode (no rating
-                        // lane) dims with its lane under a rating
-                        // highlight instead of falling back to its tag.
-                        ...(way.colorKey != null && { color_key: way.colorKey }),
-                    }));
+                    decorations, placed, () => diamondProps(way));
             }
         }
     }
