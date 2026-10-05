@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import UTC, datetime, timedelta
@@ -37,14 +38,15 @@ REQUEST_TIMEOUT = 310  # seconds per HTTP request
 
 # Backoff between retries, in seconds: ramps to ~2 min, then plateaus.
 # Length must be >= MAX_RETRIES - 1 (the last attempt has no following
-# sleep). Worst-case wait is ≈ 14.5 minutes, plus per-request timeouts.
+# sleep). The sleeps total 9.75 minutes; with every attempt running into
+# REQUEST_TIMEOUT, one query can take about an hour before it gives up.
 RETRY_BACKOFF = [5, 10, 20, 40, 60, 90, 120, 120, 120]
 
 # Empty responses tolerated before accepting the result as legitimately
 # empty (a typo'd relation ID, say). An empty response looks like a
 # transient failure to the retry loop, so without this limit a bad ID
-# would burn the full MAX_RETRIES schedule (~14 min). Two attempts ride
-# out a brief hiccup.
+# would burn the full MAX_RETRIES schedule (9.75 min of sleeps). Two
+# retries ride out a brief hiccup.
 EMPTY_RETRY_LIMIT = 2
 
 # Maximum replication lag of a response's `osm3s.timestamp_osm_base` vs.
@@ -80,6 +82,18 @@ class EmptyResponseError(Exception):
 
 class StaleSnapshotError(Exception):
     """Raised when a mirror's osm_base timestamp is too far behind wall clock."""
+
+
+def _body_summary(text):
+    """The line of an Overpass error body worth printing. A rejected
+    query comes back as an HTML page whose first lines are markup, so
+    prefer the first line naming an error, tags stripped."""
+    lines = [re.sub(r"<[^>]+>", "", ln).strip() for ln in (text or "").splitlines()]
+    lines = [ln for ln in lines if ln]
+    for ln in lines:
+        if "error" in ln.lower():
+            return ln
+    return lines[0] if lines else "(empty response body)"
 
 
 class PartialResponseError(Exception):
@@ -239,6 +253,13 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
                 headers={"User-Agent": USER_AGENT},
                 timeout=REQUEST_TIMEOUT,
             )
+            # A 4xx other than 429 rejects the request itself (bad query
+            # syntax, a refused User-Agent), so retrying cannot help.
+            if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                console.blank()
+                console.error(f"{server} rejected the query{label_suffix} "
+                              f"(HTTP {resp.status_code}): {_body_summary(resp.text)}")
+                sys.exit(1)
             resp.raise_for_status()
             data = resp.json()
 
@@ -300,7 +321,7 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
     console.blank()
     console.error(f"{server} failed after {MAX_RETRIES} attempts.")
     if last_error is not None:
-        console.error(f"last error: {type(last_error).__name__}: {last_error}")
+        console.error(f"Last failure: {type(last_error).__name__}: {last_error}")
     console.blank()
     console.error("The server may be overloaded. Try again in a few minutes.")
     console.info("Tip: Re-run without the --refresh flags to reuse any")
