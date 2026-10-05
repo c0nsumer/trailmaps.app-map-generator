@@ -248,8 +248,8 @@ def test_cleaning_is_idempotent(tmp_path):
 def test_gate_deletes_output_when_reparse_fails(tmp_path):
     """The equality gate must also hold when the cleaned output doesn't
     even PARSE (e.g. block reordering moved a YAML alias above its
-    anchor). This used to escape as an unhandled ComposerError traceback
-    with the broken *-cleaned.yaml left on disk."""
+    anchor). The error must be reported and the broken *-cleaned.yaml
+    must not be left on disk."""
     prod = tmp_path / "prod.yaml"
     prod.write_text("a: 1\n", encoding="utf-8")
     out = tmp_path / "out.yaml"

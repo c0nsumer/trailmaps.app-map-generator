@@ -57,13 +57,13 @@ def test_apply_default_brand_skipped_when_logo_set():
 
 def test_bundled_placeholder_icon_ships_and_is_usable():
     # The default-brand fallback depends on this asset existing and being
-    # a usable icon source (square, >=256px, Pillow-readable).
+    # a usable icon source (square, >=512px, Pillow-readable).
     from PIL import Image
 
     asset = os.path.join(REPO_ROOT, "assets", "placeholder-logo.png")
     assert os.path.isfile(asset), f"missing bundled placeholder: {asset}"
     im = Image.open(asset)
-    assert im.width == im.height and im.width >= 256
+    assert im.width == im.height and im.width >= 512
 
 
 def test_vendor_scripts_lose_their_source_map_pointer(tmp_path):

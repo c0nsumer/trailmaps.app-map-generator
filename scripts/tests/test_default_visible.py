@@ -1,7 +1,6 @@
 """Tests for `default_visible` layer-toggle defaulting.
 
-Unset (omitted or null) used to mean "everything off." The owner
-decided unset should instead mean a sensible first-visit set (markers,
+Unset (omitted or null) means a sensible first-visit set (markers,
 trailheads, hubs, parking, toilets, water, repair stations, direction
 arrows), so a rider discovers those layers without opening Options.
 `[]` stays the explicit bare-map opt-out; `"all"` and an explicit list

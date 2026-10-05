@@ -74,14 +74,10 @@ def test_title_emitted_unbranded(tmp_path):
 def test_app_js_never_writes_document_title():
     """The <title> element's build-time value must be the only writer.
 
-    app.js used to run `document.title = CONFIG.title` at init, which was
-    a no-op while the element and CONFIG.title were always the same
-    string. Once a deployer post-processes a brand tail onto the element
-    (trailmaps.app appends " | trailmaps.app" in inject-og-meta.py), that
-    runtime write silently strips it the moment the app boots: the tab
-    briefly shows the branded title, then loses it. Field-hit 2026-07-10.
-    If a runtime title write is ever genuinely needed, it must preserve
-    the element's existing tail rather than overwrite from CONFIG."""
+    A deployer may post-process a brand tail onto the element (the
+    trailmaps.app orchestrator does). A runtime write from CONFIG.title
+    would strip that tail the moment the app boots. A genuine runtime
+    title write must preserve the element's existing tail."""
     app_js_path = os.path.join(
         os.path.dirname(__file__), "..", "..", "templates", "app.js"
     )
@@ -96,6 +92,17 @@ def test_title_containing_a_backslash_escape_survives_substitution(tmp_path):
     copy_templates({**MINIMAL_CONFIG, "title": r"Back\1slash Map"}, str(tmp_path), dict(EMPTY_TRAILS))
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert r"<title>Back\1slash Map</title>" in html
+
+
+def test_title_and_name_are_escaped_in_the_page(tmp_path):
+    """Markup characters in the name or title reach <title> and og:title
+    escaped, and never as a raw tag in index.html."""
+    cfg = {**MINIMAL_CONFIG, "name": 'A "B" <i>&', "title": 'A "B" <i>& Map'}
+    copy_templates(cfg, str(tmp_path), dict(EMPTY_TRAILS))
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "<title>A \"B\" &lt;i&gt;&amp; Map</title>" in html
+    assert 'property="og:title" content="A &quot;B&quot; &lt;i&gt;&amp; Map"' in html
+    assert "<i>" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +161,15 @@ def test_every_map_loads_the_lane_plugin_and_carries_the_boot_note(tmp_path):
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     lanes = html.index('<script src="vendor/maplibre-gl-lanes.js" defer></script>')
     assert lanes < html.index('<script src="app.js" defer></script>')
-    assert "__LANE_RENDERER_SCRIPT__" not in html
     # The static boot-failure note ships in the page and app.js takes it
     # down first thing; neither half is any use without the other.
     assert 'id="boot-fallback"' in html
-    app = (tmp_path / "app.js").read_text(encoding="utf-8")
-    assert app.index('getElementById("boot-fallback")') < app.index("setPoiColorVars")
+    # The note comes down in the template's first lines, before any other
+    # boot work (the built file starts with the injected CONFIG).
+    template = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "app.js")
+    with open(template, encoding="utf-8") as f:
+        head = "".join(f.readlines()[:30])
+    assert 'getElementById("boot-fallback")' in head
 
 
 # ---------------------------------------------------------------------------

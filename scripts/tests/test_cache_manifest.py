@@ -17,7 +17,22 @@ import os
 import cache_manifest
 import overpass
 import pytest
-from conftest import _FakeResp
+
+
+class _FakeResp:
+    """Stand-in for a requests response that returns a canned JSON payload."""
+
+    status_code = 200
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
 
 # Valid-shaped relative entry names (the allowlist is strict about them).
 OP_A = "overpass_" + "a" * 12 + ".json"

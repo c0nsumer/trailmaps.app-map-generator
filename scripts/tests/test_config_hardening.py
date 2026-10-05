@@ -1,4 +1,4 @@
-"""Tests for the 2026-07 QA review's config-handling hardening:
+"""Tests for config-handling hardening:
 digit-string relation keys coerced at load, and event_mode's
 forced_visible interaction.
 
@@ -13,9 +13,9 @@ from event_mode import _apply_event_mode_to_custom_routes, _apply_event_mode_to_
 
 def test_load_config_coerces_digit_string_relation_keys(tmp_path):
     """The validator blesses quoted keys ('1234567') for the
-    per-relation override dicts, but the injector looks up by INT -
-    a quoted key used to produce a clean build with the override
-    silently dropped. load_config coerces once, up front."""
+    per-relation override dicts, but the injector looks up by INT, so
+    an uncoerced quoted key would drop the override silently.
+    load_config coerces once, up front."""
     from build import load_config
 
     cfg_path = tmp_path / "t.yaml"
@@ -36,10 +36,9 @@ def test_load_config_coerces_digit_string_relation_keys(tmp_path):
 
 
 def test_event_mode_arrows_preserve_forced_visible_all():
-    """event_mode.direction_arrows + forced_visible: "all" used to
-    explode the string into ['a','l','l','direction_arrows'], after
-    which the injector's == "all" check missed and every genuinely
-    forced layer silently un-forced."""
+    """event_mode.direction_arrows must not explode the string "all" into
+    a list of characters: the injector's == "all" check would then miss
+    and every forced layer would silently un-force."""
     config = {
         "forced_visible": "all",
         "event_mode": {"direction_arrows": True},

@@ -204,8 +204,8 @@ def _maskable_reach(tmp_path, src):
 
 
 def test_maskable_square_logo_fits_the_safe_circle(tmp_path):
-    # A square logo filling its source used to fill an 80% square, whose
-    # corners sit at radius 0.566: a Pixel's circle mask cut them off.
+    # The corners of an 80% square sit at radius 0.566, so a Pixel's circle
+    # mask would cut them off: a square logo must fit inside the safe circle.
     src = _logo_on((0, 0, 0, 0), 512)
     src.paste((20, 80, 200, 255), (16, 16, 496, 496))
     assert 0.38 <= _maskable_reach(tmp_path, src) <= 0.405

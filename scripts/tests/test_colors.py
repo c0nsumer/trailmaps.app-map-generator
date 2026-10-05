@@ -147,11 +147,11 @@ def test_auto_palette_invariants_across_input_space():
                         assert drift <= 6.0, (ctx, shade, drift)
 
 
-def test_resolve_palette_unset_uses_framework_default():
+def test_resolve_palette_unset_uses_framework_default(tmp_path):
     # No accent_color and nothing to derive from → framework-default
     # palette (never None), with the default used verbatim for the light
     # shade, and no warning (unset is the quiet default, not a request).
-    p = resolve_accent_palette({}, "/tmp", "/tmp")
+    p = resolve_accent_palette({}, str(tmp_path), str(tmp_path))
     assert set(p) == {"light", "dark", "onLight", "onDark"}
     assert p["light"] == "#1D6FA5"
 
@@ -170,17 +170,17 @@ def test_resolve_palette_unset_behaves_like_auto(tmp_path):
     assert unset["light"] != "#1D6FA5"
 
 
-def test_resolve_palette_explicit_hex_light_verbatim():
+def test_resolve_palette_explicit_hex_light_verbatim(tmp_path):
     # Explicit hex is the LIGHT shade verbatim (light mode unchanged);
     # only the dark shade is derived, and it clears AA vs the dark sheet.
-    p = resolve_accent_palette({"accent_color": "#005088"}, "/tmp", "/tmp")
+    p = resolve_accent_palette({"accent_color": "#005088"}, str(tmp_path), str(tmp_path))
     assert p["light"] == "#005088"
     assert _contrast_ratio(_hex_to_rgb(p["dark"]), DARK_BG) >= 4.5
 
 
-def test_resolve_palette_auto_without_raster_falls_back():
+def test_resolve_palette_auto_without_raster_falls_back(tmp_path):
     # "auto" with no raster source → framework-default palette, not None.
-    p = resolve_accent_palette({"accent_color": "auto"}, "/tmp", "/tmp")
+    p = resolve_accent_palette({"accent_color": "auto"}, str(tmp_path), str(tmp_path))
     assert p["light"] == "#1D6FA5"
 
 

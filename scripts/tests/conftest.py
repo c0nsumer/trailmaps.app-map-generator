@@ -25,18 +25,3 @@ def inject_config(config, trails=None):
         trails = copy.deepcopy(EMPTY_TRAILS)
     out = inject_config_into_template("/*__CONFIG__*/", config, trails)
     return json.loads(re.match(r"const CONFIG = (.*);$", out, re.S).group(1))
-
-
-class _FakeResp:
-    """Stand-in for a requests response that returns a canned JSON payload."""
-
-    status_code = 200
-
-    def __init__(self, payload):
-        self._payload = payload
-
-    def raise_for_status(self):
-        pass
-
-    def json(self):
-        return self._payload
