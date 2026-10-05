@@ -144,6 +144,10 @@ async function backgroundPrecache() {
             await cache.put(PRECACHE_DONE_URL, new Response("1"));
             await cleanupOldCaches();
         }
+    } catch (e) {
+        // Storage itself failed (quota, private mode). Every caller
+        // fires and forgets, so log here; the next trigger retries.
+        console.warn("SW backgroundPrecache aborted:", e);
     } finally {
         _precacheRunning = false;
     }
@@ -258,6 +262,11 @@ async function reportCoreStatus(port) {
         console.warn("SW reportCoreStatus failed:", e);
     }
     port.postMessage({ type: "CORE_STATUS", coreComplete });
+    // A waiting worker's install-time run can be cut short by the
+    // browser terminating it, and RESUME_PRECACHE goes only to the
+    // active worker, so the page's polling is what resumes this one.
+    // Re-entrancy guarded: a run already in progress is left alone.
+    if (!coreComplete) backgroundPrecache();
 }
 
 // Answer a PRECACHE_STATUS query with byte-weighted progress.
@@ -297,8 +306,8 @@ async function reportPrecacheStatus(port) {
         }
     } catch (e) {
         // Storage unavailable (private mode, quota). Fall through with
-        // what we have; the page reads a zero total as "unknown" and
-        // keeps its row hidden rather than claiming anything.
+        // what we have; the page shows "Status unavailable." for a zero
+        // total and keeps polling.
         console.warn("SW reportPrecacheStatus failed:", e);
     }
     port.postMessage({
@@ -497,6 +506,14 @@ async function handleRangeRequest(request) {
     }
 
     const start = parseInt(match[1], 10);
+    if (start >= blob.size) {
+        // Nothing to slice: answer as a server does, not with a 206
+        // whose length comes out negative.
+        return new Response(null, {
+            status: 416,
+            headers: { "Content-Range": `bytes */${blob.size}` },
+        });
+    }
     // Clamp: a range past EOF must not claim bytes the blob lacks.
     const end = Math.min(
         match[2] ? parseInt(match[2], 10) : blob.size - 1,

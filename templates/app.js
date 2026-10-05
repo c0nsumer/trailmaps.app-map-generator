@@ -13415,10 +13415,11 @@ if ("serviceWorker" in navigator) {
         if (reg.waiting && wasControlled) {
             trySilentSwap(reg);
         }
-        // Case B: a new SW is discovered during this session.
-        reg.addEventListener("updatefound", () => {
-            const installing = reg.installing;
-            if (!installing) return;
+        // Case B: a new SW is discovered during this session, or was
+        // discovered just before this ran (the inline register()'s
+        // load-time check can fire updatefound before the deferred
+        // app.js runs) and is still installing.
+        const followInstalling = (installing) => {
             installing.addEventListener("statechange", () => {
                 // "installed" + the page was already SW-controlled at
                 // load means this is an UPDATE (not a first install).
@@ -13439,6 +13440,10 @@ if ("serviceWorker" in navigator) {
                     showSwUpdateToast(reg);
                 }
             });
+        };
+        if (reg.installing) followInstalling(reg.installing);
+        reg.addEventListener("updatefound", () => {
+            if (reg.installing) followInstalling(reg.installing);
         });
         // Deploy-while-open detection. Browsers re-check sw.js for a
         // long-lived page only on their own ~24h cadence; without
