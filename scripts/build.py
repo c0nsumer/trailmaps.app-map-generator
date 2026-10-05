@@ -355,8 +355,17 @@ def download_vendor_libs(output_dir, cache_dir):
             console.info(f"Downloading {filename}...")
             resp = requests.get(url, timeout=30)
             resp.raise_for_status()
-            with open(cached, "wb") as f:
-                f.write(resp.content)
+            # Cache entries are trusted on existence alone, so the file
+            # must appear complete or not at all.
+            tmp = cached + ".tmp"
+            try:
+                with open(tmp, "wb") as f:
+                    f.write(resp.content)
+                os.replace(tmp, cached)
+            except OSError:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                raise
             downloaded += 1
 
         _copy_vendor_script(cached, dst)
