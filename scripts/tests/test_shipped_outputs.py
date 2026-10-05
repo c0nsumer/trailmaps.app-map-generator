@@ -32,6 +32,23 @@ EXAMPLE = os.path.join(REPO_ROOT, "configs", "example", "example.yaml")
 # own files and a logo an earlier build wrote.
 STRAYS = ("poster.pdf", "logo-9.webp")
 
+# The two multi-MB archives, shipped only when present in the output dir.
+ARCHIVES = ("basemap.pmtiles", "terrain.pmtiles")
+
+
+def _write_stub_archive(path):
+    """The smallest archive the font scan can open: one empty tile."""
+    from pmtiles.tile import Compression, TileType, zxy_to_tileid
+    from pmtiles.writer import write
+
+    header = {"tile_compression": Compression.NONE, "tile_type": TileType.MVT,
+              "min_zoom": 0, "max_zoom": 0, "min_lon_e7": 0, "min_lat_e7": 0,
+              "max_lon_e7": 10, "max_lat_e7": 10, "center_zoom": 0,
+              "center_lon_e7": 0, "center_lat_e7": 0}
+    with write(path) as w:
+        w.write_tile(zxy_to_tileid(0, 0, 0), b"")
+        w.finalize(header, {})
+
 
 def _seed_cache(dst):
     """Copy the example's cached claims plus the vendor cache into dst.
@@ -56,6 +73,7 @@ def _seed_cache(dst):
 
 
 def test_precache_covers_every_built_file(tmp_path):
+    pytest.importorskip("pmtiles.writer")
     cache_dir = str(tmp_path / "cache")
     out_dir = str(tmp_path / "out")
     if not _seed_cache(cache_dir):
@@ -63,6 +81,12 @@ def test_precache_covers_every_built_file(tmp_path):
     os.makedirs(out_dir)
     for name in STRAYS:
         (tmp_path / "out" / name).write_bytes(b"not an engine output")
+    # --no-basemap / --no-terrain serve the archives a previous build left,
+    # so planting them reaches the two ship() calls for the archives. The
+    # font scan opens basemap.pmtiles and aborts the build on a file that
+    # is not a PMTiles archive, so both are one-empty-tile archives.
+    for name in ARCHIVES:
+        _write_stub_archive(str(tmp_path / "out" / name))
 
     # A dead proxy turns any network attempt into a failure, so a pass
     # proves the build ran offline.
@@ -78,9 +102,9 @@ def test_precache_covers_every_built_file(tmp_path):
 
     with open(os.path.join(out_dir, "sw.js"), encoding="utf-8") as f:
         m = re.search(r"const SW_CONFIG = (\{.*?\n\});", f.read(), re.S)
+    sw_config = json.loads(m.group(1))
     # The list holds URLs (template_inject.url_path); compare as paths.
-    precache = {urllib.parse.unquote(u)
-                for u in json.loads(m.group(1))["PRECACHE_URLS"]}
+    precache = {urllib.parse.unquote(u) for u in sw_config["PRECACHE_URLS"]}
 
     built = set()
     for root, _dirs, files in os.walk(out_dir):
@@ -96,5 +120,7 @@ def test_precache_covers_every_built_file(tmp_path):
                      and not f.endswith("/0-255.pbf"))}
 
     assert precache - {"./"} == built
+    assert set(ARCHIVES) <= precache
+    assert sorted(sw_config["PMTILES_FILES"]) == sorted(ARCHIVES)
     for name in STRAYS:
         assert name not in precache
