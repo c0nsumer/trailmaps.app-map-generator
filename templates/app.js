@@ -3914,6 +3914,27 @@ async function init() {
     //     otherwise cancel. Defer the cancel to a microtask, which
     //     drains after easeTo finishes setup but before any rAF
     //     fires, so the animation dies before a frame draws.
+    // Any user move ends follow (the flag above), but the control drops
+    // ACTIVE_LOCK to BACKGROUND by itself only for a pan from
+    // ACTIVE_LOCK: its _onMoveStart skips a zoom gesture, and a move
+    // made while it waits for a fix or sits in an error state. Left
+    // there, the button reads "following" while every fix ease is
+    // cancelled, and the rider's tap to re-center turns Locate off. So
+    // the control is put in BACKGROUND whenever it holds the lock and
+    // follow is off: on the move itself, and on each fix for a lock it
+    // took after the move. _watchState and the two classes are what its
+    // own _onMoveStart sets; re-verify on vendor upgrades, as for
+    // _updateCamera.
+    function dropLocateLock() {
+        if (_followUserOnGeolocate || geolocate._watchState !== "ACTIVE_LOCK") return;
+        geolocate._watchState = "BACKGROUND";
+        _locateActivationZoomPending = false;
+        const btn = document.querySelector(".maplibregl-ctrl-geolocate");
+        if (!btn) return;
+        btn.classList.add("maplibregl-ctrl-geolocate-background");
+        btn.classList.remove("maplibregl-ctrl-geolocate-active");
+    }
+
     map.on("movestart", (e) => {
         if (!e.geolocateSource) {
             // A rotation or window resize is not a user move: the
@@ -3922,6 +3943,7 @@ async function init() {
             // the button active while every fix was cancelled.
             if (e[0] instanceof ResizeObserverEntry) return;
             _followUserOnGeolocate = false;
+            dropLocateLock();
             // Only a real touch cancels a pending resume. A code move in
             // the gap (a finder pick on desktop after a GPU reset) has no
             // originalEvent, so the restore still eases back to the rider;
@@ -3936,6 +3958,7 @@ async function init() {
     });
 
     geolocate.on("geolocate", (e) => {
+        dropLocateLock();
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
         userAccuracy = e.coords.accuracy;
