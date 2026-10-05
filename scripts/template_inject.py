@@ -137,7 +137,7 @@ def _engine_app_version():
 # Hoisted to module scope so validate_config.py's `--check-spec` drift
 # lint can import it. Simple entries flow through `inject_config_into
 # _template` automatically; the keys with custom logic (routes,
-# directionSchedules, customRoutes, defaultTrailColor,
+# directionSchedules, defaultTrailColor,
 # about, logoUrl) are handled in a separate block right after the
 # loop and intentionally do NOT appear in CONFIG_SPEC. The set
 # `validate_config.HANDLED_SPECIALLY` lists those YAML keys so the
@@ -568,15 +568,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
         str(rel_id): spec
         for rel_id, spec in effective_schedules.items()
     }
-    config_obj["customRoutes"] = [
-        {
-            "id": entry["id"],
-            "name": entry["name"],
-            "color": entry["color"],
-            "description": entry.get("description", ""),
-        }
-        for entry in (config.get("custom_routes") or [])
-    ]
 
     # Event-mode runtime hints. The runtime uses these to:
     #   - eventModeActive: gate the always-on event-mode UX changes

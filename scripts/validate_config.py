@@ -184,7 +184,7 @@ BUILD_ONLY_KEYS = {
 # emitting a derived field (or set of fields) into CONFIG. Listed here so
 # the drift lint accepts them as covered.
 HANDLED_SPECIALLY = {
-    "custom_routes",  # → CONFIG.customRoutes (subset of fields)
+    "custom_routes",  # → features in trails.geojson + CONFIG.routes entries
     "default_trail_color",  # → CONFIG.defaultTrailColor + dash + cap
     "about",  # → CONFIG.about (object passed through)
     "welcome",  # → CONFIG.welcome (object or false; passed through)
@@ -1057,9 +1057,9 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
         report.err(f"{where}.dashed", f"must be true or false, got {entry['dashed']!r}")
 
     # Optional strings
-    for sk in ("description", "trail_name_field"):
-        if sk in entry and not isinstance(entry[sk], str):
-            report.err(f"{where}.{sk}", f"expected str, got {type(entry[sk]).__name__}")
+    if "trail_name_field" in entry and not isinstance(entry["trail_name_field"], str):
+        report.err(f"{where}.trail_name_field",
+                   f"expected str, got {type(entry['trail_name_field']).__name__}")
 
     # Optional `oneway`: drives the existing direction-arrow renderer.
     # Accepts the OSM `oneway=` vocabulary MINUS 'reversible': a
@@ -1097,7 +1097,6 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
             "winter",
             "emergency",
             "dashed",
-            "description",
             "trail_name_field",
             "oneway",
         },

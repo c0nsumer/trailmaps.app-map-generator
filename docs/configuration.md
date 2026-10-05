@@ -388,7 +388,6 @@ custom_routes:
     emergency: false
     geometry: race-2025.geojson                       # path relative to configs/<slug>/
     # dashed: false                                   # optional
-    # description: "Start/finish at the lodge. 20 mi."  # optional
     # trail_name_field: name                          # optional: GeoJSON property to use as per-segment trail_name
     # oneway: "yes"                                   # optional: direction arrows ("yes" or "-1")
 ```

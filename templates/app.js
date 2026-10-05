@@ -4669,15 +4669,14 @@ function _searchTargets() {
     return targets;
 }
 
-// CONFIG.routes and CONFIG.customRoutes are objects keyed by route id.
+// CONFIG.routes is an object keyed by route id, custom routes included.
 // True when any route's info carries `<flag>: true` (e.g. "winter",
 // "emergency"). Shared by setupFloatingChrome (Season-row reveal,
 // Emergency toggle) and the welcome copy's season clause, so the copy
 // and the Options overlay can't disagree about which controls exist.
 function anyRouteHas(flag) {
-    const check = (coll) => coll && Object.values(coll).some(
+    return Object.values(CONFIG.routes || {}).some(
         (r) => r && typeof r === "object" && r[flag] === true);
-    return !!(check(CONFIG.routes) || check(CONFIG.customRoutes));
 }
 
 // Build the Options row description from what affordances are

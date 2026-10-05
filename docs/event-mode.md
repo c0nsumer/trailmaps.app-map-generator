@@ -99,7 +99,6 @@ event_mode:
       color: <css color>           # required
       geometry: <path>             # required; relative to this YAML
       # dashed: false              # optional; defaults to false
-      # description: ""            # optional
       # trail_name_field: ""       # optional; per-feature trail name property
       # summer: true               # optional bucket flags (default: summer-only)
       # winter: false
