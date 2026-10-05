@@ -171,11 +171,24 @@
      * trail mark. app.js keeps its own copy as TAP_GLOW_COLOR (map layers
      * cannot read a CSS variable); change both together. */
     --highlight-yellow: #ffec00;
-    /* Locate FAB tint while following the user, and the primary toast
-     * action. The same cyan as the stock locate control. */
-    --locate-active: #33b5e5;
-    /* The rider's dot on the map and the "you" mark on the trail chip. */
+    /* The rider's dot on the map, its heading cone and off-screen
+     * arrow, and the "you" mark on the trail chip. app.js keeps its own
+     * copy as HERE_GLOW_COLOR for the on-trail glow (map layers cannot
+     * read a CSS variable); change both together. */
     --user-dot: #3498db;
+    /* Everything else that says Locate is the dot's blue, so the button
+     * that starts tracking, the chip that reports it and the dot itself
+     * read as one thing. On chrome it must carry contrast the ringed dot
+     * does not need: the dot's own blue is 3.2:1 on the white FAB, so
+     * the light scheme deepens it (4.6:1, and 4.6:1 under white text);
+     * the dark scheme uses the dot's blue as it is (5.4:1 on the sheet).
+     * --locate-fill is the deep one in both schemes, for a filled
+     * button with white text (the toast is dark in either scheme). */
+    --locate-fill: #207ab6;
+    --locate-active: var(--locate-fill);
+    /* A lost fix while following. The stock control's salmon is 2.6:1
+     * on white, so the light scheme takes the stronger red. */
+    --locate-error: #e54e33;
     /* Off-state grays for Options rows: the swatch border, glyph and
      * slash, and the row label. Dark arms sit near --sheet-text-muted at
      * reduced opacity so an off row still reads as quieter than an on
@@ -282,6 +295,8 @@
  * schemes - see the :root accent block.
  */
 [data-color-scheme="dark"] {
+    --locate-active: var(--user-dot);
+    --locate-error: #e58978;
     --sheet-bg: rgba(28, 28, 30, 0.98);
     --sheet-text: #f0f0f0;
     /* 7.85:1 on the dark sheet (AAA). Was #a0a0a0 at 6.51:1 - below
@@ -2745,7 +2760,7 @@ body::after {
 /* Same specificity as the vendor rules and loaded after them, so no
  * !important is needed. */
 .maplibregl-user-location-accuracy-circle {
-    background-color: rgba(52, 152, 219, 0.15);
+    background-color: color-mix(in srgb, var(--user-dot) 15%, transparent);
 }
 
 .maplibregl-user-location-dot {
@@ -2860,7 +2875,7 @@ body::after {
     width: 28px;
     height: 28px;
     line-height: 0;
-    color: #3498db;
+    color: var(--user-dot);
 }
 
 .off-screen-indicator-arrow svg {
@@ -2962,8 +2977,8 @@ body::after {
 }
 
 /* Action button - pill, slightly inset from the toast's edge. The
- * primary variant uses the same sky-blue accent as the highlight
- * chip and Locate-active state for consistency. */
+ * primary variant is the Locate blue at the depth that carries white
+ * text (--locate-fill). */
 .map-toast-action {
     flex-shrink: 0;
     background: rgba(255, 255, 255, 0.12);
@@ -2984,15 +2999,15 @@ body::after {
 }
 
 .map-toast-action-primary {
-    background: var(--locate-active);
-    border-color: var(--locate-active);
+    background: var(--locate-fill);
+    border-color: var(--locate-fill);
     color: #fff;
 }
 
 .map-toast-action-primary:hover,
 .map-toast-action-primary:focus-visible {
-    background: #1ea5d8;
-    border-color: #1ea5d8;
+    background: color-mix(in srgb, var(--locate-fill) 85%, black);
+    border-color: color-mix(in srgb, var(--locate-fill) 85%, black);
 }
 
 /* Small ✕ to dismiss the persistent toast without taking the action. */
@@ -3593,9 +3608,9 @@ body.fabs-labeled .fab-label {
  * on the button cascades into the SVG (.locate-icon, fill=currentColor)
  * via inheritance.
  *
- * Tracking / error / disabled states use semantic colors that read
- * fine on both light and dark FAB backgrounds (cyan, salmon, red,
- * mid-gray). The idle "default, not yet tracking" color adapts to
+ * Tracking and lost-fix colors are tokens with an arm per scheme
+ * (--locate-active, --locate-error), each at 3:1 or better on its FAB.
+ * The idle "default, not yet tracking" color adapts to
  * the color scheme via --sheet-text - dark in light mode, light in
  * dark mode - otherwise the icon would disappear into a dark FAB
  * and read as disabled. */
@@ -3626,7 +3641,7 @@ body.fabs-labeled .fab-label {
 }
 
 #toggle-locate.locate-state-active-error {
-    color: #e58978;
+    color: var(--locate-error);
 }
 
 #toggle-locate.locate-state-background-error {
