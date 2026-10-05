@@ -1659,6 +1659,12 @@ def _validate_event_gpx(report, gpx):
             report.err(f"{where}.file", f"required: non-empty path string, got {p!r}")
             continue
         base = os.path.basename(p)
+        if base.lower().endswith((".gz", ".br")):
+            report.err(
+                f"{where}.file",
+                f"{base!r}: the build treats .gz and .br files as precompressed "
+                "copies and clears them; offer the plain .gpx",
+            )
         if base in seen_basenames:
             report.err(
                 f"{where}.file",
