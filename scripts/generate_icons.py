@@ -246,7 +246,7 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     """
     if bg_color is None:
         bg_color = _detect_bleed_color(source_img)
-    inner = size * safe_ratio
+    inner = int(size * safe_ratio)
     canvas = Image.new("RGBA", (size, size), bg_color)
 
     src = source_img.copy()
@@ -258,10 +258,9 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     reach = _content_radius(src, bg_color)
     if reach > 0:
         side = min(side, (inner / 2) / reach)
-    scale = side / max(src.width, src.height)
-    if scale < 1:
-        src = src.resize((max(1, round(src.width * scale)), max(1, round(src.height * scale))),
-                         Image.Resampling.LANCZOS)
+    # thumbnail only shrinks, and keeps the aspect ratio.
+    side = max(1, int(side))
+    src.thumbnail((side, side), Image.Resampling.LANCZOS)
 
     x = (size - src.width) // 2
     y = (size - src.height) // 2
