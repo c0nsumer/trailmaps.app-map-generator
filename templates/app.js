@@ -9110,7 +9110,10 @@ function updateTrailChip(lng, lat, accuracy) {
         let unknown = trailUnknownNow(nearest, accuracy);
         if (unknown) {
             _trailUnknownExitFixes = 0;
-        } else if (_trailUnknown && !_onTrail) {
+        } else if (coarse && _trailUnknown && !_onTrail) {
+            // Only a coarse fix is doubted. A good fix off every trail
+            // is an answer, and a device standing still may not send a
+            // second one.
             _trailUnknownExitFixes += 1;
             unknown = _trailUnknownExitFixes < TRAIL_CHIP_FIXES;
         }
@@ -9173,6 +9176,7 @@ function resetTrailChip() {
     _coarseSince = null;
     _coarseLostTrail = false;
     _trailUnknown = false;
+    _trailUnknownExitFixes = 0;
     clearTimeout(_trailUnknownTimer);
     renderTrailChip();
 }
@@ -9188,6 +9192,11 @@ function trailChipLostFix() {
     _offTrailFixes = 0;
     _trailUnknown = true;
     _trailUnknownExitFixes = 0;
+    // As when coarse fixes take a named trail off the chip: the coarse
+    // fixes that tend to follow an error hold this state from the
+    // first one, where waiting out the timer would hide the chip and
+    // then bring it back.
+    _coarseLostTrail = true;
     renderTrailChip();
 }
 
