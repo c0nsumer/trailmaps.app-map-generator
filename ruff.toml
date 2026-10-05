@@ -7,8 +7,7 @@
 
 # Match the project floor (pyproject.toml requires-python = ">=3.11",
 # enforced at runtime by map_generator/__main__.py) so pyupgrade (UP)
-# can apply 3.10/3.11 modernizations. Was py39 with a stale comment
-# claiming a 3.9 floor that predated the Linux Stage-1 work.
+# can apply 3.10/3.11 modernizations.
 target-version = "py311"
 line-length = 100
 

@@ -25,8 +25,7 @@ the generated features into the same `roads` source-layer, so the
 style, the service worker and the file name do not change. Major
 roads (tertiary and up) are deliberately left alone: at low zoom a
 lane is two pixels wide and cannot stand in for a highway, so hiding
-the road under it would cut the road network (paths 2026-09-20,
-service roads 2026-09-27, minor streets 2026-09-29).
+the road under it would cut the road network.
 
 Design record: .claude/plans/plugin-default-and-custom-basemaps.md,
 "3a results", "Service roads" and "Minor streets".

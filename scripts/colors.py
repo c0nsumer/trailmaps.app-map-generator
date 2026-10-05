@@ -19,7 +19,7 @@ def _relative_luminance(rgb):
     """WCAG relative luminance for an (r, g, b) triple in 0-255.
 
     Used by the accent-color contrast warning + the auto-darken loop
-    in derive_accent. Formula from WCAG 2.x; sRGB linearization +
+    in _darken_for_contrast. Formula from WCAG 2.x; sRGB linearization +
     Rec. 709 luma weights.
     """
 
@@ -340,8 +340,8 @@ def _derive_accent_cached(config, project_root, cache_dir):
         if not explicit:
             return None
         console.warn(
-            f"accent_color: 'auto' could not pick a colour from "
-            f"{os.path.basename(source)} (logo may be greyscale or fully "
+            f"accent_color: 'auto' could not pick a color from "
+            f"{os.path.basename(source)} (logo may be grayscale or fully "
             "neutral). Falling back to framework default."
         )
         return None

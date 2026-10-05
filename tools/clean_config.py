@@ -20,7 +20,7 @@ The output file is `<input-stem>-cleaned.yaml` in the same directory.
 The original file is never modified - review the cleaned output and
 swap it in manually when satisfied.
 
-Behaviour:
+Behavior:
 - Set keys are SPLICED, not re-serialized: the production file's own
   lines for each key it sets are copied verbatim into the template's
   position for that key. Inline comments, list-item annotations, and
@@ -332,8 +332,9 @@ def _assert_same_data(production_path, output_path):
         os.remove(output_path)
         sys.exit(
             f"ERROR: cleaned output is not valid YAML ({e}) - "
-            "aborted, no file written. (Anchors/aliases reordered "
-            "across blocks are a known cause.)"
+            "aborted, no file written. (Known causes: anchors/aliases "
+            "reordered across blocks, and a flow value that spans lines, "
+            "such as a bbox list continued on the next line.)"
         )
     if original != cleaned:
         os.remove(output_path)

@@ -15,10 +15,10 @@ network unless ``--fetch`` is given. Maps that read a
 local ``osm_file:`` are handled by parsing that file, no cache needed.
 
 Usage:
-    python tools/list_relations.py poto
-    python tools/list_relations.py configs/poto/poto.yaml
-    python tools/list_relations.py poto --ways      # member ways instead
-    python tools/list_relations.py poto --fetch      # allow live Overpass on miss
+    python tools/list_relations.py example
+    python tools/list_relations.py configs/example/example.yaml
+    python tools/list_relations.py example --ways      # member ways instead
+    python tools/list_relations.py example --fetch      # allow live Overpass on miss
 """
 
 import argparse
@@ -62,8 +62,8 @@ def _cache_only_query(query_str, cache_dir=None, label="", require_elements=Fals
 def _resolve_config_path(slug_or_path):
     """Accept either a config YAML path or a bare slug."""
     if slug_or_path.endswith((".yaml", ".yml")) or os.path.sep in slug_or_path:
-        if not os.path.exists(slug_or_path):
-            sys.exit(f"ERROR: config not found: {slug_or_path}")
+        if not os.path.isfile(slug_or_path):
+            sys.exit(f"ERROR: config not found (or not a file): {slug_or_path}")
         return slug_or_path
     candidate = os.path.join(_PROJECT_ROOT, "configs", slug_or_path, f"{slug_or_path}.yaml")
     if not os.path.exists(candidate):
@@ -109,7 +109,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="List the OSM relations (or member ways) a map is built from, from cache."
     )
-    parser.add_argument("slug", help="Map slug (e.g. poto) or a config YAML path")
+    parser.add_argument("slug", help="Map slug (e.g. example) or a config YAML path")
     parser.add_argument(
         "--ways",
         action="store_true",
