@@ -124,3 +124,15 @@ def test_no_basemap_trims_quietly_from_trails_and_pois(tmp_path, capsys):
     copy_trimmed_fonts(str(out), str(fonts_src))
     assert "warn" not in capsys.readouterr().out
     assert sorted(os.listdir(out / "fonts" / "Noto Sans Regular")) == ["0-255.pbf"]
+
+
+def test_a_damaged_basemap_does_not_crash_the_font_scan(tmp_path, capsys):
+    # A fetch cut short leaves bytes that are not an archive. The scan is
+    # best-effort: it warns and returns what it has.
+    from font_trimmer import collect_text_from_pmtiles
+
+    for content in (b"", b"not a pmtiles archive at all, just bytes" * 8):
+        bad = tmp_path / "basemap.pmtiles"
+        bad.write_bytes(content)
+        assert collect_text_from_pmtiles(str(bad)) == set()
+    assert "Could not read basemap" in capsys.readouterr().out

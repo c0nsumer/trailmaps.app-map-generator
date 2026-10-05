@@ -154,11 +154,13 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
                 console.detail(f"Scanned {count} basemap tiles{below}")
             finally:
                 mm.close()
-    except (FileNotFoundError, OSError, ValueError) as e:
-        # ValueError: mmap refuses zero-byte files ("cannot mmap an empty
-        # file") - a truncated/failed basemap fetch shouldn't crash the
-        # font scan; fall through with whatever chars we have (none).
-        console.warn(f"Could not read basemap for font scan: {e}")
+    except Exception as e:
+        # The scan is best-effort, and a basemap cut short by a failed
+        # fetch must not crash it: mmap refuses a zero-byte file with
+        # ValueError, and the reader rejects other damage with errors
+        # of its own (a bad magic number, a short directory). Fall
+        # through with whatever chars we have.
+        console.warn(f"Could not read basemap for font scan: {type(e).__name__}: {e}")
     return chars
 
 
