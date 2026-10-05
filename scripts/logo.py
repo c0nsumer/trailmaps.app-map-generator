@@ -205,6 +205,14 @@ def process_logo(source_path, output_path):
             render_h = LOGO_DESKTOP_H
             render_w = LOGO_DESKTOP_H * aspect
 
+        # Preserve alpha when present; otherwise convert to RGB so WEBP
+        # encoding doesn't choke on palette-based modes. Before the
+        # resize: Pillow resamples an indexed ("P") or bilevel image
+        # with nearest-neighbor whatever filter is asked for, which
+        # ships a jagged logo.
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA" if "A" in img.mode or img.mode == "P" else "RGB")
+
         # Resample to 2× the render's longer side for retina sharpness;
         # never upscale.
         target_long = 2 * max(render_w, render_h)
@@ -216,11 +224,6 @@ def process_logo(source_path, output_path):
                 max(1, int(round(src_h * scale))),
             )
             img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-        # Preserve alpha when present; otherwise convert to RGB so WEBP
-        # encoding doesn't choke on palette-based modes.
-        if img.mode not in ("RGB", "RGBA"):
-            img = img.convert("RGBA" if "A" in img.mode or img.mode == "P" else "RGB")
 
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size
