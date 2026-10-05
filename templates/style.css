@@ -60,8 +60,7 @@
     --overlay-scrim: rgba(0, 0, 0, var(--scrim-opacity));
     --sheet-bg: rgba(255, 255, 255, 0.98);
     --sheet-text: #222;
-    /* 8.86:1 on the sheet (AAA). Was #666 at 5.74:1, which passes AA
-     * but not AAA - and this token carries the SMALLEST text in the
+    /* 8.86:1 on the sheet (AAA). This token carries the SMALLEST text in the
      * UI (help lines, route stats, key names, finder meta), where
      * contrast matters most and where glare eats it first. */
     --sheet-text-muted: #4a4a4a;
@@ -174,7 +173,8 @@
     /* The rider's dot on the map, its heading cone and off-screen
      * arrow, and the "you" mark on the trail chip. app.js keeps its own
      * copy as HERE_GLOW_COLOR for the on-trail glow (map layers cannot
-     * read a CSS variable); change both together. */
+     * read a CSS variable), and the heading cone's data-URL SVG below
+     * carries a third, as %233498db; change all three together. */
     --user-dot: #3498db;
     /* Everything else that says Locate is the dot's blue, so the button
      * that starts tracking, the chip that reports it and the dot itself
@@ -299,8 +299,7 @@
     --locate-error: #e58978;
     --sheet-bg: rgba(28, 28, 30, 0.98);
     --sheet-text: #f0f0f0;
-    /* 7.85:1 on the dark sheet (AAA). Was #a0a0a0 at 6.51:1 - below
-     * AAA, same as the light scheme's old value, so both moved. */
+    /* 7.85:1 on the dark sheet (AAA). */
     --sheet-text-muted: #b0b0b0;
     --sheet-border: #3c3c3e;
     --sheet-shadow: rgba(0, 0, 0, 0.6);
@@ -321,9 +320,6 @@
     --page-bg: #1c1c1e;
     /* Popup raised-surface override - Material elevation pattern. */
     --popup-bg: #2c2c2e;
-    /* Light hairline against the dark sheet so chips have a visible
-     * edge in dark mode (the dark-line variant from the light scheme
-     * disappears against the dark sheet). */
     /* Dark elevation. Deeper alphas so a shadow still reads against a
      * dark sheet; tuned to the same ballpark as --sheet-shadow's 0.60. */
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.55);
@@ -3436,11 +3432,10 @@ body:has(.qr-overlay.is-open) .route-panel {
 
 /* Gate hover behind (any-hover: hover) so it only applies to real
  * pointers (mouse / trackpad). On touch, :hover sticks to the
- * last-tapped element until the next tap elsewhere - which left a
- * momentary-action FAB (no pressed/active state to mask it, the since
- * removed Reset View) stuck gray after a tap. The stateful FABs (Locate, Search,
- * Options) hid the same latent bug behind their post-tap state/accent
- * fill. any-hover rather than hover: Chrome on Linux can report the
+ * last-tapped element until the next tap elsewhere, which would leave
+ * a momentary-action FAB (no pressed/active state to mask it) stuck
+ * gray after a tap. The stateful FABs (Locate, Search, Options) hide
+ * it behind their post-tap state/accent fill. any-hover rather than hover: Chrome on Linux can report the
  * primary pointer as non-hovering when a touch device is attached,
  * which disabled this wash under a real mouse. Matches the guard on
  * .opt-toggle-row-clickable. */
@@ -4213,7 +4208,7 @@ body.modal-open .qr-overlay.is-open {
  * than 12 + 10. */
 .maplibregl-ctrl-bottom-left {
     bottom: calc(12px + var(--safe-bottom));
-    left: calc(12px + env(safe-area-inset-left, 0));
+    left: calc(12px + env(safe-area-inset-left, 0px));
 }
 
 .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
@@ -4241,10 +4236,10 @@ body.modal-open .qr-overlay.is-open {
  * forms stay in the DOM - state changes are class flips, not rebuilds.
  * z-index matches the FAB stack (5, below open overlays), and the
  * panel joins the FABs' hide-under-overlay rule above; for the search
- * overlay that fade doubles as the v1 expand transition. */
+ * overlay that fade doubles as the expand transition. */
 .route-panel {
     position: fixed;
-    right: calc(12px + env(safe-area-inset-right, 0));
+    right: calc(12px + env(safe-area-inset-right, 0px));
     bottom: calc(12px + var(--safe-bottom));
     z-index: 5;
 }

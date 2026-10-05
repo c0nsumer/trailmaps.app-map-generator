@@ -103,8 +103,9 @@
         window.maplibregl = maplibre;
     </script>
     <!-- QR encoder for the Share sheet. Its own module so a missing
-         file hides the QR row (app.js checks window.uqr) instead of
-         keeping the map from starting. -->
+         file only loses the QR code (app.js checks window.uqr; the
+         Share row then shares the link directly) instead of keeping
+         the map from starting. -->
     <script type="module">
         import { renderSVG } from "./vendor/uqr.mjs";
         window.uqr = { renderSVG };
@@ -515,8 +516,8 @@
     <!-- GPX end -->
 
     <!-- Share sheet: the share link as a QR code plus a share/copy
-         button, drawn by app.js when the Options Share row opens it. Same backdrop/panel pattern as the GPX
-         sheet. -->
+         button, drawn by app.js when the Options Share row opens it.
+         Same backdrop/panel pattern as the GPX sheet. -->
     <div id="qr-overlay" class="qr-overlay" role="dialog" aria-modal="true" aria-labelledby="qr-overlay-title" hidden>
         <div class="qr-overlay-panel" tabindex="-1">
             <div class="qr-overlay-header">
@@ -557,11 +558,10 @@
                 </button>
             </div>
             <div class="options-overlay-body">
-            <!-- What to show - collapsible accordion (default open).
-                 Holds every layer-visibility toggle, the Labels segmented
-                 control, Season cycle, Emergency Access toggle, Toilets and
-                 Drinking Water - one unified group of "what's painted on
-                 the map." -->
+            <!-- What to show. Holds every layer-visibility toggle, the
+                 Labels segmented control, Season cycle, Emergency Access
+                 toggle, Toilets and Drinking Water - one unified group of
+                 "what's painted on the map." -->
             <section class="opt-section">
                 <h3 class="opt-section-header">
                     <span class="opt-section-title">What to show</span>
@@ -830,9 +830,9 @@
                 </div>
             </section>
 
-            <!-- Share / Install / Offline status / About - full-row
+            <!-- Share / Install / Offline status / Help / About - full-row
                  entries sharing one anatomy (icon badge + title + help
-                 line). Three are buttons; the offline row is the
+                 line). Four are buttons; the offline row is the
                  non-interactive .is-static variant.
                  No section header: the .opt-section border-top hairline
                  is the only break from the toggle rows above. -->
