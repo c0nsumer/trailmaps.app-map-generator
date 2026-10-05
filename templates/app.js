@@ -3046,11 +3046,10 @@ function validateConfigShape() {
 let _pendingShareHighlight = null;
 
 // The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
-// what a clean URL opens on, and what Reset View always returns to,
-// however the rider arrived. A control that behaved differently after a
-// share link would surprise on a permanent affordance, and the
-// fit-to-page icon promises the whole trail system. A rider who wants
-// the share-link view back has the browser's Back button.
+// what a clean URL opens on. There is no control that returns to it:
+// rotation and pitch are off and panning is bounded (maxBounds), so a
+// pinch out reaches the same view, and the Reset View button that did
+// it in one tap was removed as a control riders did not need.
 const HOME_VIEW_PADDING = 50;
 
 // Apply a highlight that was parsed from an incoming share link.
@@ -4529,10 +4528,6 @@ function isWelcomeOpen() {
 // mdi:crosshairs-gps (Apache 2.0, Pictogrammers), matches the
 // Locate FAB glyph (templates/index.html).
 const _WELCOME_ICON_LOCATE     = "M12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8M3.05,13H1V11H3.05C3.5,6.83 6.83,3.5 11,3.05V1H13V3.05C17.17,3.5 20.5,6.83 20.95,11H23V13H20.95C20.5,17.17 17.17,20.5 13,20.95V23H11V20.95C6.83,20.5 3.5,17.17 3.05,13M12,5A7,7 0 0,0 5,12A7,7 0 0,0 12,19A7,7 0 0,0 19,12A7,7 0 0,0 12,5Z";
-// mdi:image-filter-center-focus (Apache 2.0, Pictogrammers),
-// matches the Reset View FAB glyph (templates/index.html). Four
-// corner brackets + center dot read as "frame this content".
-const _WELCOME_ICON_RESET_VIEW = "M5,15H3V19A2,2 0 0,0 5,21H9V19H5M5,5H9V3H5A2,2 0 0,0 3,5V9H5M19,3H15V5H19V9H21V5A2,2 0 0,0 19,3M19,19H15V21H19A2,2 0 0,0 21,19V15H19M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9Z";
 // mdi:cog (Apache 2.0, Pictogrammers), matches the Options FAB
 // glyph (templates/index.html). Not mdi:tune, which reads as an audio
 // equalizer rather than settings.
@@ -4569,7 +4564,7 @@ function _welcomeIconSvg(pathD) {
 
 // Build the controls-hint section: one row per corner-anchored
 // control, each with its icon + name + a one-line description. Helps
-// a first-visit rider learn the chrome (Locate + Reset View + Options
+// a first-visit rider learn the chrome (Locate + Options
 // FABs top-right, the routes panel with its search entry
 // bottom-right) without leaving the welcome modal.
 // Join a list of phrases with comma + Oxford "and", "x", "x and y",
@@ -4729,7 +4724,7 @@ function buildWelcomeControlsHint() {
     list.className = "welcome-modal-controls-list";
 
     // Order matches the on-screen chrome reading top-to-bottom on
-    // the right edge: the FAB stack (Locate → Reset View → Options)
+    // the right edge: the FAB stack (Locate → Options)
     // followed by the routes panel (Routes key + its Search row) at
     // bottom-right. Same sequence the rider sees on the map keeps
     // the mental mapping cheap.
@@ -4749,8 +4744,6 @@ function buildWelcomeControlsHint() {
                 + ("wakeLock" in navigator
                     ? " Keeps the screen awake while tracking."
                     : "") },
-        { icon: _WELCOME_ICON_RESET_VIEW, name: "Reset view",
-            desc: "Reset the map to its starting view." },
         { icon: _WELCOME_ICON_OPTIONS,    name: "Options",
             desc: _welcomeOptionsDescription() },
         _welcomeKeyRow(),
@@ -10192,7 +10185,7 @@ function addFeatureMarkers(addToMap) {
 // ============================================================
 //
 // Mounts a small pill label to the left of each FAB ("Locate",
-// "Reset view", "Options", "Search") on first visit, dismisses on
+// "Options", "Search") on first visit, dismisses on
 // any FAB tap OR a 15 s auto-timeout (counted from when the opening
 // view has painted), then sets an LS flag so returning riders never
 // see the labels again.
@@ -10210,11 +10203,10 @@ function setupFabLabels() {
     const FLAG_KEY = "mtb.fabsLabeled";
     if (LS.get(FLAG_KEY)) return;
 
-    // Mirror the FAB-stack composition (top-right: Locate, Reset,
-    // Options, GPX).
+    // Mirror the FAB-stack composition (top-right: Locate, Options,
+    // GPX).
     const FABS = [
         { id: "toggle-locate",     label: "Locate" },
-        { id: "toggle-reset-view", label: "Reset view" },
         { id: "toggle-options",    label: "Options" },
         // Event maps only, the GPX FAB is stripped from index.html at
         // build time otherwise, and the missing-button guard below
@@ -10401,31 +10393,6 @@ function setupFloatingChrome() {
     if (CONFIG.invertLogoDark === true) {
         const brandImg = document.getElementById("brand-img");
         if (brandImg) brandImg.classList.add("invert-dark");
-    }
-
-    // ----- Reset View FAB (top-right stack, between Locate + Options)
-    //
-    // Always restores the canonical view (see HOME_VIEW_PADDING).
-    // Highlight state is intentionally NOT touched, the rider clears
-    // highlights via the chip's X. Animated over 300 ms: it reads as
-    // "reset" without losing context; longer would feel sluggish for
-    // what's effectively an undo.
-    const resetBtn = document.getElementById("toggle-reset-view");
-    if (resetBtn && map) {
-        resetBtn.addEventListener("click", () => {
-            map.fitBounds(
-                [
-                    [CONFIG.bbox[0], CONFIG.bbox[1]],
-                    [CONFIG.bbox[2], CONFIG.bbox[3]],
-                ],
-                {
-                    padding: HOME_VIEW_PADDING,
-                    bearing: 0,
-                    pitch: 0,
-                    duration: 300,
-                },
-            );
-        });
     }
 
     // ----- Search overlay (half-sheet) + Options overlay (full-screen)
@@ -13748,11 +13715,11 @@ function updateLocationIndicator() {
     // edge accounts for safe-area-inset-bottom (notch / home bar).
     // The routes panel at bottom-right is corner-localized so the
     // standard 48px edgeMargin keeps the indicator clear. The
-    // TOP-RIGHT FAB stack (Locate + Reset View + Options, plus GPX
+    // TOP-RIGHT FAB stack (Locate + Options, plus GPX
     // on event maps) is taller than the edge margin, so its reserve
     // is measured from the live element (+12px buffer) instead of
     // hardcoded: the stack's height varies by build flags, and a
-    // constant here already went stale once when Reset View was
+    // constant here already went stale once when a FAB was
     // added (the indicator arrow clamped under the Options FAB,
     // which draws above it at z-index 5). The brand at top-left and
     // the highlight chip at top-center are handled by the standard

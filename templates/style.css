@@ -3303,8 +3303,8 @@ body::after {
 }
 
 /* ----- Floating button stack (top-right) -------------------------- */
-/* One corner-anchored vertical stack: Locate (corner) + Reset View
- * + Options, plus GPX on event maps. (Bottom-right belongs to the
+/* One corner-anchored vertical stack: Locate (corner) + Options,
+ * plus GPX on event maps. (Bottom-right belongs to the
  * routes panel - see .route-panel.) Same 12 px corner inset as the
  * brand element on the left.
  *
@@ -3382,9 +3382,9 @@ body:has(.qr-overlay.is-open) .route-panel {
 
 /* Gate hover behind (any-hover: hover) so it only applies to real
  * pointers (mouse / trackpad). On touch, :hover sticks to the
- * last-tapped element until the next tap elsewhere - which left the
- * Reset View FAB (a momentary action with no pressed/active state to
- * mask it) stuck gray after a tap. The stateful FABs (Locate, Search,
+ * last-tapped element until the next tap elsewhere - which left a
+ * momentary-action FAB (no pressed/active state to mask it, the since
+ * removed Reset View) stuck gray after a tap. The stateful FABs (Locate, Search,
  * Options) hid the same latent bug behind their post-tap state/accent
  * fill. any-hover rather than hover: Chrome on Linux can report the
  * primary pointer as non-hovering when a touch device is attached,
