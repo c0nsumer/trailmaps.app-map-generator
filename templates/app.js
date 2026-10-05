@@ -3994,8 +3994,14 @@ async function init() {
         } else if (code === 3) {
             // TIMEOUT
             showToast("Couldn't get your location in time. Check that location services are on for this browser, then tap Locate again.");
-        } else {
-            // POSITION_UNAVAILABLE or unknown
+        } else if (!userLocation) {
+            // POSITION_UNAVAILABLE or unknown, before any fix: the
+            // advice applies. Once tracking has a position the same
+            // error is a dropout (a dead spot, a sensor hiccup) that
+            // the watch recovers from by itself, and "try again, check
+            // your settings" would be wrong advice mid-ride; the
+            // button's error state carries it. userLocation is cleared
+            // when Locate truly turns off (mirrorLocateState).
             showToast("Couldn't determine your location. Try again, or check your device's location settings.");
         }
     });
