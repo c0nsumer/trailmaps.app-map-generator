@@ -10794,18 +10794,39 @@ function setupFloatingChrome() {
         }
     }
 
+    // Single-overlay invariant: opening a sheet closes whichever other
+    // sheet is up. Returns the replaced sheet's focus-return target
+    // (where it came from, else its opener), for the new sheet to
+    // inherit: the element focused now sits inside a sheet about to be
+    // hidden, and focus() on a hidden element drops focus on <body>.
+    // The Share sheet opens from a row inside Options, so its fallback
+    // is the Options FAB.
+    function closeOtherOverlays(keep) {
+        let returnTo = null;
+        for (const [overlay, btn, fallback] of [
+            [searchOverlay, searchBtn, searchBtn],
+            [optionsOverlay, optionsBtn, optionsBtn],
+            [gpxOverlay, gpxBtn, gpxBtn],
+            [qrOverlay, null, optionsBtn],
+        ]) {
+            if (!overlay || overlay === keep || !overlay.classList.contains("is-open")) continue;
+            setOverlayOpen(overlay, btn, false);
+            returnTo = overlay._returnFocus || fallback;
+            overlay._returnFocus = null;
+        }
+        return returnTo;
+    }
+    function inheritReturnFocus(overlay, returnTo) {
+        if (overlay && returnTo) overlay._returnFocus = returnTo;
+    }
+
     function openSearchOverlay() {
-        // Single-overlay invariant: close Options / GPX if open.
-        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
-            setOverlayOpen(optionsOverlay, optionsBtn, false);
-        }
-        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
-            setOverlayOpen(gpxOverlay, gpxBtn, false);
-        }
+        const returnTo = closeOtherOverlays(searchOverlay);
         setOverlayOpen(searchOverlay, searchBtn, true);
         // Remember the opener and trap Tab; initial focus stays with
         // the input logic below.
         dialogFocusIn(searchOverlay);
+        inheritReturnFocus(searchOverlay, returnTo);
         // Auto-focus the input ONLY on devices whose primary input is
         // a real pointer (desktop / laptop with mouse or trackpad).
         // On touch-primary devices (phones, tablets, PWAs running
@@ -10841,14 +10862,10 @@ function setupFloatingChrome() {
     }
 
     function openOptionsOverlay() {
-        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
-            setOverlayOpen(searchOverlay, searchBtn, false);
-        }
-        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
-            setOverlayOpen(gpxOverlay, gpxBtn, false);
-        }
+        const returnTo = closeOtherOverlays(optionsOverlay);
         setOverlayOpen(optionsOverlay, optionsBtn, true);
         dialogFocusIn(optionsOverlay, ".options-overlay-panel");
+        inheritReturnFocus(optionsOverlay, returnTo);
     }
     function closeOptionsOverlay() {
         setOverlayOpen(optionsOverlay, optionsBtn, false);
@@ -11018,15 +11035,11 @@ function setupFloatingChrome() {
     }
     function openQrOverlay() {
         if (!qrOverlay) return;
-        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
-            setOverlayOpen(optionsOverlay, optionsBtn, false);
-        }
-        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
-            setOverlayOpen(searchOverlay, searchBtn, false);
-        }
+        const returnTo = closeOtherOverlays(qrOverlay);
         renderQrSheet();
         setOverlayOpen(qrOverlay, null, true);
         dialogFocusIn(qrOverlay, ".qr-overlay-panel");
+        inheritReturnFocus(qrOverlay, returnTo);
     }
     if (qrOverlay) {
         const qrClose = document.getElementById("qr-close");
@@ -11036,15 +11049,10 @@ function setupFloatingChrome() {
         });
     }
     function openGpxOverlay() {
-        // Single-overlay invariant, same as Search / Options.
-        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
-            setOverlayOpen(searchOverlay, searchBtn, false);
-        }
-        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
-            setOverlayOpen(optionsOverlay, optionsBtn, false);
-        }
+        const returnTo = closeOtherOverlays(gpxOverlay);
         setOverlayOpen(gpxOverlay, gpxBtn, true);
         dialogFocusIn(gpxOverlay, ".gpx-overlay-panel");
+        inheritReturnFocus(gpxOverlay, returnTo);
     }
     const gpxList = document.getElementById("gpx-list");
     if (gpxOverlay && gpxBtn && gpxList) {
