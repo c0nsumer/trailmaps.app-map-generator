@@ -13884,11 +13884,14 @@ function attachOffScreenIndicatorHandler() {
     el.addEventListener("click", () => {
         if (!userLocation) return;
 
-        // Dismiss any toast currently visible (e.g. the beyond-edge
-        // explainer from a previous tap). Leaving it up while the
-        // user acts reads as "still buggy"; the 4-s auto-fade would
-        // otherwise outlive the click that addressed it.
-        dismissToast();
+        // Dismiss a passing toast (e.g. the beyond-edge explainer
+        // from a previous tap). Leaving it up while the user acts
+        // reads as "still buggy"; its 4 s timeout would otherwise
+        // outlive the click that addressed it. A persistent one stays:
+        // the update prompt is shown once per load, so dismissing it
+        // here would lose it for the session without a Later or a
+        // Reload.
+        if (!_toastPersistent) dismissToast();
 
         // Pan to the cached fix. If userLocation sits at or beyond the
         // edge of panBbox, MapLibre clamps the map center to keep the
@@ -14218,13 +14221,10 @@ function showToast(message, opts) {
     const persistent = !!opts.persistent;
     const actions = Array.isArray(opts.actions) ? opts.actions : [];
 
-    let el = document.getElementById("map-toast");
-    if (!el) {
-        el = document.createElement("div");
-        el.id = "map-toast";
-        el.className = "map-toast";
-        document.body.appendChild(el);
-    }
+    // Ships in index.html, not created here: a live region announces
+    // changes to its content, so it has to exist before the first one.
+    const el = document.getElementById("map-toast");
+    if (!el) return;
     // Displacement bookkeeping, see _displacedPersistentToast above.
     if (persistent) {
         _displacedPersistentToast = null;

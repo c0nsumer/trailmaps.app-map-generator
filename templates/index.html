@@ -339,6 +339,11 @@
         </div>
     </div>
 
+    <!-- Toasts (showToast in app.js). In the markup, not created on
+         first use: a live region announces changes to its content, so
+         it has to exist before the first message. -->
+    <div id="map-toast" class="map-toast hidden" role="status" aria-live="polite"></div>
+
     <!-- Floating button stack, top-right, 12 px corner inset like the
          brand on the left. Locate stays on top because riders check it
          most. Bottom-right belongs to the routes panel (#route-panel
