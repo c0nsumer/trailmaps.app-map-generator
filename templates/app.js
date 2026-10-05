@@ -3279,27 +3279,45 @@ function setupShareButton(openShareSheet) {
     }
 }
 
+// Whether a stored or shared camera can open the map. An out-of-range
+// latitude makes MapLibre's LngLat throw inside the Map constructor,
+// which fails the whole boot, so such a view counts as unparseable and
+// the map opens on its default view instead.
+function isViewInRange(lon, lat, zoom) {
+    return Number.isFinite(lon) && lon >= -180 && lon <= 180
+        && Number.isFinite(lat) && lat >= -90 && lat <= 90
+        && Number.isFinite(zoom) && zoom >= 0 && zoom <= 24;
+}
+
 // Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/d/<rating>|/p/<poiRef>]"
 // hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
 // null if no share hash is present / parseable. Side effect: strips
-// the hash from the URL via history.replaceState so that
+// any share hash, parseable or not, from the URL via
+// history.replaceState so that
 //   (a) the share-link doesn't persist in the address bar,
-//   (b) a refresh doesn't re-trigger the share path with stale data.
+//   (b) a refresh doesn't re-trigger the share path with stale data,
+//   (c) a link that failed to parse is not stuck there either.
 //
 // Format chosen for: human-readable, URL-encoded for safety,
 // distinguishable from MapLibre's "#zoom/lat/lon" hash format.
 function consumeShareHash() {
     const raw = (window.location.hash || "").replace(/^#/, "");
     if (!raw.startsWith("share=")) return null;
+    // Strip it: the share view is one-shot, not ambient state.
+    try {
+        const url = new URL(window.location.href);
+        url.hash = "";
+        window.history.replaceState(null, "", url.toString());
+    } catch (e) {
+        // Best-effort; some embedded contexts disallow history mutation.
+    }
     const body = raw.slice("share=".length);
     const parts = body.split("/");
     if (parts.length < 3) return null;
     const zoom = parseFloat(parts[0]);
     const lat = parseFloat(parts[1]);
     const lon = parseFloat(parts[2]);
-    if (!Number.isFinite(zoom) || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return null;
-    }
+    if (!isViewInRange(lon, lat, zoom)) return null;
     let highlight = null;
     if (parts.length >= 5) {
         const kindCode = parts[3];
@@ -3327,14 +3345,6 @@ function consumeShareHash() {
             }
             else if (kindCode === "p") highlight = { kind: "poi", key };
         }
-    }
-    // Strip it: the share view is one-shot, not ambient state.
-    try {
-        const url = new URL(window.location.href);
-        url.hash = "";
-        window.history.replaceState(null, "", url.toString());
-    } catch (e) {
-        // Best-effort; some embedded contexts disallow history mutation.
     }
     return {
         center: [lon, lat],
@@ -3422,8 +3432,7 @@ function consumeResumeView() {
         return null;
     }
     if (!Array.isArray(s.center) || s.center.length !== 2
-        || !s.center.every((n) => Number.isFinite(n))
-        || !Number.isFinite(s.zoom)) {
+        || !isViewInRange(s.center[0], s.center[1], s.zoom)) {
         return null;
     }
     const h = s.highlight;
@@ -8563,6 +8572,8 @@ function _forcePoiType(type) {
     // toggle were on. Force-mounting EVERY marker including
     // proximity-OUT ones would leave "ghost" markers without rings,
     // visually inconsistent with what the rider saw in search.
+    // Already-mounted markers are skipped: addTo would remove and
+    // re-mount them, closing an open popup (see updateMarkerProximity).
     if (_PROXIMITY_TYPES.has(type)) {
         const threshold = _proximityThresholdForType(type);
         for (const m of arr) {
