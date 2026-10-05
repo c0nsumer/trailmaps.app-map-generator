@@ -78,12 +78,7 @@ def _load_from_osm_file(config, relation_ids, clipped_ids):
     """Local-.osm path: parse the file and extract relations, mirroring
     fetch_trails' local branch. Returns (members, clipped)."""
     parsed = osm_parser.parse_osm_file(config["osm_file"])
-    members, _ = osm_parser.extract_source_relations(parsed, relation_ids)
-    clipped = {}
-    if clipped_ids:
-        clipped, _ = osm_parser.extract_source_relations(parsed, clipped_ids)
-        # A relation in both lists is a source relation, not clipped.
-        clipped = {rid: info for rid, info in clipped.items() if rid not in members}
+    members, clipped, _ = osm_parser.extract_relations(parsed, relation_ids, clipped_ids)
     return members, clipped, parsed
 
 

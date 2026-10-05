@@ -86,6 +86,7 @@ while [ $# -gt 0 ]; do
         --deploy-only)   BUILD=false ;;
         --validate-only) VALIDATE_ONLY=true; BUILD=false; DEPLOY=false ;;
         --refresh)       REFRESH="--refresh" ;;
+        --force)         echo "ERROR: --force is gone; use --refresh." >&2; exit 1 ;;
         --dry-run)       DRY_RUN=true ;;
         --dest)          shift; DEPLOY_DEST="${1:?--dest needs a value}" ;;
         --dest=*)        DEPLOY_DEST="${arg#--dest=}" ;;
