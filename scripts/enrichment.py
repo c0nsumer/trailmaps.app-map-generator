@@ -170,6 +170,11 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         ("relation_colors", config.get("relation_colors") or {}, False),
         ("dashed_relations", config.get("dashed_relations") or {}, False),
         ("direction_schedule.per_route", per_route, True),
+        # The color-mode lists fan a parent out to its children too.
+        # Their string entries name custom routes, which are appended
+        # below this guard and checked by the validator.
+        *((key, [e for e in (config.get(key) or []) if isinstance(e, int)], True)
+          for key in ("color_by_route", "color_by_difficulty")),
     )
     for key, mapping, supers_ok in keyed_overrides:
         for rid in mapping:
@@ -254,16 +259,18 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         except (OSError, ValueError) as e:
             sys.exit(f"ERROR: custom_routes[{cid!r}].geometry: cannot read {cgeom_abs!r}: {e}")
 
-        if gj.get("type") == "FeatureCollection":
+        gj_type = gj.get("type") if isinstance(gj, dict) else type(gj).__name__
+        if gj_type == "FeatureCollection":
             gj_features = gj.get("features") or []
-        elif gj.get("type") == "Feature":
+        elif gj_type == "Feature":
             gj_features = [gj]
         else:
             sys.exit(
                 f"ERROR: custom_routes[{cid!r}].geometry: top-level type "
                 f"must be Feature or FeatureCollection "
-                f"(got {gj.get('type')!r})"
+                f"(got {gj_type!r})"
             )
+        lines_added = 0
 
         for i, feat in enumerate(gj_features):
             geom = feat.get("geometry") or {}
@@ -330,6 +337,16 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
                     },
                 }
                 trails_geojson["features"].append(new_feat)
+                lines_added += 1
+
+        # A route with nothing to draw is a broken file, and on a map
+        # with no relations it would otherwise surface later as a
+        # misleading "check the relation ids" bbox error.
+        if not lines_added:
+            sys.exit(
+                f"ERROR: custom_routes[{cid!r}].geometry: {cgeom_abs!r} holds no "
+                f"line with at least two points"
+            )
 
         # Metadata.routes entry - shape mirrors OSM-sourced routes plus
         # the three bucket flags and isCustom.

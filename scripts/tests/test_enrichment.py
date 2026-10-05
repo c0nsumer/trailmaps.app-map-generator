@@ -172,3 +172,39 @@ def test_custom_route_oneway_minus_one_reverses_the_line(tmp_path):
 
     assert enrich("yes") == ("yes", line)
     assert enrich("-1") == ("yes", line[::-1])
+
+
+def test_typo_guard_covers_color_mode_lists(capsys):
+    g = _fc()
+    cfg = {"color_by_route": [111, 999, "course"], "color_by_difficulty": [12562142, 222]}
+    _enrich_trails_geojson(cfg, g)
+    out = capsys.readouterr().out
+    assert "color_by_route[111]" in out and "color_by_difficulty[222]" in out
+    # A parent fans out to its children; a string names a custom route,
+    # which the validator checks.
+    assert "[999]" not in out and "course" not in out and "[12562142]" not in out
+
+
+def _enrich_custom(tmp_path, payload):
+    import json
+
+    geom = tmp_path / "course.geojson"
+    geom.write_text(json.dumps(payload))
+    trails = {"type": "FeatureCollection", "features": [], "metadata": {"routes": {}}}
+    _enrich_trails_geojson({"custom_routes": [{
+        "id": "course", "name": "Course", "color": "#ff0000",
+        "geometry": str(geom)}]}, trails)
+
+
+def test_custom_route_file_that_is_a_list_exits_cleanly(tmp_path):
+    import pytest
+
+    with pytest.raises(SystemExit, match="must be Feature or FeatureCollection"):
+        _enrich_custom(tmp_path, [])
+
+
+def test_custom_route_with_no_lines_exits_naming_the_route(tmp_path):
+    import pytest
+
+    with pytest.raises(SystemExit, match=r"custom_routes\['course'\].*no line"):
+        _enrich_custom(tmp_path, {"type": "FeatureCollection", "features": []})
