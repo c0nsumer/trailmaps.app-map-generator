@@ -13797,17 +13797,25 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             const help = installBtn.querySelector(".opt-action-help");
             if (help) {
-                // "Safari's Share menu" is bolded as one phrase on
+                // "<Browser>'s Share menu" is bolded as one phrase on
                 // purpose. The earlier copy bolded a bare "Share",
                 // which read as a reference to something on this
                 // page - and the nearest match is our own "Share
                 // this map" row directly above, which riders were
                 // tapping instead (reported 2026-08-29). Naming the
                 // owner inside the emphasized phrase is the whole
-                // fix; where Safari keeps that menu (a toolbar
+                // fix; where the browser keeps that menu (a toolbar
                 // button before iOS 26, the three-dots menu after)
                 // is a question riders were not actually stuck on.
-                help.innerHTML = "Use <strong>Safari's Share menu</strong>, "
+                // The menu is the browser's own. Chrome and Edge on
+                // iOS have had Add to Home Screen in theirs since
+                // iOS 16.4, and "Safari's" sent their riders looking
+                // for a browser they were not in. Any other browser
+                // keeps Safari's name, the one path known to work.
+                const ua = navigator.userAgent || "";
+                const browser = /CriOS/.test(ua) ? "Chrome"
+                    : /EdgiOS/.test(ua) ? "Edge" : "Safari";
+                help.innerHTML = `Use <strong>${browser}'s Share menu</strong>, `
                                + "then tap <strong>Add to Home Screen</strong>.";
             }
         }
