@@ -106,3 +106,21 @@ def test_warn_uncovered_canvas_ranges_flags_missing_pbf(tmp_path, capsys):
     assert missing == [(19968, 20223)]
     out = capsys.readouterr().out
     assert "U+4E00" in out and "中" in out
+
+
+def test_no_basemap_trims_quietly_from_trails_and_pois(tmp_path, capsys):
+    # A --no-basemap build into a fresh directory has no basemap.pmtiles.
+    # No basemap labels can render then, so that is no problem to warn
+    # about, and the trim keeps the 0-255 baseline.
+    from font_trimmer import copy_trimmed_fonts
+
+    fonts_src = tmp_path / "fonts"
+    face = fonts_src / "Noto Sans Regular"
+    face.mkdir(parents=True)
+    for name in ("0-255.pbf", "256-511.pbf"):
+        (face / name).write_bytes(b"x")
+    out = tmp_path / "out"
+    out.mkdir()
+    copy_trimmed_fonts(str(out), str(fonts_src))
+    assert "warn" not in capsys.readouterr().out
+    assert sorted(os.listdir(out / "fonts" / "Noto Sans Regular")) == ["0-255.pbf"]

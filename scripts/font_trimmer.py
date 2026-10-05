@@ -19,6 +19,7 @@ import os
 import shutil
 
 import console
+from pmtiles_util import EXTRACT_MINZOOM
 
 # Font faces always needed by the Protomaps basemap style.
 BASEMAP_FACES = {
@@ -321,24 +322,23 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     console.detail("Scanning map data for font trimming...")
     all_chars = set()
 
+    # No basemap (a --no-basemap build into a fresh directory) means no
+    # basemap labels can render, so trails, POIs and the 0-255 baseline
+    # cover every glyph the page needs.
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
-    basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=minzoom)
-    if basemap_chars is None:
-        # PMTiles libraries not available - fall back to full copy
-        console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
-        shutil.copytree(fonts_src, fonts_dst)
-        return
-    all_chars.update(basemap_chars)
+    if os.path.exists(basemap_path):
+        basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=minzoom)
+        if basemap_chars is None:
+            # PMTiles libraries not available - fall back to full copy
+            console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
+            shutil.copytree(fonts_src, fonts_dst)
+            return
+        all_chars.update(basemap_chars)
+    else:
+        console.detail("No basemap - font scan covers trails and POIs only")
 
     for geojson_name in ["trails.geojson", "pois.geojson"]:
         all_chars.update(collect_text_from_geojson(os.path.join(output_dir, geojson_name)))
-
-    if not all_chars:
-        # No text found (unlikely) - basemap was probably skipped
-        if not os.path.exists(basemap_path):
-            console.warn("No basemap found - copying all fonts")
-            shutil.copytree(fonts_src, fonts_dst)
-            return
 
     # Compute needed ranges and faces
     needed_ranges = compute_needed_ranges(all_chars)
@@ -427,7 +427,7 @@ if __name__ == "__main__":
     all_chars = set()
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     if os.path.exists(basemap_path):
-        basemap_chars = collect_text_from_pmtiles(basemap_path)
+        basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=EXTRACT_MINZOOM)
         if basemap_chars:
             all_chars.update(basemap_chars)
     for name in ["trails.geojson", "pois.geojson"]:
