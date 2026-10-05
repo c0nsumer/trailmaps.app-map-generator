@@ -108,6 +108,12 @@ def _trails_content_hash(trails_path):
     return h.hexdigest()
 
 
+# The reason _trails_needs_refetch gives for a base with no sidecar. The
+# build reads it: that refetch rebuilds the same data from the cache, so
+# it is not a refresh to report.
+SIDECAR_MISSING = "fingerprint sidecar missing"
+
+
 def _trails_needs_refetch(trails_path, config):
     """True iff the cached trails.src.geojson must be refetched. Returns
     (needs_refetch, reason).
@@ -129,7 +135,7 @@ def _trails_needs_refetch(trails_path, config):
         return True, "file missing"
     raw = _load_signature(trails_path)
     if raw is None:
-        return True, "fingerprint sidecar missing"
+        return True, SIDECAR_MISSING
 
     # Sidecar layout (newest format, oldest is just line 0):
     #   trails-fp=<config fingerprint>

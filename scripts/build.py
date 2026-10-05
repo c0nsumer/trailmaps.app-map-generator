@@ -41,6 +41,7 @@ import basemap_paths
 import cache_manifest
 import console
 from cache_signatures import (
+    SIDECAR_MISSING,
     _bbox_signature,
     _clear_signature,
     _load_signature,
@@ -1172,7 +1173,8 @@ def _resolve_dirs(config, args, project_root):
     return output_dir, cache_dir
 
 
-def _fetch_and_snapshot(config, trails_path, trails_src_path, cache_dir, refresh_trails):
+def _fetch_and_snapshot(config, trails_path, trails_src_path, cache_dir, refresh_trails,
+                        diff=True):
     # Snapshot the canonical base BEFORE enrichment edits it in place,
     # so the next build enriches clean geometry again instead of
     # re-enriching its own output. Copied after
@@ -1182,8 +1184,12 @@ def _fetch_and_snapshot(config, trails_path, trails_src_path, cache_dir, refresh
     # against it (vetted-deploys-only means the curator has to know what
     # changed upstream). Read before fetch_trails so a fetch that
     # rewrites trails_path can't race it; returns None on a first build.
+    #
+    # diff=False for a refetch that only restores a lost sidecar: it
+    # rebuilds the same data from the cache, and a "no change" report
+    # would replace the record of the last real refresh.
     prev_snapshot = stash_previous_snapshot(
-        trails_src_path, cache_dir, config["slug"])
+        trails_src_path, cache_dir, config["slug"]) if diff else None
     fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
     shutil.copyfile(trails_path, trails_src_path)
     _save_signature(
@@ -1230,7 +1236,8 @@ def _stage_trails(config, args, output_dir, cache_dir):
             console.step(f"Trails: refetching ({auto_refetch_reason})")
         fetch_ran = True
         trails_geojson = _fetch_and_snapshot(
-            config, trails_path, trails_src_path, cache_dir, refresh_trails)
+            config, trails_path, trails_src_path, cache_dir, refresh_trails,
+            diff=refresh_trails or auto_refetch_reason != SIDECAR_MISSING)
     else:
         console.step(f"Trails: reusing base {trails_src_path}", detail=True)
         try:
