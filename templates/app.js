@@ -1365,10 +1365,9 @@ function chevronIconDataUrl() {
     const scheme = currentColorScheme();
     const key = `chevron-${scheme}`;
     if (!_popupIconCache[key]) {
-        const fill = scheme === "dark" ? "#ffffff" : "#000000";
-        const halo = scheme === "dark"
-            ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.9)";
-        _popupIconCache[key] = chevronCanvas(fill, halo, false).toDataURL();
+        const id = mapPaintTokens(scheme).chevronFwd;
+        const v = CHEVRON_VARIANTS.find((c) => c.id === id);
+        _popupIconCache[key] = chevronCanvas(v.fill, v.halo, false).toDataURL();
     }
     return _popupIconCache[key];
 }
@@ -1538,6 +1537,10 @@ function pointAtArcLength(segments, totalLength, arc) {
 const DECOR_RADIUS_M = {
     diamond:  35,
     obstacle: 30,  // POI / parking / trailhead / feature markers
+    // Cap on an overview label's clear disc, which scales with the
+    // name's length (emitOverviewLabel). The largest radius placed, so
+    // it sizes the spatial index cell.
+    label_max: 120,
     // Min distance from a line-placed label's support polyline to a
     // DOM marker center. Sized to keep the rendered glyph row clear
     // of the marker icon at typical viewing zoom (14-15). DOM markers
@@ -1583,23 +1586,23 @@ function gatherObstacles() {
 
 // Spatial-hash index for O(1)-expected collision lookups.
 //
-// Both placedCollides() and clipCoordsAroundObstacles() were O(n)
-// per check. computeDecorations() makes hundreds of placement
-// attempts in its 4-pass loop, net O(n²) on the placed-array
-// length. On dense maps (200+ POIs + dozens of decorations) the
-// label-clipping + collision-check work was 100-200ms.
+// computeDecorations() makes hundreds of placement attempts in its
+// 4-pass loop, so a linear scan per check in placedCollides() and
+// clipCoordsAroundObstacles() would be O(n²) on dense maps (200+
+// POIs + dozens of decorations).
 //
 // The index buckets items into square cells whose side length is
-// chosen ≥ the largest collision-radius sum we'll ever check
-// (label radius 60 + label radius 60 = 120m → cell 150m gives
-// margin). A 3×3-cell query around any candidate covers all
-// possible collisions; the worst-case query inspects O(items per
-// cell) ≈ a handful on typical maps. Insertions are O(1).
+// at least the largest collision-radius sum we'll ever check (two
+// overview labels at the label_max disc, 2 × 120 m; 10 m on top
+// gives margin). A 3×3-cell query around any candidate covers all
+// possible collisions only while that holds; the worst-case query
+// inspects O(items per cell) ≈ a handful on typical maps. Insertions
+// are O(1).
 //
 // COS-of-anchor-latitude approximation for the lat→meters
 // projection introduces <0.5% cell-size error within ±50 km of the
 // anchor, irrelevant given the cell-size margin.
-const _SPATIAL_INDEX_CELL_M = 150;
+const _SPATIAL_INDEX_CELL_M = 2 * DECOR_RADIUS_M.label_max + 10;
 const _LAT_M_PER_DEG = 111320;
 function makeSpatialIndex(anchorLat) {
     const cosLat = Math.cos((anchorLat * Math.PI) / 180);
@@ -2151,7 +2154,7 @@ function computeDecorations() {
         // holes in the marker field, the run-tier markers above are already
         // placed and untouched. Meters: the on-screen clearance it buys grows
         // with zoom, biting hardest at z15-16 where the tiers are densest.
-        const r = Math.min(120, 45 + text.length * 6);
+        const r = Math.min(DECOR_RADIUS_M.label_max, 45 + text.length * 6);
         const pt = chooseOnPathLabelPoint(way, placed, r);
         if (!pt) return;
         decorations.push({
@@ -5424,8 +5427,14 @@ function _installContourDemFetch() {
             // uncancellable requests fighting the in-view ones for bandwidth
             // (profiled 2026-08-15).
             const [z, x, y] = url.slice("contour-dem://".length).split("/").map(Number);
+            // A read that failed is rethrown so MapLibre retries the tile
+            // later; resolving it flat would cache a lineless tile. An
+            // aborted read is dropped by the caller either way.
             return _contourState.archive.getZxy(z, x, y, options && options.signal)
-                .catch(() => null)
+                .catch((e) => {
+                    if (e && e.name !== "AbortError") throw e;
+                    return null;
+                })
                 .then((tile) =>
                     tile && tile.data && tile.data.byteLength
                         ? new Response(new Blob([tile.data]), { status: 200 })
@@ -7501,8 +7510,6 @@ function stampLaneFeatures(fc) {
         const p = f.properties;
         p.route_id = p.route;
         p.route_name = p.name;
-        const routes = p.routes || [p.route];
-        p.shared_routes = routes;
     }
     return fc;
 }
@@ -7818,16 +7825,13 @@ function _refreshVisibilityDependents() {
 // setupFloatingChrome → applyVisibilityChange runs. On a fast
 // connection that's imperceptible; on 4G it's a visible flicker.
 function _applyPerRouteLayerVisibility() {
-    for (const routeId of Object.keys(CONFIG.routes)) {
-        const vis = visibleRoutes.has(routeId) ? "visible" : "none";
-        // trail-label-<id> is left to updateLabels(), the only place
-        // that also honors labelMode; forcing it visible here would
-        // flash route names on a map whose Labels setting is trails.
-        const layerId = "clip-arrow-" + routeId;
-        if (map.getLayer(layerId)) {
-            map.setLayoutProperty(layerId, "visibility", vis);
-        }
-    }
+    // trail-label-<id> is left to updateLabels(), the only place
+    // that also honors labelMode; forcing it visible here would
+    // flash route names on a map whose Labels setting is trails.
+    // The clip arrows go through updateClipArrowsDim so a highlight
+    // keeps them narrowed: a bare bucket flip would show every visible
+    // route's arrows over the wash until the deferred pass.
+    updateClipArrowsDim();
 }
 
 function updateTrailDisplay() {
@@ -11724,6 +11728,9 @@ function setupFloatingChrome() {
         chip.addEventListener("keydown", (e) => {
             if (e.key === "Enter" || e.key === " " || e.key === "Escape") {
                 e.preventDefault();
+                // One press does one thing: the document Escape handler
+                // would also close an open trail popup.
+                e.stopPropagation();
                 clearHighlight();
                 // Clearing hides the chip, and a focused element that
                 // hides drops focus to <body>, back to the top of the
