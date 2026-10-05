@@ -8944,7 +8944,7 @@ function hideHighlightChip() {
 //
 // The trail the rider is on, as {name, feature, point}; name "" for an
 // unnamed way, which is tracked like any other so the junction
-// hysteresis applies to it, and shown as "an unnamed trail": a rider
+// hysteresis applies to it, and shown as "Unnamed trail": a rider
 // on a drawn line with a blank chip cannot tell an unnamed way from a
 // fix the map could not place. null when off every trail.
 let _onTrail = null;
@@ -8962,8 +8962,13 @@ let _offTrailFixes = 0;
 const CURRENT_TRAIL_ENABLED = CONFIG.showCurrentTrail !== false;
 let currentTrailOn = CURRENT_TRAIL_ENABLED && LS.get("mtb.currentTrail", true);
 const TRAIL_CHIP_FIXES = 2;
-// Reads on from the chip's "You are on" kicker.
-const TRAIL_CHIP_UNNAMED = "an unnamed trail";
+// A description in the name's slot, so it is capitalized like one but
+// set at regular weight (.is-unnamed): bold stays the mark of a real
+// name, and a lowercase phrase there read as a name that failed to load.
+const TRAIL_CHIP_UNNAMED = "Unnamed trail";
+const TRAIL_CHIP_KICKER = "You are on";
+const TRAIL_CHIP_UNKNOWN_KICKER = "Trail unknown";
+const TRAIL_CHIP_UNKNOWN = "Low GPS accuracy";
 const TRAIL_CHIP_SWITCH_M = 5;
 
 // The chip states a fact, so it only speaks when the fix is good and
@@ -8985,18 +8990,82 @@ function trailChipThresholdM(accuracy) {
     return Math.max(TRAIL_CHIP_MIN_M, accuracy + TRAIL_CHIP_SLACK_M);
 }
 
+// "Trail unknown": the fix is too coarse to name a trail, yet a drawn
+// trail runs through its error circle, so the rider may well be on one
+// and a chip that just vanished under the canopy would leave them
+// guessing whether they left the trail or the phone lost precision.
+// Narrow on purpose, because a standing "I do not know" is noise:
+//   - only fixes between the naming limit and this ceiling. Coarser is
+//     a cell or Wi-Fi fix, where every trail on the map is "inside the
+//     circle" from the parking lot or the couch.
+//   - only once the fixes have been coarse for a few seconds, which
+//     skips the seconds after Locate comes on, or straight away when
+//     the coarse fixes are what took a named trail off the chip, so it
+//     changes state instead of blinking out and back.
+// The wait is clock time with its own timer, not a count of fixes: a
+// device that is standing still can go seconds without a new fix (and
+// a faked position sends exactly one), and the chip would otherwise
+// wait on a fix that never comes.
+const TRAIL_CHIP_UNKNOWN_MAX_ACCURACY_M = 100;
+const TRAIL_CHIP_UNKNOWN_MS = 5000;
+let _coarseSince = null;
+let _coarseLostTrail = false;
+let _trailUnknown = false;
+let _trailUnknownTimer = null;
+
+function trailUnknownNow(nearest, accuracy) {
+    return !_onTrail && !!nearest && trailChipThresholdM(accuracy) < 0
+        && accuracy <= TRAIL_CHIP_UNKNOWN_MAX_ACCURACY_M
+        && nearest.distM <= accuracy
+        && (_coarseLostTrail || (_coarseSince !== null
+            && performance.now() - _coarseSince >= TRAIL_CHIP_UNKNOWN_MS));
+}
+
+// Re-asks at the end of the wait, from the last fix, in case no new
+// one arrives to ask.
+function scheduleTrailUnknownCheck() {
+    clearTimeout(_trailUnknownTimer);
+    if (_coarseSince === null) return;
+    const wait = TRAIL_CHIP_UNKNOWN_MS - (performance.now() - _coarseSince);
+    if (wait <= 0) return;
+    _trailUnknownTimer = setTimeout(() => {
+        if (!currentTrailOn || !userLocation) return;
+        const nearest = nearestVisibleTrail(userLocation[0], userLocation[1]);
+        const unknown = trailUnknownNow(nearest, userAccuracy);
+        if (unknown === _trailUnknown) return;
+        _trailUnknown = unknown;
+        renderTrailChip();
+    }, wait + 20);
+}
+
 function updateTrailChip(lng, lat, accuracy) {
     const nearest = nearestVisibleTrail(lng, lat);
+    const coarse = trailChipThresholdM(accuracy) < 0;
+    if (!coarse) {
+        _coarseSince = null;
+        _coarseLostTrail = false;
+        clearTimeout(_trailUnknownTimer);
+    } else if (_coarseSince === null) {
+        _coarseSince = performance.now();
+    }
     if (!nearest || nearest.distM > trailChipThresholdM(accuracy)) {
         _onTrailCandidate = null;
         _offTrailFixes += 1;
-        if (_offTrailFixes >= TRAIL_CHIP_FIXES) {
+        const dropped = !!_onTrail && _offTrailFixes >= TRAIL_CHIP_FIXES;
+        if (dropped) {
+            if (coarse) _coarseLostTrail = true;
             _onTrail = null;
+        }
+        const unknown = trailUnknownNow(nearest, accuracy);
+        if (coarse && !unknown) scheduleTrailUnknownCheck();
+        if (dropped || unknown !== _trailUnknown) {
+            _trailUnknown = unknown;
             renderTrailChip();
         }
         return;
     }
     _offTrailFixes = 0;
+    _trailUnknown = false;
     const name = nearest.feature.properties.trail_name || "";
     if (!_onTrail) {
         // Arriving from off-trail (or the first fix) has no name to
@@ -9007,9 +9076,8 @@ function updateTrailChip(lng, lat, accuracy) {
         return;
     }
     if (name === _onTrail.name) {
-        // Same trail: follow the rider along it, so a tap opens the
-        // section under the wheels and a rating change on the next way
-        // updates the glyph.
+        // Same trail: follow the rider along it, so the glow lights
+        // the section under the wheels.
         _onTrail = { name, feature: nearest.feature, point: nearest.point };
         _onTrailCandidate = null;
         renderTrailChip();
@@ -9045,12 +9113,36 @@ function resetTrailChip() {
     _onTrail = null;
     _onTrailCandidate = null;
     _offTrailFixes = 0;
+    _coarseSince = null;
+    _coarseLostTrail = false;
+    _trailUnknown = false;
+    clearTimeout(_trailUnknownTimer);
     renderTrailChip();
 }
 
 function renderTrailChip() {
     const chip = document.getElementById("trail-chip");
     if (!chip) return;
+    const kicker = chip.querySelector(".trail-chip-kicker");
+    const label = chip.querySelector(".highlight-chip-label");
+    // The unknown state borrows the two rows: what the chip cannot say
+    // over why, with no glow.
+    const unknown = !_onTrail && _trailUnknown;
+    chip.classList.toggle("is-unknown", unknown);
+    if (kicker) {
+        const k = unknown ? TRAIL_CHIP_UNKNOWN_KICKER : TRAIL_CHIP_KICKER;
+        if (kicker.textContent !== k) kicker.textContent = k;
+    }
+    if (unknown) {
+        if (label && label.textContent !== TRAIL_CHIP_UNKNOWN) {
+            label.textContent = TRAIL_CHIP_UNKNOWN;
+        }
+        if (label) label.classList.add("is-unnamed");
+        foldAttributionForTrailChip(chip);
+        chip.classList.remove("hidden");
+        syncHereLift();
+        return;
+    }
     // A way whose own route was toggled off since the last fix hides
     // with it; the next fix resolves against what is drawn.
     if (!_onTrail || !isVisibleTrail(_onTrail.feature.properties)) {
@@ -9058,26 +9150,29 @@ function renderTrailChip() {
         syncHereLift();
         return;
     }
-    const label = chip.querySelector(".highlight-chip-label");
     // Compared first because the chip is aria-live: rewriting the same
     // text on every fix would re-announce it once a second.
     const text = _onTrail.name || TRAIL_CHIP_UNNAMED;
     if (label && label.textContent !== text) label.textContent = text;
-    // The chip docks in the attribution's band, and the credits open
-    // at boot until the first map gesture. Turning Locate on is not
-    // one, so the chip's arrival folds them to the (i) as a gesture
-    // would. Only on arrival: credits the rider reopens stay open.
-    if (chip.classList.contains("hidden")) {
-        document.querySelector(".maplibregl-ctrl-attrib")
-            ?.classList.remove("maplibregl-compact-show");
-    }
+    if (label) label.classList.toggle("is-unnamed", !_onTrail.name);
+    foldAttributionForTrailChip(chip);
     chip.classList.remove("hidden");
     syncHereLift();
 }
 
+// The chip docks in the attribution's band, and the credits open at
+// boot until the first map gesture. Turning Locate on is not one, so
+// the chip's arrival folds them to the (i) as a gesture would. Only on
+// arrival: credits the rider reopens stay open.
+function foldAttributionForTrailChip(chip) {
+    if (!chip.classList.contains("hidden")) return;
+    document.querySelector(".maplibregl-ctrl-attrib")
+        ?.classList.remove("maplibregl-compact-show");
+}
+
 // The trail the chip names also glows on the map, in the rider's own
 // blue: the chip says which trail, the glow shows where it runs from
-// here. It lights what a tap on the chip opens, the contiguous section
+// here. It lights what a tap on that trail lifts, the contiguous section
 // of the name under the rider (trailSection), as {name, ids, graph},
 // or the one graph edge of an unnamed way, the unit its popup lifts,
 // and shows exactly while the chip does. Yellow is what the rider
@@ -9183,38 +9278,6 @@ function refreshHereGlow() {
             features: all.features.filter((f) => ids.has(f.properties.edge)),
         });
     }).catch((e) => console.error("lanes: on-trail glow layout failed", e));
-}
-
-// Opens the trail popup for the section under the rider, the card a
-// map tap there gives. The point is on the centerline, so it is snapped
-// to the lane drawn for it the way openTrailPopupOnRun snaps a finder
-// pick, with the same name check and raw-properties fallback, and the
-// popup anchors at the rider's own point rather than the lane's.
-function openTrailChipPopup() {
-    if (!_onTrail) return;
-    const { name, feature, point } = _onTrail;
-    // A rider who panned away would otherwise get a popup off screen.
-    if (!map.getBounds().contains(point)) map.easeTo({ center: point });
-    const tolerancePx = 30;
-    const named = (hit) => (hit && hit.properties
-        && (hit.properties.trail_name || "") === name ? hit : null);
-    let hit = null;
-    if (laneLayer) {
-        hit = named(laneLayer.queryLaneAt(point, map.getZoom(), tolerancePx))
-            || named(laneLayer.queryLane(map.project(point), tolerancePx));
-    }
-    if (hit) {
-        openTrailPopup(hit, point, { scope: "section" });
-        return;
-    }
-    const p = feature.properties;
-    const route = p.route_id;
-    openTrailPopup({
-        route,
-        routes: p.shared_routes || [route],
-        edge: null,
-        properties: p,
-    }, point, { scope: "section" });
 }
 
 // ============================================================
@@ -11556,11 +11619,6 @@ function setupFloatingChrome() {
 
     // ----- Share button -----
     setupShareButton(openQrOverlay);
-
-    // ----- Trail chip -----
-    // A <button>, so Enter and Space already arrive as a click.
-    const trailChip = document.getElementById("trail-chip");
-    if (trailChip) trailChip.addEventListener("click", openTrailChipPopup);
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");
