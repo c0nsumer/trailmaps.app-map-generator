@@ -186,3 +186,35 @@ def test_trace_composite_turns_transparency_white():
     assert bilevel.getpixel((0, 0)) == 255  # white, not black
     # Sanity check on the hazard this guards against:
     assert transparent.convert("1").getpixel((0, 0)) == 0
+
+
+def _maskable_reach(tmp_path, src):
+    """Farthest non-white pixel of the maskable tile from its center, as
+    a fraction of the tile side."""
+    d = str(tmp_path)
+    os.makedirs(os.path.join(d, "icons"), exist_ok=True)
+    generate_maskable_icon(src, d)
+    m = Image.open(os.path.join(d, "icons", "android-chrome-maskable-512x512.png")).convert("RGBA").convert("RGB")
+    px, w, far = m.load(), m.width, 0.0
+    for y in range(0, w, 2):
+        for x in range(0, w, 2):
+            if min(px[x, y]) < 200:
+                far = max(far, ((x + 0.5 - w / 2) ** 2 + (y + 0.5 - w / 2) ** 2) ** 0.5)
+    return far / w
+
+
+def test_maskable_square_logo_fits_the_safe_circle(tmp_path):
+    # A square logo filling its source used to fill an 80% square, whose
+    # corners sit at radius 0.566: a Pixel's circle mask cut them off.
+    src = _logo_on((0, 0, 0, 0), 512)
+    src.paste((20, 80, 200, 255), (16, 16, 496, 496))
+    assert 0.38 <= _maskable_reach(tmp_path, src) <= 0.405
+
+
+def test_maskable_round_logo_keeps_its_size(tmp_path):
+    # A disc already inside the circle is not shrunk.
+    from PIL import ImageDraw
+
+    src = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    ImageDraw.Draw(src).ellipse((0, 0, 511, 511), fill=(20, 80, 200, 255))
+    assert _maskable_reach(tmp_path, src) >= 0.39

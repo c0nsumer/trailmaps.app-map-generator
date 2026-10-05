@@ -188,6 +188,35 @@ def _rgba_to_hex(color):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+# Content measurement: a pixel counts as content when, composited onto
+# the bleed color, some channel differs from it by more than this. Faint
+# anti-aliasing at the rim stays below it.
+CONTENT_CHANNEL_TOLERANCE = 24
+
+
+def _content_radius(img, bg_color):
+    """Distance from the image center to the farthest content pixel, as a
+    fraction of the image's longer side. Content is whatever differs from the
+    bleed color, so a transparent margin, a white backplate on a white
+    bleed, and a full-bleed field all count as background."""
+    probe = img.convert("RGBA")
+    probe.thumbnail((256, 256), Image.Resampling.LANCZOS)
+    flat = Image.new("RGBA", probe.size, tuple(bg_color[:3]) + (255,))
+    flat.alpha_composite(probe)
+    diff = ImageChops.difference(flat.convert("RGB"), Image.new("RGB", probe.size, bg_color[:3]))
+    r, g, b = diff.split()
+    mask = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    w, h = mask.size
+    cx, cy = w / 2, h / 2
+    data = mask.load()
+    far = 0.0
+    for y in range(h):
+        for x in range(w):
+            if data[x, y] > CONTENT_CHANNEL_TOLERANCE:
+                far = max(far, (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2)
+    return far ** 0.5 / max(w, h)
+
+
 def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_color=None):
     """Generate a maskable PWA icon (Android home-screen tile).
 
@@ -195,16 +224,19 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     squircle on Samsung, teardrop, rounded square, etc.) to maskable
     icons, and may clip up to ~10% of each edge. The W3C maskable-icon
     spec requires meaningful content to fit inside the inner
-    80%-diameter safe zone; everything outside is bleed used to fill
-    the tile edge-to-edge under any mask.
+    80%-diameter safe zone, a circle of radius 0.40 of the tile;
+    everything outside is bleed used to fill the tile edge-to-edge
+    under any mask.
 
     Without a maskable icon, Chrome on Android wraps the (non-maskable)
     icon in its own white circle as a safe fallback - which is why a
     plain `purpose: "any"` icon renders as a small badge floating in a
     larger white circle instead of filling the home-screen tile.
 
-    The source is scaled to `safe_ratio` of the canvas, centered, and
-    the surrounding margin is filled with `bg_color`. When `bg_color`
+    The source is scaled to fit a `safe_ratio` square of the canvas and
+    shrunk further when its content would reach outside the safe-zone
+    circle (a square logo's corners would), centered, and the
+    surrounding margin is filled with `bg_color`. When `bg_color`
     is None (the default) it is auto-detected from the source corners
     via `_detect_bleed_color`: a full-bleed source (e.g. the bicycle
     placeholder's green field) bleeds in its own color so the tile is a
@@ -214,13 +246,22 @@ def generate_maskable_icon(source_img, output_dir, size=512, safe_ratio=0.8, bg_
     """
     if bg_color is None:
         bg_color = _detect_bleed_color(source_img)
-    inner = int(size * safe_ratio)
+    inner = size * safe_ratio
     canvas = Image.new("RGBA", (size, size), bg_color)
 
     src = source_img.copy()
     if src.mode != "RGBA":
         src = src.convert("RGBA")
-    src.thumbnail((inner, inner), Image.Resampling.LANCZOS)
+    # Side of the scaled source: the safe square, or less, so that the
+    # farthest content pixel lands on the safe circle (radius inner / 2).
+    side = min(inner, max(src.width, src.height))
+    reach = _content_radius(src, bg_color)
+    if reach > 0:
+        side = min(side, (inner / 2) / reach)
+    scale = side / max(src.width, src.height)
+    if scale < 1:
+        src = src.resize((max(1, round(src.width * scale)), max(1, round(src.height * scale))),
+                         Image.Resampling.LANCZOS)
 
     x = (size - src.width) // 2
     y = (size - src.height) // 2
@@ -397,8 +438,9 @@ def generate_icons(source_path, output_dir, config):
         # Pillow raises UnidentifiedImageError for SVG / PDF / other
         # vector formats, plus a handful of image-format-specific
         # decode errors. Catch broadly: any failure here means we
-        # can't generate icons from this source. Caller (build.py)
-        # will fail the PWA-manifest check and warn the curator.
+        # can't generate icons from this source. The warning below is
+        # the curator's signal: icons left by an earlier build can
+        # still satisfy build.py's PWA-manifest check.
         console.warn(f"Cannot read icon source {source_path}")
         console.info(f"         {type(e).__name__}: {e}")
         console.info("         Pillow-readable formats: PNG, WebP, JPEG, GIF, BMP, TIFF")
