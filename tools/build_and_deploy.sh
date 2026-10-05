@@ -3,7 +3,8 @@
 # Build and deploy trail maps.
 #
 # Each map lives in its own folder: configs/<slug>/<slug>.yaml + assets.
-# By default, this processes every such folder except configs/reference/.
+# By default, this processes every such folder except configs/example/
+# and configs/reference/.
 # Pass one or more slugs to limit the run to a subset.
 #
 # See --help for full usage.
@@ -33,7 +34,7 @@ Usage: $(basename "$0") [options] [slug ...] [-- build-flag ...]
 
 Builds and deploys trail map(s). Each map lives in configs/<slug>/.
 Without a slug list, processes every configs/<slug>/ folder except
-configs/reference/.
+configs/example/ and configs/reference/.
 
 Options:
   --all              Process every config (default if no names given)
@@ -84,9 +85,7 @@ while [ $# -gt 0 ]; do
         --build-only)    DEPLOY=false ;;
         --deploy-only)   BUILD=false ;;
         --validate-only) VALIDATE_ONLY=true; BUILD=false; DEPLOY=false ;;
-        # --force is an older spelling of --refresh. build.py no longer
-        # accepts it, so it is translated here and never forwarded.
-        --refresh|--force) REFRESH="--refresh" ;;
+        --refresh)       REFRESH="--refresh" ;;
         --dry-run)       DRY_RUN=true ;;
         --dest)          shift; DEPLOY_DEST="${1:?--dest needs a value}" ;;
         --dest=*)        DEPLOY_DEST="${arg#--dest=}" ;;
@@ -101,6 +100,20 @@ done
 # ── Sanity checks ─────────────────────────────────────────────
 cd "$PROJECT_ROOT"
 
+# A deploy always uploads build/<slug>. A build sent elsewhere would
+# leave that directory stale, and rsync --delete would then mirror the
+# old build to the server.
+if $DEPLOY; then
+    for a in "${build_extra_args[@]+"${build_extra_args[@]}"}"; do
+        case "$a" in
+            --output-dir|--output-dir=*)
+                echo "ERROR: --output-dir cannot be combined with a deploy (it uploads build/<slug>)." >&2
+                echo "       Use --build-only to build elsewhere." >&2
+                exit 1 ;;
+        esac
+    done
+fi
+
 if [ ! -x "$PYTHON" ]; then
     echo "ERROR: Python interpreter not found at $PYTHON" >&2
     echo "       Create the venv with: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
@@ -108,7 +121,8 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 # If no slugs specified, discover every configs/<slug>/<slug>.yaml except
-# configs/reference/ (which holds the reference + reference-minimal templates).
+# configs/example/ (the smoke-test map) and configs/reference/ (which
+# holds the reference + reference-minimal templates).
 if [ ${#configs[@]} -eq 0 ]; then
     for d in "${CONFIGS_DIR}"/*/; do
         name="$(basename "$d")"
@@ -210,7 +224,13 @@ ensure_dest_dir() {
             echo "[dry-run] ssh ${host} mkdir -p ${remote_full}"
             return 0
         fi
-        ssh -o BatchMode=yes "$host" "mkdir -p '${remote_full}'"
+        # Quoted for the remote shell, except a leading ~/ which must
+        # stay bare so the remote shell expands it, as rsync does.
+        local quoted="'${remote_full}'"
+        if [[ "$remote_full" == "~/"* ]]; then
+            quoted="~/'${remote_full#\~/}'"
+        fi
+        ssh -o BatchMode=yes "$host" "mkdir -p ${quoted}"
     else
         local local_full="${dest_prefix%/}/${subdir}"
         if $DRY_RUN; then
@@ -340,13 +360,18 @@ for name in "${configs[@]}"; do
             failed+=("$name")
             continue
         fi
-        if [[ "$build_dir_rel" = /* ]]; then
-            build_dir="$build_dir_rel"
-        else
-            build_dir="${PROJECT_ROOT}/${build_dir_rel}"
-        fi
+        build_dir="${PROJECT_ROOT}/${build_dir_rel}"
         if [ ! -d "$build_dir" ] && ! $DRY_RUN; then
             echo "ERROR: Build directory not found: ${build_dir}" >&2
+            failed+=("$name")
+            continue
+        fi
+        # rsync --delete mirrors whatever is there, so an interrupted
+        # first build would replace the live map with a partial tree.
+        # A build that never reached its template and PWA stages has
+        # no index.html or sw.js.
+        if ! $DRY_RUN && { [ ! -f "${build_dir}/index.html" ] || [ ! -f "${build_dir}/sw.js" ]; }; then
+            echo "ERROR: ${build_dir} is not a finished build (no index.html or sw.js)" >&2
             failed+=("$name")
             continue
         fi
