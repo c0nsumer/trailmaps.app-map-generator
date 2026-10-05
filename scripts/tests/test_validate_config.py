@@ -562,3 +562,21 @@ def test_pruned_keys_are_retired_with_their_own_message():
         assert len(errors) == 1, (key, errors)
         assert "removed" in errors[0] and "Delete the line" in errors[0], errors[0]
         assert "unknown top-level key" not in errors[0], errors[0]
+
+
+# --- a key with no value ------------------------------------------------
+
+def test_a_key_with_no_value_is_an_error():
+    # `pan_padding:` parses as null. It used to validate, then crash the
+    # build, because config.get(key, default) answers None for a present
+    # key; `show_distance:` silently turned distances off the same way.
+    for key in ("pan_padding", "bbox", "trailheads", "show_distance", "event_mode"):
+        errors = _errors(**{key: None})
+        assert len(errors) == 1, (key, errors)
+        assert key in errors[0] and "has no value" in errors[0]
+
+
+def test_a_required_key_with_no_value_is_reported_once():
+    errors = _errors(name=None)
+    assert len(errors) == 1
+    assert "required" in errors[0]

@@ -454,7 +454,17 @@ def _validate_required(report, config):
 
 def _validate_types(report, config):
     for key, value in config.items():
-        if key not in KNOWN_KEYS or value is None:
+        if key not in KNOWN_KEYS:
+            continue
+        if value is None:
+            # A bare `key:` parses as null. Readers ask for
+            # config.get(key, default), which answers None for a key
+            # that is present, so the default would not apply: the
+            # build crashed on some keys and silently turned others
+            # off. A required key is reported by _validate_required.
+            if key not in REQUIRED_KEYS:
+                report.err(key, "has no value; give it one, or delete the "
+                                "line to use the default")
             continue
         expected = KNOWN_KEYS[key]
         _check_type(report, key, value, expected)
