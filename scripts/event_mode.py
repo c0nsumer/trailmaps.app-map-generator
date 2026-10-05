@@ -249,11 +249,15 @@ def _apply_event_mode_to_relations(config, trails_geojson):
         if rid_int not in explicit_relation_colors:
             new_relation_colors[rid_int] = bg_color
         if rid_int not in explicit_dashed:
-            new_dashed[rid_int] = {
-                "pattern": bg_pattern,
-                "cap": bg_cap,
-                "colors": [bg_color],
-            }
+            entry = {"pattern": bg_pattern, "cap": bg_cap}
+            # The runtime reads a dash entry's first color before the
+            # relation color, so a curator's relation_colors entry must
+            # not be shadowed by the background gray. Without `colors`
+            # the route draws in its relation color, which is bg_color
+            # above when the curator gave none.
+            if rid_int not in explicit_relation_colors:
+                entry["colors"] = [bg_color]
+            new_dashed[rid_int] = entry
 
     config["relation_colors"] = new_relation_colors
     config["dashed_relations"] = new_dashed
