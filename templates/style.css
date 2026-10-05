@@ -4326,13 +4326,15 @@ body.modal-open .qr-overlay.is-open {
     position: relative;
 }
 
-/* The visible button is 22px. Extend the tap target to 44 x 44 without
- * changing the look or the layout. It grows upward and sideways rather
- * than downward, so it cannot cover the first route row below. */
+/* The visible button is 22px. Extend the tap target to 44 px wide and
+ * as tall as the card allows, without changing the look or the layout:
+ * up to the card's top edge (9px above the button) and no farther, or
+ * a tap on the map just above the card would collapse it, and not
+ * downward, where the first route row is. */
 .route-panel-collapse::after {
     content: "";
     position: absolute;
-    inset: -20px -11px -2px -11px;
+    inset: -9px -11px -2px -11px;
 }
 
 .route-panel-list {
