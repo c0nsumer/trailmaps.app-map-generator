@@ -1396,7 +1396,9 @@ def _stage_pois(config, args, output_dir, cache_dir):
     # event_mode.pois) take effect without a refresh. The OSM portion
     # hits the Overpass cache, so a cached map pays under a second.
     pois_path = os.path.join(output_dir, "pois.geojson")
-    if not any(config.get(k, True) for k in POI_SHOW_FLAGS):
+    # Event POIs are always on, so they keep the fetch stage alive.
+    has_event_pois = bool((config.get("event_mode") or {}).get("pois"))
+    if not has_event_pois and not any(config.get(k, True) for k in POI_SHOW_FLAGS):
         console.step("POIs: Skipped (all POI layers disabled)", detail=True)
         console.summary("POIs: skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
