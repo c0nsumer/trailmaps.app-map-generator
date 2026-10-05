@@ -74,6 +74,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Install pmtiles, tippecanoe, and tile-join somewhere in your path.
+# See docs/building.md#prerequisites. A go-pmtiles release binary works.
 
 # Build a map
 python scripts/build.py configs/example/example.yaml
@@ -84,7 +85,7 @@ python scripts/serve.py build/example
 ```
 
 A first-ever build of a new map takes ~5 to 10 minutes (downloads basemap,
-terrain, sprites). Subsequent rebuilds with cached data finish in under 30
+terrain, vendor libraries). Subsequent rebuilds with cached data finish in under 30
 seconds. See [`docs/building.md`](docs/building.md) for the full pipeline, CLI
 flags, and caching behavior.
 
@@ -99,7 +100,7 @@ python -m map_generator build configs/example/example.yaml \
 
 Both entry points are interchangeable; the package form just forwards flags
 to `scripts/build.py`. If you omit `--output-dir` / `--cache-dir`, the build
-uses the legacy `build/<slug>/` and `cache/` layout under the repo root.
+uses the default `build/<slug>/` and `cache/` layout under the repo root.
 
 ## Repository layout
 
@@ -115,8 +116,8 @@ runtime templates. You do not need Node.js or `npm install` to build maps
 | `scripts/` | The engine itself: build pipeline, data fetchers, config validation, and the test suite. Despite the name, this is where the code lives. |
 | `map_generator/` | Thin CLI facade for the `python -m map_generator build` form; forwards to `scripts/build.py`. |
 | `templates/` | The web app shipped with every generated map (HTML, CSS, JS, service worker), processed at build time. |
-| `assets/` | Vendored fonts and sprites, so builds are hermetic. The build caches JS bundles in `cache/vendor/`. |
-| `tools/` | Maintainer helpers: deploy wrapper, config cleaner, diagnostics. See [`tools/README.md`](tools/README.md). |
+| `assets/` | Vendored fonts and sprites, so builds are hermetic. The vendor JS bundles are cached in `cache/vendor/`, not here. |
+| `tools/` | Maintainer helpers: deploy wrapper, config cleaner, diagnostics, webfont coverage. See [`tools/README.md`](tools/README.md). |
 | `configs/` | Map configs. Only `example/` and `reference/` are tracked; yours stay private (see below). |
 | `docs/` | Full documentation, indexed under [Documentation](#documentation). |
 
@@ -200,6 +201,7 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.labels`: "routes", "trails", or "none"
 - `mtb.difficulty`: boolean (IMBA difficulty symbols)
 - `mtb.directionArrows`: boolean (direction arrows)
+- `mtb.currentTrail`: boolean (current-trail glow and chip while Locate is on)
 - `mtb.colorScheme`: "light", "dark", or "auto"
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
 - `mtb.routePanelExpanded`: boolean (key panel expanded/collapsed)
@@ -225,8 +227,9 @@ And yes, this was developed using Anthropic's Claude.
 ## Credits
 
 This project depends on the work of many open-source projects and public data
-sources. Each is credited in the in-app About modal of every generated map, and
-their licenses and origins are listed here:
+sources. The in-app About modal of every generated map credits the data sources
+and the libraries that ship in the map. The table below lists the main
+components, with their licenses and origins.
 
 | Component | Used for | License |
 |---|---|---|
@@ -243,7 +246,7 @@ their licenses and origins are listed here:
 | [Pillow](https://python-pillow.org/) | Build-time icon and logo image processing | HPND |
 | [PyYAML](https://pyyaml.org/) | YAML config parsing | MIT |
 | [requests](https://requests.readthedocs.io/) | HTTP client for Overpass fetches | Apache 2.0 |
-| [shapely](https://shapely.readthedocs.io/) | Dependency of mapbox-vector-tile | BSD-3-Clause |
+| [shapely](https://shapely.readthedocs.io/) | Geometry operations for the generated basemap lines, and a dependency of mapbox-vector-tile | BSD-3-Clause |
 | [pyclipper](https://github.com/fonttools/pyclipper) | Dependency of mapbox-vector-tile | MIT |
 | [mapbox-vector-tile](https://github.com/mapbox/mapbox-vector-tile-py) | Vector tile parsing in build scripts | BSD-3-Clause |
 | [potrace](http://potrace.sourceforge.net/) (optional) | Safari pinned-tab SVG generation | GPL 2.0 |

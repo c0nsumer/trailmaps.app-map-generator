@@ -34,8 +34,8 @@ hosting the output, see [`deployment.md`](deployment.md).
   - Debian and Ubuntu: `apt install tippecanoe`
   - macOS: `brew install tippecanoe`
   - If they are not installed, the build stops with an error.
-- Self-hosted [Protomaps basemap assets](https://github.com/protomaps/basemaps-assets/releases)
-  (fonts + sprites) extracted into `assets/`.
+- The [Protomaps basemap assets](https://github.com/protomaps/basemaps-assets/releases)
+  (fonts + sprites) are already in `assets/`. No setup step is needed.
 - Optional: [`potrace`](http://potrace.sourceforge.net/) for Safari
   pinned-tab SVG icon generation.
   - macOS: `brew install potrace`
@@ -68,7 +68,7 @@ python scripts/serve.py build/example
 ```
 
 A first-ever build of a new map takes ~5 to 10 minutes (downloads
-basemap, terrain, sprites). Subsequent rebuilds with cached data
+basemap, terrain, vendor libraries). Subsequent rebuilds with cached data
 finish in under 30 seconds.
 
 ## Build options
@@ -120,6 +120,7 @@ changed bbox re-extracts tiles.
   both unchanged.
 - `--no-minify` and `--no-precompress` opt out of the default-on
   minification and `.gz`/`.br` precompression for fast local iteration.
+  A `--no-precompress` build also deletes the sidecars left by an earlier build.
   Leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
 - `--quiet` suppresses step and progress output. Only warnings and
   errors remain.
@@ -261,7 +262,7 @@ tiles.
 ### Expected build times
 
 - First-ever build of a new map: 5 to 10 min (downloads basemap,
-  terrain, sprites).
+  terrain, vendor libraries).
 - Re-build with cached data, no `--refresh`: under 30 seconds.
 - `--refresh` on a large map: 10 to 20 min.
 
@@ -300,7 +301,7 @@ Run `./tools/build_and_deploy.sh --help` for full usage. Common
 patterns:
 
 ```bash
-# Build and deploy every map under configs/ (excluding configs/reference/)
+# Build and deploy every map under configs/ (excluding configs/example/ and configs/reference/)
 ./tools/build_and_deploy.sh
 
 # Build and deploy a subset
@@ -475,8 +476,8 @@ python scripts/build.py configs/example/example.yaml --refresh-trails --no-basem
 
 ### Build and data dates
 
-The About modal shows both the build date and the date of the cached
-data source, so visitors can see how current the trail information
+The About modal shows the App version date, the Map config date, and
+the Map data date, so visitors can see how current the trail information
 is.
 
 ## Local .osm file support
@@ -620,6 +621,7 @@ templates/
   sw.js               Service worker template for offline / PWA support
 
 assets/
+  placeholder-logo.png/.svg  Logo used when a map sets neither `logo:` nor `icon:`
   fonts/              Protomaps basemap fonts (PBF glyph ranges, auto-trimmed at build time)
   sprites/            Protomaps basemap sprites (PNG + JSON, all flavors)
   webfonts/           Inter (latin subset, woff2) for the DOM chrome
@@ -637,6 +639,7 @@ tools/
   build_and_deploy.sh Convenience wrapper: validate then build then optional rsync deploy
   clean_config.py     Re-align a production YAML against the canonical template
   list_relations.py   Diagnostic: list the OSM relations a map is built from
+  update_webfont_coverage.py  Regenerate the committed coverage sidecar for each bundled webfont
   README.md           Tool documentation
 
 docs/                 Documentation (this folder)

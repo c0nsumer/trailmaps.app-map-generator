@@ -1,6 +1,6 @@
 # Tools
 
-Helper scripts for building and deploying trail maps.
+Helper scripts for building and deploying trail maps, and for maintaining the repo.
 
 ## build_and_deploy.sh
 
@@ -174,3 +174,22 @@ Two more flags are available:
   output is a config override block with placeholder values to fill in.
 - `--cache-dir` sets the Overpass cache directory. The default is
   `<repo>/cache`.
+
+## update_webfont_coverage.py
+
+Regenerates the `.coverage.json` sidecar for each `.woff2` or `.woff` file in
+`assets/webfonts/`. A sidecar lists the Unicode codepoints that its font
+contains. The build reads the sidecars to warn about characters that would
+fall back to a system font. The sidecars are committed with the fonts and
+never ship in build output.
+
+Run it whenever you add or replace a webfont file. The build's own
+warning names it too.
+
+The script needs `fonttools` and `brotli`. Neither is a build dependency, so
+install them by hand first:
+
+```bash
+.venv/bin/pip install fonttools brotli
+python tools/update_webfont_coverage.py
+```
