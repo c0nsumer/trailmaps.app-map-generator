@@ -30,7 +30,7 @@ hosting the output, see [`deployment.md`](deployment.md).
   `go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest`.
 - [`tippecanoe`](https://github.com/felt/tippecanoe), which also
   provides `tile-join`. The build needs both to generate the basemap's
-  path and service-road lines.
+  path, service-road and minor-street lines.
   - Debian and Ubuntu: `apt install tippecanoe`
   - macOS: `brew install tippecanoe`
   - If they are not installed, the build stops with an error.
@@ -281,6 +281,8 @@ python scripts/serve.py build/example
 ```
 
 This is the fastest way to test changes without a production deploy.
+The server listens on all interfaces, so a phone on the same network can
+open it at this machine's address.
 The server honors Range requests properly so PMTiles work end-to-end.
 
 ## Convenience wrapper: build_and_deploy.sh

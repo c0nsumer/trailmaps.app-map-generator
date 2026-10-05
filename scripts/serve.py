@@ -13,7 +13,7 @@ Usage:
 import argparse
 import io
 import os
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import console
 
@@ -99,8 +99,12 @@ def main():
         console.error(f"not a directory: {args.directory}")
         raise SystemExit(1)
     os.chdir(args.directory)
-    server = HTTPServer(("", args.port), RangeRequestHandler)
-    console.step(f"Serving {os.path.abspath('.')} at http://localhost:{args.port}")
+    # Threaded: a PMTiles map sends many Range requests in parallel, and
+    # one idle preconnect would otherwise block all of them.
+    server = ThreadingHTTPServer(("", args.port), RangeRequestHandler)
+    console.step(
+        f"Serving {os.path.abspath('.')} on all interfaces, port {args.port} "
+        f"(http://localhost:{args.port} on this machine)")
     console.step("Press Ctrl+C to stop")
     try:
         server.serve_forever()
