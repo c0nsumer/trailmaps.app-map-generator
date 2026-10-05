@@ -62,8 +62,9 @@ python scripts/build.py configs/<slug>/<slug>.yaml
 
 # Then ship. Pick one:
 
-# AWS S3
-aws s3 sync build/<slug>/ s3://your-bucket/<slug>/ --delete
+# AWS S3 (the --exclude flags skip build-only files, see below)
+aws s3 sync build/<slug>/ s3://your-bucket/<slug>/ --delete \
+  --exclude '*.sig' --exclude '*.src.geojson' --exclude '*.tmp'
 
 # Netlify CLI
 netlify deploy --dir=build/<slug> --prod
@@ -78,11 +79,16 @@ wrangler pages deploy build/<slug>
 # point your tool at build/<slug>/ as the source directory
 ```
 
+The build directory also holds build-only files that must never reach the
+server. Exclude `*.sig`, `*.src.geojson`, and `*.tmp` from every upload. The
+rsync wrapper already does this. With Netlify, GitHub Pages, Cloudflare Pages,
+or a manual upload, delete those files from a copy of the directory first.
+
 Every static host that serves HTTP Range requests properly will work. That
 includes S3, Netlify, Cloudflare Pages, GitHub Pages, nginx, Apache, and
 Caddy. The Caddy-specific config below is one example of headers you may want
 to set on whichever host you use. The same intent translates to most server
-configs: cache JS/CSS forever, revalidate HTML, allow Range on PMTiles.
+configs: cache JS/CSS for a day, revalidate HTML, allow Range on PMTiles.
 
 The build also writes precompressed `.gz` and `.br` (Brotli) sidecars next to
 each text asset. Brotli is the encoding every modern browser accepts,
@@ -90,7 +96,7 @@ including Safari, which never accepts zstd. Caddy, nginx, and Apache can
 serve the sidecars directly (see the `precompressed` block below). Managed hosts like S3, Netlify, Cloudflare
 Pages, and GitHub Pages cannot; they compress on their own terms and ignore
 sidecar files. If you deploy to one of those, build with `--no-precompress`
-so the sidecars are not generated and uploaded for nothing.
+so the sidecars are not generated and uploaded for nothing. A `--no-precompress` build also deletes the sidecars left by an earlier build.
 
 ## Caddy configuration
 
@@ -153,7 +159,9 @@ mytrailmaps.com {
 
 The same logical setup translates directly to nginx or Apache. The required
 pieces are HTTPS, Range request support on `.pmtiles`, `Cache-Control: no-cache`
-on `index.html` and `sw.js`, and a sane TTL on everything else.
+on `index.html` and `sw.js`, `.mjs` files served as `text/javascript`, and a
+sane TTL on everything else. The vendored MapLibre and uqr scripts are module
+scripts. A browser refuses them when the server sends another MIME type.
 
 ## Service worker update cadence
 
@@ -194,13 +202,14 @@ turn it off.
    `.pmtiles` files by slicing from the cached full file. Map tiles work fully
    offline.
 
-3. **Install row.** An "Install as an app" action row appears in the Options
+3. **Install row.** An "Install this app" action row appears in the Options
    overlay on supported browsers. On iOS, tapping it reveals a Share to
    Add-to-Home-Screen hint instead of firing an install prompt.
 
 4. **Cache updates.** Each build produces a unique cache version. On the next
-   visit after a rebuild, the new service worker installs, re-caches all files,
-   and activates immediately. Old caches are automatically cleaned up.
+   visit after a rebuild, the new service worker installs and fills its own cache in the
+   background, then waits. It activates after the silent swap, a Reload tap,
+   or the next cold launch. Then it deletes the old caches.
 
 The PWA is transparent: the map works identically in a regular browser tab,
 and offline capability layers on top.
@@ -218,8 +227,8 @@ Install promotion is always on.
 ## PMTiles and HTTP Range requests
 
 PMTiles relies on HTTP Range requests to read tile chunks instead of downloading
-the entire archive. This is critical for fast first-load performance. A trail
-map's basemap PMTiles ranges from under 1 MB to about 26 MB. Most are under 10 MB.
+the entire archive. This is critical for fast first-load performance. Most
+trail-map basemap PMTiles are under 10 MB.
 Rendering any given view needs only a few hundred KB of tile chunks.
 
 Verify Range support manually before deploying a new server config:

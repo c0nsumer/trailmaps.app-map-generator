@@ -12,7 +12,7 @@ issues](#known-issues).
 - [Bbox or pan_padding changes don't update the basemap](#bbox-or-pan_padding-changes-dont-update-the-basemap)
 - [PMTiles won't load offline](#pmtiles-wont-load-offline)
 - [Overpass keeps timing out](#overpass-keeps-timing-out)
-- [Console warning: beforeinstallpromptevent.preventDefault() called](#console-warning-beforeinstallpromptevent-preventdefault-called)
+- [Console warning: beforeinstallpromptevent preventDefault() called](#console-warning-beforeinstallpromptevent-preventdefault-called)
 - [Off-screen indicator points to the wrong location](#off-screen-indicator-points-to-the-wrong-location)
 - ["Updated map available" toast doesn't appear after deploy](#updated-map-available-toast-doesnt-appear-after-deploy)
 - [Build is slow](#build-is-slow)
@@ -20,7 +20,9 @@ issues](#known-issues).
 
 ## Build fails with "OSM relation not found" or "0 elements"
 
-One of the relation IDs in `relations`, `clipped_relations`,
+The build prints `Relations [...] returned no usable data.` or
+`<server> returned 0 elements N times in a row.` One of the relation IDs
+in `relations`, `clipped_relations`,
 `winter_relations`, `summer_relations`, or
 `emergency_access_relations` refers to a problem OSM relation. The
 relation no longer exists, has been redacted, or is currently
@@ -32,7 +34,7 @@ unreachable from Overpass.
   replacement and update the YAML.
 - **If the relation exists but Overpass returns 0 elements**: the
   relation may have been split or the geometry coverage moved. Try a
-  fresh `--refresh-trails` run to bypass any cached error response.
+  fresh `--refresh-trails` run. It queries Overpass again.
 - **Last resort**: snapshot the relation's data into a local `.osm`
   XML file and switch to `osm_file: osm.osm` (see
   [Local .osm file support](building.md#local-osm-file-support) in
@@ -43,7 +45,7 @@ unreachable from Overpass.
 
 Most often a season-bucket filtering issue. Each route belongs to
 non-exclusive Summer / Winter / Emergency buckets (see
-[Route buckets](configuration.md#route-buckets)).
+[Route buckets](configuration.md#route-buckets-1)).
 
 - The Options Season toggle hides the inactive bucket. If your map
   is showing summer mode, winter-only trails won't appear (and vice
@@ -51,10 +53,8 @@ non-exclusive Summer / Winter / Emergency buckets (see
 - Check `winter_relations` / `summer_relations` /
   `emergency_access_relations` in your YAML. A route in the wrong
   list won't render under the season the rider expects.
-- For routes you want visible in both seasons, list them in
-  `summer_relations` and tag them as `seasonal=winter` in OSM.
-  Alternatively, just put them in `summer_relations` to make them
-  year-round.
+- For routes you want visible in both seasons, list them in both
+  `winter_relations` and `summer_relations`.
 
 ## The page says the map has not started
 
@@ -76,7 +76,7 @@ after 10 seconds, so a slow load does not show it. If you see it,
   the map, then reload.
 
 **"This map cannot start here."** `app.js` ran, but it could not make a
-map. The browser console names the cause. There are two causes:
+map. The browser console names the cause. There are two common causes:
 
 - The browser or device does not provide WebGL2. MapLibre GL JS 6 and
   the lane layer both need it. The message says so. Try a current
@@ -84,6 +84,10 @@ map. The browser console names the cause. There are two causes:
 - `vendor/maplibre-gl-lanes.js` did not load. That script draws every
   route, so the map does not start without it. Check that the file is in
   the deployed `vendor/` directory.
+
+Any other error during startup, such as a broken config, shows the same
+card with the generic message "Something went wrong while the map was
+starting." In that case, look in the console for `Map could not start:`.
 
 ## Bbox or pan_padding changes don't update the basemap
 
@@ -93,8 +97,8 @@ persists:
 
 - Run with `--refresh` to bypass the caches and re-extract from
   scratch.
-- Or delete `build/<slug>/basemap.pmtiles` and
-  `build/<slug>/terrain.pmtiles` manually, then re-run without
+- Or delete `build/<slug>/terrain.pmtiles` and
+  `cache/basemap/<slug>-protomaps.pmtiles` manually, then re-run without
   `--no-basemap` / `--no-terrain`.
 
 ## PMTiles won't load offline
@@ -118,8 +122,8 @@ service worker isn't catching it. Two likely causes:
 - **Service worker not caching `.pmtiles`**: open
   DevTools > Application > Cache Storage > `trail-map-<slug>-<hash>` and confirm
   `basemap.pmtiles` and `terrain.pmtiles` are listed. If not, the
-  precache list missed them. Rebuild and verify the build log
-  mentions both files.
+  precache list missed them. Rebuild and verify that both files are in
+  `build/<slug>/`.
 
 ## Overpass keeps timing out
 
@@ -145,7 +149,7 @@ immediate `prompt()` call. The warning is benign and can be ignored.
 
 ## Off-screen indicator points to the wrong location
 
-If the location indicator triangle points to where you *aren't*:
+If the location indicator arrow points to where you *aren't*:
 
 - The browser may be returning a cached or inaccurate position. Tap
   Locate to disable, then re-enable to force a fresh GPS read.
