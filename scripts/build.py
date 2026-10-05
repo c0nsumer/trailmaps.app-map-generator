@@ -611,15 +611,28 @@ def _load_json_or_none(path):
         return None
 
 
+def clear_precompressed_sidecars(output_dir):
+    """Delete every .gz/.br sidecar under output_dir.
+
+    Runs on every build, including --no-precompress: a precompressed-aware
+    server prefers a sidecar over the original, so a sidecar left by an
+    earlier build would serve stale bytes beside the new file. It also stops
+    a file that is no longer emitted (e.g. a glyph range dropped by font
+    trimming) from leaving an orphan behind.
+    """
+    for root, _dirs, files in os.walk(output_dir):
+        for fname in files:
+            if fname.endswith((".gz", ".br")):
+                os.remove(os.path.join(root, fname))
+
+
 def precompress_assets(output_dir):
     """Write .gz + .br sidecars for compressible assets in output_dir.
 
     MUST run after generate_service_worker: the SW hashes and precaches the
     ORIGINAL files, and the sidecars must not exist when that file list is
     built (the runtime requests e.g. ``0-255.pbf``, never ``0-255.pbf.gz``).
-    Stale sidecars from a previous build are cleared first so a file that is
-    no longer emitted (e.g. a glyph range dropped by font trimming) can't
-    leave an orphan behind.
+    The caller clears stale sidecars first (see clear_precompressed_sidecars).
     """
     import gzip as _gzip
 
@@ -627,12 +640,6 @@ def precompress_assets(output_dir):
         import brotli as _brotli
     except ImportError:
         _brotli = None
-
-    # Clear prior sidecars for deterministic output.
-    for root, _dirs, files in os.walk(output_dir):
-        for fname in files:
-            if fname.endswith((".gz", ".br")):
-                os.remove(os.path.join(root, fname))
 
     count = orig_total = comp_total = 0
     for root, _dirs, files in os.walk(output_dir):
@@ -1758,6 +1765,7 @@ def _stage_pwa(config, args, output_dir):
         console.blank()
 
     # MUST be after the service worker - see precompress_assets.
+    clear_precompressed_sidecars(output_dir)
     if args.precompress:
         console.step("Precompressing static assets...", detail=True)
         precompress_assets(output_dir)

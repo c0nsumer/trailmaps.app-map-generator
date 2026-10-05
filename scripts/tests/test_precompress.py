@@ -13,7 +13,7 @@ import os
 
 import brotli
 
-from build import precompress_assets
+from build import clear_precompressed_sidecars, precompress_assets
 
 
 def _plant(root, rel, content):
@@ -41,6 +41,7 @@ def test_stale_sidecars_swept(tmp_path):
     root = str(tmp_path)
     _plant(root, "app.js", b"var x = 1;" * 500)
     _plant(root, "gone.css.gz", b"orphan for a removed file")
+    clear_precompressed_sidecars(root)
     precompress_assets(root)
     assert not os.path.exists(os.path.join(root, "gone.css.gz"))
     assert os.path.exists(os.path.join(root, "app.js.gz"))
@@ -56,3 +57,15 @@ def test_small_and_binary_files_skipped(tmp_path):
     for rel in ("tiny.json", "basemap.pmtiles", "icons/icon.png"):
         assert not os.path.exists(os.path.join(root, rel + ".gz")), rel
         assert not os.path.exists(os.path.join(root, rel + ".br")), rel
+
+
+def test_sidecars_cleared_without_precompression(tmp_path):
+    # --no-precompress must not leave the last build's bytes beside the new file.
+    root = str(tmp_path)
+    _plant(root, "app.js", b"var x = 1;" * 500)
+    _plant(root, "app.js.br", b"stale")
+    _plant(root, "sub/data.json.gz", b"stale")
+    clear_precompressed_sidecars(root)
+    assert not os.path.exists(os.path.join(root, "app.js.br"))
+    assert not os.path.exists(os.path.join(root, "sub/data.json.gz"))
+    assert os.path.exists(os.path.join(root, "app.js"))
