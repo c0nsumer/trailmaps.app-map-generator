@@ -374,6 +374,10 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
             osm_file = os.path.join(project_root, osm_file)
         parsed = parse_osm_file(osm_file)
         osm_data = extract_pois(parsed, bbox)
+    elif not any(config.get(k, True) for k in POI_SHOW_FLAGS):
+        # Reached only for event POIs, which come from the config: with
+        # every layer off there is nothing to ask Overpass for.
+        osm_data = {"elements": []}
     else:
         osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh)
 
