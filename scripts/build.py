@@ -1227,10 +1227,9 @@ def _stage_trails(config, args, output_dir, cache_dir):
                 "(reused from the previous build)"
             )
         except (json.JSONDecodeError, UnicodeDecodeError):
-            # A truncated base with no sidecar (a first build killed
-            # between the snapshot copy and the signature save) escapes
-            # the content guard, which only fires when a sidecar exists.
-            # A bad base is never reused: refetch.
+            # A truncated base whose sidecar carries no content hash
+            # gets past the content guard. A bad base is never reused:
+            # refetch.
             console.warn(f"{trails_src_path} is unreadable (truncated?); refetching")
             fetch_ran = True
             trails_geojson = _fetch_and_snapshot(

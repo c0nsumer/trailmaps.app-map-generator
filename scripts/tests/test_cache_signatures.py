@@ -103,12 +103,14 @@ def test_missing_file_triggers_a_refetch(tmp_path):
     assert _trails_needs_refetch(str(tmp_path / "gone.geojson"), CONFIG) == (True, "file missing")
 
 
-def test_missing_sidecar_backfills_instead_of_refetching(tmp_path):
+def test_missing_sidecar_triggers_a_refetch(tmp_path):
+    # Without the sidecar neither the fingerprint nor the content guard
+    # can vouch for the base, so a relation added since would be missed.
     path = tmp_path / "trails.src.geojson"
     path.write_text("{}", encoding="utf-8")
     needs, reason = _trails_needs_refetch(str(path), CONFIG)
-    assert not needs
-    assert "backfilling" in reason
+    assert needs
+    assert "sidecar missing" in reason
 
 
 def test_sidecar_without_a_content_line_is_trusted(tmp_path):

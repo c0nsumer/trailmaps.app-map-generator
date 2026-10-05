@@ -62,7 +62,7 @@ def _clear_signature(output_path):
 
 def _trails_fetch_fingerprint(config):
     """Stable hash of every config key fetch_trails() consumes. When
-    this changes between builds, the cached trails.geojson is stale
+    this changes between builds, the cached trails.src.geojson is stale
     even though it exists on disk - adding a relation to
     clipped_relations, swapping osm_file, or editing direction_schedule
     all flip the hash and force a refetch.
@@ -90,16 +90,13 @@ def _trails_fetch_fingerprint(config):
 
 
 def _trails_content_hash(trails_path):
-    """SHA-256 of trails.geojson exactly as it sits on disk.
+    """SHA-256 of trails.src.geojson exactly as it sits on disk.
 
-    Recorded in the sidecar at the end of every successful build and
-    re-checked at the start of the next one. Lets the build notice when
-    trails.geojson was changed out from under it (truncated, reverted by
-    a backup/sync restore, hand-edited, half-written) and refetch instead
-    of silently reusing a bad file. We only ever compare a build's output
-    against what THAT build recorded, so enrichment's between-build
-    rewrite non-determinism is irrelevant: the stored hash always tracks
-    the bytes the previous build actually left on disk.
+    Recorded in the sidecar when the base is fetched and re-checked at
+    the start of every later build. Lets the build notice when the base
+    was changed out from under it (truncated, reverted by a backup/sync
+    restore, hand-edited, half-written) and refetch instead of silently
+    reusing a bad file.
     """
     h = hashlib.sha256()
     try:
@@ -112,31 +109,31 @@ def _trails_content_hash(trails_path):
 
 
 def _trails_needs_refetch(trails_path, config):
-    """True iff the cached trails.geojson must be refetched. Returns
+    """True iff the cached trails.src.geojson must be refetched. Returns
     (needs_refetch, reason).
 
     Two independent triggers:
       1. Config inputs changed since the file was fetched (the sidecar's
          config-fingerprint line no longer matches the current config).
-      2. The file's bytes no longer match the `trails-content` hash the
-         last build recorded, meaning trails.geojson was modified,
+      2. The file's bytes no longer match the `trails-content` hash
+         recorded at fetch time, meaning the base was modified,
          truncated, or reverted out from under us. This guard stops a
          reverted/partial build/site from being silently reused and
          shipped (the failure that dropped half of Addison's trails).
 
-    A missing sidecar (legacy build), or one without the content line,
-    is treated as a backfill: reuse the file and write a full sidecar on
-    the next save, rather than forcing a surprise refetch.
+    A missing sidecar leaves neither trigger checkable, so it refetches;
+    the refetch rebuilds from the cached Overpass responses, offline. A
+    sidecar without the content line is checked on its fingerprint alone.
     """
     if not os.path.exists(trails_path):
         return True, "file missing"
     raw = _load_signature(trails_path)
     if raw is None:
-        return False, "fingerprint sidecar missing (legacy build, backfilling)"
+        return True, "fingerprint sidecar missing"
 
     # Sidecar layout (newest format, oldest is just line 0):
     #   trails-fp=<config fingerprint>
-    #   trails-content=<sha256 of trails.geojson as last written>
+    #   trails-content=<sha256 of trails.src.geojson as last written>
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     stored_fp = lines[0] if lines else ""
     expected_fp = _trails_fetch_fingerprint(config)
@@ -152,7 +149,7 @@ def _trails_needs_refetch(trails_path, config):
         actual_content = _trails_content_hash(trails_path)
         if actual_content and actual_content != stored_content:
             return True, (
-                f"trails.geojson changed on disk since it was built "
+                f"trails.src.geojson changed on disk since it was fetched "
                 f"(content {stored_content[:12]}... vs {actual_content[:12]}...); "
                 f"refetching so a truncated or reverted file isn't reused"
             )
