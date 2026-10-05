@@ -41,9 +41,6 @@ _SLUG_RE = re.compile(r"[a-z0-9_-]+")
 # structurally out of reach.
 _PRUNABLE = (
     re.compile(r"overpass_[0-9a-f]{12}\.json"),
-    # Elevation caches from builds before that pipeline was removed: a
-    # manifest still naming them lets the next prune delete them.
-    re.compile(r"route_stats/elev_[^/]+_[0-9a-f]{16}\.json"),
     re.compile(r"derive_accent/[0-9a-f]{16}\.json"),
 )
 
@@ -51,14 +48,14 @@ CATEGORIES = (
     "overpass_trails",
     "overpass_pois",
     "overpass_basemap",
-    "route_stats",
     "derive_accent",
 )
 
 # Module-level collector. Every cache-path computation site records
-# into it and build.py drains it at stage boundaries; all recorders run
-# on the main thread (the only threaded build work, basemap/terrain
-# extraction, touches no manifest-tracked cache).
+# into it and build.py drains it at stage boundaries. Basemap path
+# generation also records from the tile worker thread, after the last
+# drain; planning recorded that same path already, and list.append is
+# atomic, so the late entry is harmless.
 _touched: list[str] = []
 
 

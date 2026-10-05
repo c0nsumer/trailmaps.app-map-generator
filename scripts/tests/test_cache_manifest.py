@@ -22,7 +22,6 @@ from conftest import _FakeResp
 # Valid-shaped relative entry names (the allowlist is strict about them).
 OP_A = "overpass_" + "a" * 12 + ".json"
 OP_B = "overpass_" + "b" * 12 + ".json"
-RS_A = "route_stats/elev_100_" + "c" * 16 + ".json"
 DA_A = "derive_accent/" + "d" * 16 + ".json"
 
 
@@ -34,13 +33,12 @@ def _plant(cache_dir, rel, content="{}"):
     return path
 
 
-def _cats(cache_dir, trails=(), pois=(), stats=(), accent=()):
+def _cats(cache_dir, trails=(), pois=(), accent=()):
     """Build an absolute-path categories dict as build.py assembles it."""
     j = lambda rels: [os.path.join(cache_dir, r) for r in rels]  # noqa: E731
     return {
         "overpass_trails": j(trails),
         "overpass_pois": j(pois),
-        "route_stats": j(stats),
         "derive_accent": j(accent),
     }
 
@@ -64,12 +62,11 @@ def test_record_drain_dedups_and_clears():
 
 def test_save_load_roundtrip(tmp_path):
     cache_dir = str(tmp_path)
-    rel = cache_manifest.save(cache_dir, "mymap", _cats(cache_dir, trails=[OP_A], stats=[RS_A]))
+    rel = cache_manifest.save(cache_dir, "mymap", _cats(cache_dir, trails=[OP_A]))
     assert rel == {
         "overpass_trails": [OP_A],
         "overpass_pois": [],
         "overpass_basemap": [],
-        "route_stats": [RS_A],
         "derive_accent": [],
     }
     assert cache_manifest.load(cache_dir, "mymap") == rel
@@ -164,7 +161,6 @@ def test_prune_allowlist_blocks_unexpected_paths(tmp_path):
                     "categories": {
                         "overpass_trails": [],
                         "overpass_pois": [],
-                        "route_stats": [],
                         "derive_accent": [],
                     },
                 }
@@ -181,7 +177,6 @@ def test_prune_allowlist_blocks_unexpected_paths(tmp_path):
             os.path.join(str(tmp_path), "evil.json"),
         ],
         "overpass_pois": [],
-        "route_stats": [],
         "derive_accent": [],
     }
     new = cache_manifest.save(cache_dir, "mymap", _cats(cache_dir))

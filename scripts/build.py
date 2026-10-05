@@ -1905,7 +1905,6 @@ def main(argv=None):
     _event_mode_prepass(config)
     _warn_arrows_hidden(config, trails_geojson)
     _stage_enrich(config, trails_geojson, trails_path, cache_dir)
-    route_stats_paths = cache_manifest.drain()
     _stage_bbox(config, trails_geojson)
 
     pois_path = _stage_pois(config, args, output_dir, cache_dir)
@@ -1953,7 +1952,6 @@ def main(argv=None):
         "overpass_trails": overpass_trails_paths,
         "overpass_pois": overpass_pois_paths,
         "overpass_basemap": overpass_basemap_paths,
-        "route_stats": route_stats_paths,
         "derive_accent": derive_accent_paths,
     }, trails_fetch_ran)
 
