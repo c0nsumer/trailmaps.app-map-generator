@@ -3242,7 +3242,7 @@ async function shareCurrentView() {
 function fallbackCopyShareUrl(url) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url)
-            .then(() => showToast("View URL copied. Paste anywhere to share."))
+            .then(() => showToast("Link copied. Paste anywhere to share."))
             .catch(() => showToast("Couldn't copy URL. Try again or use the URL bar."));
     } else {
         // navigator.clipboard exists only in a secure context, so plain
@@ -3256,9 +3256,11 @@ function fallbackCopyShareUrl(url) {
             ta.style.left = "-9999px";
             document.body.appendChild(ta);
             ta.select();
-            document.execCommand("copy");
+            // A refused copy returns false rather than throwing.
+            const copied = document.execCommand("copy");
             document.body.removeChild(ta);
-            showToast("View URL copied. Paste anywhere to share.");
+            if (!copied) throw new Error("copy refused");
+            showToast("Link copied. Paste anywhere to share.");
         } catch (e) {
             showToast("Couldn't copy URL. Try again or use the URL bar.");
         }
@@ -4716,8 +4718,11 @@ function _welcomeOptionsDescription() {
     // enumerate Auto, the welcome is a quick orientation, not
     // a feature spec.
     items.push("switch between light and dark mode");
-    items.push("share the view");
-    items.push("install as an app");
+    items.push("share this map");
+    if (!window.matchMedia("(display-mode: standalone)").matches
+            && (isIOSDevice() || "onbeforeinstallprompt" in window)) {
+        items.push("install as an app");
+    }
     // The two informational rows at the tail of Options: the Help row
     // that reopens this very modal (worth telling a first-visit rider
     // the guide isn't a one-shot) and the technical About modal.
@@ -4802,7 +4807,8 @@ function buildWelcomeControlsHint() {
     // panel's Routes + Search rows).
     if ((CONFIG.gpxDownloads || []).length) {
         const w = _gpxWording();
-        rows.splice(3, 0, { icon: _WELCOME_ICON_GPX, name: w.label,
+        const after = rows.findIndex((r) => r.icon === _WELCOME_ICON_OPTIONS);
+        rows.splice(after + 1, 0, { icon: _WELCOME_ICON_GPX, name: w.label,
             desc: w.plural
                 ? "Download route GPX files for your bike computer."
                 : "Download the route's GPX file for your bike computer." });
@@ -4906,7 +4912,7 @@ function closeAboutModal() {
 // or about.links[].url. The label still renders so the rider sees the
 // item; only the dangerous href is blocked.
 const _SAFE_URL_SCHEMES = ["http:", "https:", "mailto:"];
-function _isSafeExternalUrl(url) {
+function _isSafeExternalUrl(url, schemes = _SAFE_URL_SCHEMES) {
     if (typeof url !== "string" || !url) return false;
     try {
         // Use URL parsing to handle whitespace, mixed case, and
@@ -4914,7 +4920,7 @@ function _isSafeExternalUrl(url) {
         // External-link context). location.origin is the base for
         // resolving schemeless inputs.
         const u = new URL(url, window.location.origin);
-        return _SAFE_URL_SCHEMES.includes(u.protocol);
+        return schemes.includes(u.protocol);
     } catch (_) {
         return false;
     }
@@ -5131,6 +5137,13 @@ function buildAboutModalContent() {
         "https://maplibre.org",
         "MapLibre GL JS",
         " (BSD-3-Clause).");
+    // Every map reads its tile archives through the library, and the
+    // minified vendor file ships without its license header, so this
+    // credit carries the BSD attribution.
+    credit("Tile archives read with ",
+        "https://github.com/protomaps/PMTiles",
+        "PMTiles",
+        " by Protomaps (BSD-3-Clause).");
     // Every map draws its routes through the plugin, so the credit is
     // unconditional, like MapLibre's own.
     credit("Routes drawn as lanes by ",
@@ -10036,9 +10049,14 @@ async function loadPOIs() {
 const isSafari = /Safari/.test(navigator.userAgent) &&
     !/Chrome|CriOS|Chromium|Edg|Firefox|FxiOS|OPR/.test(navigator.userAgent);
 
+// A curator's directions_url is pasted from elsewhere, so it is escaped
+// and must be http(s); anything else falls back to the computed link.
 function directionsLink(coords, directionsUrl) {
+    if (directionsUrl && _isSafeExternalUrl(directionsUrl, ["http:", "https:"])) {
+        return `<a class="popup-directions" href="${escapeHtml(directionsUrl)}" target="_blank" rel="noopener">Get Directions &rarr;</a>`;
+    }
     if (directionsUrl) {
-        return `<a class="popup-directions" href="${directionsUrl}" target="_blank" rel="noopener">Get Directions &rarr;</a>`;
+        console.warn(`directionsLink: rejected directions_url, expected http(s)://, got ${JSON.stringify(directionsUrl)}`);
     }
     const [lon, lat] = coords;
     const url = isSafari
