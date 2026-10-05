@@ -80,7 +80,7 @@ const MAX_ZOOM = 18;
 //
 // The data-color-scheme attribute on <html> is the single source of
 // truth at runtime. It's set by the inline bootstrap script in <head>
-// (see build.py's __COLOR_SCHEME_BOOTSTRAP__ injection) BEFORE any
+// (see template_inject.py's __COLOR_SCHEME_BOOTSTRAP__ injection) BEFORE any
 // stylesheet renders, so first paint already has the correct scheme
 // and there's no light→dark FOUC.
 //
@@ -251,7 +251,7 @@ const BASEMAP_RAIL = {
 };
 // Wetlands (landuse kind "wetland"; Protomaps keeps no swamp/marsh/bog
 // subtype). Wet ground matters to a rider, and the flavor draws no layer
-// for that kind, so it used to render as plain ground. A tint between
+// for that kind, so it would render as plain ground. A tint between
 // the scheme's park green and water blue, plus the topo marsh sign
 // (small tufts over a dash) from z12. The marks are small, light, and
 // spaced well apart: at full topo size and density they read as
@@ -1009,8 +1009,8 @@ function difficultyToggleOn() {
     // There's no clean way to limit them to "the course" because the
     // course is a custom polyline whose synthesized geometry doesn't
     // backflow into OSM ways' shared_routes. The toggle row is hidden
-    // in setupOptionsOverlay; this guard also handles initial layer
-    // visibility at addAllTrailLayers time.
+    // in setupFloatingChrome; this guard also handles initial layer
+    // visibility when loadTrails adds the layers.
     if (CONFIG.eventModeActive) return false;
     // forced_visible wins over the stored choice, as for the arrows.
     if (isForcedVisible("difficulty")) return true;
@@ -1060,10 +1060,8 @@ function drawArrow(ctx, size, fillColor, haloColor) {
 
 // ---- One-way chevron line decoration ----
 // One-way travel direction rendered as repeating glyphs along the
-// corridor centerline (.claude/plans/one-way-line-direction.md).
-// This replaced the JS-placed point arrows: compute-once point
-// placement kept fighting screen-space reality (see the superseded
-// mid-zoom-label-dead-band plan's field record).
+// corridor centerline, not as JS-placed points: compute-once point placement fights
+// screen-space reality as the zoom changes.
 //
 // Rendered as line-placed SYMBOLS, not line-pattern: the pattern
 // shader pins tile height to screen-space line width but
@@ -1073,8 +1071,7 @@ function drawArrow(ctx, size, fillColor, haloColor) {
 // shape-destroying for arrowheads. Symbols render pixel-rigid at
 // every zoom and rotate to the local line direction. With
 // icon-allow-overlap + icon-ignore-placement they are collision-
-// inert (never shed, never shift others), keeping the pure-paint
-// spirit of the original design.
+// inert (never shed, never shift others): pure paint.
 //
 // Appearance knobs:
 // Spacing: eye-tuned on the dev builds; 60 read as slightly too
@@ -1084,13 +1081,10 @@ const CHEVRON_SPACING_PX = 80;   // symbol-spacing between glyphs
 const CHEVRON_ICON_W = 20;       // icon canvas; small margin keeps
 const CHEVRON_ICON_H = 16;       // the halo unclipped at the tip
 
-// The glyph: drawArrow's solid notched arrowhead, the same shape the
-// point arrows always used, centered in the icon canvas (surplus
-// width is transparent margin; on-screen spacing is symbol-spacing
-// on the layers, not the canvas). Chosen in the Phase 1 eye test
-// over dart / harpoon / triangle / stroked-chevron candidates: a
-// FILLED shape reads solidly at 8-14 drawn px where thin strokes go
-// noisy, and the visual language carries over from the old arrows.
+// The glyph: drawArrow's solid notched arrowhead, centered in the
+// icon canvas (surplus width is transparent margin; on-screen spacing
+// is symbol-spacing on the layers, not the canvas). A FILLED shape
+// reads solidly at 8-14 drawn px where thin strokes go noisy.
 function drawChevronTile(ctx, w, h, fill, halo, reverse) {
     ctx.save();
     if (reverse) {
@@ -1109,8 +1103,7 @@ function drawChevronTile(ctx, w, h, fill, halo, reverse) {
 // line's digitization direction, so +x = OSM travel direction.
 // Reverse is the mirror image, selected per feature by the rev
 // layer's filter (routes reversed today); a mirror (not a 180°
-// rotate) keeps asymmetric glyphs like the harpoon on a consistent
-// side of the line.
+// rotate) keeps an asymmetric glyph on a consistent side of the line.
 const CHEVRON_VARIANTS = [
     { id: "chevron-fwd-light-bg", fill: "#000000",
       halo: "rgba(255,255,255,0.9)", reverse: false },
@@ -1361,7 +1354,7 @@ function buildDifficultyKey() {
 function chevronIconDataUrl() {
     // Forward-pointing only: a popup has no line direction to align
     // with, the chevron just brands the row as "direction arrow".
-    // Fill/halo track the color scheme like CHEVRON_VARIANTS.
+    // Fill/halo are the on-map forward chevron's for this scheme.
     const scheme = currentColorScheme();
     const key = `chevron-${scheme}`;
     if (!_popupIconCache[key]) {
@@ -1786,12 +1779,11 @@ const DECOR_MZ_RUN     = 0;   // run-spaced overview markers
 const DECOR_MZ_PER_WAY = 14;  // 2 diamonds per physical way
 
 // ---- Screen-space density ladder ----
-// Fixed meter cadences (the old 500 m overview / 400 m / 200 m tiers)
-// double their on-screen spacing across every zoom level inside a tier,
-// then snap back where the next tier gates in, a 2-4x density sawtooth
-// that read as "sometimes sparse, sometimes busy" (4 px overview spacing
-// at z10 on a big network; 450 px gaps at z18). The ladder replaces
-// them: one rung per zoom level, each rung's ground cadence chosen so
+// Fixed meter cadences in a few tiers would double their on-screen
+// spacing across every zoom level inside a tier, then snap back where
+// the next tier gates in, a 2-4x density sawtooth that reads as
+// "sometimes sparse, sometimes busy". So the ladder has one rung per
+// zoom level, each rung's ground cadence chosen so
 // markers sit ~DECOR_TARGET_SPACING_PX apart ON SCREEN at the zoom where
 // the rung gates in. Coarse rungs place first and finer rungs nest into
 // their gaps via the shared collision index, so placements stay put as
@@ -1831,22 +1823,18 @@ const DECOR_LADDER = decorCadenceLadder(DECOR_TARGET_SPACING_PX,
 
 // Ground spacing between overview (run-tier) markers, the same screen
 // target, anchored at the map's minimum zoom where the whole system is
-// in view. Every run still gets at least one marker regardless.
+// in view. Every run gets at least one marker unless a POI marker or
+// an earlier diamond blocks it.
 const DECOR_OVERVIEW_SPACING_M =
     DECOR_TARGET_SPACING_PX * decorMetersPerPixel(MIN_ZOOM);
 
 // Zoom at which the curve-following on-path labels become ELIGIBLE
-// (their minzoom). Historically held at 16 because on-path labels at
-// z14 drew straight over the dense per-way POINT ARROW field; those
-// arrows are gone (one-way direction is now the collision-inert
-// decor-chevron-* line symbols), so the remaining contention is only
-// the much sparser diamond field, and the crossover comes back down
-// to 14. This closes the z13-15 "mid-zoom label dead band" (trails
-// on screen, no name anywhere): on-path names now cover it, and the
-// overview point label hands off at 15 instead of 17
-// (OVERVIEW_LABEL_MAX_ZOOM below). Phase 3 of
-// one-way-line-direction.md; if 14 proves too busy against the
-// diamond field, 15 is the fallback stop.
+// (their minzoom). The one-way chevrons are collision-inert, so the
+// only contention at 14 is the sparse diamond field. Starting there
+// leaves no z13-15 band with trails on screen and no name anywhere:
+// on-path names cover it, and the overview point label hands off at
+// 15 (OVERVIEW_LABEL_MAX_ZOOM below). If 14 proves too busy against
+// the diamond field, 15 is the fallback stop.
 const POINT_LABEL_MAX_ZOOM = 14;
 
 // On-path line layers' minzoom. Clamped one stop under MAX_ZOOM so the
@@ -1923,8 +1911,9 @@ function computeConnectedRuns(ways, isEligible, groupKey) {
 
 // Place run-tier overview markers: walk each run's member ways longest-
 // first and drop a marker every ~spacingM of straight-line distance
-// (tracked in `acceptedPts`), guaranteeing at least one per run even when a
-// neighbor run already sits within spacing. Straight-line (not arc)
+// (tracked in `acceptedPts`), with at least one per run even when a
+// neighbor run already sits within spacing, unless a POI marker or an
+// earlier diamond blocks all three tries. Straight-line (not arc)
 // spacing keeps overview density even in screen space, so tight switchback
 // clusters don't each demand a marker. Each placement clears POI/marker
 // footprints via the shared `placed` index and registers itself there so
@@ -1969,7 +1958,7 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
             }
         }
         if (!placedAny && members.length) {
-            place(members[0], 0.5, true);   // guarantee >=1 per run
+            place(members[0], 0.5, true);   // spacing waived, collisions still apply
         }
     }
 }
@@ -2252,8 +2241,8 @@ function computeDecorations() {
 }
 
 // Schedule a trail-decorations recompute: on initial load,
-// route-visibility change, marker proximity change, and day-tick (when
-// reverseRoutesToday flips). computeDecorations() is the expensive pass (50-200 ms on dense maps:
+// route-visibility change, and marker proximity change.
+// computeDecorations() is the expensive pass (50-200 ms on dense maps:
 // 4-pass placement + collision-checked label clipping), and callers
 // legitimately overlap: applyVisibilityChange() alone reaches here
 // twice per toggle (updateTrailDisplay + updateMarkerProximity). Two
@@ -2469,7 +2458,7 @@ function buildDecorFilter(kind) {
 
 // Build the filter for one chevron layer. `rev` selects ways whose
 // travel direction is flipped today: any sharing route present in
-// reverseRoutesToday, the same rule the point arrows used. ANDed on
+// reverseRoutesToday. ANDed on
 // top: canonical ownership (exactly one chevron row per physical
 // way, stamped by computeTrailsSourceData so it tracks visibility
 // changes), oneway membership, and the same highlight narrowing
@@ -2502,10 +2491,10 @@ function buildChevronFilter(rev) {
     return f;
 }
 
-// One-way chevron layers (one-way-line-direction.md Phase 1). Two
+// One-way chevron layers. Two
 // symbol layers, forward and reverse-today (mirror-image glyphs);
 // day-tick and highlight changes rebuild the filters via
-// updateChevronFilters. Called from addAllTrailLayers after the
+// updateChevronFilters. Called from loadTrails after the
 // casings/fills and BEFORE the per-route trail-label-<id> loop, so
 // chevrons sit above every line but under every text layer (the
 // decor label/diamond layers are added later still). allow-overlap
@@ -2758,7 +2747,7 @@ let _followLostWithContext = false;
 const LOCATE_ACTIVATION_ZOOM = 15;
 
 // ============================================================
-// Compass heading wedge (.claude/plans/compass-heading-wedge.md)
+// Compass heading wedge
 // ============================================================
 // A translucent cone on the user-location dot. While riding it shows
 // the GPS direction of travel; when stopped it falls back to the
@@ -2780,7 +2769,7 @@ const LOCATE_ACTIVATION_ZOOM = 15;
 //     course at all. The app does no movement inference of its own
 //     and keeps no position history - each fix is read and
 //     discarded, and the only retained location state remains the
-//     single latest `userLocation`, exactly as before this feature.
+//     single latest `userLocation`.
 //   - The map itself never rotates. Bearing is locked at 0 app-wide,
 //     so wedge rotation = heading directly; if rotation ever
 //     unlocks, subtract map.getBearing() in applyWedgeHeading.
@@ -3040,16 +3029,16 @@ function validateConfigShape() {
     }
 }
 
-// Module-scope holding pen for a parsed share-link state. Set by
-// consumeShareHash() before map construction; consumed by the post-
+// Module-scope holding pen for a parsed share-link state. Set in
+// init() from the share link or the resumed view before map
+// construction; consumed by the post-
 // trails-load handler to apply the highlight (and discarded after).
 let _pendingShareHighlight = null;
 
 // The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
 // what a clean URL opens on. There is no control that returns to it:
 // rotation and pitch are off and panning is bounded (maxBounds), so a
-// pinch out reaches the same view, and the Reset View button that did
-// it in one tap was removed as a control riders did not need.
+// pinch out reaches the same view.
 const HOME_VIEW_PADDING = 50;
 
 // Apply a highlight that was parsed from an incoming share link.
@@ -3101,9 +3090,9 @@ function highlightHasKey(h) {
 }
 
 // Build the "#share=..." URL for the current map view + active
-// highlight. Used by the Share button. Format mirrors what
-// consumeShareHash() parses on the receiving side. Coordinates
-// rounded to 5 decimals (~1.1 m precision; well under what the user
+// highlight. Used by the Share sheet and its Share/Copy link button.
+// Format mirrors what consumeShareHash() parses on the receiving
+// side. Coordinates rounded to 5 decimals (~1.1 m precision; well under what the user
 // can perceive on the map and short enough to keep the URL compact).
 function buildShareUrl() {
     const c = map.getCenter();
@@ -3215,11 +3204,12 @@ function sharedTrailName() {
     return _trailPopup && tapLiftTrail ? tapLiftTrail : null;
 }
 
-// Share-button click handler. Tries Web Share API first (native
-// share sheet on mobile, gives the user real choice, Messages /
-// Mail / AirDrop / clipboard / etc.); falls back to clipboard with
-// a toast confirmation when Web Share isn't available (most
-// desktop browsers) or the user dismissed it.
+// Share/Copy link handler (and the Share row without the QR module).
+// Tries Web Share API first (native share sheet on mobile, gives the
+// user real choice, Messages / Mail / AirDrop / clipboard / etc.);
+// falls back to the clipboard with a toast confirmation when Web Share
+// isn't available (most desktop browsers) or fails. A dismissed share
+// sheet does nothing.
 async function shareCurrentView() {
     const url = buildShareUrl();
     const title = buildShareTitle();
@@ -3277,7 +3267,7 @@ function setupShareButton(openShareSheet) {
     if (!btn) return;
     btn.classList.remove("hidden");
     // The sheet needs the encoder module; without it the row still
-    // shares the link directly, the way it did before the sheet.
+    // shares the link directly.
     const sheet = window.uqr && openShareSheet;
     btn.addEventListener("click", sheet ? openShareSheet : shareCurrentView);
     const link = document.getElementById("qr-share-link");
@@ -4608,11 +4598,6 @@ function _welcomeIconSvg(pathD) {
     return `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="${pathD}"/></svg>`;
 }
 
-// Build the controls-hint section: one row per corner-anchored
-// control, each with its icon + name + a one-line description. Helps
-// a first-visit rider learn the chrome (Locate + Options
-// FABs top-right, the routes panel with its search entry
-// bottom-right) without leaving the welcome modal.
 // Join a list of phrases with comma + Oxford "and", "x", "x and y",
 // "x, y, and z". Used by the dynamic welcome descriptions to read
 // naturally regardless of how many items survive the per-map filter.
@@ -4665,7 +4650,7 @@ function _welcomeSearchDescription() {
 }
 
 // Build the list of categories the search box actually returns,
-// based on the same gates renderResults() uses (CONFIG.showTrails,
+// based on the same gates rebuildFinderList() uses (CONFIG.showTrails,
 // CONFIG.poiCounts; routes are listed whenever a relation is in route
 // mode). Returns an array of
 // human labels (e.g. ["routes", "trails", "places"]) so callers can
@@ -4697,7 +4682,11 @@ function anyRouteHas(flag) {
 // and overlays on or off") covers the most rider-relevant action,
 // the layer toggles, in concrete language; every clause after it is
 // gated on the same condition that reveals the corresponding Options
-// row, so the copy promises exactly what the overlay delivers.
+// row, so the copy promises exactly what the overlay delivers. The
+// install clause is the one approximation: on Chromium the row waits
+// for the browser's install prompt, which can arrive after this copy
+// is built, so the clause follows whether this browser can offer the
+// row at all.
 // Emergency Access is deliberately not mentioned: a first-visit
 // orientation is not the place to advertise emergency tooling.
 function _welcomeOptionsDescription() {
@@ -4759,6 +4748,11 @@ function _welcomeKeyRow() {
             + " or collapse the panel." };
 }
 
+// Build the controls-hint section: one row per corner-anchored
+// control, each with its icon + name + a one-line description. Helps
+// a first-visit rider learn the chrome (Locate + Options
+// FABs top-right, the routes panel with its search entry
+// bottom-right) without leaving the welcome modal.
 function buildWelcomeControlsHint() {
     const wrap = document.createElement("div");
     wrap.className = "welcome-modal-controls";
@@ -5048,9 +5042,9 @@ function buildAboutModalContent() {
     // Offline readiness - diagnostic row, not a feature advertisement
     // (same spirit as the version row: a line you consult when
     // troubleshooting). Always built, and every state is spelled out
-    // (not enabled / unsupported / needs HTTPS / inactive / saving /
-    // saved) so someone troubleshooting a map they didn't build has a
-    // string to relay instead of a missing row. Report only: the
+    // (unsupported / needs HTTPS / inactive / saving / saved) so
+    // someone troubleshooting a map they didn't build has a string to
+    // relay instead of a missing row. Report only: the
     // precache already resumes on every page load, so there is nothing
     // here for a rider to trigger. refreshOfflineStatus() keeps it
     // current while the modal is open; "Checking." only shows for the
@@ -5518,9 +5512,10 @@ function applyContourUnits() {
 
 // Called from addTerrainLayers once the terrain source exists (so the
 // showTerrain gate and the HEAD-probe fallback are already settled).
-// beforeLayer is the first symbol layer: contours land above the
-// hillshade, below basemap labels; trail layers are appended later
-// and therefore draw over them. The layers survive scheme rebuilds
+// beforeLayer is terrainBeforeLayer(): the lines sit under water,
+// above the hillshade, and the labels go under the first symbol
+// layer; trail layers are appended later and therefore draw over
+// them. The layers survive scheme rebuilds
 // like every non-basemap layer, and applyMapPaintForScheme re-tones
 // them afterward.
 async function addContourLayers(beforeLayer) {
@@ -5903,7 +5898,7 @@ const POI_AMENITY_PROXIMITY_METERS = 500;
 // Threshold (meters) for "on the highlighted route" during the
 // spotlight dim. A highlighted route or rating can run a mile or more,
 // and POIs are hand-placed or geocoded rather than snapped to the
-// line, so 10 m (the original value) clipped real trailside POIs, a
+// line, so a 10 m threshold clipped real trailside POIs, a
 // parking area set back from the road, a feature a few paces off the
 // tread, to "dimmed" even though they plainly belong to the
 // highlight. 50 m keeps the spotlight meaningfully selective
@@ -6242,9 +6237,8 @@ function updateMarkerProximity() {
 
     // Re-evaluate the proximity-gated toggle rows (Markers, Features,
     // Toilets, Drinking water, Bicycle repair). If the visible-routes
-    // set leaves zero
-    // of a type within its proximity threshold of any trail, that
-    // toggle is a dead control, hide its row. The row comes back the
+    // set leaves zero of a type within its proximity threshold of any
+    // trail, that toggle is a dead control, hide its row. The row comes back the
     // moment a route change brings a near-trail member into scope.
     updatePoiToggleVisibility();
 }
@@ -6506,7 +6500,8 @@ async function loadTrails() {
 
     // Dim-tint, full-viewport black wash, transparent by default.
     // Added here above the lanes, and moved by promoteBasemapLabels to
-    // sit above the basemap but under its labels and the lanes: a
+    // sit above the basemap and its labels, under the lifts and the
+    // lanes: a
     // highlight is a lift inside the lane layer, which dims the other
     // lanes itself, so the wash must never cover the lanes. When a
     // route or rating is highlighted, refreshSpotlightDim() sets its
@@ -6671,8 +6666,7 @@ async function loadTrails() {
     }
 
     // Tap lift (showTapLift): one soft glow directly BENEATH the lane
-    // layer, the same spike-safe opaque core + line-blur as the
-    // selection glow above, never a translucent stroke: in a bundle
+    // layer, an opaque core + line-blur, never a translucent stroke: in a bundle
     // every lane of the trail draws it, and translucent strokes would
     // stack. The core is wide enough that only its blurred fringe shows
     // past the lane casing. Same color in both schemes, so nothing for
@@ -6915,9 +6909,8 @@ function updateLabels() {
                 map.setPaintProperty(layerId, "text-color", bright ? t.labelText : washDim(t.labelText));
                 map.setPaintProperty(layerId, "text-halo-color", bright ? t.labelHalo : washDim(t.labelHalo));
             } else {
-                // No highlight, or a TRAIL highlight: the latter still
-                // needs the per-feature trail_name check routeIdentityMatch
-                // builds (this route may or may not contain that trail).
+                // No highlight, or a rating highlight: routeIdentityMatch
+                // dims every route name under a rating.
                 map.setPaintProperty(layerId, "text-color", labelDimExpr(t.labelText, routeIdentityMatch));
                 map.setPaintProperty(layerId, "text-halo-color", labelDimExpr(t.labelHalo, routeIdentityMatch));
             }
@@ -7015,7 +7008,7 @@ let difficultyVisibleFeatures = null;
 const LANE_LAYER_ID = "trail-lanes";
 const LANE_FEATURES_SOURCE = "trail-lanes-features";
 // Source and layer of the popup's tap lift (showTapLift). The glow is
-// the route highlight stroke's yellow, one value for both schemes.
+// the lift halo's yellow, one value for both schemes.
 const TAP_LIFT_SOURCE = "trail-tap-lift";
 const TAP_GLOW_LAYER = "trail-tap-glow";
 const TAP_GLOW_COLOR = "#FFEC00";
@@ -7297,8 +7290,8 @@ function laneFeaturesByMode() {
 // ordering runs in the plugin's worker (RAMBA takes ~1.4 s on desktop
 // Safari) with the map interactive meanwhile; results are token-
 // checked so a toggle that lands mid-ordering wins. The layer is
-// added the first time through, directly under dim-tint, so the
-// spotlight wash and every overlay above it stack over the lanes.
+// added the first time through, under the chevrons; addLaneLayer then
+// restacks the lifts and the wash beneath it.
 function refreshLaneGraph() {
     if (!laneGraphFull && !difficultyVisibleFeatures) return;
     const L = window.maplibreLanes;
@@ -7445,7 +7438,7 @@ function resumeFollowAfterContextLoss() {
 // Lane geometry is laid out in the plugin's worker, so the build a
 // move or a graph swap asks for lands a round trip later. Reading the
 // lane features before it arrives gets the PREVIOUS layout, which left
-// the chevrons and route-name labels on the old lanes: after a route
+// the route-name labels on the old lanes: after a route
 // toggle until the next pan, and after a gesture whose last rebuild
 // outran moveend, over the strip the pan just exposed.
 //
@@ -7463,8 +7456,8 @@ let laneSwapPending = false;
 // A wheel zoom holds moveend back: MapLibre's scroll handler keeps the
 // map "zooming" for a fixed 200 ms after its easing has finished, in
 // case another tick follows. Lane offsets are pixels at one zoom, so
-// for that long, on top of the animation itself, the chevrons and
-// route names sat where the lanes were at the previous zoom, beside
+// for that long, on top of the animation itself, the route names
+// sat where the lanes were at the previous zoom, beside
 // their lanes on every shared corridor, and then jumped (a profile
 // showed nothing at all running during those 200 ms). So the symbol
 // source also refreshes as soon as the
@@ -7501,10 +7494,9 @@ function onLaneBuild() {
 
 // Lane geometry as GeoJSON for the symbol and highlight layers, which
 // cannot read a custom layer, keyed by the property names those layers
-// filter on. The plugin's `routes` (every route on the piece's edge)
-// is what trails.geojson calls shared_routes. Way facts (oneway, trail_name,
-// imba_difficulty) arrive by their own names through
-// uniformProperties.
+// filter on: the trail-label layers read route_id and route_name, the
+// lifts read the edge and trail_name, which arrive by their own names
+// through uniformProperties.
 function stampLaneFeatures(fc) {
     for (const f of fc.features) {
         const p = f.properties;
@@ -7596,9 +7588,9 @@ function computeTrailsSourceData() {
                 // layers: shared ways appear once per route with
                 // identical geometry, and exactly the lowest-ranked
                 // VISIBLE route's copy carries the chevron row (same
-                // rule collectCanonicalWays uses). Recomputed on
-                // every visibility change since this function is,
-                // so ownership follows route toggles. Hidden-route
+                // rule collectCanonicalWays uses). This function
+                // reruns on every visibility change, so ownership
+                // follows route toggles. Hidden-route
                 // features get false (position is -1).
                 chevron_owner: position === 0,
                 // The way's rating lane key under the same visibility,
@@ -7862,9 +7854,9 @@ function updateTrailDisplay() {
 // Spotlight dim
 // ============================================================
 // Highlighting a route or a rating dims the rest of the map:
-//   - The `dim-tint` background layer fades in, washing the basemap +
-//     non-highlighted trail casings/fills toward black (strength is
-//     SCRIM_OPACITY).
+//   - The `dim-tint` wash switches on instantly over the basemap (not
+//     the lanes); the lane plugin dims the other lanes to the same
+//     strength (SCRIM_OPACITY).
 //   - Difficulty icons, one-way arrows, and clip-arrows narrow HARD to
 //     the highlighted route or rating only (filtered out elsewhere, so they
 //     don't punch through the tint on other lines).
@@ -8071,8 +8063,7 @@ function highlightRoute(routeId) {
 // selection: the camera fits the trail, then the
 // popup a tap opens appears on it, with its lift. A trail is found
 // once and then ridden by eye, like a place, so it gets no chip,
-// lift or wash, and a KEEP selection (a route, a rating, a place)
-// stays exactly as it was, the way a tap on a lane leaves it.
+// lift or wash.
 //
 // The popup waits for the camera: lane positions are laid out per
 // zoom, so the anchor is snapped to the lane only once the fit has
@@ -8253,10 +8244,11 @@ function refreshRatingChipStats() {
 }
 
 // Pending deferred-popup state for the single-POI highlight path.
-// highlightPoi arms BOTH a moveend listener and a 1200 ms safety
-// timeout to open the popup after the fly-to; whichever fires first
+// highlightPoi arms BOTH a moveend listener and a
+// POI_ARRIVAL_FALLBACK_MS safety timeout to open the popup after the
+// fly-to (then holds it for the pulse); whichever fires first
 // must disarm the other, and REPLACING the highlight must disarm
-// both. Without this, tapping POI A then POI B within ~1.2 s let A's
+// both. Without this, tapping POI A then POI B within ~2 s let A's
 // still-armed timer (or its moveend listener catching B's fly-to)
 // reopen A's popup beside B's highlight.
 let _poiPopupTimer = null;
@@ -8326,9 +8318,8 @@ function highlightPoiGroup(group) {
     if (!group || !group.members || !group.members.length) return;
     // "Toilets (× 4)" rather than "Toilets × 4", the parenthetical
     // count reads as "Toilets, 4 of them" rather than "Toilets
-    // multiplied by 4". The earlier "(All)" suffix on category
-    // aggregates is gone, the count IS the aggregate signal, no
-    // need to also flag the row as "All".
+    // multiplied by 4". The count IS the aggregate signal, no need
+    // to also flag the row as "All".
     const label = `${group.name} (× ${group.count})`;
     highlightPoiSet(group.members, label);
     // Record the share descriptor (the group's `group:`/`category:` uid).
@@ -8839,7 +8830,8 @@ function clearPoiHighlight() {
     if (_highlightedPois.length === 0 && _forcedPoiTypes.size === 0) return;
     // A stale info card from the prior search must not outlive its
     // highlight, disarm the deferred popup (or it would re-open one
-    // up to 1.2 s AFTER the clear) and close any open card before we
+    // up to about 2 s AFTER the clear: the arrival fallback plus the
+    // pulse hold) and close any open card before we
     // drop the set.
     _cancelPendingPoiPopup();
     closeHighlightedPoiPopups();
@@ -8853,9 +8845,9 @@ function clearPoiHighlight() {
     hideHighlightChip();
 }
 
-// Clear only the route/trail line highlight (its layer filters + the
-// `highlight` state var). Split out from clearHighlight() so the POI
-// path can drop a stale route/trail highlight without tearing down and
+// Clear only the route or rating highlight (the `highlight` state var
+// and everything that follows it). Split out from clearHighlight() so
+// the POI path can drop a stale route or rating highlight without tearing down and
 // re-mounting POI markers, highlightPoiSet keeps its own forced-type
 // reconcile for flicker-free POI→POI switches.
 function clearRouteTrailHighlight() {
@@ -8993,8 +8985,8 @@ function hideHighlightChip() {
 // ============================================================
 // Rides Locate the way the wake lock and the heading wedge do: no
 // control, no setting. Resolved once per geolocate fix (about 1 Hz),
-// never per frame, and the DOM is touched only when the name or the
-// rating glyph changes.
+// never per frame, and the DOM is touched only when the chip's text
+// changes.
 //
 // The trail the rider is on, as {name, feature, point}; name "" for an
 // unnamed way, which is tracked like any other so the junction
@@ -9060,6 +9052,10 @@ function trailChipThresholdM(accuracy) {
 // device that is standing still can go seconds without a new fix (and
 // a faked position sends exactly one), and the chip would otherwise
 // wait on a fix that never comes.
+// Entering the state is immediate; leaving it for hidden takes
+// TRAIL_CHIP_FIXES fixes in a row that fail the test, like the named
+// state, so accuracy hovering at the ceiling cannot make the aria-live
+// chip blink in and out once a second.
 const TRAIL_CHIP_UNKNOWN_MAX_ACCURACY_M = 100;
 const TRAIL_CHIP_UNKNOWN_MS = 5000;
 let _coarseSince = null;
@@ -9915,8 +9911,9 @@ function buildPoiIndex() {
 async function loadPOIs() {
     // pois.geojson is optional in spirit, if it fails, the map still
     // works without POI markers. Fall back to an empty collection and
-    // toast a warning; downstream count-based gating (`hasTrailMarkers`,
-    // `hasParking`, etc.) auto-hides the relevant toggle rows.
+    // toast a warning; the per-type counts (and, for the proximity-
+    // gated types, updatePoiToggleVisibility) auto-hide the relevant
+    // toggle rows.
     try {
         const resp = await fetchWithTimeout("pois.geojson");
         if (!resp.ok) {
@@ -10033,8 +10030,8 @@ async function loadPOIs() {
         addEventPoiMarkers(true);
     }
 
-    // Features + toilets + water + bike repair are all gated by data-presence AND
-    // proximity: a build can emit POIs that all sit beyond their
+    // Trail markers, features, toilets, water and bike repair are all
+    // gated by data-presence AND proximity: a build can emit POIs that all sit beyond their
     // proximity threshold from the trail (Shelden's "Shelden Estate
     // Wall" / "Old Tennis Court" features are ~12 m and ~33 m off,
     // respectively; toilets are often at parking lots beyond the
@@ -10514,7 +10511,8 @@ function addFeatureMarkers(addToMap) {
 // ============================================================
 //
 // Mounts a small pill label to the left of each FAB ("Locate",
-// "Options", "Search") on first visit, dismisses on
+// "Options", and the key panel's chip, or "Search" on a
+// route_key: false map) on first visit, dismisses on
 // any FAB tap OR a 15 s auto-timeout (counted from when the opening
 // view has painted), then sets an LS flag so returning riders never
 // see the labels again.
@@ -10749,7 +10747,7 @@ function setupFloatingChrome() {
     // Replace the index.html's hardcoded "routes, trails, and places"
     // strings on the search overlay and its input with labels derived
     // from what this map actually surfaces. Mirrors the gating in
-    // renderResults() so a map with no trails or POIs doesn't promise
+    // rebuildFinderList() so a map with no trails or POIs doesn't promise
     // those results in its placeholder/aria-labels. The
     // panel's Search button keeps its static "Search" text, it's an
     // honest button, not a preview of the input, but its aria-label
@@ -10798,8 +10796,9 @@ function setupFloatingChrome() {
                 // Firefox/Safari on macOS) focuses a button on mouse
                 // click, and a later Escape press counts as keyboard
                 // interaction, promoting the still-focused button to
-                // :focus-visible and drawing the accent ring. The
-                // triggers are pointer-only by design, so nothing is
+                // :focus-visible and drawing the accent ring. A
+                // keyboard close refocuses the opener through
+                // dialogFocusOut right after this blur, so nothing is
                 // lost by blurring.
                 if (document.activeElement === btn) btn.blur();
             }
@@ -11136,8 +11135,9 @@ function setupFloatingChrome() {
     }
 
     // Escape = dismiss topmost state, one press at a time. Priority
-    // order: Welcome/Help modal > About modal > Options overlay >
-    // Search overlay > highlight. Consolidated handler so we don't
+    // order: Welcome/Help modal > About modal > Options, GPX and Share
+    // sheets > Search overlay > trail popup > highlight. Consolidated
+    // handler so we don't
     // have multiple listeners racing on the same keystroke. Welcome
     // outranks About only nominally - the two modals never stack -
     // but both must outrank the overlays: either can be opened from
@@ -11388,7 +11388,7 @@ function setupFloatingChrome() {
     }
 
     // Keyboard support for the multi-option segmented rows (Labels /
-    // Season / Appearance), per the ARIA radiogroup pattern: the group
+    // Season / Appearance / Units), per the ARIA radiogroup pattern: the group
     // is ONE tab stop, arrow keys move focus and selection together,
     // Home / End jump to the ends. Without it each segment was its own
     // tab stop and the arrow keys did nothing, which is how a row of
@@ -11495,8 +11495,7 @@ function setupFloatingChrome() {
     const difficultyBtn = document.getElementById("toggle-difficulty");
     if (CONFIG.eventModeActive && difficultyBtn) {
         // Event mode hides the difficulty toggle entirely, see the
-        // comment on difficultyToggleOn(). Same posture as the Labels
-        // segmented control under event mode.
+        // comment on difficultyToggleOn().
         difficultyBtn.classList.add("hidden");
     } else if (CONFIG.showDifficulty && CONFIG.hasDifficultyTrails && difficultyBtn) {
         // Set the initial layer visibility from persisted state
@@ -11705,15 +11704,6 @@ function setupFloatingChrome() {
         }
         wireRadiogroupKeys(labelGroup);
     }
-
-    // (Section accordions removed, with ~14 rows total across three
-    // sections, the panel scrolls cleanly without needing per-section
-    // collapse. Section headers are now plain <h3> labels, no click
-    // behavior.)
-
-    // (The search button click handler is wired at the top of this
-    // function alongside the overlay open/close functions, see
-    // searchBtn.addEventListener above.)
 
     // ----- Finder -----
     setupFinder();
@@ -12033,7 +12023,7 @@ function rebuildFinderList() {
         // row), and otherwise falls back to name-grouping.
         const grouped = groupPoisForFinder(matchedPois, query);
         for (const item of grouped) {
-            list.appendChild(makePoiRow(item));
+            group.appendChild(makePoiRow(item));
         }
     }
 
@@ -13326,8 +13316,8 @@ if ("serviceWorker" in navigator) {
     // whether its core files are cached. Resolves false on timeout or
     // any error: false just means "poll again / fall back to the
     // toast", so it can never cause a swap onto a cold cache. The
-    // timeout also covers the one-deploy transition where the waiting
-    // sw.js predates CORE_STATUS and never answers.
+    // timeout covers a worker the browser terminated, which never
+    // answers.
     function querySwCoreStatus(sw) {
         return new Promise((resolve) => {
             try {
@@ -13573,8 +13563,8 @@ let _offlineStatusSettled = false;
 // clients and the right semantics: it describes the cache currently
 // serving this page, which is what "offline right now" means.
 // Resolves null on any doubt; refreshOfflineStatus turns that into
-// an explicit "Status unavailable." (the environment gates - PWA off,
-// no SW support, no controller - are also reported there, so this
+// an explicit "Status unavailable." (the environment gates - no SW
+// support, no controller - are also reported there, so this
 // only needs the defensive re-check).
 function _queryPrecacheStatus() {
     return new Promise((resolve) => {
@@ -13604,7 +13594,7 @@ function _queryPrecacheStatus() {
 // Every state is spelled out rather than hiding the row on doubt: a
 // rider troubleshooting "why doesn't offline work?" on a map they
 // didn't build needs a string they can read off and relay, and a
-// hidden row can't be relayed. Permanent states (off / unsupported /
+// hidden row can't be relayed. Permanent states (unsupported /
 // insecure / ready) settle and stop the poll; transient ones
 // (inactive / unknown) keep polling while the modal is open, since a
 // first-visit worker activation flips them on its own.
@@ -13802,7 +13792,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // purpose. The earlier copy bolded a bare "Share",
                 // which read as a reference to something on this
                 // page - and the nearest match is our own "Share
-                // this view" row directly above, which riders were
+                // this map" row directly above, which riders were
                 // tapping instead (reported 2026-08-29). Naming the
                 // owner inside the emphasized phrase is the whole
                 // fix; where Safari keeps that menu (a toolbar
@@ -14103,10 +14093,9 @@ function updateLocationIndicator() {
     // TOP-RIGHT FAB stack (Locate + Options, plus GPX
     // on event maps) is taller than the edge margin, so its reserve
     // is measured from the live element (+12px buffer) instead of
-    // hardcoded: the stack's height varies by build flags, and a
-    // constant here already went stale once when a FAB was
-    // added (the indicator arrow clamped under the Options FAB,
-    // which draws above it at z-index 5). The brand at top-left and
+    // hardcoded: the stack's height varies by build flags, and an
+    // indicator under-reserved there clamps under a FAB, which draws
+    // above it at z-index 5. The brand at top-left and
     // the highlight chip at top-center are handled by the standard
     // 48px edgeMargin. The stack's contents are fixed after boot
     // (build flags, not runtime toggles), so cache-until-resize
