@@ -1074,8 +1074,8 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
                 f"{where}.oneway",
                 "'reversible' is not supported on custom routes "
                 "(direction_schedule.per_route entries are keyed by OSM "
-                "relation id); use 'yes' or '-1' and point the geometry "
-                "in the direction of travel",
+                "relation id); use 'yes' for travel along the geometry "
+                "or '-1' for travel against it",
             )
         elif ow not in ("yes", "-1", ""):
             report.err(
@@ -1112,7 +1112,7 @@ def _validate_custom_routes(report, config):
                   geometry (string path)
       - optional: summer, winter, emergency (bool; default
                   summer=true if all three omitted), dashed (bool),
-                  description (string), trail_name_field (string)
+                  trail_name_field (string), oneway ("yes" or "-1")
 
     Cross-checks:
       - ids are unique across custom_routes

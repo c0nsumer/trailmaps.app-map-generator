@@ -148,3 +148,27 @@ def test_enrichment_keeps_canonical_features():
     assert len(g["features"]) == 3
     two = [f for f in g["features"] if str(f["properties"]["route_id"]) == "2"]
     assert two[0]["geometry"]["coordinates"] == [_B, _A], "travel direction preserved"
+
+
+def test_custom_route_oneway_minus_one_reverses_the_line(tmp_path):
+    # "-1" is one-way against the drawn direction. The runtime draws
+    # arrows along the line for "yes" and knows no other value, so the
+    # line is reversed, as fetch_trails does for an OSM way.
+    import json
+
+    geom = tmp_path / "course.geojson"
+    line = [[-87.60, 46.50], [-87.59, 46.50], [-87.58, 46.51]]
+    geom.write_text(json.dumps({
+        "type": "Feature", "properties": {},
+        "geometry": {"type": "LineString", "coordinates": line}}))
+
+    def enrich(oneway):
+        trails = {"type": "FeatureCollection", "features": [], "metadata": {"routes": {}}}
+        _enrich_trails_geojson({"custom_routes": [{
+            "id": "course", "name": "Course", "color": "#ff0000",
+            "geometry": str(geom), "oneway": oneway}]}, trails)
+        (feat,) = trails["features"]
+        return feat["properties"]["oneway"], feat["geometry"]["coordinates"]
+
+    assert enrich("yes") == ("yes", line)
+    assert enrich("-1") == ("yes", line[::-1])

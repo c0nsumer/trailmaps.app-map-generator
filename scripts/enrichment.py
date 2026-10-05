@@ -289,9 +289,20 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
                 if isinstance(val, str):
                     trail_name = val
 
+            # oneway "-1" is OSM's "one-way against the drawn direction".
+            # The runtime knows one direction, along the line, so the
+            # line is reversed and the value becomes "yes", as
+            # fetch_trails does for an OSM way.
+            oneway = entry.get("oneway", "")
+            against = oneway == "-1"
+            if against:
+                oneway = "yes"
+
             for line in linestrings:
                 if not isinstance(line, list) or len(line) < 2:
                     continue
+                if against:
+                    line = line[::-1]
                 new_feat = {
                     "type": "Feature",
                     "geometry": {
@@ -313,7 +324,7 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
                         # set automatically when event_mode.direction_arrows
                         # is true (see _apply_event_mode_to_custom_routes).
                         # Empty string means no arrows.
-                        "oneway": entry.get("oneway", ""),
+                        "oneway": oneway,
                         "way_ids": [],
                         "isCustom": True,
                     },
