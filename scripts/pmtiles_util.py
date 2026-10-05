@@ -78,8 +78,9 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
 
         if result.returncode != 0:
             console.error("pmtiles extract failed:")
-            console.info(f"stdout: {result.stdout}")
-            console.info(f"stderr: {result.stderr}")
+            # raw, not info: the cause must survive --quiet.
+            console.raw(f"    stdout: {result.stdout}")
+            console.raw(f"    stderr: {result.stderr}")
             return False
 
         if not os.path.exists(tmp_path):

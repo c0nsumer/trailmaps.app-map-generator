@@ -88,3 +88,18 @@ def test_vendor_scripts_lose_their_source_map_pointer(tmp_path):
     src.write_bytes(b"a{}\n/*# sourceMappingURL=lib.css.map */\n")
     _copy_vendor_script(str(src), str(css))
     assert css.read_bytes() == src.read_bytes()
+
+
+def test_unreachable_protomaps_server_is_named_as_such(monkeypatch, capsys):
+    # Offline, every HEAD fails before any HTTP answer: the message must
+    # blame the network, not claim that no build exists.
+    import fetch_basemap
+    import requests
+
+    def fail(*_a, **_k):
+        raise requests.ConnectionError("offline")
+
+    monkeypatch.setattr(fetch_basemap.requests, "head", fail)
+    assert fetch_basemap.find_latest_protomaps_build() is None
+    out = capsys.readouterr().out
+    assert "Could not reach" in out and "No Protomaps build found" not in out

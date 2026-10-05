@@ -16,6 +16,7 @@ from datetime import date, timedelta
 import cli
 import console
 import requests
+from cache_signatures import _clear_signature
 from config_io import load_config_for_fetch
 from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, extract, find_pmtiles_cli
 
@@ -31,25 +32,35 @@ EXTRACT_PAD_DEG = 0.02
 def find_latest_protomaps_build():
     """Find the latest available Protomaps planet build by date.
 
-    Checks today first, then walks backwards day-by-day using lightweight
-    HEAD requests until an available build is found.
+    Starts at tomorrow's date, because builds are dated in UTC and can be
+    ahead of the local date, then walks backwards day-by-day using
+    lightweight HEAD requests until an available build is found.
     """
     tomorrow = date.today() + timedelta(days=1)
     console.detail("Finding latest Protomaps build...")
+    reached = False
     for days_back in range(MAX_SEARCH_DAYS):
         check_date = tomorrow - timedelta(days=days_back)
         filename = check_date.strftime("%Y%m%d") + ".pmtiles"
         url = f"{PROTOMAPS_BUILD_BASE}/{filename}"
         try:
             resp = requests.head(url, timeout=10, allow_redirects=True)
-            if resp.status_code == 200:
-                console.detail(
-                    f"Found build: {filename}"
-                    + (" (today)" if days_back == 0 else f" ({days_back}d old)")
-                )
-                return url
         except requests.RequestException:
             continue
+        reached = True
+        if resp.status_code == 200:
+            age = days_back - 1
+            console.detail(
+                f"Found build: {filename}"
+                + (" (today)" if age == 0 else " (dated tomorrow)" if age < 0
+                   else f" ({age}d old)")
+            )
+            return url
+    if not reached:
+        # Every request failed before any HTTP answer: the network, not
+        # Protomaps, is the problem.
+        console.warn(f"Could not reach the Protomaps build server ({PROTOMAPS_BUILD_BASE}).")
+        return None
     console.warn(f"No Protomaps build found in the last {MAX_SEARCH_DAYS} days.")
     console.info("Check https://maps.protomaps.com/builds/ for available builds.")
     return None
@@ -110,7 +121,9 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 
 
 if __name__ == "__main__":
-    parser = cli.config_output_parser("Extract basemap tiles from a Protomaps planet build.")
+    parser = cli.config_output_parser(
+        "Extract basemap tiles from a Protomaps planet build.",
+        output_help="Output path (default: cache/basemap/<slug>-protomaps.pmtiles)")
     parser.add_argument(
         "planet_url", nargs="?", help="Planet build URL (default: auto-detect the latest)"
     )
@@ -118,5 +131,13 @@ if __name__ == "__main__":
     console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
-    output = args.output or os.path.join("build", config["slug"], "basemap.pmtiles")
+    # The default is the plain extract build.py joins its generated lines
+    # into; build/<slug>/basemap.pmtiles holds the joined archive and must
+    # not be overwritten with a raw extract. The CLI writes no signature,
+    # so any existing one is removed rather than left vouching for a file
+    # it did not describe.
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output = args.output or os.path.join(
+        project_root, "cache", "basemap", f"{config['slug']}-protomaps.pmtiles")
+    _clear_signature(output)
     fetch_basemap(config, output, args.planet_url)
