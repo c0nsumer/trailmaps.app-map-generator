@@ -13,8 +13,8 @@ asset files.
 
 All errors are collected then reported together - the goal is "fix the
 config in one pass" rather than "fix one error, rerun, fix the next".
-Exit code is 0 on success, 1 on any error. Warnings (e.g. file-not-found
-for assets that may be populated later) print but do not fail the build.
+Exit code is 0 on success, 1 on any error. Warnings (e.g. a pan_padding
+above 5) print but do not fail the build.
 """
 
 import argparse
@@ -150,11 +150,6 @@ BUILD_ONLY_KEYS = {
     "winter_relations",
     "summer_relations",
     "emergency_access_relations",
-    # Route stats: gates the build-time distance computation in
-    # compute_route_stats.py. The values flow into the runtime via
-    # per-route metadata (CONFIG.routes[id].distance_m), not through
-    # CONFIG_SPEC. show_distance is also in CONFIG_SPEC because difficulty
-    # maps sum per-rating distances at runtime.
     # Style overrides folded into per-route metadata at build time
     # (relation_colors / dashed_relations / direction_schedule are
     # consumed in inject_config_into_template's pre-pass and emerge
@@ -421,8 +416,8 @@ _RETIRED_KEYS = {
         "Delete the line."
     ),
     "basemap_source": (
-        "removed. Every basemap is the Protomaps extract with its path "
-        "and service-road lines generated here, which needs tippecanoe "
+        "removed. Every basemap is the Protomaps extract with its path, "
+        "service-road and minor-street lines generated here, which needs tippecanoe "
         "and tile-join; the plain-extract mode is gone. Delete the line."
     ),
 }
@@ -432,6 +427,9 @@ def _validate_unknown_keys(report, config):
     """Catch typos in top-level keys via fuzzy match against KNOWN_KEYS."""
     for key in config.keys():
         if key in KNOWN_KEYS:
+            continue
+        if not isinstance(key, str):
+            report.err(str(key), "unknown top-level key; config keys are names, not numbers")
             continue
         # Internal fields populated by the build pipeline shouldn't error
         # if they leak in (defensive - users won't write these).
@@ -448,7 +446,8 @@ def _validate_unknown_keys(report, config):
 
 def _validate_required(report, config):
     for key in REQUIRED_KEYS:
-        if key not in config or config[key] in (None, ""):
+        value = config.get(key)
+        if value is None or (isinstance(value, str) and not value.strip()):
             report.err(key, "required key is missing or empty")
 
 
@@ -517,8 +516,9 @@ def _validate_enums(report, config):
 
 
 def _validate_geometry(report, config):
-    """Bbox / zoom sanity. Loose ranges so edge-case setups (polar maps,
-    for one) aren't blocked. A bbox crossing the antimeridian is rejected."""
+    """Bbox, pan_padding and poi_proximity_m sanity. Loose ranges so
+    edge-case setups (polar maps, for one) aren't blocked. A bbox crossing
+    the antimeridian is rejected."""
     for bbox_key in ("bbox", "pan_bbox"):
         if bbox_key in config and isinstance(config[bbox_key], list):
             b = config[bbox_key]
@@ -591,8 +591,18 @@ def _reject_unknown_keys(report, where, mapping, allowed):
 
 
 def _is_dash_pattern(p):
-    """True for a valid line-dash pattern: a non-empty list of numbers."""
-    return isinstance(p, list) and len(p) > 0 and all(_is_number(n) for n in p)
+    """True for a valid line-dash pattern: [dash, gap], two non-negative
+    numbers, not both zero. The runtime reads exactly pattern[0] and
+    pattern[1]."""
+    return (
+        isinstance(p, list)
+        and len(p) == 2
+        and all(_is_number(n) and n >= 0 for n in p)
+        and any(n > 0 for n in p)
+    )
+
+
+DASH_PATTERN_RULE = "must be [dash, gap]: two numbers >= 0, not both 0 (e.g. [2, 2])"
 
 
 def _check_lonlat(report, where, c):
@@ -650,7 +660,7 @@ def _validate_colors(report, config):
             if "pattern" in dtc and not _is_dash_pattern(dtc["pattern"]):
                 report.err(
                     "default_trail_color.pattern",
-                    f"must be a list of numbers (e.g. [2, 2]), got {dtc['pattern']!r}",
+                    f"{DASH_PATTERN_RULE}, got {dtc['pattern']!r}",
                 )
             if "cap" in dtc and dtc["cap"] not in VALID_LINE_CAPS:
                 report.err(
@@ -770,9 +780,8 @@ def _validate_dashed_relations(report, config):
     for rid, spec in dr.items():
         where = f"dashed_relations[{rid}]"
         if isinstance(spec, list):
-            for i, n in enumerate(spec):
-                if not _is_number(n):
-                    report.err(f"{where}[{i}]", f"dash pattern values must be numbers, got {n!r}")
+            if not _is_dash_pattern(spec):
+                report.err(where, f"{DASH_PATTERN_RULE}, got {spec!r}")
         elif isinstance(spec, dict):
             # `colors` is documented (docs/configuration.md
             # "Alternating-color dashes") and consumed by the injector
@@ -780,9 +789,7 @@ def _validate_dashed_relations(report, config):
             # can't flow straight to the runtime.
             _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
             if "pattern" in spec and not _is_dash_pattern(spec["pattern"]):
-                report.err(
-                    f"{where}.pattern", f"must be a list of numbers, got {spec['pattern']!r}"
-                )
+                report.err(f"{where}.pattern", f"{DASH_PATTERN_RULE}, got {spec['pattern']!r}")
             if "cap" in spec and spec["cap"] not in VALID_LINE_CAPS:
                 report.err(
                     f"{where}.cap", f"must be one of {sorted(VALID_LINE_CAPS)}, got {spec['cap']!r}"
@@ -813,9 +820,22 @@ def _validate_relation_names(report, config):
             report.err(f"relation_names[{rid}]", f"must be a non-empty string, got {name!r}")
 
 
+# Keys fetch_pois reads from each entry. Hubs render their name inline
+# with no popup, so they take no directions link.
+_POINT_KEYS = {
+    "trailheads": {"name", "coordinates", "directions_url"},
+    "parking": {"name", "coordinates", "directions_url"},
+    "hubs": {"name", "coordinates"},
+}
+
+
+def _is_http_url(value):
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
 def _validate_point_lists(report, config):
     """trailheads / parking / hubs are list-of-dicts with name + coordinates."""
-    for key in ("trailheads", "parking", "hubs"):
+    for key, allowed in _POINT_KEYS.items():
         lst = config.get(key)
         if not isinstance(lst, list):
             continue
@@ -830,6 +850,12 @@ def _validate_point_lists(report, config):
                 _check_lonlat(report, f"{where}.coordinates", item["coordinates"])
             if "name" in item and not isinstance(item["name"], str):
                 report.err(f"{where}.name", f"expected str, got {type(item['name']).__name__}")
+            if "directions_url" in allowed and "directions_url" in item:
+                if not _is_http_url(item["directions_url"]):
+                    report.err(f"{where}.directions_url",
+                               f"must be an http:// or https:// URL, "
+                               f"got {item['directions_url']!r}")
+            _reject_unknown_keys(report, where, item, allowed)
 
 
 def _validate_additional_logos(report, config):
@@ -899,8 +925,9 @@ def _asset_paths(config):
 
 
 def _validate_paths(report, config, config_dir):
-    """Asset path existence. logo / icon / osm_file and every
-    custom_routes[].geometry path are checked via os.path.isfile. Relative
+    """Asset path existence. Every path _asset_paths yields (logo, icon,
+    osm_file, additional_logos, custom_routes and event_mode.routes
+    geometry, event_mode.gpx files) is checked via os.path.isfile. Relative
     paths resolve against ``config_dir`` (the directory holding the YAML
     file) - every per-map asset lives next to its config. Missing paths
     are errors; surfacing them here gives a clear single message naming
@@ -1052,9 +1079,11 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
                 "or '-1' for travel against it",
             )
         elif ow not in ("yes", "-1", ""):
+            # YAML reads a bare -1 as an int and a bare yes as true.
+            hint = "; quote the value" if not isinstance(ow, str) else ""
             report.err(
                 f"{where}.oneway",
-                f"must be one of 'yes', '-1', or '' (empty for no arrows), got {ow!r}",
+                f"must be one of 'yes', '-1', or '' (empty for no arrows), got {ow!r}{hint}",
             )
 
     # Reject unknown keys in the custom route entry (catch typos).
@@ -1308,6 +1337,8 @@ def _validate_about(report, config):
             for i, link in enumerate(v):
                 if not isinstance(link, dict) or "label" not in link or "url" not in link:
                     report.err(f"about.links[{i}]", "each entry must be {label, url}")
+                else:
+                    _reject_unknown_keys(report, f"about.links[{i}]", link, {"label", "url"})
     # `author` is a hard error rather than an alias: the framework
     # generates the map and the human curates the data and config, so
     # `curator` names the role, and a small known config set makes alias
@@ -1321,6 +1352,14 @@ def _validate_about(report, config):
         a = about["curator"]
         if not isinstance(a, dict) or "name" not in a:
             report.err("about.curator", "must be {name, [url]}")
+        else:
+            _reject_unknown_keys(report, "about.curator", a, {"name", "url"})
+    # The retired keys above already carry their own message.
+    _reject_unknown_keys(
+        report, "about",
+        {k: v for k, v in about.items()
+         if k not in ("description", "more_information", "extra_links", "author")},
+        {"curator", "links"})
 
 
 _BACKGROUND_STYLE_ALLOWED = {"color", "pattern", "cap"}
@@ -1468,7 +1507,7 @@ def _validate_event_mode(report, config):
             if "pattern" in bg and not _is_dash_pattern(bg["pattern"]):
                 report.err(
                     "event_mode.background_style.pattern",
-                    f"must be a non-empty list of numbers, got {bg['pattern']!r}",
+                    f"{DASH_PATTERN_RULE}, got {bg['pattern']!r}",
                 )
             if "cap" in bg and bg["cap"] not in VALID_LINE_CAPS:
                 report.err(
@@ -1822,7 +1861,7 @@ def validate_config(config, *, config_path=None):
 
     ``config_path`` (or ``config["_config_dir"]`` set by build.py's
     ``load_config``) is used as the base for resolving user-supplied
-    asset paths (logo, icon, osm_file, custom_routes[].geometry).
+    asset paths (every path _asset_paths yields).
     """
     if not isinstance(config, dict):
         return (

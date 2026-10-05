@@ -580,3 +580,58 @@ def test_a_required_key_with_no_value_is_reported_once():
     errors = _errors(name=None)
     assert len(errors) == 1
     assert "required" in errors[0]
+
+
+# --- shapes that used to pass or crash ------------------------------------
+
+def test_dash_pattern_is_exactly_two_non_negative_numbers():
+    for bad in ([2], [], [-1, 2], [0, 0], [2, 2, 2], ["2", 2]):
+        assert any("dashed_relations[456]" in e for e in _errors(dashed_relations={456: bad})), bad
+        assert any("pattern" in e for e in _errors(dashed_relations={456: {"pattern": bad}})), bad
+        assert any("default_trail_color.pattern" in e
+                   for e in _errors(default_trail_color={"pattern": bad})), bad
+    for good in ([2, 2], [0, 2], [4, 0], [1.5, 3]):
+        assert _errors(dashed_relations={456: good}) == [], good
+
+
+def test_a_non_string_top_level_key_is_a_validation_error():
+    errors, _ = validate_config({**BASE, 2024: "oops"})
+    assert len(errors) == 1 and "2024" in errors[0], errors
+
+
+def test_a_whitespace_only_name_is_missing():
+    errors = _errors(name="   ")
+    assert any("name" in e and "missing or empty" in e for e in errors), errors
+
+
+def test_about_curator_and_links_reject_unknown_keys():
+    errors = _errors(about={"curator": {"name": "A", "uri": "x"},
+                            "links": [{"label": "L", "url": "https://e.org", "href": 1}],
+                            "link": []})
+    assert any("about.curator.uri" in e for e in errors), errors
+    assert any("about.links[0].href" in e for e in errors), errors
+    assert any("about.link" in e and "did you mean" in e for e in errors), errors
+    # A retired key keeps its own message and is not reported twice.
+    assert len(_errors(about={"author": {"name": "A"}})) == 1
+
+
+def test_point_entries_reject_unknown_keys_and_check_directions_url():
+    pt = {"name": "P", "coordinates": [-85.3, 42.3]}
+    assert _errors(trailheads=[dict(pt, directions_url="https://maps.example/x")],
+                   parking=[dict(pt, directions_url="http://maps.example/y")],
+                   hubs=[pt]) == []
+    errors = _errors(trailheads=[dict(pt, direction_url="https://x")],
+                     parking=[dict(pt, directions_url=5)],
+                     hubs=[dict(pt, directions_url="https://x")])
+    assert any("trailheads[0].direction_url" in e for e in errors), errors
+    assert any("parking[0].directions_url" in e and "http" in e for e in errors), errors
+    assert any("hubs[0].directions_url" in e for e in errors), errors
+    assert any("directions_url" in e for e in _errors(parking=[dict(pt, directions_url="javascript:x")]))
+
+
+def test_unquoted_custom_route_oneway_says_quote_it():
+    with _geojson_file() as geom:
+        cfg = {"name": "C", "slug": "c", "custom_routes": [
+            {"id": "loop", "name": "Loop", "color": "#08c", "geometry": geom, "oneway": -1}]}
+        errors, _ = validate_config(cfg)
+    assert any("quote the value" in e for e in errors), errors
