@@ -8,10 +8,12 @@ import pytest
 from osm_parser import (
     detect_super_expansions,
     extract_pois,
+    extract_relations,
     extract_source_relations,
     extract_ways,
     parse_osm_file,
     relation_info,
+    resolve_relations,
 )
 
 OSM = """<?xml version='1.0' encoding='UTF-8'?>
@@ -139,3 +141,59 @@ def test_pois_inside_the_bbox_include_nodes_and_building_centroids(parsed):
     assert by_id == {("node", 4), ("way", 22)}
     building = next(e for e in elements if e["type"] == "way")
     assert building["center"] == {"lon": pytest.approx(-87.605), "lat": pytest.approx(46.505)}
+
+
+def test_an_empty_name_tag_gets_the_fallback_name():
+    assert relation_info(7, {"name": ""})["name"] == "Route 7"
+
+
+def test_objects_deleted_in_josm_are_skipped(tmp_path):
+    path = tmp_path / "d.osm"
+    path.write_text(
+        "<osm version='0.6'>"
+        "<node id='1' lat='46.5' lon='-87.6' action='delete'>"
+        "<tag k='tourism' v='information' /><tag k='information' v='guidepost' /></node>"
+        "<node id='2' lat='46.5' lon='-87.6' action='modify' />"
+        "<relation id='9' action='delete'><tag k='name' v='Gone' /></relation>"
+        "</osm>",
+        encoding="utf-8",
+    )
+    nodes, _ways, relations = parse_osm_file(str(path))
+    assert list(nodes) == [2]
+    assert relations == {}
+
+
+def _rel(*children, ways=()):
+    members = [{"type": "relation", "ref": c, "role": ""} for c in children]
+    members += [{"type": "way", "ref": w, "role": ""} for w in ways]
+    return {"members": members}
+
+
+def test_nested_supers_listed_together_resolve_to_leaves_only():
+    # S1 holds S2 and C1, S2 holds C2; the config lists both supers.
+    available = {1: _rel(2, 10), 2: _rel(20), 10: _rel(ways=[1]), 20: _rel(ways=[2])}
+    members, clipped, expansions = resolve_relations([1, 2], [], available)
+    assert sorted(members) == [10, 20]
+    assert clipped == {}
+    assert expansions == {1: [2, 10], 2: [20]}
+
+
+def test_a_relation_in_both_lists_stays_a_source_route():
+    available = {10: _rel(ways=[1]), 11: _rel(ways=[2])}
+    members, clipped, _ = resolve_relations([10], [10, 11], available)
+    assert list(members) == [10]
+    assert list(clipped) == [11]
+
+
+def test_a_relation_cycle_resolves_to_nothing():
+    available = {1: _rel(2), 2: _rel(1)}
+    assert resolve_relations([1, 2], [], available)[:2] == ({}, {})
+
+
+def test_the_file_path_resolves_like_the_overpass_path(parsed):
+    # 200 holds 100 and 101; listing 100 as clipped too keeps it a source route.
+    members, clipped, expansions = extract_relations(parsed, [200], [100])
+    assert sorted(members) == [100, 101]
+    assert clipped == {}
+    assert expansions == {200: [100, 101]}
+    assert members[100]["name"] == "Ridge Loop"

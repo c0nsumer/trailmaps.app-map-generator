@@ -19,8 +19,9 @@ import xml.etree.ElementTree as ET
 import console
 
 # The POI categories both fetch paths collect: (tags that must all match,
-# whether a closed way counts too). Mappers often trace an amenity's
-# building rather than placing a node, so the amenities match as ways.
+# whether a way counts too). Mappers often trace an amenity's building
+# rather than placing a node, so the amenities match as ways; both paths
+# accept open ways as well as closed ones.
 POI_TAG_FILTERS = (
     ((("tourism", "information"), ("information", "guidepost")), False),
     ((("highway", "emergency_access_point"),), False),
@@ -33,7 +34,7 @@ POI_TAG_FILTERS = (
 
 def _poi_match(tags, ways_only=False):
     """True when ``tags`` matches a POI_TAG_FILTERS entry (only the
-    entries that count as closed ways when ``ways_only``)."""
+    entries that count as ways when ``ways_only``)."""
     return any(
         all(tags.get(k) == v for k, v in pairs)
         for pairs, as_way in POI_TAG_FILTERS
@@ -57,6 +58,10 @@ def parse_osm_file(osm_path):
     relations = {}
 
     for elem in root:
+        # JOSM saves an object deleted locally but not yet uploaded with
+        # action='delete'; it is no longer part of the curator's data.
+        if elem.attrib.get("action") == "delete":
+            continue
         if elem.tag == "node":
             node_id = int(elem.attrib["id"])
             lon = float(elem.attrib["lon"])
@@ -106,7 +111,7 @@ def relation_info(rel_id, tags):
     """
     return {
         "id": rel_id,
-        "name": tags.get("name", f"Route {rel_id}"),
+        "name": tags.get("name") or f"Route {rel_id}",
         # None when OSM has no colour tag - runtime layered fallback:
         # relation_colors → default_trail_color → #808080 build-time default.
         "colour": tags.get("colour"),
@@ -144,6 +149,87 @@ def detect_super_expansions(input_ids, relations):
     return expansions
 
 
+def resolve_relations(relation_ids, clipped_ids, available):
+    """Split the relations a config names into source and clipped routes.
+
+    Single resolver for BOTH fetch paths, so a trail loaded from a local
+    .osm file and the same trail fetched from Overpass give the same
+    routes. ``available`` maps rel_id -> an entry with a ``members``
+    list (a parsed .osm relation or an Overpass relation); the results
+    hold those same entries, in ``available``'s order.
+
+    Each input may be a leaf route or a super-relation, expanded one
+    level deep (detect_super_expansions). Every expanded parent is
+    dropped, including a super listed next to the super that holds it,
+    and a relation cycle expands both sides away. A relation in BOTH
+    lists stays a source route: clipped_relations exists for routes kept
+    out of the core trail geometry.
+
+    Returns (members, clipped, expansions):
+        members:    {rel_id: entry} resolved from ``relation_ids``.
+        clipped:    {rel_id: entry} resolved from ``clipped_ids``.
+        expansions: {parent_id: [child_id, ...]} for the inputs (from
+                    either list) that expanded as super-relations.
+    """
+    relation_ids = list(relation_ids)
+    clipped_ids = list(clipped_ids)
+    expansions = detect_super_expansions(relation_ids + clipped_ids, available)
+
+    def _resolve(ids):
+        out = []
+        seen = set()
+        for rid in ids:
+            for resolved in expansions.get(rid) or [rid]:
+                if resolved not in seen:
+                    seen.add(resolved)
+                    out.append(resolved)
+        return out
+
+    relation_set = set(_resolve(relation_ids))
+    clipped_set = set(_resolve(clipped_ids)) - relation_set
+
+    members = {}
+    clipped = {}
+    for rel_id, entry in available.items():
+        if rel_id in expansions:
+            # Super-relation parent: its children carry the bucket
+            # assignment via the expansions map.
+            continue
+        if rel_id in clipped_set:
+            clipped[rel_id] = entry
+        elif rel_id in relation_set:
+            members[rel_id] = entry
+        # Anything else is a relation the curator didn't ask for.
+    return members, clipped, expansions
+
+
+def extract_relations(parsed, relation_ids, clipped_ids=()):
+    """Resolve a config's relations from a parsed .osm file.
+
+    Warns per input ID missing from the file and skips it; the build
+    continues with whatever else resolved. Resolution follows
+    resolve_relations, so it matches the Overpass path.
+
+    Returns (members, clipped, expansions) as resolve_relations does,
+    with each entry the standard relation_info dict, in the order the
+    config lists them (a super-relation's children in its member order).
+    That order is the order of the map's key, and a file's own order
+    changes whenever the editor rewrites it.
+    """
+    _nodes, _ways, relations = parsed
+    for rel_id in list(relation_ids) + list(clipped_ids):
+        if rel_id not in relations:
+            console.warn(f"Relation {rel_id} not found in .osm file")
+    members, clipped, expansions = resolve_relations(relation_ids, clipped_ids, relations)
+
+    def _info(entries, ids):
+        ordered = [r for rid in ids for r in (expansions.get(rid) or [rid])]
+        return {rid: relation_info(rid, entries[rid]["tags"])
+                for rid in dict.fromkeys(ordered) if rid in entries}
+
+    return _info(members, relation_ids), _info(clipped, clipped_ids), expansions
+
+
 def extract_source_relations(parsed, relation_ids):
     """Extract route relations for every entry in `relation_ids`.
 
@@ -171,19 +257,8 @@ def extract_source_relations(parsed, relation_ids):
                     propagate seasonal / emergency tagging from the
                     parent's config-keyed bucket to its children.
     """
-    _nodes, _ways, relations = parsed
-
-    expansions = detect_super_expansions(relation_ids, relations)
-
-    result = {}
-    for rel_id in relation_ids:
-        if rel_id not in relations:
-            console.warn(f"Relation {rel_id} not found in .osm file")
-            continue
-        for resolved in expansions.get(rel_id) or [rel_id]:
-            result[resolved] = relation_info(resolved, relations[resolved]["tags"])
-
-    return result, expansions
+    resolved, _clipped, expansions = extract_relations(parsed, relation_ids)
+    return resolved, expansions
 
 
 def extract_ways(parsed, relation_ids):
@@ -229,10 +304,9 @@ def extract_ways(parsed, relation_ids):
 def _way_centroid(way, nodes):
     """Centroid of a way as the arithmetic mean of its node coords.
 
-    Used to give building-shaped POIs (closed ways tagged
-    amenity=toilets / drinking_water / bicycle_repair_station) a
-    single point location for the
-    map. Arithmetic mean is exact for axis-aligned rectangles and a
+    Used to give building-shaped POIs (ways tagged amenity=toilets /
+    drinking_water / bicycle_repair_station, usually closed) a single
+    point location for the map. Arithmetic mean is exact for axis-aligned rectangles and a
     reasonable approximation for any small near-convex polygon, which
     covers the typical "toilet building" case. Returns (lon, lat) or
     None if no referenced nodes are present in the parsed file.
@@ -251,12 +325,14 @@ def _way_centroid(way, nodes):
 def extract_pois(parsed, bbox):
     """Extract the POI_TAG_FILTERS categories within a bounding box.
 
-    Yields the node form of every category and the closed-way
-    (building polygon) form of the amenity tags, matching the Overpass
-    query in fetch_pois_from_osm(). Building
-    polygons are reduced to a single (lon, lat) via _way_centroid()
-    and emitted as ``type: way`` elements with a ``center`` field so
-    the output shape matches what Overpass returns with ``out center;``.
+    Yields the node form of every category and the way (building
+    polygon) form of the amenity tags, the categories the Overpass
+    query in fetch_pois_from_osm() collects. Each way is reduced to a
+    single (lon, lat) via _way_centroid() and emitted as a ``type: way``
+    element with a ``center`` field, the shape Overpass returns with
+    ``out center;``. The point and the bbox test only approximate
+    Overpass, which places a way at its bounding-box center and keeps
+    any way with a segment in the bbox; the two differ by meters.
 
     Returns the same format as fetch_pois_from_osm():
         {"elements": [
@@ -289,8 +365,8 @@ def extract_pois(parsed, bbox):
     # Building-polygon amenities (toilets / drinking water / bicycle
     # repair stations) - common enough in OSM (mappers trace the
     # building rather than placing a node) that ignoring them leaves
-    # obvious gaps. Centroid → point, bbox-filter on the centroid
-    # (matches Overpass's bbox-on-center semantics).
+    # obvious gaps. Centroid → point, bbox-filter on the centroid (an
+    # approximation of Overpass, see the docstring).
     for way_id, way in ways.items():
         tags = way["tags"]
         if not _poi_match(tags, ways_only=True):

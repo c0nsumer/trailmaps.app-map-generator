@@ -199,3 +199,55 @@ def test_relations_are_ordered_by_name_and_empty_ones_are_skipped():
     all_ways = {10: {1: _way((0, 0), (1, 0))}, 11: {2: _way((5, 5), (6, 5))}, 12: {}}
     fc = _build(relations, all_ways)
     assert [f["properties"]["route_name"] for f in fc["features"]] == ["Alpha", "Zed"]
+
+
+def test_a_line_that_only_touches_the_bbox_yields_nothing():
+    # Both lines meet the box at one point: no length, no arrowhead.
+    assert clip_line_to_bbox([[-1, 9], [1, 11]], BBOX) == []
+    assert clip_line_to_bbox([[-5, 5], [0, 5], [-5, 6]], BBOX) == []
+
+
+def test_a_repeated_vertex_on_the_edge_does_not_set_the_bearing():
+    # The first two points coincide; the arrowhead reads seg[1] -> seg[0].
+    assert clip_line_to_bbox([[0, 5], [0, 5], [5, 5], [15, 5]], BBOX) == [
+        ([[0, 5], [5, 5], [10, 5]], False, True),
+    ]
+
+
+# --- fetch stages, Overpass canned -----------------------------------------
+
+
+def test_a_ways_response_with_no_ways_stops_the_fetch(tmp_path, monkeypatch, capsys):
+    import fetch_trails
+    import pytest
+
+    rels = {"elements": [{"type": "relation", "id": 1, "tags": {"name": "A"},
+                          "members": [{"type": "way", "ref": 5, "role": ""}]}]}
+    ways = {"elements": [{"type": "relation", "id": 1}]}
+    monkeypatch.setattr(fetch_trails, "overpass_query",
+                        lambda q, c, **kw: rels if kw["label"] == "relations" else ways)
+    out = tmp_path / "trails.geojson"
+    with pytest.raises(SystemExit):
+        fetch_trails.fetch_trails({"name": "M", "slug": "m", "relations": [1]}, str(out),
+                                  cache_dir=str(tmp_path))
+    assert "returned no ways" in capsys.readouterr().out
+    assert not out.exists()
+
+
+def test_a_rejected_query_fails_at_once_without_retrying(tmp_path, monkeypatch, capsys):
+    import overpass
+    import pytest
+
+    class Resp:
+        status_code = 400
+        text = ("<?xml version='1.0'?>\n<html><body>\n"
+                "<p><strong>Error</strong>: line 3: parse error: ';' expected</p>\n")
+
+    calls = []
+    monkeypatch.setattr(overpass.requests, "post", lambda *a, **k: calls.append(1) or Resp())
+    monkeypatch.setattr(overpass.time, "sleep", lambda s: pytest.fail("must not retry"))
+    with pytest.raises(SystemExit):
+        overpass.query("[out:json];bad", cache_dir=str(tmp_path), label="ways")
+    assert len(calls) == 1
+    out = capsys.readouterr()
+    assert "HTTP 400): Error: line 3: parse error: ';' expected" in out.out + out.err

@@ -26,11 +26,11 @@ import console
 # pipeline).
 from config_io import load_config_for_fetch
 from osm_parser import (
-    detect_super_expansions,
-    extract_source_relations,
+    extract_relations,
     extract_ways,
     parse_osm_file,
     relation_info,
+    resolve_relations,
 )
 from overpass import describe_outcomes, drain_outcomes
 from overpass import query as overpass_query
@@ -54,9 +54,8 @@ def _parse_relations(data):
     Entries are the shared five-field info dict (osm_parser.relation_info
     - same shape as the local-.osm path) plus `members`, preserved so
     super-relation expansion can identify type=relation member
-    references. The original Overpass `out tags;` directive omits
-    members; the caller must use `out body;` (or equivalent) to
-    include them.
+    references. Members are present only when the query ends in
+    `out body;` (or equivalent).
     """
     relations = {}
     for element in data.get("elements", []):
@@ -72,7 +71,7 @@ def fetch_all_relations(relation_ids, clipped_ids=None, cache_dir=None, refresh=
     `clipped_ids` in a single Overpass query.
 
     Each input ID may be a leaf route or a super-relation, expanded one
-    level deep (see osm_parser.detect_super_expansions): the parent is
+    level deep (see osm_parser.resolve_relations): the parent is
     dropped and its children take its slot.
 
     Returns (members, clipped, expansions, osm_base):
@@ -128,40 +127,9 @@ out body;
                 f"missing from the map."
             )
 
-    # Super-relation detection is shared with the local-.osm path.
-    expansions = detect_super_expansions(all_input_ids, all_rels)
-
-    # Replace super-parents with their children. A relation in BOTH lists
-    # lands in the source set, though the lists shouldn't overlap:
-    # clipped_relations exists for routes you DON'T want in the core
-    # trails geometry.
-    def _resolve(ids):
-        out = []
-        seen = set()
-        for rid in ids:
-            for resolved in expansions.get(rid) or [rid]:
-                if resolved not in seen:
-                    seen.add(resolved)
-                    out.append(resolved)
-        return out
-
-    relation_set = set(_resolve(relation_ids))
-    clipped_set = set(_resolve(clipped_ids)) - relation_set
-    expanded_parents = set(expansions.keys())
-
-    members = {}
-    clipped = {}
-    for rel_id, info in all_rels.items():
-        if rel_id in expanded_parents:
-            # Super-relation parent - drop. Its children carry the
-            # bucket assignment via the expansions map.
-            continue
-        if rel_id in clipped_set:
-            clipped[rel_id] = info
-        elif rel_id in relation_set:
-            members[rel_id] = info
-        # Anything else is an orphan the curator didn't ask for; drop it.
-
+    # Shared with the local-.osm path. It keeps all_rels' (response)
+    # order, which orders the ways query's ids and so its cache key.
+    members, clipped, expansions = resolve_relations(relation_ids, clipped_ids, all_rels)
     return members, clipped, expansions, osm_base
 
 
@@ -248,17 +216,20 @@ def _resolve_oneway(tags):
 
 
 def merge_consecutive_ways(ways_dict, way_relation_ids):
-    """Merge consecutive ways that share the same set of relations, name, and difficulty.
+    """Merge consecutive ways that share relations, name, difficulty and oneway.
 
     Given a dict of ways belonging to one relation and a mapping of
     ``{way_id: set(relation_ids)}``, merge consecutive ways where the
-    relation membership, way name, AND IMBA difficulty are identical.
+    relation membership, way name, IMBA difficulty AND resolved oneway
+    value are identical.
 
     Returns a list of merged segments, each being a dict with:
     - coords: merged coordinate list
     - shared_routes: sorted list of route (relation) IDs sharing this segment
     - trail_name: name of the trail segment (from the way's name tag)
-    - imba_difficulty: IMBA difficulty rating (0-4) or empty string
+    - imba_difficulty: IMBA difficulty rating (0-5) or empty string
+    - oneway: the resolved oneway value (see _resolve_oneway)
+    - way_ids: the source OSM way IDs fused into the segment
     """
     if not ways_dict:
         return []
@@ -440,8 +411,13 @@ def clip_line_to_bbox(coords, bbox):
     last_end_clipped = False  # was current[-1] clip-created? (tracked
     # so the loop-exit flush knows what to do)
 
+    def same_point(a, b):
+        return abs(a[0] - b[0]) <= 1e-9 and abs(a[1] - b[1]) <= 1e-9
+
     def flush(end_clipped):
-        if len(current) >= 2:
+        # A line that only touches the boundary clips to one repeated
+        # point: no length to draw, and no bearing for an arrowhead.
+        if len(current) >= 2 and not all(same_point(p, current[0]) for p in current):
             segments.append((list(current), current_start_clipped, end_clipped))
 
     for i in range(len(coords) - 1):
@@ -463,7 +439,7 @@ def clip_line_to_bbox(coords, bbox):
         if not current:
             current.append([cx1, cy1])
             current_start_clipped = this_start_clipped
-        elif abs(current[-1][0] - cx1) > 1e-9 or abs(current[-1][1] - cy1) > 1e-9:
+        elif not same_point(current[-1], (cx1, cy1)):
             # Discontinuity - flush and start a new segment. The flushed
             # tail's end and the new segment's start are both clip-created
             # (the gap traversed the bbox boundary).
@@ -471,7 +447,9 @@ def clip_line_to_bbox(coords, bbox):
             current = [[cx1, cy1]]
             current_start_clipped = this_start_clipped
 
-        current.append([cx2, cy2])
+        # A repeated point would hand the arrowhead a zero-length bearing.
+        if not same_point(current[-1], (cx2, cy2)):
+            current.append([cx2, cy2])
         last_end_clipped = this_end_clipped
 
     flush(end_clipped=last_end_clipped)
@@ -505,7 +483,7 @@ def build_geojson(relations, all_ways, way_relations):
     for rel_id, rel_info in sorted(relations.items(), key=lambda x: x[1]["name"]):
         ways = all_ways.get(rel_id, {})
         if not ways:
-            console.warn(f"No ways found for relation {rel_id} ({rel_info['name']})")
+            # _log_way_counts has already warned about it.
             continue
 
         # Build per-way relation membership lookup for this relation's ways
@@ -738,37 +716,41 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             f"Parsed {len(parsed[0])} nodes, {len(parsed[1])} ways, {len(parsed[2])} relations"
         )
 
-        relations, source_expansions = extract_source_relations(parsed, relation_ids)
+        relations, clipped_relations, super_relation_expansions = extract_relations(
+            parsed, relation_ids, clipped_relation_ids
+        )
         # Stop here, not at the bbox step downstream, whose message blames
         # Overpass. The usual cause is a JOSM save: it hands every new
         # object a fresh negative id, so a config written against the
         # previous save names relations the file no longer holds.
-        if relation_ids and not relations:
+        if relation_ids and not any(rid in parsed[2] for rid in relation_ids):
             console.error(
                 f"None of the relations {relation_ids} is in {osm_file}. A file saved "
                 "from JOSM renumbers its negative ids on every save; read the current "
                 "ids from the file and update the config."
             )
             sys.exit(1)
-        super_relation_expansions.update(source_expansions)
-        _log_expansions("expanded", source_expansions)
+        if not relations and not clipped_relations:
+            console.error(f"Relations {sorted(source_ids)} resolved to no routes in {osm_file}.")
+            sys.exit(1)
+        _log_expansions("expanded", super_relation_expansions)
         console.detail(f"Found {len(relations)} relation(s):")
         _log_relation_list(relations)
 
-        clipped_relations = {}
-        if clipped_relation_ids:
-            console.detail(f"Loading {len(clipped_relation_ids)} clipped relation(s)...")
-            clipped_relations, clipped_expansions = extract_source_relations(
-                parsed, clipped_relation_ids
-            )
-            super_relation_expansions.update(clipped_expansions)
-            _log_expansions("clipped", clipped_expansions)
+        if clipped_relations:
+            console.detail(f"Found {len(clipped_relations)} clipped relation(s):")
             _log_relation_list(clipped_relations, clipped=True)
             relations.update(clipped_relations)
 
         console.step(f"Stage B: Extracting ways for {len(relations)} relations...", detail=True)
         all_ways = extract_ways(parsed, list(relations.keys()))
         _log_way_counts(relations, all_ways)
+        if not any(all_ways.values()):
+            console.error(
+                f"No ways of relations {sorted(relations)} are in {osm_file}. Download "
+                "the relations' member ways in the editor and save the file again."
+            )
+            sys.exit(1)
     else:
         # Stage A: Fetch all relation metadata in a single query
         console.step("Stage A: Fetching relation metadata...", detail=True)
@@ -804,6 +786,16 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
             list(relations.keys()), cache_dir, refresh=refresh
         )
         _log_way_counts(relations, all_ways)
+        # Same guard as the relations stage. overpass.py does not cache an
+        # empty response so that a hiccup is retried, but an empty trail
+        # set written here would become the reused base: stop first.
+        if not any(all_ways.values()):
+            console.blank()
+            console.error(f"The ways query for relations {sorted(relations)} returned no ways.")
+            console.info("Overpass may have answered empty. Rebuild to retry, and add "
+                         "--refresh-trails if it repeats.")
+            console.blank()
+            sys.exit(1)
 
         # The two responses' snapshots normally match to the minute (both
         # queries key off the same relation set, so they refresh together);
@@ -830,10 +822,6 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     way_relations = build_way_to_relations_map(all_ways)
     shared_count = sum(1 for wids in way_relations.values() if len(wids) > 1)
     console.detail(f"{shared_count} ways are shared by multiple relations")
-
-    # oneway=reversible ways without a direction schedule are rejected by
-    # template_inject.inject_config_into_template, which runs on every
-    # build, so a config-only rebuild is checked as well.
 
     # Stage C: Merge ways and build GeoJSON
     console.step("Stage C: Merging ways and building GeoJSON...", detail=True)
