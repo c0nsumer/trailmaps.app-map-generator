@@ -1,10 +1,9 @@
 """Diff two OSM trail snapshots so a refresh can be vetted before deploy.
 
 Production maps are never auto-regenerated: the curator re-fetches OSM data
-only when they intend to, then personally vets it. Until now a
-``--refresh-trails`` overwrote ``trails.src.geojson`` in place and reported
-nothing, so "what actually changed upstream?" meant eyeballing the rendered
-map. This module answers it directly.
+only when they intend to, then personally vets it. A ``--refresh-trails``
+overwrites ``trails.src.geojson`` in place, and this module answers "what
+actually changed upstream?" without eyeballing the rendered map.
 
 Three deliberate choices about WHAT gets compared:
 
@@ -131,6 +130,19 @@ def _direction_reversed(old, new):
     return (d(s0, e1) + d(e0, s1)) * 2 < d(s0, s1) + d(e0, e1)
 
 
+def _ends_key(feature):
+    """A feature's two end points, rounded and in either order, so the
+    same run emitted once per route keys the same however it was drawn."""
+    coords = (feature.get("geometry") or {}).get("coordinates") or []
+    if (feature.get("geometry") or {}).get("type") != "LineString" or len(coords) < 2:
+        return None
+    try:
+        ends = [(round(p[0], 7), round(p[1], 7)) for p in (coords[0], coords[-1])]
+    except (TypeError, IndexError):
+        return None
+    return tuple(sorted(ends))
+
+
 def _parents_by_child(supers):
     """Invert ``{parent: {children}}`` into ``{child: {parents}}``.
 
@@ -165,7 +177,9 @@ def _index_snapshot(snap):
     trails = {}
     # A run shared by N routes is emitted once per route (that's how the
     # runtime draws parallel lanes), so length must be counted against the
-    # way set, not per feature, or shared trails inflate the total.
+    # way set, not per feature, or shared trails inflate the total. The
+    # run's ends join the key because a clipped route that leaves the bbox
+    # and comes back yields several pieces carrying one way set.
     counted_geom = set()
     total_length = 0.0
 
@@ -193,7 +207,7 @@ def _index_snapshot(snap):
             trails.setdefault(trail, {"ways": set(), "length_m": 0.0})
             trails[trail]["ways"].update(way_ids)
 
-        geom_key = frozenset(way_ids)
+        geom_key = (frozenset(way_ids), _ends_key(f))
         if way_ids and geom_key in counted_geom:
             continue
         if way_ids:
@@ -509,6 +523,14 @@ def summarize(diff):
     return lines
 
 
+def _osm_link(kind, osm_id):
+    """openstreetmap.org link for an object. A negative id is a JOSM
+    object not yet uploaded, which has no page to link to."""
+    if str(osm_id).startswith("-"):
+        return f"{kind} `{osm_id}` (not uploaded)"
+    return f"https://www.openstreetmap.org/{kind}/{osm_id}"
+
+
 def format_report(diff, slug):
     """Full Markdown report. Pure."""
     out = [f"# OSM refresh diff - {slug}", ""]
@@ -569,9 +591,9 @@ def format_report(diff, slug):
             _render_membership)
     section("Route parentage changes", diff["super_changes"], _render_super)
     section("Super-relations added", diff["super_relations_added"],
-            lambda r: f"https://www.openstreetmap.org/relation/{r}")
+            lambda r: _osm_link("relation", r))
     section("Super-relations removed", diff["super_relations_removed"],
-            lambda r: f"https://www.openstreetmap.org/relation/{r}")
+            lambda r: _osm_link("relation", r))
     section("Trails added", diff["trails_added"], lambda n: n)
     section("Trails removed", diff["trails_removed"], lambda n: n)
     section("Trails renamed", diff["trail_renames"],
@@ -586,10 +608,8 @@ def format_report(diff, slug):
                       f"{_length(c['old_m'])} → "
                       f"{_length(c['new_m'])} "
                       f"({_length(c['delta_m'], signed=True)})")
-    section("Ways added", diff["ways_added"],
-            lambda w: f"https://www.openstreetmap.org/way/{w}")
-    section("Ways removed", diff["ways_removed"],
-            lambda w: f"https://www.openstreetmap.org/way/{w}")
+    section("Ways added", diff["ways_added"], lambda w: _osm_link("way", w))
+    section("Ways removed", diff["ways_removed"], lambda w: _osm_link("way", w))
 
     return "\n".join(out)
 

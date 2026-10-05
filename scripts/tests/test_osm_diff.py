@@ -428,3 +428,25 @@ def test_two_way_trail_reversal_is_not_reported():
     before = _snap([_feature([10], _LEG_A, trail="Both")])
     after = _snap([_feature([10], _LEG_A[::-1], trail="Both")])
     assert not diff_snapshots(before, after)["changed"]
+
+
+def test_a_clipped_route_leaving_and_reentering_counts_every_piece():
+    # Two pieces of one clipped feature carry the same way set.
+    one = _snap([_feature([10, 11], _LEG_A, trail="Rail")])
+    two = _snap([_feature([10, 11], _LEG_A, trail="Rail"),
+                 _feature([10, 11], _LEG_B, trail="Rail")])
+    a = diff_snapshots(one, one)["total_length_new_m"]
+    b = diff_snapshots(two, two)
+    assert abs(b["total_length_new_m"] - 2 * a) < 0.001
+    # A shared run drawn backward for its second route still counts once.
+    shared = _snap([_feature([10], _LEG_A, route_id="1", trail="S"),
+                    _feature([10], _LEG_A[::-1], route_id="2", trail="S")])
+    assert abs(diff_snapshots(shared, shared)["total_length_new_m"] - a) < 0.001
+
+
+def test_negative_josm_ids_get_no_osm_link():
+    before = _snap([_feature(["-3"], _LEG_A, trail="T")])
+    after = _snap([_feature(["-4"], _LEG_A, trail="T")])
+    report = format_report(diff_snapshots(before, after), "x")
+    assert "openstreetmap.org/way/-" not in report
+    assert "way `-4` (not uploaded)" in report
