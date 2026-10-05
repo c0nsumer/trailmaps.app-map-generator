@@ -4,7 +4,7 @@
 // step, so a runtime ReferenceError (a refactor dropping a helper
 // another code path still calls) parses fine, ships silently, and
 // kills the app at boot. `no-undef` catches that class statically;
-// every other rule stays off so a 10k-line plain-JS file doesn't
+// every other rule stays off so a large plain-JS file doesn't
 // drown in style opinions.
 //
 // scripts/tests/test_eslint.py runs this via pytest when Node and
@@ -12,36 +12,50 @@
 // so Python-only contributors are unaffected.
 import globals from "globals";
 
+// app.js runs on the page and sw.js in a service worker, so each gets
+// only its own scope's globals: `document` in sw.js, or `skipWaiting`
+// in app.js, is a ReferenceError at runtime and must fail the lint.
+const shared = {
+    // Plain <script>-loaded files, not ES modules.
+    ecmaVersion: 2022,
+    sourceType: "script",
+};
+
+// app.js carries a few inline eslint-disable directives for rules this
+// minimal config doesn't enable (e.g. the force-reflow
+// `overlay.offsetHeight;` expression). They document intent and would
+// matter under a broader rule set, so don't warn about them being
+// unused here.
+const linterOptions = { reportUnusedDisableDirectives: "off" };
+
 export default [
     {
-        files: ["templates/app.js", "templates/sw.js"],
+        files: ["templates/app.js"],
         languageOptions: {
-            ecmaVersion: 2022,
-            // Plain <script>-loaded files, not ES modules.
-            sourceType: "script",
+            ...shared,
             globals: {
                 ...globals.browser,
-                ...globals.serviceworker,
-                // Injected at build time, absent from the templates:
-                // CONFIG into app.js and SW_CONFIG into sw.js (the
-                // /*__SW_CONFIG__*/ placeholder). The vendor globals
-                // (maplibregl, pmtiles, basemaps) are declared by the
-                // /* global */ comment at the top of app.js instead,
-                // since that dependency is app.js-specific.
+                // Injected at build time, absent from the template. The
+                // vendor globals (maplibregl, pmtiles, basemaps) are
+                // declared by the /* global */ comment at the top of
+                // app.js instead.
                 CONFIG: "readonly",
+            },
+        },
+        linterOptions,
+        rules: { "no-undef": "error" },
+    },
+    {
+        files: ["templates/sw.js"],
+        languageOptions: {
+            ...shared,
+            globals: {
+                ...globals.serviceworker,
+                // Injected at the /*__SW_CONFIG__*/ placeholder.
                 SW_CONFIG: "readonly",
             },
         },
-        // app.js carries a few inline eslint-disable directives for
-        // rules this minimal config doesn't enable (e.g. the
-        // force-reflow `overlay.offsetHeight;` expression). They
-        // document intent and would matter under a broader rule set,
-        // so don't warn about them being unused here.
-        linterOptions: {
-            reportUnusedDisableDirectives: "off",
-        },
-        rules: {
-            "no-undef": "error",
-        },
+        linterOptions,
+        rules: { "no-undef": "error" },
     },
 ];
