@@ -13,11 +13,12 @@ Use event mode for:
 - Demo loops, training rides, or any event-specific publication where one route
   is the focus.
 
-Event mode is strictly visual. It doesn't change data
-fetching, POI rendering, search, or any other framework behavior. At build
-time, the featured route(s) and background style are translated into per-route
-style overrides. The runtime sees a normal map where some routes happen to
-share the background treatment.
+Event mode is mostly visual. It doesn't change data fetching, POI
+rendering, or search. At build time, the featured route(s) and background
+style are translated into per-route style overrides. At runtime, an event map
+differs from a normal map in three places: its
+[labels](#labels-in-event-mode), its key rows, and difficulty symbols, which
+an event map does not draw.
 
 ## Contents
 
@@ -607,22 +608,25 @@ shows distance. Tapping a row highlights that course and fits it in view.
 
 ## What event mode leaves unchanged
 
-Event mode is intentionally narrow: it changes how trails are styled and
-nothing else. Everything below behaves exactly as it does on a normal map:
+Event mode is intentionally narrow. Everything below behaves exactly as it
+does on a normal map:
 
 - **POI rendering**: parking, trailheads, water, toilets, features, trail
   markers all render with their normal colors and toggles.
 - **Search / finder**: featured and background routes both appear in the Routes
   section. Tap either to highlight.
 - **Bucket toggles**: if the curator enables them, Season switching
-  (Summer / Winter), the Emergency overlay, the Difficulty toggle, and the
-  rest all work normally.
+  (Summer / Winter) and the Emergency overlay work normally.
 - **Basemap, terrain, fonts, and the rest of the framework.**
 
-If you want to suppress UI affordances that don't fit your event map (e.g. the
-Difficulty toggle, the Season toggle), use the existing per-key knobs:
+One thing is always off. An event map draws no difficulty symbols and has no
+Difficulty row in Options, whatever `show_difficulty` and `default_visible`
+say. The symbols sit on OSM ways, which span every background route, so they
+cannot be limited to the course.
 
-- `show_difficulty: false` to skip the IMBA sprite + toggle.
+If you want to suppress UI affordances that don't fit your event map (e.g. the
+Season toggle), use the existing per-key knobs:
+
 - Omit `winter_relations` / `summer_relations` / `emergency_access_relations` to
   skip the Season + Emergency toggles.
 - `default_labels: routes` (or `trails` or `none`) to set the initial label
