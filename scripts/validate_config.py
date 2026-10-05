@@ -87,6 +87,7 @@ KNOWN_KEYS = {
     "show_difficulty": bool,
     "show_trails": bool,
     "show_direction_arrows": bool,
+    "show_current_trail": bool,
     "suppress_basemap_pois": bool,
     "suppress_basemap_oneway_arrows": bool,
     "show_distance": bool,

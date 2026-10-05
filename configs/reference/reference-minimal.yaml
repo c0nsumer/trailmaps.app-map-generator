@@ -36,6 +36,7 @@ relations:
 # show_difficulty: true
 # show_trails: true
 # show_direction_arrows: true
+# show_current_trail: true
 # suppress_basemap_pois: true
 # suppress_basemap_oneway_arrows: false
 # show_distance: true

@@ -566,7 +566,7 @@ body::after {
     display: none !important;
 }
 
-/* ----- Top-of-map chips: highlight chip, trail chip ------------------
+/* ----- Top-of-map chip stack: the highlight chip ----------------------
  *
  * The stack spans the full width (left + right 0) instead of sitting at
  * left: 50% with a translate: an absolute box at left: 50% shrink-fits
@@ -606,6 +606,25 @@ body::after {
      * 12 px inset + 48 px FAB + 8 px breathing room per side. A long
      * name ellipsizes inside the label instead. */
     max-width: calc(100vw - 136px);
+}
+
+/* The trail chip's dock: the bottom band the attribution and the
+ * routes panel sit in, the chip centered across its 48 px (the docked
+ * panel's FAB height). Full width with a centered child for the reason
+ * the chip stack is. Under the routes panel (5), so an open key card
+ * covers the chip as it covers the attribution, and under every
+ * overlay. */
+.trail-chip-dock {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(12px + var(--safe-bottom));
+    height: 48px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
 }
 
 /* The trail chip is a readout, not a selection, so it looks like what
@@ -1567,7 +1586,8 @@ body::after {
  * Season chip's sun ⇌ snowflake). Units shares the recipe: both are
  * viewing preferences rather than layers. */
 .appearance-swatch,
-.units-swatch {
+.units-swatch,
+.current-trail-swatch {
     background: var(--input-bg);
     color: var(--sheet-text);
 }

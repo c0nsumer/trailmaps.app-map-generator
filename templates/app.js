@@ -769,7 +769,7 @@ function watchSystemColorScheme() {
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
 // mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
-// mtb.welcomed, mtb.fabsLabeled. One key is shared across maps and
+// mtb.welcomed, mtb.fabsLabeled, mtb.currentTrail. One key is shared across maps and
 // carries no prefix: mtb.units (see LS_ORIGIN).
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
@@ -1228,6 +1228,7 @@ function showTapLift({ trailName = null, edges = null } = {}) {
     tapLiftTrail = trailName || null;
     tapLiftEdges = edges && edges.size ? { ids: edges, graph: laneGraph } : null;
     refreshTapLift();
+    refreshHereGlow();
     syncTapLiftBrightness();
 }
 
@@ -1237,6 +1238,7 @@ function clearTapLift() {
     tapLiftTrail = null;
     tapLiftEdges = null;
     refreshTapLift();
+    refreshHereGlow();
     syncTapLiftBrightness();
 }
 
@@ -2733,6 +2735,7 @@ const POI_MARKER_ARRAYS = _poiTypeColumn("markers");
 const POI_TYPE_FALLBACK_NAME = Object.freeze(_poiTypeColumn("fallbackName"));
 const POI_TYPE_META_LABEL = Object.freeze(_poiTypeColumn("metaLabel"));
 let userLocation = null; // [lng, lat] from geolocate control
+let userAccuracy = null; // meters, of the fix userLocation came from
 // MapLibre GeolocateControl handle; assigned in init(). Hoisted to module
 // scope so the off-screen indicator's click handler (defined at module
 // scope in updateLocationIndicator) can resume tracking via .trigger()
@@ -3935,7 +3938,8 @@ async function init() {
     geolocate.on("geolocate", (e) => {
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
-        updateTrailChip(userLocation[0], userLocation[1], e.coords.accuracy);
+        userAccuracy = e.coords.accuracy;
+        if (currentTrailOn) updateTrailChip(userLocation[0], userLocation[1], userAccuracy);
         // Keep the compass wedge glued to the dot. The course read
         // below uses two fields THIS fix already carries (the OS
         // computes heading/speed per fix; no history is kept or
@@ -6364,7 +6368,12 @@ async function loadTrails() {
     });
     map.on("moveend", refreshLaneSymbols);
     map.on("zoom", onLaneZoom);
+    map.addSource(HERE_LIFT_SOURCE, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+    });
     map.on("zoomend", refreshTapLift);
+    map.on("zoomend", refreshHereGlow);
 
     // Decoration source, pre-deconflicted Point features (trail
     // names, route names, IMBA diamonds; direction chevrons live on
@@ -6625,6 +6634,22 @@ async function loadTrails() {
         layout: { "line-cap": "round", "line-join": "round" },
     }, map.getLayer(LANE_LAYER_ID) ? LANE_LAYER_ID : "dim-tint");
 
+    // The on-trail glow (syncHereLift): the tap glow's shape in the
+    // rider's own blue, directly beneath the yellow one.
+    map.addLayer({
+        id: HERE_GLOW_LAYER,
+        type: "line",
+        source: HERE_LIFT_SOURCE,
+        paint: {
+            "line-color": HERE_GLOW_COLOR,
+            "line-color-transition": { duration: 0 },
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 19, 14, 22, 18, 26],
+            "line-blur": 5,
+            "line-opacity": 1,
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+    }, TAP_GLOW_LAYER);
+
     // One-way chevron layers go here: above the lanes and every
     // highlight line added before this point, below EVERY text layer
     // (the per-route trail-label-<id> layers below, plus the decor
@@ -6778,8 +6803,10 @@ function trailIdentityMatch() {
     // id: a name in several stretches brightens every stretch's label
     // while one of them is lifted, a small over-reach next to a dark
     // name on a lifted line.
-    if (!tapLiftTrail) return own;
-    return ["any", own, ["==", ["get", "trail_name"], tapLiftTrail]];
+    // So does the trail under the rider (syncHereLift).
+    const names = [tapLiftTrail, hereLift ? hereLift.name : null].filter(Boolean);
+    if (!names.length) return own;
+    return ["any", own, ["in", ["get", "trail_name"], ["literal", names]]];
 }
 // A color key highlight: the feature's own way has that key. Labels
 // and chevrons carry color_key (stamped per visibility pass, false for
@@ -6930,6 +6957,11 @@ const LANE_FEATURES_SOURCE = "trail-lanes-features";
 const TAP_LIFT_SOURCE = "trail-tap-lift";
 const TAP_GLOW_LAYER = "trail-tap-glow";
 const TAP_GLOW_COLOR = "#FFEC00";
+// The on-trail glow under the trail the chip names (syncHereLift): the
+// tap glow's shape in the Locate blue of the rider's dot (--user-dot).
+const HERE_LIFT_SOURCE = "trail-here-lift";
+const HERE_GLOW_LAYER = "trail-here-glow";
+const HERE_GLOW_COLOR = "#3498db";
 
 // A highlight, a route or a rating (a lane's route is its color key,
 // see laneKeyMeta), is the plugin's own lift: the lanes drawn last, above the others, with a halo
@@ -6955,8 +6987,13 @@ const CLIP_ARROW_GLOW_BLUR = 1.5;
 // wherever either changes and when the layer first exists.
 function syncLaneHighlight() {
     if (!laneLayer) return;
-    const lifted = highlight && (highlight.kind === "route" || highlight.kind === "rating")
-        ? highlight.key : null;
+    const lifted = liftedLaneKey();
+    // The on-trail glow stays off the stretches the lifted key runs
+    // on (refreshHereGlow), so it follows the key.
+    if (lifted !== hereGlowLiftedKey) {
+        hereGlowLiftedKey = lifted;
+        refreshHereGlow();
+    }
     if (lifted === null) {
         laneLayer.setHighlight(null);
         return;
@@ -6972,8 +7009,16 @@ function syncLaneHighlight() {
         // The open popup's trail stays readable under the dim
         // (syncTapLiftBrightness). Needs maplibre-gl-lanes 1.2.0;
         // 1.1.0 ignores the key.
-        bright: washed ? tapLiftEdgeIds() : [],
+        // So does the trail under the rider where the lifted key does
+        // not run (hereLiftOffKeyEdgeIds).
+        bright: washed ? [...tapLiftEdgeIds(), ...hereLiftOffKeyEdgeIds(lifted)] : [],
     });
+}
+
+// The route or color key the lane layer lifts, or null.
+function liftedLaneKey() {
+    return highlight && (highlight.kind === "route" || highlight.kind === "rating")
+        ? highlight.key : null;
 }
 
 // Lane geometry per zoom, in px. The fill width follows
@@ -7384,6 +7429,7 @@ function refreshLaneSymbols() {
     if (laneSwapPending) {
         laneSwapPending = false;
         refreshTapLift();
+        syncHereLift(true);
     }
 }
 
@@ -8892,8 +8938,9 @@ function hideHighlightChip() {
 //
 // The trail the rider is on, as {name, feature, point}; name "" for an
 // unnamed way, which is tracked like any other so the junction
-// hysteresis applies to it, but never shown ("You are on Unnamed" is
-// noise). null when off every trail.
+// hysteresis applies to it, and shown as "an unnamed trail": a rider
+// on a drawn line with a blank chip cannot tell an unnamed way from a
+// fix the map could not place. null when off every trail.
 let _onTrail = null;
 // A different trail that beat the current one by TRAIL_CHIP_SWITCH_M
 // on the last fix, as {name, count}, and the run of fixes beyond the
@@ -8902,7 +8949,15 @@ let _onTrail = null;
 // single wild fix under tree cover cannot flip or drop the name.
 let _onTrailCandidate = null;
 let _offTrailFixes = 0;
+// The Options "Current Trail" row: the chip and the on-trail glow
+// together, since the glow shows only what the chip names. Off also
+// skips the per-fix walk.
+// show_current_trail: false removes both and the row.
+const CURRENT_TRAIL_ENABLED = CONFIG.showCurrentTrail !== false;
+let currentTrailOn = CURRENT_TRAIL_ENABLED && LS.get("mtb.currentTrail", true);
 const TRAIL_CHIP_FIXES = 2;
+// Reads on from the chip's "You are on" kicker.
+const TRAIL_CHIP_UNNAMED = "an unnamed trail";
 const TRAIL_CHIP_SWITCH_M = 5;
 
 // The chip states a fact, so it only speaks when the fix is good and
@@ -8990,18 +9045,138 @@ function resetTrailChip() {
 function renderTrailChip() {
     const chip = document.getElementById("trail-chip");
     if (!chip) return;
-    const name = _onTrail ? _onTrail.name : "";
     // A way whose own route was toggled off since the last fix hides
     // with it; the next fix resolves against what is drawn.
-    if (!name || !isVisibleTrail(_onTrail.feature.properties)) {
+    if (!_onTrail || !isVisibleTrail(_onTrail.feature.properties)) {
         chip.classList.add("hidden");
+        syncHereLift();
         return;
     }
     const label = chip.querySelector(".highlight-chip-label");
     // Compared first because the chip is aria-live: rewriting the same
     // text on every fix would re-announce it once a second.
-    if (label && label.textContent !== name) label.textContent = name;
+    const text = _onTrail.name || TRAIL_CHIP_UNNAMED;
+    if (label && label.textContent !== text) label.textContent = text;
+    // The chip docks in the attribution's band, and the credits open
+    // at boot until the first map gesture. Turning Locate on is not
+    // one, so the chip's arrival folds them to the (i) as a gesture
+    // would. Only on arrival: credits the rider reopens stay open.
+    if (chip.classList.contains("hidden")) {
+        document.querySelector(".maplibregl-ctrl-attrib")
+            ?.classList.remove("maplibregl-compact-show");
+    }
     chip.classList.remove("hidden");
+    syncHereLift();
+}
+
+// The trail the chip names also glows on the map, in the rider's own
+// blue: the chip says which trail, the glow shows where it runs from
+// here. It lights what a tap on the chip opens, the contiguous section
+// of the name under the rider (trailSection), as {name, ids, graph},
+// or the one graph edge of an unnamed way, the unit its popup lifts,
+// and shows exactly while the chip does. Yellow is what the rider
+// picked and blue where they are, and yellow wins: a stretch the open
+// popup lifts, or one a highlighted route or key runs on, draws yellow
+// alone. The two fringes stacked mix to a muddy green, and a blue rim
+// outside a route's yellow halo was the look Steve passed over.
+let hereLift = null;
+let hereLiftToken = 0;
+let hereGlowLiftedKey = null;
+
+// Follows the chip, so it runs once per fix. The walk is over the one
+// name's edges, and the section is rebuilt only when the rider's edge
+// leaves it (another stretch of the same name) or the graph is
+// replaced; `relayout` redraws an unchanged section after a swap that
+// kept the graph but moved its lanes.
+function syncHereLift(relayout = false) {
+    const chip = document.getElementById("trail-chip");
+    const shown = _onTrail && laneGraph && chip && !chip.classList.contains("hidden");
+    let next = null;
+    if (shown) {
+        const edge = nearestNamedEdge(laneGraph, _onTrail.name, _onTrail.point);
+        if (hereLift && hereLift.graph === laneGraph && hereLift.ids.has(edge)) {
+            if (relayout) refreshHereGlow();
+            return;
+        }
+        if (edge >= 0) {
+            const section = trailSection(edge);
+            next = {
+                name: _onTrail.name,
+                ids: section ? section.edges : new Set([edge]),
+                graph: laneGraph,
+            };
+        }
+    }
+    if (!next && !hereLift) return;
+    hereLift = next;
+    refreshHereGlow();
+    // Under a selection's dim the rider's trail reads at full
+    // brightness, lanes and name, as an open popup's trail does.
+    if (highlight != null) {
+        syncLaneHighlight();
+        updateLabels();
+    }
+}
+
+// The graph edge named `name` ("" for an unnamed way) nearest a point,
+// or -1. Squared Mercator distance: only the order matters, and across one name's edges the
+// scale is the same.
+function nearestNamedEdge(graph, name, lngLat) {
+    const [px, py] = window.maplibreLanes.lngLatToMercator(lngLat[0], lngLat[1]);
+    let best = -1;
+    let bestD = Infinity;
+    graph.edges.forEach((e, id) => {
+        if (((e.properties || {}).trail_name || "") !== name) return;
+        const c = e.coords;
+        for (let i = 0; i + 3 < c.length; i += 2) {
+            const dx = c[i + 2] - c[i];
+            const dy = c[i + 3] - c[i + 1];
+            const lenSq = dx * dx + dy * dy;
+            const t = lenSq > 0
+                ? Math.max(0, Math.min(1, ((px - c[i]) * dx + (py - c[i + 1]) * dy) / lenSq))
+                : 0;
+            const d = (px - c[i] - t * dx) ** 2 + (py - c[i + 1] - t * dy) ** 2;
+            if (d < bestD) {
+                bestD = d;
+                best = id;
+            }
+        }
+    });
+    return best;
+}
+
+// The rider's section where the lifted route or key does not run:
+// those lanes are dimmed with the rest, so they are the ones to exempt.
+// On the lifted stretches the lift already draws the rider's lane
+// bright, and brightening the edge would undim its bundle mates too.
+function hereLiftOffKeyEdgeIds(lifted) {
+    if (!hereLift || hereLift.graph !== laneGraph) return [];
+    return [...hereLift.ids].filter((id) => !laneGraph.edges[id].routes.includes(lifted));
+}
+
+function refreshHereGlow() {
+    const src = map.getSource(HERE_LIFT_SOURCE);
+    if (!src) return;
+    const token = ++hereLiftToken;
+    const ids = new Set(hereLift && hereLift.graph === laneGraph ? hereLift.ids : []);
+    for (const id of tapLiftEdgeIds()) ids.delete(id);
+    const lifted = liftedLaneKey();
+    if (lifted !== null) {
+        for (const id of [...ids]) {
+            if (laneGraph.edges[id].routes.includes(lifted)) ids.delete(id);
+        }
+    }
+    if (!ids.size || !laneLayer) {
+        src.setData({ type: "FeatureCollection", features: [] });
+        return;
+    }
+    laneFeatureCollectionAsync({ extent: "full" }).then((all) => {
+        if (token !== hereLiftToken) return;
+        src.setData({
+            type: "FeatureCollection",
+            features: all.features.filter((f) => ids.has(f.properties.edge)),
+        });
+    }).catch((e) => console.error("lanes: on-trail glow layout failed", e));
 }
 
 // Opens the trail popup for the section under the rider, the card a
@@ -9010,13 +9185,13 @@ function renderTrailChip() {
 // pick, with the same name check and raw-properties fallback, and the
 // popup anchors at the rider's own point rather than the lane's.
 function openTrailChipPopup() {
-    if (!_onTrail || !_onTrail.name) return;
+    if (!_onTrail) return;
     const { name, feature, point } = _onTrail;
     // A rider who panned away would otherwise get a popup off screen.
     if (!map.getBounds().contains(point)) map.easeTo({ center: point });
     const tolerancePx = 30;
     const named = (hit) => (hit && hit.properties
-        && hit.properties.trail_name === name ? hit : null);
+        && (hit.properties.trail_name || "") === name ? hit : null);
     let hit = null;
     if (laneLayer) {
         hit = named(laneLayer.queryLaneAt(point, map.getZoom(), tolerancePx))
@@ -10963,6 +11138,19 @@ function setupFloatingChrome() {
         emergencyOn = false;
     }
 
+    // ----- Current Trail toggle -------------------------------------
+    // On resolves from the last fix instead of waiting for the next
+    // one: a rider stopped at a junction gets no new fix to wait for.
+    if (CURRENT_TRAIL_ENABLED) {
+        wirePeekToggle("toggle-current-trail", "mtb.currentTrail", true, (on) => {
+            currentTrailOn = on;
+            if (!on) resetTrailChip();
+            else if (userLocation) updateTrailChip(userLocation[0], userLocation[1], userAccuracy);
+        });
+    } else {
+        document.getElementById("toggle-current-trail")?.classList.add("hidden");
+    }
+
     // ----- POI toggle rows (switches) -------------------------------
     //
     // The wirePeekToggle helper reads persisted state, paints the
@@ -12620,8 +12808,9 @@ function laneLayerAnchor() {
 // it). Every path ends with basemap symbols < wash < glow < lanes.
 function placeWashUnderLift(basemapSymbolIds) {
     if (!map.getLayer("dim-tint")) return;
-    if (map.getLayer(TAP_GLOW_LAYER)) {
-        map.moveLayer("dim-tint", TAP_GLOW_LAYER);
+    const lowestLift = [HERE_GLOW_LAYER, TAP_GLOW_LAYER].find((id) => map.getLayer(id));
+    if (lowestLift) {
+        map.moveLayer("dim-tint", lowestLift);
         return;
     }
     if (map.getLayer(LANE_LAYER_ID)) {
@@ -12637,10 +12826,12 @@ function placeWashUnderLift(basemapSymbolIds) {
     map.moveLayer("dim-tint", next);
 }
 
-// The glow, then the lanes. No-op until both exist.
+// The on-trail glow, the tap glow, then the lanes. No-op until the
+// last two exist.
 function moveTapLiftUnderLanes() {
     if (map.getLayer(LANE_LAYER_ID) && map.getLayer(TAP_GLOW_LAYER)) {
         map.moveLayer(TAP_GLOW_LAYER, LANE_LAYER_ID);
+        if (map.getLayer(HERE_GLOW_LAYER)) map.moveLayer(HERE_GLOW_LAYER, TAP_GLOW_LAYER);
     }
 }
 

@@ -130,6 +130,10 @@ relations:
 # overrides forced_visible.
 # show_direction_arrows: true
 
+# While Locate is on, name the trail the rider is on and give it a blue glow.
+# The rider can turn this off in Options. false removes it and its Options row.
+# show_current_trail: true
+
 # Hide POI and place=locality labels from the Protomaps basemap.
 # suppress_basemap_pois: true
 

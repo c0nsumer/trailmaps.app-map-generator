@@ -303,11 +303,8 @@
         <span class="off-screen-indicator-dist"></span>
     </div>
 
-    <!-- Top-of-map chips. The highlight chip shows while a route, trail,
-         rating or POI is highlighted; the trail chip names the trail under
-         the rider while Locate is on. They answer different questions and
-         can show at once, so they stack rather than share one slot, and
-         whichever is alone sits at the top. -->
+    <!-- Top-of-map chip. The highlight chip shows while a route, trail,
+         rating or POI is highlighted. -->
     <div id="chip-stack" class="chip-stack">
         <button id="highlight-chip" class="highlight-chip hidden" type="button" aria-live="polite">
             <span class="highlight-chip-swatch" aria-hidden="true"></span>
@@ -320,10 +317,16 @@
                 <line x1="12" y1="2" x2="2" y2="12"/>
             </svg>
         </button>
-        <!-- No close X: there is nothing to dismiss. The chip leaves when
-             the rider leaves the trail or turns Locate off. aria-live
-             because it is the one chip a blind rider cannot get by
-             looking, and it changes every few minutes at most. -->
+    </div>
+
+    <!-- The trail chip names the trail under the rider while Locate is
+         on. Docked at the bottom, between the attribution and the routes
+         panel: up top it covered the brand logo at phone width.
+         No close X: there is nothing to dismiss. The chip leaves when
+         the rider leaves the trail or turns Locate off. aria-live
+         because it is the one chip a blind rider cannot get by
+         looking, and it changes every few minutes at most. -->
+    <div id="trail-chip-dock" class="trail-chip-dock">
         <button id="trail-chip" class="highlight-chip trail-chip hidden" type="button" aria-live="polite">
             <!-- One mark, the rider's dot, and the name under a small
                  "You are on": the lane under the dot on the map already
@@ -789,6 +792,22 @@
                             <button type="button" class="opt-segmented-btn" data-value="dark" role="radio" aria-checked="false">Dark</button>
                             <button type="button" class="opt-segmented-btn" data-value="auto" role="radio" aria-checked="false">Auto</button>
                         </div>
+                    </div>
+
+                    <!-- Current Trail: the "You are on" chip and the
+                         blue glow under the trail the rider is on, both
+                         of which ride Locate. The swatch is a trail
+                         signpost, where a rider reads a trail's name.
+                         Hidden by app.js under show_current_trail: false. -->
+                    <div class="opt-row opt-toggle-row" id="toggle-current-trail" data-on="true">
+                        <span class="layer-swatch current-trail-swatch" aria-hidden="true">
+                            <!-- mdi:routes (Apache 2.0, Pictogrammers). -->
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M11,10H5L3,8L5,6H11V3L12,2L13,3V4H19L21,6L19,8H13V10H19L21,12L19,14H13V20A2,2 0 0,1 15,22H9A2,2 0 0,1 11,20V10Z"/>
+                            </svg>
+                        </span>
+                        <span class="opt-toggle-row-label">Current Trail</span>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Current Trail"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Units for everything the app computes: route

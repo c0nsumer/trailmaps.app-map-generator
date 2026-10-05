@@ -182,6 +182,9 @@ CONFIG_SPEC = [
     # toggle row, even if `direction_arrows` is in `forced_visible`
     # (the show gate wins).
     ("show_direction_arrows", "showDirectionArrows", True),
+    # False drops the "You are on" chip and the on-trail glow that ride
+    # Locate, and hides their Options row.
+    ("show_current_trail", "showCurrentTrail", True),
     # Display
     # Default "none" gives a first visit a clean map; the rider opts into
     # labels via the Labels control.
