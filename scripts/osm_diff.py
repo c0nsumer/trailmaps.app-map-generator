@@ -19,7 +19,10 @@ Three deliberate choices about WHAT gets compared:
   OSM contributors nudge geometry constantly. Diffing coordinates would make
   every refresh look catastrophic while burying the tag and topology changes
   that actually matter. Per-trail length deltas below ``_LENGTH_NOISE_M`` are
-  suppressed for the same reason.
+  suppressed for the same reason. The one exception is the DIRECTION of a
+  one-way: the fetch stores ``oneway=-1`` as ``yes`` with the line
+  reversed, so a flipped flow trail changes no tag and no length, and only
+  its start and end trading places shows it (:func:`_direction_reversed`).
 
 * **Relation membership is compared at two levels, both churn-suppressed.**
   Which relations carry a way, and which super-relation a route hangs off,
@@ -46,6 +49,10 @@ from geodesy import haversine_m, natural_key
 # metres moves a trail's length by well under this; a genuine extension or
 # truncation clears it easily.
 _LENGTH_NOISE_M = 20.0
+
+# A feature whose ends are this close is a closed loop: its direction is
+# read from the sign of its area, since its ends say nothing.
+_LOOP_CLOSED_M = 5.0
 
 # Caps on how many items any one section lists. Anything dropped is stated
 # explicitly in the output - a silently truncated list reads as "that's
@@ -85,6 +92,45 @@ def _feature_length_m(feature):
     return total
 
 
+def _direction(feature):
+    """``(start, end, signed_area)`` of a LineString feature, else None.
+
+    The signed area (shoelace, in degrees: only its sign is used) is what
+    tells a closed loop's direction, where start and end are one point.
+    """
+    geom = feature.get("geometry") or {}
+    coords = geom.get("coordinates") or []
+    if geom.get("type") != "LineString" or len(coords) < 2:
+        return None
+    try:
+        area = sum(coords[i - 1][0] * coords[i][1] - coords[i][0] * coords[i - 1][1]
+                   for i in range(1, len(coords)))
+        return (coords[0][0], coords[0][1]), (coords[-1][0], coords[-1][1]), area
+    except (TypeError, IndexError):
+        return None
+
+
+def _direction_reversed(old, new):
+    """True when two readings of one way's feature run opposite ways.
+
+    Each is a :func:`_direction` tuple for the merged feature carrying the
+    way. A re-merge moves one end and a nudge moves both a little, so the
+    test is which pairing of the ends is closer, old start to new start or
+    old start to new end, and the reversed pairing must win by half: a
+    doubtful case reports nothing.
+    """
+    if not old or not new:
+        return False
+    (s0, e0, a0), (s1, e1, a1) = old, new
+
+    def d(p, q):
+        return haversine_m(p[0], p[1], q[0], q[1])
+
+    if d(s0, e0) < _LOOP_CLOSED_M and d(s1, e1) < _LOOP_CLOSED_M:
+        return a0 * a1 < 0
+    return (d(s0, e1) + d(e0, s1)) * 2 < d(s0, s1) + d(e0, e1)
+
+
 def _parents_by_child(supers):
     """Invert ``{parent: {children}}`` into ``{child: {parents}}``.
 
@@ -102,8 +148,8 @@ def _index_snapshot(snap):
     """Reduce a snapshot to the comparable facts.
 
     Returns ``{routes, supers, ways, trails, total_length_m,
-    data_timestamp}`` where ``ways`` maps way id to its way-level tags plus
-    the routes carrying it, ``trails`` maps trail name to its way set and
+    data_timestamp}`` where ``ways`` maps way id to its way-level tags, the
+    routes carrying it and, for a one-way, its feature's direction, ``trails`` maps trail name to its way set and
     total length, and ``supers`` maps super-relation id to its child route
     ids.
     """
@@ -134,8 +180,10 @@ def _index_snapshot(snap):
             "oneway": str(props.get("oneway") or "").strip(),
         }
 
+        direction = _direction(f) if tags["oneway"] else None
         for wid in way_ids:
-            entry = ways.setdefault(wid, {**tags, "routes": set()})
+            entry = ways.setdefault(wid, {**tags, "routes": set(),
+                                          "direction": direction})
             # Tags are way-level so every route's copy agrees; the first
             # write stands and only route membership accumulates.
             if route_id:
@@ -226,6 +274,17 @@ def diff_snapshots(prev, cur):
                     "old": old,
                     "new": new,
                 })
+        oneway = wb[wid].get("oneway") or ""
+        if (oneway and oneway == (wa[wid].get("oneway") or "")
+                and _direction_reversed(wa[wid].get("direction"),
+                                        wb[wid].get("direction"))):
+            tag_changes.append({
+                "way_id": wid,
+                "trail": new_trail or old_trail,
+                "tag": "oneway",
+                "old": oneway,
+                "new": f"{oneway}, direction reversed",
+            })
         old_routes = frozenset(wa[wid].get("routes") or ()) - churn_routes
         new_routes = frozenset(wb[wid].get("routes") or ()) - churn_routes
         if old_routes != new_routes:

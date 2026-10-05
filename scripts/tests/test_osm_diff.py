@@ -373,3 +373,58 @@ def test_snapshot_without_expansions_is_inert():
     assert diff["super_relations_added"] == []
     assert diff["super_relations_removed"] == []
     assert "parentage" not in format_report(diff, "plain")
+
+
+# --- One-way direction -------------------------------------------------
+# fetch_trails stores oneway=-1 as "yes" with the line reversed, so a
+# flipped flow trail changes no tag and no length.
+
+def test_reversed_oneway_is_reported():
+    before = _snap([_feature([10], _LEG_A, trail="Flow", oneway="yes")])
+    after = _snap([_feature([10], _LEG_A[::-1], trail="Flow", oneway="yes")])
+    diff = diff_snapshots(before, after)
+    assert diff["changed"]
+    assert diff["tag_changes"] == [{
+        "way_id": "10", "trail": "Flow", "tag": "oneway",
+        "old": "yes", "new": "yes, direction reversed",
+    }]
+    assert "direction reversed" in format_report(diff, "Test")
+
+
+def test_oneway_direction_ignores_nudges_and_remerges():
+    before = _snap([_feature([10, 11], _LEG_A + _LEG_B[1:], trail="Flow", oneway="yes")])
+    # Same direction: a vertex nudged, and the merge split in two.
+    after = _snap([
+        _feature([10], [[-87.60, 46.50002], [-87.59, 46.50]], trail="Flow", oneway="yes"),
+        _feature([11], _LEG_B, trail="Flow", oneway="yes"),
+    ])
+    assert diff_snapshots(before, after)["tag_changes"] == []
+    # And the other way round, two features merged into one.
+    assert diff_snapshots(after, before)["tag_changes"] == []
+
+
+def test_reversed_oneway_survives_a_remerge():
+    before = _snap([_feature([10, 11], _LEG_A + _LEG_B[1:], trail="Flow", oneway="yes")])
+    after = _snap([
+        _feature([10], _LEG_A[::-1], trail="Flow", oneway="yes"),
+        _feature([11], _LEG_B[::-1], trail="Flow", oneway="yes"),
+    ])
+    changes = diff_snapshots(before, after)["tag_changes"]
+    assert sorted(c["way_id"] for c in changes) == ["10", "11"]
+
+
+def test_reversed_oneway_loop_is_reported():
+    loop = [[-87.60, 46.50], [-87.59, 46.50], [-87.59, 46.51], [-87.60, 46.50]]
+    before = _snap([_feature([10], loop, trail="Loop", oneway="yes")])
+    # Same loop, same direction, drawn from another node: no change.
+    rotated = [loop[1], loop[2], loop[0], loop[1]]
+    assert diff_snapshots(before, _snap(
+        [_feature([10], rotated, trail="Loop", oneway="yes")]))["tag_changes"] == []
+    after = _snap([_feature([10], loop[::-1], trail="Loop", oneway="yes")])
+    assert len(diff_snapshots(before, after)["tag_changes"]) == 1
+
+
+def test_two_way_trail_reversal_is_not_reported():
+    before = _snap([_feature([10], _LEG_A, trail="Both")])
+    after = _snap([_feature([10], _LEG_A[::-1], trail="Both")])
+    assert not diff_snapshots(before, after)["changed"]
