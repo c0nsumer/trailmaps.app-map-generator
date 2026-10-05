@@ -481,7 +481,7 @@
             <div class="search-overlay-results" id="finder-list" role="listbox" aria-label="Routes, trails, and places">
                 <!-- Rows rendered by app.js -->
             </div>
-            <p class="search-overlay-empty hidden" id="finder-empty">No matches.</p>
+            <p class="search-overlay-empty hidden" id="finder-empty" role="status">No matches.</p>
         </div>
     </div>
 
@@ -507,7 +507,7 @@
                     </svg>
                 </button>
             </div>
-            <div class="gpx-overlay-list" id="gpx-list" aria-label="GPX files for download">
+            <div class="gpx-overlay-list" id="gpx-list" role="group" aria-label="GPX files for download">
                 <!-- Rows rendered by app.js from CONFIG.gpxDownloads -->
             </div>
         </div>
@@ -918,7 +918,7 @@
         <div class="about-modal-backdrop"></div>
         <!-- tabindex="-1": initial focus target on open (dialogFocusIn). -->
         <div class="about-modal-content" tabindex="-1">
-            <button class="about-modal-close" aria-label="Close" id="welcome-modal-close">
+            <button class="about-modal-close" type="button" aria-label="Close" id="welcome-modal-close">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="12" y2="12"/>
                     <line x1="12" y1="2" x2="2" y2="12"/>
@@ -935,7 +935,7 @@
         <div class="about-modal-backdrop"></div>
         <!-- tabindex="-1": initial focus target on open (dialogFocusIn). -->
         <div class="about-modal-content" tabindex="-1">
-            <button class="about-modal-close" aria-label="Close">
+            <button class="about-modal-close" type="button" aria-label="Close">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                     <line x1="2" y1="2" x2="12" y2="12"/>
                     <line x1="12" y1="2" x2="2" y2="12"/>

@@ -583,12 +583,12 @@ body::after {
 
 /* ----- Top-of-map chip stack: the highlight chip ----------------------
  *
- * The stack spans the full width (left + right 0) instead of sitting at
- * left: 50% with a translate: an absolute box at left: 50% shrink-fits
- * to half the viewport, which would wrap a chip that today may grow to
- * calc(100vw - 32px). Centering in a full-width column puts a lone
- * highlight chip exactly where the old translate did. The stack itself
- * ignores pointers so the map stays pannable beside the chips. */
+ * The wrapper spans the full width (left + right 0) instead of sitting
+ * at left: 50% with a translate: an absolute box at left: 50%
+ * shrink-fits to half the viewport, which would wrap a chip that may
+ * grow to calc(100vw - 32px). Centering the chip in a full-width column
+ * avoids that. The wrapper itself ignores pointers so the map stays
+ * pannable beside the chip. */
 .chip-stack {
     position: absolute;
     top: calc(12px + var(--safe-top));
@@ -626,7 +626,7 @@ body::after {
 /* The trail chip's dock: the bottom band the attribution and the
  * routes panel sit in, the chip centered across its 48 px (the docked
  * panel's FAB height). Full width with a centered child for the reason
- * the chip stack is. Under the routes panel (5), so an open key card
+ * .chip-stack is. Under the routes panel (5), so an open key card
  * covers the chip as it covers the attribution, and under every
  * overlay. */
 .trail-chip-dock {
@@ -783,10 +783,9 @@ body::after {
 /* ----- Options-overlay section headers -----------------------------
  *
  * Uppercase categorical labels in the iOS / macOS Settings style. Not
- * interactive - the older accordion behavior was removed because the
- * total row count (~14) scrolls comfortably without per-section
- * collapse. The body's row list sits visually as a group under each
- * label. */
+ * interactive: the sections stay open because the total row count (~14)
+ * scrolls comfortably without per-section collapse. The body's row list
+ * sits visually as a group under each label. */
 .opt-section-header {
     display: block;
     padding: 16px 16px 6px 16px;
@@ -835,8 +834,8 @@ body::after {
  * .opt-toggle-row-clickable marker class (wirePeekToggle): the label,
  * the swatch and the On/Off pill all flip the same state, which is the
  * list-item pattern every mobile settings screen uses for a toggle.
- * Multi-option rows (Labels / Season / Appearance) deliberately do NOT
- * opt in - see .opt-toggle-row-segmented below. */
+ * Multi-option rows (Labels / Season / Appearance / Units) deliberately
+ * do NOT opt in - see .opt-toggle-row-segmented below. */
 .opt-toggle-row-clickable {
     cursor: pointer;
     /* Governs the press wash's fade-OUT on release (and the hover
@@ -995,8 +994,8 @@ body::after {
 }
 
 /* (The binary rows' right-hand control is .opt-toggle-pill, defined
- * further up. .opt-segmented-pill now serves only the genuinely
- * multi-option rows: Labels, Season and Appearance.) */
+ * further up. .opt-segmented-pill serves only the multi-option rows:
+ * Labels, Season, Appearance and Units.) */
 
 /* Off state on swatches inside Options-overlay toggles - three-cue
  * treatment (transparent fill + gray border + slash). The
@@ -1120,8 +1119,8 @@ body::after {
  * pill segment; aria-checked drives the active fill. Stays compact
  * enough to fit alongside the row label on a phone screen. */
 .opt-toggle-row-segmented {
-    /* Multi-option rows only (Labels / Season / Appearance). The rest of
-     * the row really is passive here: picking one of three named values
+    /* Multi-option rows only (Labels / Season / Appearance / Units).
+     * The rest of the row really is passive here: picking one of three named values
      * has no "next" a row tap could stand for, and an earlier
      * cycle-on-row-tap made an accidental tap silently walk the setting
      * to a value nobody chose. Riders tap the value they want; the
@@ -1142,14 +1141,8 @@ body::after {
 }
 
 .opt-segmented-pill .opt-segmented-btn {
-    /* Override the default .opt-segmented-btn rules so the pill
-     * variant doesn't inherit the 36px min-height, flex-grow, or
-     * separator border that the original card-style segmented
-     * control assumes. */
     flex: 0 0 auto;
-    min-height: 0;
     border: none;
-    border-left: none;
     background: transparent;
     color: var(--sheet-text-muted);
     font: inherit;
@@ -1489,7 +1482,7 @@ body::after {
 }
 
 /* Emergency route-bucket swatch - still used on the Map-options
- * Emergency Access row even though POI markers are merged. */
+ * Emergency Access row. */
 .emergency-swatch {
     background: var(--emergency-color);
 }
@@ -1619,7 +1612,7 @@ body::after {
 
 [data-color-scheme="dark"] .label-swatch {
     background: var(--input-bg);
-    color: #f0f0f0;
+    color: var(--sheet-text);
 }
 
 /* Toilets - neutral slate to read as "facility" without competing
@@ -1744,10 +1737,15 @@ body::after {
     transition: background 0.1s;
 }
 
-.finder-row:hover,
+.finder-row:hover {
+    background: var(--sheet-hover);
+}
+
+/* Inset so the ring is not clipped by the scrolling list. */
 .finder-row:focus-visible {
     background: var(--sheet-hover);
-    outline: none;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
 }
 
 /* Keyboard-navigation active state. Stronger than :hover because
@@ -1907,7 +1905,8 @@ body::after {
    whole card; the controls inside keep their own focus styles. */
 .about-modal-content:focus,
 .options-overlay-panel:focus,
-.gpx-overlay-panel:focus {
+.gpx-overlay-panel:focus,
+.qr-overlay-panel:focus {
     outline: none;
 }
 
@@ -1926,6 +1925,14 @@ body::after {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Tap target 44 x 44 around the 32 px button. The modal's own padding
+ * is all that lies within 6 px of it. */
+.about-modal-close::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
 }
 
 /* Modal CTA: primary dismiss button at the bottom of the Welcome and
@@ -1969,8 +1976,8 @@ body::after {
     line-height: 1.5;
 }
 
-/* Controls-hint section header - matches the "Map style" / "What
- * to show" sentence-case pattern used elsewhere in the chrome. */
+/* Controls-hint section header - the same uppercase categorical label
+ * as the Options section headers. */
 .welcome-modal-section-heading {
     font-size: 13px;
     font-weight: 700;
@@ -2164,7 +2171,7 @@ body::after {
 }
 
 /* Native MapLibre geolocate control is hidden - its function has
- * been promoted to the Locate FAB (bottom of the bottom-right stack),
+ * been promoted to the Locate FAB (top of the top-right stack),
  * which calls geolocate.trigger() directly. The control is still
  * added to the map because that's what wires up its event handlers /
  * state machine; we just don't want the redundant top-left button. */
@@ -2432,18 +2439,11 @@ body::after {
     border-color: #fff;
 }
 
-/* Name label below the event-POI chip. Absolutely positioned so the
- * chip stays the marker's bounding box (MapLibre's anchor math is
- * unchanged). White-ish pill behind the text gives contrast over any
- * basemap; the box-shadow lifts it a half-step off the map for
- * legibility. `pointer-events: none` lets clicks pass through to the
- * chip below (the chip is the popup trigger, not the label). */
-/* Event POI label - absolutely positioned rather than a flex child,
- * because the event marker is a single icon rather than an icon+label
- * column. Type treatment comes from the shared rule above; only the
- * placement is special. Was a solid white chip (background, padding,
- * 4 px radius, its own box-shadow); unified to the haloed-text language
- * its siblings and the trail labels use. */
+/* Name label below the event-POI chip. Absolutely positioned rather
+ * than a flex child, so the chip stays the marker's bounding box
+ * (MapLibre's anchor math is unchanged). Type treatment comes from the
+ * shared rule above. `pointer-events: none` lets clicks pass through to
+ * the chip below (the chip is the popup trigger, not the label). */
 .event-poi-marker-label {
     position: absolute;
     top: calc(100% + 3px);
@@ -2460,7 +2460,7 @@ body::after {
     margin-top: 4px;
     font-size: 12px;
     line-height: 1.35;
-    color: var(--sheet-text-muted, #555);
+    color: var(--sheet-text-muted);
 }
 
 /* Trail markers - variable-width to accommodate ref strings of
@@ -2756,6 +2756,12 @@ body::after {
     text-decoration: underline;
 }
 
+/* The dark popup surface (#2c2c2e) is lighter than the dark sheet, and
+ * the default dark accent is 3.8:1 on it. Lightening it reaches 5.0:1. */
+[data-color-scheme="dark"] .popup-directions {
+    color: color-mix(in srgb, var(--link-color) 80%, white);
+}
+
 /* ----- Geolocate user dot ------------------------------------------ */
 /* Same specificity as the vendor rules and loaded after them, so no
  * !important is needed. */
@@ -2790,8 +2796,7 @@ body::after {
 /* ----- Compass heading wedge ---------------------------------------
  * Translucent cone fanning out from the user-location dot, rotated
  * to the device compass heading by app.js (see the compass-heading
- * block there; .claude/plans/compass-heading-wedge.md is the
- * contract). The marker ROOT (.compass-wedge, which MapLibre also
+ * block there). The marker ROOT (.compass-wedge, which MapLibre also
  * tags .maplibregl-marker and positions via inline transform) stays
  * transform-free; the cone child does the rotating via the
  * --wedge-heading custom property, so MapLibre's positioning writes
@@ -2815,7 +2820,8 @@ body::after {
     width: 56px;
     height: 56px;
     margin: -28px 0 0 -28px;
-    /* ~45° sector centered on 12 o'clock in the dot's blue, inside the
+    /* ~45° sector centered on 12 o'clock in the dot's blue (a copy of
+     * --user-dot: a data URL cannot read a variable), inside the
      * dot's own white ring. The ring is what keeps the cone readable:
      * a rider faces along the trail, so the cone lies on the on-trail
      * glow (the same blue) and on blue lanes, where a bare translucent
@@ -2836,10 +2842,7 @@ body::after {
     }
 }
 
-/* ----- Off-screen location indicator -------------------------------
- * (The legacy .location-indicator class was renamed to
- * .off-screen-indicator earlier in the UI rework; the comma-paired
- * selectors below have been trimmed to just the live class.) */
+/* ----- Off-screen location indicator ------------------------------- */
 .off-screen-indicator {
     position: absolute;
     z-index: 3;
@@ -2906,14 +2909,11 @@ body::after {
     color: #fff;
     background: rgba(0, 0, 0, 0.55);
     /* Symmetric padding - flex's align-items: center handles the
-     * vertical centering. The previous `padding: 2px 7px 0` (top
-     * inset, no bottom) was an old workaround that overcorrected
-     * and pushed the digits up off-center. */
+     * vertical centering. */
     padding: 0 8px;
     height: 18px;
-    /* 999px, not the 9px (height/2) this used to carry. Identical
-     * rendering, but it matches the pill convention used everywhere else
-     * and can't silently stop being a pill if the height ever changes. */
+    /* 999px rather than height/2: it can't silently stop being a pill if
+     * the height ever changes. */
     border-radius: 999px;
     white-space: nowrap;
 }
@@ -2984,7 +2984,7 @@ body::after {
     background: rgba(255, 255, 255, 0.12);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 16px;
+    border-radius: 999px;
     padding: 6px 14px;
     font: inherit;
     font-size: 13px;
@@ -2995,7 +2995,13 @@ body::after {
 .map-toast-action:hover,
 .map-toast-action:focus-visible {
     background: rgba(255, 255, 255, 0.22);
-    outline: none;
+}
+
+/* The toast is dark in both schemes, so the ring is white. */
+.map-toast-action:focus-visible,
+.map-toast-close:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
 }
 
 .map-toast-action-primary {
@@ -3028,7 +3034,6 @@ body::after {
 .map-toast-close:focus-visible {
     color: white;
     background: rgba(255, 255, 255, 0.12);
-    outline: none;
 }
 
 /* ----- Boot-failure note (index.html #boot-fallback) ----------------
@@ -3060,6 +3065,7 @@ body::after {
 #boot-fallback span { color: var(--sheet-text-muted); }
 @keyframes boot-fallback-reveal { to { visibility: visible; } }
 
+/* ----- Initial-load progress bar ----------------------------------- */
 /* Thin indeterminate bar pinned to the top edge, shown during the first
  * map load and hidden once the opening viewport has painted (map 'idle').
  * Reveal is delayed ~400ms by index.html's inline script so fast/cached
@@ -3068,10 +3074,9 @@ body::after {
  * a pending SW-update toast sees the bar up top and the toast at center,
  * no z-order fight. Indeterminate, not a percentage: MapLibre exposes no
  * reliable total for streaming PMTiles, so any percentage would be faked. */
-/* ----- Initial-load progress bar ----------------------------------- */
 #map-loading-bar {
     position: fixed;
-    top: env(safe-area-inset-top, 0px);
+    top: var(--safe-top);
     left: 0;
     right: 0;
     height: 6px;
@@ -3112,8 +3117,9 @@ body::after {
     100% { transform: translateX(360%); }
 }
 
-/* Reduced-motion: no horizontal travel - a full-width bar that gently
- * pulses opacity instead. */
+/* Reduced-motion: no horizontal travel - a static full-width bar. The
+ * global reduced-motion rule above cuts this animation to one 0.01 ms
+ * pass, so the pulse never shows. */
 @media (prefers-reduced-motion: reduce) {
     #map-loading-bar::before {
         width: 100%;
@@ -3144,9 +3150,8 @@ body::after {
  * The map fills the entire viewport. Pieces of chrome float over
  * it, occupying corners:
  *   - #brand              top-left     : logo or title text
- *   - #fab-stack-top      top-right    : Locate (corner) + Reset
- *                                        View + Options (+ GPX on
- *                                        event maps)
+ *   - #fab-stack-top      top-right    : Locate (corner) + Options
+ *                                        (+ GPX on event maps)
  *   - #route-panel        bottom-right : routes key + search entry
  *                                        (one-handed thumb corner)
  *   - attribution         bottom-left  : OSM/Protomaps/Mapterhorn
@@ -3164,7 +3169,7 @@ body::after {
 #brand {
     position: fixed;
     top: calc(12px + var(--safe-top));
-    left: calc(12px + env(safe-area-inset-left, 0));
+    left: calc(12px + env(safe-area-inset-left, 0px));
     z-index: 4;
     max-width: min(60vw, 240px);
     pointer-events: none;
@@ -3221,7 +3226,7 @@ body::after {
 #map-scale {
     position: fixed;
     top: calc(12px + var(--safe-top));
-    left: calc(12px + env(safe-area-inset-left, 0));
+    left: calc(12px + env(safe-area-inset-left, 0px));
     z-index: 4;
     pointer-events: none;
     opacity: 0;
@@ -3367,7 +3372,7 @@ body::after {
  * Below the About modal (z-index 100) so About remains true-modal. */
 .fab-stack {
     position: fixed;
-    right: calc(12px + env(safe-area-inset-right, 0));
+    right: calc(12px + env(safe-area-inset-right, 0px));
     z-index: 5;
     display: flex;
     flex-direction: column;
@@ -3380,13 +3385,13 @@ body::after {
 
 /* Hide the FAB stack and the routes panel when ANY overlay is open.
  * Without this, the top-right stack stays visible through the
- * search-overlay dim (the dim is only 32% opaque) - the FABs would
+ * search-overlay dim (the dim is translucent) - the FABs would
  * look interactive but tapping them dismisses the overlay instead
  * of activating the FAB, which is confusing. Hiding them clarifies
  * the modal relationship: while an overlay is up, they are not the
  * active control surface; close the overlay to get them back. For
  * the routes panel + search overlay specifically, the fade doubles
- * as the v1 expand transition - the docked panel fades out as the
+ * as the expand transition - the docked panel fades out as the
  * sheet (its expanded state) slides up from the same edge. */
 body:has(.search-overlay.is-open) .fab-stack,
 body:has(.options-overlay.is-open) .fab-stack,
@@ -3714,8 +3719,8 @@ body.fabs-labeled .fab-label {
     height: min(60dvh, 480px);
     background: var(--sheet-bg);
     border-top: 1px solid var(--sheet-border);
-    border-top-left-radius: 14px;
-    border-top-right-radius: 14px;
+    border-top-left-radius: var(--radius-surface);
+    border-top-right-radius: var(--radius-surface);
     box-shadow: 0 -2px 12px var(--sheet-shadow);
     display: flex;
     flex-direction: column;
@@ -3984,6 +3989,16 @@ body.modal-open .qr-overlay.is-open {
     align-items: center;
     justify-content: center;
     transition: background 0.12s, color 0.12s;
+    position: relative;
+}
+
+/* Tap target 44 x 44 around the 36 px button. It grows up, down and
+ * toward the panel edge only: the header padding (12 px) absorbs it,
+ * and the input or title to its left is never covered. */
+.overlay-close-btn::after {
+    content: "";
+    position: absolute;
+    inset: -4px -8px -4px 0;
 }
 
 .overlay-close-btn:hover {
@@ -4047,8 +4062,8 @@ body.modal-open .qr-overlay.is-open {
 .qr-overlay-panel {
     background: var(--sheet-bg);
     border-top: 1px solid var(--sheet-border);
-    border-top-left-radius: 14px;
-    border-top-right-radius: 14px;
+    border-top-left-radius: var(--radius-surface);
+    border-top-right-radius: var(--radius-surface);
     box-shadow: 0 -2px 12px var(--sheet-shadow);
     display: flex;
     flex-direction: column;
@@ -4313,6 +4328,16 @@ body.modal-open .qr-overlay.is-open {
     padding: 2px;
     color: var(--sheet-text-muted);
     cursor: pointer;
+    position: relative;
+}
+
+/* The visible button is 22px. Extend the tap target to 44 x 44 without
+ * changing the look or the layout. It grows upward and sideways rather
+ * than downward, so it cannot cover the first route row below. */
+.route-panel-collapse::after {
+    content: "";
+    position: absolute;
+    inset: -20px -11px -2px -11px;
 }
 
 .route-panel-list {
