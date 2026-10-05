@@ -6179,14 +6179,18 @@ function updateMarkerProximity() {
         return !!row && row.getAttribute("data-on") === "true";
     };
 
+    // Only flip markers whose mounted state actually changes (marker._map
+    // is the mounted test, as in _isPoiCurrentlyVisible): Marker.addTo
+    // starts with remove(), which closes a bound popup and re-enters the
+    // element into the DOM, replaying a highlight's arrival pulse.
     const filterMarkers = (markers, on, threshold) => {
         if (!on) return;
         for (const marker of markers) {
             const { lng, lat } = marker.getLngLat();
             const dist = distanceToVisibleTrails(lng, lat);
             if (dist <= threshold) {
-                marker.addTo(map);
-            } else {
+                if (!marker._map) marker.addTo(map);
+            } else if (marker._map) {
                 marker.remove();
             }
         }
@@ -8571,13 +8575,14 @@ function _forcePoiType(type) {
     if (_PROXIMITY_TYPES.has(type)) {
         const threshold = _proximityThresholdForType(type);
         for (const m of arr) {
+            if (m._map) continue;
             const { lng, lat } = m.getLngLat();
             if (distanceToVisibleTrails(lng, lat) <= threshold) {
                 m.addTo(map);
             }
         }
     } else {
-        for (const m of arr) m.addTo(map);
+        for (const m of arr) if (!m._map) m.addTo(map);
     }
     _forcedPoiTypes.add(type);
     invalidateObstaclesCache();
@@ -11401,9 +11406,12 @@ function setupFloatingChrome() {
                     updateDecorationsSource();
                 }
             } else {
+                // Not addTo on a mounted marker (a highlight can have
+                // force-mounted the type while its row was off): see
+                // updateMarkerProximity.
                 for (const m of t.markers) {
-                    if (on) m.addTo(map);
-                    else m.remove();
+                    if (!on) m.remove();
+                    else if (!m._map) m.addTo(map);
                 }
                 invalidateObstaclesCache();
                 updateDecorationsSource();
