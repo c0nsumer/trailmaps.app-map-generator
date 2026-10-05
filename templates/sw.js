@@ -24,9 +24,10 @@ const LEGACY_CACHE_RE = /^trail-map-[0-9a-f]{12}$/;
 // ============================================================
 // Install - complete immediately, precache in background
 // ============================================================
-// Blocking install on cache.addAll(PRECACHE_URLS) would pull ~20 MB
-// across hundreds of files in parallel with MapLibre's own foreground
-// requests, and on constrained connections that starves first paint.
+// Blocking install on cache.addAll(PRECACHE_URLS) would pull every
+// precached file, the multi-megabyte tile archives among them, in
+// parallel with MapLibre's own foreground requests, and on constrained
+// connections that starves first paint.
 // So install completes essentially immediately, then a background
 // precache trickles through PRECACHE_URLS one request at a time. The
 // fetch handler below also writes runtime fetches to the cache, so any
@@ -365,8 +366,8 @@ self.addEventListener("fetch", (event) => {
 
     // HEAD requests: satisfy from the GET cache. cache.match is
     // method-aware, so a cached GET won't match a HEAD lookup, and
-    // addTerrainLayers in app.js does a HEAD precheck on
-    // terrain.pmtiles before adding the source. Offline, a strict
+    // addTerrainLayers in app.js probes terrain.pmtiles with a HEAD
+    // when the build did not record whether it shipped. Offline, a strict
     // match would miss, the fetch would fail, and the terrain layer
     // would never be added. So answer with a body-less response built
     // from the GET entry. Current cache first, then any older cache:

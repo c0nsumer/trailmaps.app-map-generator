@@ -43,7 +43,8 @@ Options:
   --validate-only    Only run config validation (no fetch/build/deploy)
   --refresh          Pass --refresh to build.py (re-fetch all remote data)
   --dry-run          Show what would happen; don't build or transfer
-  --dest <ssh-path>  Override deploy destination
+  --dest <path>      Override deploy destination: host:path over ssh,
+                     or a local directory
                      (default: \$TRAILMAPS_DEPLOY_DEST env var;
                      required if the env var isn't set)
   --skip-ssh-check   Skip the pre-flight SSH connectivity check

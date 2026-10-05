@@ -1294,8 +1294,10 @@ function refreshTapLift() {
 }
 
 function difficultyIconDataUrl(imba) {
-    const n = parseInt(imba, 10);
-    if (!(n >= 0 && n < IMBA_RATINGS.length)) return null;
+    // The map's own test, so the popup never shows a rating glyph for
+    // a way the lanes draw as unrated ("2+" parses as 2).
+    if (!isRatedDifficulty(imba)) return null;
+    const n = Number(imba);
     const key = `imba-${n}`;
     if (!_popupIconCache[key]) {
         _popupIconCache[key] = ratingCanvas(IMBA_RATINGS[n]).toDataURL();
@@ -1707,9 +1709,9 @@ function collectCanonicalWays() {
         if (visibleShared.length === 0) continue;
         if (visibleShared[0] !== routeId) continue;
 
-        const coords = f.geometry.type === "LineString"
-            ? f.geometry.coordinates
-            : f.geometry.coordinates.flat();
+        // Every trails feature is a LineString: the fetch emits one per
+        // merged run and enrichment splits a custom MultiLineString.
+        const coords = f.geometry.coordinates;
         const { segments, totalLength } = computeWaySegments(coords);
         if (segments.length === 0) continue;
 
