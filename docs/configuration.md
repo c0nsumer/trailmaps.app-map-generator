@@ -11,6 +11,8 @@ Two starter YAML files live under `configs/reference/`:
 - `reference-minimal.yaml`: the template for a new map. Section headers plus
   every supported key on a commented-out line at its default value. Copy it, set
   the required keys, and uncomment only the lines you want to change.
+  The `default_visible` and `forced_labels` lines are placeholders, not defaults.
+  Leave them commented out unless you want to set them.
 - `reference.yaml`: the same structure and key order with a one-line comment on
   each key, for quick in-editor lookup. This document holds the full prose.
 
@@ -35,7 +37,7 @@ Both files stay in identical key order, so you can diff them at any time. Use
   - [User-supplied points](#user-supplied-points)
   - [About modal](#about-modal)
   - [Welcome modal](#welcome-modal)
-- [Route buckets](#route-buckets)
+- [Route buckets](#route-buckets-1)
 - [Custom routes (full guide)](#custom-routes-full-guide)
 - [Routes panel](#routes-panel)
 - [Units](#units)
@@ -129,7 +131,7 @@ into the same folder, and reference them by bare filename in the config.
 
 ### Route buckets
 
-See [Route buckets](#route-buckets) for how the Summer / Winter / Emergency
+See [Route buckets](#route-buckets-1) for how the Summer / Winter / Emergency
 flags are computed from these lists plus OSM tags.
 
 Each list below accepts either leaf route relation IDs or super-relation IDs. A
@@ -192,22 +194,23 @@ This step needs `tippecanoe` and `tile-join`, and it makes one Overpass query fo
 
 ### Build-time data gates
 
-These keys control **build-time data fetching and asset generation**. A map
-that doesn't need a given data type can skip the Overpass query or sprite
-generation entirely. The corresponding UI toggle is hidden automatically when
-the underlying data or sprite is absent. First-visit toggle state is a separate
+These keys control **which data and assets a map contains**. A `false` value
+leaves that data type out of the map. One Overpass query serves every POI
+type. The build skips it only when every POI gate is false and the map has no
+event POIs. The corresponding UI toggle is hidden automatically when the
+underlying data or sprite is absent. First-visit toggle state is a separate
 concern, handled by `default_visible` in the [Display](#display) section.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `show_markers` | No | `true` | When false, skips the Overpass query for trail markers (guideposts and emergency-access points, merged) and hides the Markers toggle. |
-| `show_features` | No | `true` | When false, skips the Overpass query for `tourism=attraction` feature nodes. |
+| `show_markers` | No | `true` | When false, trail markers (guideposts and emergency-access points, merged) are left out of the map, and the Trail Markers toggle is hidden. |
+| `show_features` | No | `true` | When false, `tourism=attraction` feature nodes are left out of the map. |
 | `show_parking` | No | `true` | When false, parking markers from the config are not rendered. |
 | `show_trailheads` | No | `true` | When false, trailhead markers from the config are not rendered. |
 | `show_hubs` | No | `true` | When false, trail-hub markers from the config are not rendered. The Hubs toggle auto-hides when the map defines no hubs. See [Trailhead and parking entries](#trailhead-and-parking-entries). |
-| `show_toilets` | No | `true` | When false, skips the Overpass query for `amenity=toilets` nodes. The Toilets toggle auto-hides when none were found. |
-| `show_drinking_water` | No | `true` | When false, skips the Overpass query for `amenity=drinking_water` nodes. The Drinking Water toggle auto-hides when none were found. |
-| `show_bicycle_repair_stations` | No | `true` | When false, skips the Overpass query for `amenity=bicycle_repair_station` nodes. The Bicycle Repair toggle auto-hides when none were found. |
+| `show_toilets` | No | `true` | When false, `amenity=toilets` nodes are left out of the map. The Toilets toggle auto-hides when none were found. |
+| `show_drinking_water` | No | `true` | When false, `amenity=drinking_water` nodes are left out of the map. The Drinking Water toggle auto-hides when none were found. |
+| `show_bicycle_repair_stations` | No | `true` | When false, `amenity=bicycle_repair_station` nodes are left out of the map. The Bicycle Repair toggle auto-hides when none were found. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched, and the hillshade and contour-line layers are omitted. Contour lines are computed in the browser from the same terrain tiles as the hillshade. They are labeled in the rider's [units](#units). |
 | `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
@@ -222,14 +225,14 @@ concern, handled by `default_visible` in the [Display](#display) section.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
+| `relation_colors` | No | `{}` | Map of relation ID to color (hex or a CSS color name). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
+| `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
+| `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
 | `color_by` | No | `"route"` | The default color mode for every relation. `"route"` colors a relation's lanes by its route color, with parallel lanes where routes share a trail. `"difficulty"` colors ways by their own IMBA `mtb:scale:imba` rating, one lane per way. `color_by_route` and `color_by_difficulty` list the exceptions. See [Color modes](#color-modes) for the keys that change meaning, are ignored, or are rejected. |
 | `color_by_route` | No | `[]` | Relations drawn in route mode when `color_by` is `"difficulty"`. Takes OSM relation IDs, super-relation IDs, and custom-route IDs. A super-relation ID fans out to its child routes, as it does for `winter_relations`. A relation in both lists is an error. A relation in the list for the default mode gets a "redundant" warning. |
 | `color_by_difficulty` | No | `[]` | Relations drawn in difficulty mode when `color_by` is `"route"`. Same kinds of IDs as `color_by_route`. `event_mode` is rejected while any relation is in difficulty mode. |
 | `route_key` | No | `true` | Whether the bottom-right panel shows the key: one row per visible route-mode relation and one row per rating for difficulty-mode relations, each with its swatch, name and stats. Set `false` for a trail system dense enough that a full key is a wall. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route (or trail) and place. |
 | `default_trail_color` | No | `"#808080"` | Fallback trail color. For route-mode relations: used when a relation has no OSM `colour` tag. For difficulty-mode relations: used for ways with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
-| `relation_colors` | No | `{}` | Map of relation ID to CSS color (hex, named, `rgb()`, `rgba()`, `hsl()`). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
-| `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
-| `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 
 ### Direction schedules
 
@@ -243,14 +246,14 @@ See [Direction arrows](#direction-arrows) for the full model.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `default_visible` | No | _(see description)_ | First-visit visibility for layer toggles. Four accepted forms. If unset, these layers default on: `trail_markers`, `trailheads`, `hubs`, `parking`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `direction_arrows`. The rest (`features`, `difficulty`, `emergency`) default off. An empty list (`[]`) is the bare-map opt-out: everything off, riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** an unset `forced_visible` already forces `direction_arrows` on. If you set `forced_visible` without `direction_arrows`, keep `direction_arrows` in `default_visible` (or leave `default_visible` unset), so riders still see the arrows. The build prints a warning when one-way trails exist and neither list covers `direction_arrows`. |
+| `default_visible` | No | _(see description)_ | First-visit visibility for layer toggles. Four accepted forms. If unset, these layers default on: `trail_markers`, `trailheads`, `hubs`, `parking`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `direction_arrows`. The rest (`features`, `difficulty`, `emergency`) default off. An empty list (`[]`) is the bare-map opt-out: everything off, riders opt in via Options. `"all"`: every supported layer on. A list of layer names: only those layers on. Valid layer names: `parking`, `trailheads`, `hubs`, `features`, `trail_markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`, `difficulty`, `emergency`, `direction_arrows`. Once a rider toggles a layer in Options, their preference persists per-map in `localStorage`. That preference overrides the default on subsequent visits. **Safety note:** an unset `forced_visible` already forces `direction_arrows` on. If you set `forced_visible` without `direction_arrows`, keep `direction_arrows` in `default_visible`, or leave `default_visible` unset. Then riders still see the arrows. The build prints a warning when one-way trails exist and neither list covers `direction_arrows`. |
 | `forced_visible` | No | `[direction_arrows]` | Layers rendered on regardless of `localStorage` or `default_visible`. Their toggle is hidden, so the rider cannot turn them off. Same forms and layer names as `default_visible`. If unset, `direction_arrows` is forced. Set `[]` to force nothing. Use for safety-critical layers (`direction_arrows` on flow trails) or any layer that must always show. Subordinate to the `show_*` gates: a layer suppressed by `show_X: false`, or with no data, has nothing to force on. |
-| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. If no relation is in route mode, the default is `"trails"` instead, since the trail name is the only name there is. On an event map, the default is `"routes"`. Event maps label only the featured routes' ways; see [Labels in event mode](event-mode.md#labels-in-event-mode). `"routes"` is rejected when no relation is in route mode. The rider opts into labels via the Labels segmented control. The in-UI select reflects `show_trails`; the Trails option is removed when trails are hidden. |
+| `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. If no relation is in route mode, the default is `"trails"` instead, since the trail name is the only name there is. On an event map, the default is `"routes"`. Event maps label only the featured routes' ways; see [Labels in event mode](event-mode.md#labels-in-event-mode). `"routes"` is rejected when no relation is in route mode. The rider opts into labels via the Labels segmented control. The in-UI Labels control reflects `show_trails`; the Trails option is removed when trails are hidden. |
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`), or if it is `"routes"` when no relation is in route mode. |
 | `default_color_scheme` | No | `"light"` | First-visit color scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colors are scheme-independent. |
 | `invert_logo_dark` | No | `false` | Whether the brand logo auto-inverts in dark mode. If the logo is monochrome or limited-palette and needs inverting on the dark sheet, set `true`. Colorful and photographic logos look right without inversion. |
 
-The bottom-right routes panel (the map's key) has no config knob; see [Routes panel](#routes-panel) below.
+The bottom-right routes panel (the map's key) has no config knob for its boot state. Set `route_key: false` to remove the key. See [Routes panel](#routes-panel) below.
 
 Routes that share a path are drawn as parallel lanes. This has no config key. Every map ships maplibre-gl-lanes. The browser orders and draws the lanes at load time, with crossing-minimized lane order and curved junctions. Route-name labels and the highlights ride the lanes. One-way chevrons run down the center of the bundle, because one-way is a fact about the trail and not about one route. The lanes need WebGL2, as MapLibre GL JS itself does. On a device without WebGL2, the page says that the map cannot start there. See [Troubleshooting](troubleshooting.md#the-page-says-the-map-has-not-started).
 
@@ -288,8 +291,8 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG). Resampled at build time to fit a 200x48 px box (map overlay) and a 140x56 px box (About modal). If omitted, the `icon:` source is used as the logo automatically. |
-| `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically, provided the logo is a Pillow-readable raster (PNG/WebP/JPEG/…). An SVG logo can't be rasterized into icons; if the logo is an SVG, set `icon:` explicitly. Most maps only need to set one of the two. |
+| `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG, or SVG). A raster is resampled at build time to fit a 200x48 px box. An SVG is copied as `logo.svg`. The About modal shows the logo in a 140x56 px box. If omitted, the `icon:` source is used as the logo automatically. |
+| `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically, provided the logo is a Pillow-readable raster (PNG/WebP/JPEG/…). An SVG logo can't be rasterized into icons; if the logo is an SVG, set `icon:` explicitly to a raster. Most maps only need to set one of the two. |
 | `additional_logos` | No | `[]` | Secondary brand images (an event logo, one or more sponsor logos) stacked vertically **under** the primary logo in the top-left brand mark. They render top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`) and `invert_dark:` (optional, default `false`; set `true` for a plain dark mark that would vanish in dark mode). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
 
 If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green). Every map still gets favicons, an installable PWA icon, and a brand mark. An explicit `logo:` or `icon:` always takes precedence.
@@ -312,7 +315,7 @@ If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundle
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `welcome` | No | framework default | Welcome/Help modal. It auto-opens on first visit and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` is the map's one descriptive text. It renders in this modal, and its first paragraph doubles as the `og:description` social-preview snippet. The `title` applies to the first-visit auto-open. Opened from the Help row, the modal is titled "How to use this map" to match the row. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
+| `welcome` | No | framework default | Welcome/Help modal. It auto-opens on first visit and reopens any time from the Options overlay's **How to use this map** row. Three forms: omit (default content), `false` (suppress the first-visit auto-open; the Help row still opens it), or a dict with optional `title` / `body` (plain-text, paragraphs separated by blank lines) / `show_controls_hint` (default `true`). `body` is the map's one descriptive text. It renders in this modal, and its first paragraph doubles as the `og:description` social-preview snippet. The `title` applies to the first-visit auto-open. Opened from the Help row, the modal is titled with the map's title. Dismissal persists per-map in `localStorage` and only affects the auto-open. |
 
 ## Route buckets
 
@@ -331,11 +334,13 @@ Winter mode and back.
 ### UI behavior
 
 - **Summer / Winter is a mode switch.** The Options overlay has a segmented
-  Season control with two options. The app is in one mode at a time. Summer mode
+  Season control with two options. The control is hidden unless some route
+  has the `winter` flag. The app is in one mode at a time. Summer mode
   renders routes with `summer: true`; Winter mode renders routes with
   `winter: true`.
 - **Emergency is an additive overlay.** A separate Emergency Access Routes
-  toggle (also in Options) adds routes with `emergency: true` on top of whatever
+  toggle (also in Options) appears only when some route has the `emergency`
+  flag. It adds routes with `emergency: true` on top of whatever
   mode is currently active, without changing the mode. Toggling Emergency off
   hides those routes again but leaves the mode untouched.
 - **First-visit default is Summer.** The rider's explicit choice persists in
@@ -399,8 +404,7 @@ custom_routes:
   `winter_relations`, etc.). Best practice: use a hyphenated slug like
   `race-2025` or `demo-loop` so it's visually distinct from the numeric OSM ids.
 - **`color`** overrides any `relation_colors` / `default_trail_color` lookup for
-  this route. It also becomes the swatch color in the finder and the glow
-  color when the route is highlighted.
+  this route. It also becomes the swatch color in the finder.
 - **`summer`, `winter`, `emergency`** are three independent booleans: same
   semantics as OSM routes. Any combination is valid, but at least one must be
   true. A custom route that's invisible in all modes is rejected at validation
@@ -448,16 +452,17 @@ Custom routes are indistinguishable from OSM routes in every runtime behavior:
   `emergency` flags.
 - They appear in the **Routes** section of the finder (filtered to
   currently-visible routes just like OSM routes).
-- Tapping a custom-route row in the finder highlights the whole route in its own
-  color (same as any OSM route).
+- Tapping a custom-route row in the finder lifts the whole route with the yellow
+  halo and dims the other routes (same as any OSM route).
 - If `trail_name_field` points at per-segment names, those trails also appear in
   the **Trails** section of the finder and can be picked individually.
 
 ## Routes panel
 
 The bottom-right corner always shows the **routes panel**, the map's key.
-There is no config knob: every map gets it. A geometry source is required, so
-there is always at least one route. It lists every currently-visible route as
+Its boot state has no config knob: every map gets it, and `route_key: false`
+removes the key. A geometry source is required, so there is always at least
+one route. It lists every currently-visible route as
 a color swatch + name + optional stats. A **Search** button pinned at the
 bottom opens the [finder](#trail-finder), the panel's expanded search state.
 
@@ -522,7 +527,7 @@ routes / trails / places finder with one search input, type-filter chips, and
 sectioned results:
 
 ```
-[mdi:magnify] Search routes & trails
+[mdi:magnify] Search routes, trails, places…
 
 ROUTES
   [swatch]  Blue Loop              12 mi
@@ -538,7 +543,7 @@ TRAILS
 This example is a routes map. Difficulty-mode relations differ as described in
 [Color modes](#color-modes).
 
-- **One scrollable list, two section headers.** Routes on top, trails below.
+- **One scrollable list with section headers.** Routes on top, trails below. A Places section follows when the map has places to match.
 - **Single search input** filters both sections (case-insensitive substring
   match against route names and trail names).
 - **The list always mirrors what's currently visible on the map.** In Summer
@@ -869,20 +874,19 @@ Common patterns: `[0, 2]` dots, `[2, 2]` short dashes, `[4, 2]` long dashes,
 ```yaml
 dashed_relations:
   13213211:
-    pattern: [4, 2]                  # dash pattern (required)
+    pattern: [4, 2]                  # dash pattern (optional, default [2, 2])
     cap: square                      # "round" (default), "square", or "butt" line ends
     colors: ["#000000", "#FF0000"]   # two-color alternating dashes
 ```
 
 | Key | Required | Default | Description |
 |---|---|---|---|
-| `pattern` | Yes | : | `[dash, gap]` in line-width multiples |
+| `pattern` | No | `[2, 2]` | `[dash, gap]` in line-width multiples |
 | `cap` | No | `"round"` | Line cap style: `"round"`, `"square"`, or `"butt"` |
 | `colors` | No | : | One or two CSS colors. One color overrides the route's normal color; two colors produce alternating dash colors (see below). |
 
-Both formats can be mixed in the same config. Dashed relations are rendered
-without line offsets (centered on the geometry) to avoid oval distortion on
-curves.
+Both formats can be mixed in the same config. A single-color dashed route draws
+without a casing. A two-color dashed route keeps its casing.
 
 ### Alternating-color dashes
 
@@ -947,7 +951,7 @@ supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | No | Display name shown in popup; omitting it is allowed but leaves the popup unlabeled |
+| `name` | No | Display name shown in popup. Defaults to "Trailhead" |
 | `coordinates` | Yes | `[longitude, latitude]` |
 | `directions_url` | No | Custom directions URL; if omitted, auto-generates based on browser |
 
@@ -983,7 +987,7 @@ Each entry supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | No | Display name shown inline under the on-map chip and in search results; omitting it is allowed but defeats the point of a hub |
+| `name` | No | Display name shown inline under the on-map chip and in search results. Defaults to "Hub", which defeats the point of a hub |
 | `coordinates` | Yes | `[longitude, latitude]` |
 
 Example:
@@ -1004,7 +1008,7 @@ supports:
 
 | Key | Required | Description |
 |---|---|---|
-| `name` | No | Display name shown in popup; omitting it is allowed but leaves the popup unlabeled |
+| `name` | No | Display name shown in popup. Defaults to "Parking" |
 | `coordinates` | Yes | `[longitude, latitude]` |
 | `directions_url` | No | Custom directions URL; if omitted, auto-generates a link based on browser (see below) |
 
@@ -1086,7 +1090,7 @@ The framework-supplied rows and sections, always shown:
   answer).
 - **Credits** section: a "Generated by trailmaps.app Map Generator." line
   (the name links to the engine repo), then one credit line per data source
-  and library. OSM, Protomaps, Material Design Icons, MapLibre GL JS,
+  and library. OSM, Protomaps, PMTiles (BSD-3-Clause), Material Design Icons, MapLibre GL JS,
   maplibre-gl-lanes, uqr, and SIL Open Font License always appear; Mapterhorn
   and maplibre-contour when terrain is enabled.
   See the framework-level credit list in [`README.md`](../README.md#credits).
@@ -1106,13 +1110,14 @@ the top-right of the **About this map** modal header. At build time the
 framework opens the source with Pillow. It picks the binding axis from the
 source's aspect ratio, resamples to ~2x the display size with LANCZOS for
 retina sharpness, and writes a single normalized `logo.webp` into the output.
-Source files can be PNG, WebP, JPEG, or any format Pillow can open; SVGs are
-not currently rasterized and should be pre-converted.
+Source files can be PNG, WebP, JPEG, or any format Pillow can open. An SVG
+source is copied as `logo.svg` instead, and it gets pixel dimensions from its
+`viewBox` if it has none. Only `icon:` needs a raster.
 
 | Property | Detail |
 |---|---|
 | **Purpose** | Map overlay branding; also shown in the About modal header |
-| **Map overlay render** | Inside a 280x64 px bounding box on desktop (≥768px), 200x48 px on mobile |
+| **Map overlay render** | A raster is built to fit a 200x48 px box. The overlay displays it at up to 200x48 px on mobile, and up to 280x64 px on desktop (≥768px). |
 | **About modal render** | Inside a 140x56 px box (all screen sizes) |
 | **Binding axis** | Wide wordmarks (aspect wider than ~4.17:1, the 200:48 box) land at 200 px wide; square or tall logos land at 48 px tall |
 | **Pre-resize target** | Source is resampled to ~2x the render size (max longer side ~400 px on desktop). Never upscaled; smaller sources are preserved. |
@@ -1222,6 +1227,7 @@ independent (for example, `<slug>.mtb.colorScheme`). The one exception is
 | `mtb.labels` | `"routes"`, `"trails"`, or `"none"` |
 | `mtb.difficulty` | Boolean: IMBA difficulty symbols on or off |
 | `mtb.directionArrows` | Boolean: direction arrows on or off |
+| `mtb.currentTrail` | Boolean: Show Current Trail row on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
 | `mtb.units` | `"mi"` or `"km"`. No slug prefix; shared by every map on the origin |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |

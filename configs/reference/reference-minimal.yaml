@@ -56,10 +56,13 @@ relations:
 # direction_schedule: {}
 
 # --- Display ---
+# The default_visible and forced_labels lines are placeholders, not defaults.
+# Unset default_visible turns eight layers on; [] turns every layer off.
+# Set forced_labels to none, routes, or trails, or leave the line commented out.
 # default_visible: []
 # forced_visible: [direction_arrows]
 # default_labels: none
-# forced_labels:
+# forced_labels: trails
 # default_color_scheme: light
 # invert_logo_dark: false
 

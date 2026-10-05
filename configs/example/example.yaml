@@ -36,6 +36,7 @@ clipped_relations:
 # show_difficulty: true
 # show_trails: true
 # show_direction_arrows: true
+# show_current_trail: true
 # suppress_basemap_pois: true
 # suppress_basemap_oneway_arrows: false
 # show_distance: true
@@ -59,6 +60,8 @@ dashed_relations:
 # direction_schedule: {}
 
 # --- Display ---
+# The default_visible line is a placeholder, not the default.
+# Unset default_visible turns eight layers on; [] turns every layer off.
 # default_visible: []
 # forced_visible: [direction_arrows]
 # default_labels: none

@@ -11,7 +11,7 @@
 name: My Trails
 
 # URL-safe id ([a-z0-9_-]+); names the config folder, build dir, and deploy
-# path. Must match the folder holding this YAML.
+# path. By convention it matches the folder holding this YAML.
 slug: my-trails
 
 # Optional. Full title for the browser tab, share cards, in-app brand, and PWA
@@ -41,8 +41,10 @@ relations:
 # event_mode:
 #   routes: []                       # inline featured routes (custom_routes entry shape)
 #   featured: []                     # feature existing custom_routes ids / OSM relation ids
+#   background_style: {}             # how non-featured routes render (see docs/event-mode.md)
 #   direction_arrows: false          # always-on arrows along inline routes
 #   pois: []                         # always-on event POIs ({name, coordinates, description, directions})
+#   poi_color: "#D32F2F"             # event POI chip color
 #   gpx:                             # downloadable GPX files (FAB + download sheet)
 #     routes:
 #     - name: Long Course            # display label in the download sheet
@@ -232,7 +234,8 @@ relations:
 # event maps list featured routes only. The panel boots expanded or collapsed
 # to a round list-icon button depending on how many rows there are and whether
 # the card would swamp the viewport; the rider's expand/collapse choice
-# persists per map and beats that default. There is no config knob.
+# persists per map and beats that default. That boot state has no config knob;
+# route_key: false removes the key.
 
 # ============================================================
 # Marker and accent colors
