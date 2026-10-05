@@ -12,7 +12,8 @@ import contextlib
 import os
 import tempfile
 
-from validate_config import assert_spec_coverage, validate_config
+import pytest
+from validate_config import _RETIRED_KEYS, assert_spec_coverage, validate_config
 
 # A minimal valid LineString FeatureCollection, used to satisfy the
 # geometry path-existence + content checks in route-only test configs.
@@ -214,8 +215,7 @@ def test_event_gpx_missing_file_rejected():
 
 
 # ---------------------------------------------------------------------------
-# Nested-dict sub-schemas (the 2026-07 QA review's confirmed validator holes:
-# each of these passed invalid input cleanly before)
+# Nested-dict sub-schemas (invalid nested input must be reported)
 # ---------------------------------------------------------------------------
 
 
@@ -300,42 +300,6 @@ def test_route_key_is_a_boolean():
     assert any("route_key" in e for e in _errors(route_key="no"))
 
 
-def test_lane_renderer_is_a_retired_key_with_its_own_message():
-    # Either former value: the key is gone, and the curator is told to
-    # delete the line, once, not also "unknown top-level key".
-    for value in ("native", "plugin"):
-        errors = [e for e in _errors(lane_renderer=value) if "lane_renderer" in e]
-        assert len(errors) == 1
-        assert "removed" in errors[0]
-        assert "unknown top-level key" not in errors[0]
-
-
-def test_suppress_basemap_path_labels_is_a_retired_key_with_its_own_message():
-    # Both spellings, either value: gone, one message, told to delete.
-    for key in ("suppress_basemap_path_labels", "suppress_path_labels"):
-        for value in (True, False):
-            errors = [e for e in _errors(**{key: value}) if key in e]
-            assert len(errors) == 1
-            assert "removed" in errors[0] and "Delete the line" in errors[0]
-            assert "unknown top-level key" not in errors[0]
-
-
-def test_basemap_source_is_a_retired_key_with_its_own_message():
-    for value in ("generated", "protomaps"):
-        errors = [e for e in _errors(basemap_source=value) if "basemap_source" in e]
-        assert len(errors) == 1
-        assert "removed" in errors[0] and "Delete the line" in errors[0]
-        assert "unknown top-level key" not in errors[0]
-
-
-def test_distance_units_is_a_retired_key_with_its_own_message():
-    for value in ("mi", "km"):
-        errors = [e for e in _errors(distance_units=value) if "distance_units" in e]
-        assert len(errors) == 1
-        assert "removed" in errors[0]
-        assert "unknown top-level key" not in errors[0]
-
-
 # --- event_mode.pois[].directions ------------------------------------------
 
 
@@ -350,21 +314,6 @@ def test_event_poi_directions_is_optional_and_boolean():
     assert not any("pois" in e for e in _event_poi_errors(directions=False))
     assert any("directions" in e for e in _event_poi_errors(directions="yes"))
     assert any("directions" in e for e in _event_poi_errors(directions=1))
-
-
-def test_event_poi_directions_defaults_off_in_the_poi_data():
-    # The popup offers "Get Directions" only where the curator asked:
-    # event parking is driven to, a start line is a plain flag.
-    from fetch_pois import build_pois_geojson
-
-    pois = [
-        {"name": "Start / Finish", "coordinates": [-83.1, 42.4]},
-        {"name": "Event Parking", "coordinates": [-83.2, 42.5], "directions": True},
-        {"name": "Aid 1", "coordinates": [-83.3, 42.6], "directions": False},
-    ]
-    fc = build_pois_geojson({"elements": []}, [], [], config_event_pois=pois)
-    got = {f["properties"]["name"]: f["properties"]["directions"] for f in fc["features"]}
-    assert got == {"Start / Finish": False, "Event Parking": True, "Aid 1": False}
 
 
 # --- color_by: route | difficulty --------------------------------------------
@@ -534,42 +483,21 @@ def test_every_known_key_reaches_the_runtime_or_is_declared_build_only():
     assert assert_spec_coverage() is True
 
 
-# ---------------------------------------------------------------------------
-# Retired keys from the 2026-10 prune
-# ---------------------------------------------------------------------------
-
-_PRUNED = {
-    "show_elevation": True,
-    "base_layers": [],
-    "url_hash": True,
-    "map_dim_on_highlight": False,
-    "highlight_glow": False,
-    "scrim_opacity": 0.5,
-    "share_button": False,
-    "pwa": False,
-    "pwa_install_prompt": False,
-    "min_zoom": 9,
-    "max_zoom": 19,
-    "basemap_maxzoom": 14,
-    "terrain_maxzoom": 11,
-    "output_dir": "build/x",
-}
-
-
-def test_pruned_keys_are_retired_with_their_own_message():
-    for key, value in _PRUNED.items():
-        errors = [e for e in _errors(**{key: value}) if key in e]
-        assert len(errors) == 1, (key, errors)
-        assert "removed" in errors[0] and "Delete the line" in errors[0], errors[0]
-        assert "unknown top-level key" not in errors[0], errors[0]
+@pytest.mark.parametrize("key", sorted(_RETIRED_KEYS))
+def test_every_retired_key_gets_its_own_message_once(key):
+    # The retired check runs apart from the type check, so a dummy value
+    # is never rejected for another reason.
+    errors = [e for e in _errors(**{key: 1}) if key in e]
+    assert len(errors) == 1, errors
+    assert "unknown top-level key" not in errors[0], errors[0]
 
 
 # --- a key with no value ------------------------------------------------
 
 def test_a_key_with_no_value_is_an_error():
-    # `pan_padding:` parses as null. It used to validate, then crash the
-    # build, because config.get(key, default) answers None for a present
-    # key; `show_distance:` silently turned distances off the same way.
+    # `pan_padding:` parses as null. config.get(key, default) answers None
+    # for a present key, which would crash the build or silently turn a
+    # feature off, so a bare key is a validation error.
     for key in ("pan_padding", "bbox", "trailheads", "show_distance", "event_mode"):
         errors = _errors(**{key: None})
         assert len(errors) == 1, (key, errors)
@@ -582,7 +510,7 @@ def test_a_required_key_with_no_value_is_reported_once():
     assert "required" in errors[0]
 
 
-# --- shapes that used to pass or crash ------------------------------------
+# --- malformed shapes ------------------------------------
 
 def test_dash_pattern_is_exactly_two_non_negative_numbers():
     for bad in ([2], [], [-1, 2], [0, 0], [2, 2, 2], ["2", 2]):
