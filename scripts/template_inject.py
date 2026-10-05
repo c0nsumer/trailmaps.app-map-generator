@@ -143,11 +143,10 @@ def _engine_app_version():
 # `validate_config.HANDLED_SPECIALLY` lists those YAML keys so the
 # drift lint accepts the omission.
 #
-# The runtime persists toggle states in localStorage under `mtb.*` keys,
-# so there are no `*_default_on` knobs. The `show_*` fields gate data
-# fetching and build-time asset generation (show_markers: false skips
-# the Overpass query; show_difficulty: false skips sprite generation),
-# not UI visibility.
+# Most `show_*` fields gate build-time data: a false one leaves that
+# layer's data out of the map. show_trails, show_difficulty,
+# show_direction_arrows and show_current_trail are runtime gates that
+# hide map layers and UI instead.
 CONFIG_SPEC = [
     # Identity
     ("name", "name", None),
@@ -571,8 +570,8 @@ def inject_config_into_template(template_content, config, trails_geojson):
 
     # Event-mode runtime hints. The runtime uses these to:
     #   - eventModeActive: gate the always-on event-mode UX changes
-    #     (force Labels mode to "routes" + restrict labels to featured
-    #     routes only + hide the Labels segmented control).
+    #     (labels only on featured routes and their ways, no
+    #     difficulty symbols, only featured routes in the routes panel).
     #   - eventPoiColor: chip background for the always-on event POIs.
     #   - hasEventPois: presence flag so addEventPoiMarkers runs at boot.
     em = config.get("event_mode") or {}
@@ -869,8 +868,8 @@ def _process_index_html(content, config):
     )
 
     # Strip the GPX download FAB + sheet when the map has no
-    # event_mode.gpx entries (the common case) - same pattern
-    # as the Share strip so non-event maps carry no dead markup.
+    # event_mode.gpx entries (the common case), so non-event
+    # maps carry no dead markup.
     if not gpx_download_entries(config):
         content = re.sub(
             r"\s*<!-- GPX start -->.*?<!-- GPX end -->\n",
@@ -988,11 +987,10 @@ def _process_index_html(content, config):
     content = content.replace("__COLOR_SCHEME_BOOTSTRAP__", bootstrap_script)
     # Static brand-color substitutions: the theme-color meta
     # (no-JS fallback - the bootstrap re-points it per scheme
-    # on first frame), the Safari pinned-tab mask-icon tint,
-    # and the legacy Windows tile color all take the light
-    # accent shade. replace() catches every occurrence. No-op
-    # when the icons block (which carries all three tags) was
-    # stripped for icon-less maps.
+    # on first frame) and the Safari pinned-tab mask-icon tint
+    # both take the light accent shade. replace() catches every
+    # occurrence. No-op when the icons block (which carries
+    # both tags) was stripped for icon-less maps.
     content = content.replace("__THEME_COLOR__", _tc_light)
     # Inject or remove brand image. Logo source falls back to
     # icon: when logo: is omitted; raster sources are normalized
@@ -1068,6 +1066,8 @@ def _process_index_html(content, config):
             content,
             flags=re.DOTALL,
         )
+    elif not config.get("_has_pinned_tab"):
+        content = re.sub(r"\n\s*<link rel=\"mask-icon\"[^>]*>", "", content)
     return content
 
 
@@ -1175,7 +1175,11 @@ def copy_assets(config, output_dir):
         # an explicit icon: setting. Log it so the curator knows.
         console.info("No icon configured - using logo as icon source")
     if icon_path:
-        ship(config, *generate_icons(icon_path, output_dir, config))
+        icons_written = generate_icons(icon_path, output_dir, config)
+        ship(config, *icons_written)
+        # Read by _process_index_html: without potrace there is no
+        # pinned-tab SVG to link.
+        config["_has_pinned_tab"] = "icons/safari-pinned-tab.svg" in icons_written
     else:
         console.info("No icon configured - skipping icon generation")
 

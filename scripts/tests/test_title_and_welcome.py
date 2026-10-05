@@ -187,3 +187,13 @@ def test_additional_logos_do_not_invert_by_default():
     out = _process_index_html(_index_html(), config)
     assert 'src="logo-2.webp" alt="" class="brand-logo-secondary"' in out
     assert 'src="logo-3.webp" alt="" class="brand-logo-secondary invert-dark"' in out
+
+
+def test_pinned_tab_link_ships_only_with_the_svg():
+    # Without potrace no safari-pinned-tab.svg is generated, so the
+    # link would point at a missing (or a stale, unprecached) file.
+    config = dict(MINIMAL_CONFIG, icon="icon.png")
+    without = _process_index_html(_index_html(), config)
+    assert 'rel="mask-icon"' not in without and 'rel="manifest"' in without
+    with_svg = _process_index_html(_index_html(), dict(config, _has_pinned_tab=True))
+    assert 'rel="mask-icon"' in with_svg
