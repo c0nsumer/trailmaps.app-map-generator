@@ -11247,11 +11247,11 @@ function setupFloatingChrome() {
     //
     // The wirePeekToggle helper reads persisted state, paints the
     // initial state, and wires the click handlers. Rows already hidden
-    // (no data) are skipped. The visible UI is a single On/Off pill on
-    // the right of the row - one button, not two, so neither word is a
-    // dead tap; the whole row is a second, larger target for the same
-    // flip.
-    function wirePeekToggle(id, lsKey, defaultOn, onChange, layerName) {
+    // (no data) are skipped, except proximity-gated ones (wireHidden).
+    // The visible UI is a single On/Off pill on the right of the row -
+    // one button, not two, so neither word is a dead tap; the whole row
+    // is a second, larger target for the same flip.
+    function wirePeekToggle(id, lsKey, defaultOn, onChange, layerName, wireHidden) {
         const row = document.getElementById(id);
         if (!row) return;
         // forced_visible: if this layer is in CONFIG.forcedVisible,
@@ -11280,7 +11280,12 @@ function setupFloatingChrome() {
         }
         // No data for this layer, loadPOIs()/the template left the row
         // hidden. Skip wiring so we don't surface a dead control.
-        if (row.classList.contains("hidden")) return;
+        // Not so for a proximity-gated row (wireHidden): it is hidden
+        // while none of its POIs is near a visible route, and
+        // updatePoiToggleVisibility shows it again when a season or
+        // emergency flip brings one into range, so it must already be
+        // wired and carry the rider's stored state.
+        if (row.classList.contains("hidden") && !wireHidden) return;
         const pill = row.querySelector(".opt-toggle-pill");
         if (!pill) return;
         const initial = LS.get(lsKey, defaultOn);
@@ -11405,7 +11410,7 @@ function setupFloatingChrome() {
                 updateDecorationsSource();
             }
             _onPoiToggleChange(type);
-        }, t.defaultVisibleName);
+        }, t.defaultVisibleName, !!t.proximity);
     }
 
     // Difficulty, drives the decor-diamond layer. Uses the shared
