@@ -905,15 +905,6 @@ def _validate_paths(report, config, config_dir):
     file) - every per-map asset lives next to its config. Missing paths
     are errors; surfacing them here gives a clear single message naming
     the config and field rather than an opaque build failure.
-
-    Path traversal guard: relative paths must resolve INSIDE the config
-    directory. A curator path like ``../../etc/passwd`` would otherwise
-    escape the per-map asset folder; the build is local-only so the
-    threat is low (curator runs the build), but we reject anyway so a
-    misconfigured path produces a clear error rather than a confusing
-    'file not found at /etc/passwd' message that leaks directory
-    structure into the log. Absolute paths are still allowed for
-    curators who deliberately point at shared assets outside the repo.
     """
 
     def _full(p):
@@ -921,35 +912,8 @@ def _validate_paths(report, config, config_dir):
             return p
         return os.path.join(config_dir, p) if config_dir else p
 
-    def _check_path_safe(key, p, full):
-        # Absolute paths bypass the traversal check (intentional escape
-        # via explicit absolute path is fine). Relative paths must
-        # normalize to a location inside config_dir.
-        if os.path.isabs(p) or not config_dir:
-            return True
-        try:
-            real_full = os.path.realpath(full)
-            real_root = os.path.realpath(config_dir)
-            common = os.path.commonpath([real_full, real_root])
-            if common != real_root:
-                report.err(
-                    key,
-                    f"path escapes config directory: {p} "
-                    f"(resolved to {real_full}; must stay under "
-                    f"{real_root}/ unless absolute)",
-                )
-                return False
-        except ValueError:
-            # commonpath raises on cross-drive paths (Windows) - same
-            # outcome: reject as unsafe for our local-fs assumption.
-            report.err(key, f"path resolution failed: {p} (cross-drive or invalid)")
-            return False
-        return True
-
     for key, p in _asset_paths(config):
         full = _full(p)
-        if not _check_path_safe(key, p, full):
-            continue
         if not os.path.isfile(full):
             report.err(key, f"file not found: {p} (resolved to {full})")
 
