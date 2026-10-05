@@ -9542,7 +9542,7 @@ function appendRatingRows(list, ratings) {
 }
 
 // Mark the currently-highlighted route's key row (accent stripe via
-// .is-active + aria-current) and clear every other row's mark. Reads
+// .is-active + aria-pressed) and clear every other row's mark. Reads
 // the global highlight state rather than taking a parameter so every
 // call site, highlightRoute, highlightRating, clearRouteTrailHighlight,
 // rebuildRoutePanel, stays a bare one-liner that can't pass stale
@@ -9562,8 +9562,9 @@ function syncRoutePanelActiveRow() {
             ? activeRating !== null && btn.dataset.rating === activeRating
             : activeId !== null && btn.dataset.routeId === activeId;
         btn.classList.toggle("is-active", on);
-        if (on) btn.setAttribute("aria-current", "true");
-        else btn.removeAttribute("aria-current");
+        // A second activation clears the highlight, so the row is a
+        // toggle and says so: pressed, not "current".
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
     }
 }
 
@@ -11851,7 +11852,7 @@ function setFinderActive(index) {
 
     if (index < 0 || index >= rows.length) {
         _finderActiveIndex = -1;
-        if (input) input.setAttribute("aria-activedescendant", "");
+        if (input) input.removeAttribute("aria-activedescendant");
         return;
     }
     _finderActiveIndex = index;
@@ -11881,13 +11882,19 @@ function moveFinderActive(delta) {
     setFinderActive(next);
 }
 
+// Search text compares with case and diacritics folded on both sides,
+// so "desert" typed on a phone keyboard finds "Lac Vieux Désert".
+function foldSearchText(s) {
+    return String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 function rebuildFinderList() {
     const list = document.getElementById("finder-list");
     const empty = document.getElementById("finder-empty");
     if (!list) return;
 
     const input = document.getElementById("finder-input");
-    const query = (input && input.value || "").trim().toLowerCase();
+    const query = foldSearchText((input && input.value || "").trim());
     const showTrails = CONFIG.showTrails !== false;
 
     list.innerHTML = "";
@@ -11895,7 +11902,11 @@ function rebuildFinderList() {
     // themselves are gone). Reset state so Enter doesn't try to fire
     // an index that no longer exists.
     _finderActiveIndex = -1;
-    if (input) input.setAttribute("aria-activedescendant", "");
+    if (input) input.removeAttribute("aria-activedescendant");
+    // The combobox reports a popup with options in it; a rebuild that
+    // lists nothing ("No matches.", or every kind filtered out by
+    // config) leaves it collapsed.
+    if (input) input.setAttribute("aria-expanded", "false");
 
     // Active filter chip determines which kinds get included. "all"
     // is the default and includes every kind. Per-kind chip
@@ -11930,10 +11941,10 @@ function rebuildFinderList() {
     refreshTrailLengths();
 
     const matchedRoutes = !includeRoutes ? []
-        : (query ? routes.filter((r) => r.name.toLowerCase().includes(query))
+        : (query ? routes.filter((r) => foldSearchText(r.name).includes(query))
                  : routes);
     const matchedTrails = !includeTrails ? []
-        : (query ? trails.filter((t) => t.name.toLowerCase().includes(query))
+        : (query ? trails.filter((t) => foldSearchText(t.name).includes(query))
                  : trails);
     // POIs follow a hybrid rule: search shows a POI iff it's within
     // the type's proximity threshold of any visible trail. Toggle-
@@ -11946,15 +11957,15 @@ function rebuildFinderList() {
     const inScopePois = finderPoisInScope();
     const matchedPois = !includePois ? []
         : (query ? inScopePois.filter((p) => {
-            const name = p.name.toLowerCase();
-            const typeLabel = (POI_TYPE_META_LABEL[p.type] || "").toLowerCase();
+            const name = foldSearchText(p.name);
+            const typeLabel = foldSearchText(POI_TYPE_META_LABEL[p.type]);
             // ref matches too: a named guidepost keeps its ref as the
             // on-map bubble label, so riders search by either. Known
             // cosmetic gap: a ref-matched row still displays only the
             // name, so the match reason is invisible until selection
             // highlights the bubble. If that confuses riders, render
             // named markers as `name (ref)` in the result row.
-            const ref = p.ref.toLowerCase();
+            const ref = foldSearchText(p.ref);
             return name.includes(query) || typeLabel.includes(query)
                 || (ref !== "" && ref.includes(query));
         })
@@ -11968,30 +11979,21 @@ function rebuildFinderList() {
     if (empty) empty.classList.add("hidden");
 
     if (matchedRoutes.length > 0) {
-        const h = document.createElement("div");
-        h.className = "finder-section-header";
-        h.textContent = "Routes";
-        list.appendChild(h);
+        const group = appendFinderSection(list, "Routes");
         for (const r of matchedRoutes) {
-            list.appendChild(makeRouteRow(r));
+            group.appendChild(makeRouteRow(r));
         }
     }
 
     if (matchedTrails.length > 0) {
-        const h = document.createElement("div");
-        h.className = "finder-section-header";
-        h.textContent = "Trails";
-        list.appendChild(h);
+        const group = appendFinderSection(list, "Trails");
         for (const t of matchedTrails) {
-            list.appendChild(makeTrailRow(t, visibleRouteIds));
+            group.appendChild(makeTrailRow(t, visibleRouteIds));
         }
     }
 
     if (matchedPois.length > 0) {
-        const h = document.createElement("div");
-        h.className = "finder-section-header";
-        h.textContent = "Places";
-        list.appendChild(h);
+        const group = appendFinderSection(list, "Places");
         // Group same-type, same-name POIs into a single row. Most
         // OSM POIs (toilets, drinking-water fountains, often
         // parking) share a generic name, listing them as N
@@ -12022,6 +12024,24 @@ function rebuildFinderList() {
         row.id = `finder-opt-${i}`;
         row.tabIndex = -1;
     });
+    if (input && rows.length) input.setAttribute("aria-expanded", "true");
+}
+
+// A listbox holds only options and groups of them, so each section is
+// a group labeled by its header, and the header itself is presentation
+// (the ARIA grouped-listbox pattern). Returns the group to fill.
+function appendFinderSection(list, title) {
+    const group = document.createElement("div");
+    group.setAttribute("role", "group");
+    const h = document.createElement("div");
+    h.className = "finder-section-header";
+    h.id = `finder-sec-${title.toLowerCase()}`;
+    h.setAttribute("role", "presentation");
+    h.textContent = title;
+    group.setAttribute("aria-labelledby", h.id);
+    group.appendChild(h);
+    list.appendChild(group);
+    return group;
 }
 
 // Collapse same-type same-name POIs into group entries. Entries with
@@ -12097,15 +12117,14 @@ function groupPoisByName(pois) {
 // blank-search overlay surfaces "Parking (× 5)" + lots, etc.,
 // giving zero-keystroke access to category-level highlighting).
 function groupPoisForFinder(matchedPois, query) {
-    const q = (query || "").toLowerCase().trim();
+    const q = foldSearchText((query || "").trim());
 
     const queryMatchesType = (type) => {
         // No query means the rider just opened the search overlay
         // surface every type as its own category section so they
         // can highlight an entire type with one tap, no typing.
         if (!q) return true;
-        const label = (POI_TYPE_META_LABEL[type] || "").toLowerCase();
-        return label.includes(q);
+        return foldSearchText(POI_TYPE_META_LABEL[type]).includes(q);
     };
 
     // Partition matched POIs by whether their type's label matches
