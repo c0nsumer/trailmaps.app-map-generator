@@ -374,9 +374,13 @@ for name in "${configs[@]}"; do
         if $DRY_RUN; then
             echo "[dry-run] rsync -avz --delete --delete-excluded --exclude='*.sig' --exclude='*.src.geojson' --exclude='*.tmp' ${build_dir}/ ${DEPLOY_DEST}/${slug}/"
         else
-            rsync -avz --delete --delete-excluded \
+            if ! rsync -avz --delete --delete-excluded \
                 --exclude='*.sig' --exclude='*.src.geojson' --exclude='*.tmp' \
-                "${build_dir}/" "${DEPLOY_DEST}/${slug}/"
+                "${build_dir}/" "${DEPLOY_DEST}/${slug}/"; then
+                echo "ERROR: rsync failed for ${name}" >&2
+                failed+=("$name")
+                continue
+            fi
         fi
         echo ""
     fi
