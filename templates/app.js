@@ -2875,7 +2875,10 @@ function applyWedgeHeading(heading, fromCourse) {
     } else if (now - _wedgeLastCourse < WEDGE_COURSE_FRESH_MS) {
         return;
     }
-    if (now - _wedgeLastApply < 80) return;   // ~12 Hz is plenty
+    // ~12 Hz is plenty for the compass stream. A course reading is
+    // never dropped: it arrives at ~1 Hz and has already muted the
+    // compass above, so dropping it would hold a stale heading.
+    if (!fromCourse && now - _wedgeLastApply < 80) return;
     _wedgeLastApply = now;
     if (_wedgeHeading === null) {
         _wedgeHeading = heading;
@@ -4014,19 +4017,23 @@ async function init() {
         if (code === 1) {
             // PERMISSION_DENIED
             showToast("Location permission denied. Allow location access in your browser's site settings, then tap Locate again.");
-        } else if (code === 3) {
-            // TIMEOUT
-            showToast("Couldn't get your location in time. Check that location services are on for this browser, then tap Locate again.");
         } else if (!userLocation) {
-            // POSITION_UNAVAILABLE or unknown, before any fix: the
-            // advice applies. Once tracking has a position the same
+            // TIMEOUT, POSITION_UNAVAILABLE or unknown, before any fix:
+            // the advice applies. Once tracking has a position the same
             // error is a dropout (a dead spot, a sensor hiccup) that
-            // the watch recovers from by itself, and "try again, check
-            // your settings" would be wrong advice mid-ride; the
-            // button's error state carries it. userLocation is cleared
-            // when Locate truly turns off (mirrorLocateState).
-            showToast("Couldn't determine your location. Try again, or check your device's location settings.");
+            // the watch recovers from by itself, and "check your
+            // settings" would be wrong advice mid-ride; the button's
+            // error state carries it. userLocation is cleared when
+            // Locate truly turns off (mirrorLocateState). The copy does
+            // not say "tap Locate": the watch is still running, and a
+            // tap in the error state turns it off.
+            showToast(code === 3
+                ? "Couldn't get your location yet. Check that location services are on for this browser."
+                : "Couldn't determine your location yet. Check your device's location settings.");
         }
+        // The chip names a trail only from a good fix, and the fix it
+        // holds is now stale.
+        trailChipLostFix();
     });
 
     // Wire the Locate FAB to the GeolocateControl and mirror its FULL
@@ -4098,6 +4105,7 @@ async function init() {
         if (state === "idle" || state === "disabled") {
             userLocation = null;
             _locateActivationZoomPending = false;
+            _followLostWithContext = false;
             updateLocationIndicator();
             resetTrailChip();
             // Tracking is off: retire the compass wedge and stop the
@@ -9040,6 +9048,7 @@ const TRAIL_CHIP_UNKNOWN_MS = 5000;
 let _coarseSince = null;
 let _coarseLostTrail = false;
 let _trailUnknown = false;
+let _trailUnknownExitFixes = 0;
 let _trailUnknownTimer = null;
 
 function trailUnknownNow(nearest, accuracy) {
@@ -9060,9 +9069,9 @@ function scheduleTrailUnknownCheck() {
     _trailUnknownTimer = setTimeout(() => {
         if (!currentTrailOn || !userLocation) return;
         const nearest = nearestVisibleTrail(userLocation[0], userLocation[1]);
-        const unknown = trailUnknownNow(nearest, userAccuracy);
-        if (unknown === _trailUnknown) return;
-        _trailUnknown = unknown;
+        if (_trailUnknown || !trailUnknownNow(nearest, userAccuracy)) return;
+        _trailUnknown = true;
+        _trailUnknownExitFixes = 0;
         renderTrailChip();
     }, wait + 20);
 }
@@ -9085,7 +9094,13 @@ function updateTrailChip(lng, lat, accuracy) {
             if (coarse) _coarseLostTrail = true;
             _onTrail = null;
         }
-        const unknown = trailUnknownNow(nearest, accuracy);
+        let unknown = trailUnknownNow(nearest, accuracy);
+        if (unknown) {
+            _trailUnknownExitFixes = 0;
+        } else if (_trailUnknown && !_onTrail) {
+            _trailUnknownExitFixes += 1;
+            unknown = _trailUnknownExitFixes < TRAIL_CHIP_FIXES;
+        }
         if (coarse && !unknown) scheduleTrailUnknownCheck();
         if (dropped || unknown !== _trailUnknown) {
             _trailUnknown = unknown;
@@ -9149,6 +9164,20 @@ function resetTrailChip() {
     renderTrailChip();
 }
 
+// A geolocation error while tracking: the watch keeps running, but the
+// last fix no longer places the rider, so a shown chip turns to its
+// unknown state. A hidden chip stays hidden. The next good fix names
+// the trail again at once.
+function trailChipLostFix() {
+    if (!_onTrail && !_trailUnknown) return;
+    _onTrail = null;
+    _onTrailCandidate = null;
+    _offTrailFixes = 0;
+    _trailUnknown = true;
+    _trailUnknownExitFixes = 0;
+    renderTrailChip();
+}
+
 function renderTrailChip() {
     const chip = document.getElementById("trail-chip");
     if (!chip) return;
@@ -9172,9 +9201,13 @@ function renderTrailChip() {
         syncHereLift();
         return;
     }
-    // A way whose own route was toggled off since the last fix hides
-    // with it; the next fix resolves against what is drawn.
-    if (!_onTrail || !isVisibleTrail(_onTrail.feature.properties)) {
+    // A way no visible route draws any more (its routes toggled off
+    // since the last fix) hides with them; the next fix resolves
+    // against what is drawn. The stored copy is one route's, so the
+    // test reads every route on the way.
+    const onProps = _onTrail && _onTrail.feature.properties;
+    if (!onProps || !(onProps.shared_routes || [onProps.route_id])
+        .some((id) => visibleRoutes.has(id))) {
         chip.classList.add("hidden");
         syncHereLift();
         return;
