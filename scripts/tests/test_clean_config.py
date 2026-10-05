@@ -258,3 +258,17 @@ def test_gate_deletes_output_when_reparse_fails(tmp_path):
         _assert_same_data(str(prod), str(out))
     assert "not valid YAML" in str(exc.value)
     assert not out.exists()
+
+
+def test_output_path_equal_to_input_is_refused(tmp_path):
+    tpl = tmp_path / "t.yaml"
+    prod = tmp_path / "p.yaml"
+    tpl.write_text(TEMPLATE, encoding="utf-8")
+    prod.write_text("name: A\nslug: a\n", encoding="utf-8")
+    link = tmp_path / "link.yaml"
+    link.symlink_to(prod)
+    for out in (prod, link):
+        with pytest.raises(SystemExit) as exc:
+            clean_config(str(tpl), str(prod), str(out))
+        assert "input file" in str(exc.value)
+    assert prod.read_text(encoding="utf-8") == "name: A\nslug: a\n"

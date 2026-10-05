@@ -343,7 +343,18 @@ def _assert_same_data(production_path, output_path):
         )
 
 
+def _same_file(a, b):
+    if os.path.exists(a) and os.path.exists(b):
+        return os.path.samefile(a, b)
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
 def clean_config(template_path, production_path, output_path):
+    # The equality gate re-reads the original after the output is written,
+    # so an output that is the input would destroy it and compare the
+    # result with itself.
+    if _same_file(production_path, output_path):
+        sys.exit(f"ERROR: output path is the input file: {output_path}")
     with open(template_path, encoding="utf-8") as f:
         template_lines = f.read().splitlines()
     with open(production_path, encoding="utf-8") as f:
