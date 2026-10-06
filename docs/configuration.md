@@ -512,9 +512,8 @@ kilometers, including the UK. A web page can only see the browser's language
 tag, such as `en-US`, not the phone's measurement-system setting. The Options
 row covers riders whose tag doesn't match what they use.
 
-The choice is stored once per origin (`mtb.units`), not per map. A rider who
-picks kilometers on one map sees kilometers on every map served from the same
-site. See [Privacy](#privacy).
+The choice is stored per map (`mtb.units`), like every other preference. See
+[Privacy](#privacy).
 
 The former `distance_units` config key is removed. The build rejects a config
 that still sets it, with a message to delete the line.
@@ -1216,8 +1215,8 @@ a visitor does is reported anywhere.
 
 The app stores a small set of UI preferences in the browser's `localStorage`.
 Each key is prefixed with the map's `slug` so several maps on one origin stay
-independent (for example, `<slug>.mtb.colorScheme`). The one exception is
-`mtb.units`. It has no prefix, so every map on the origin shares it:
+independent (for example, `<slug>.mtb.colorScheme`). No key is shared across
+maps:
 
 | Key | Value |
 |---|---|
@@ -1229,7 +1228,7 @@ independent (for example, `<slug>.mtb.colorScheme`). The one exception is
 | `mtb.directionArrows` | Boolean: direction arrows on or off |
 | `mtb.currentTrail` | Boolean: Show Current Trail row on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
-| `mtb.units` | `"mi"` or `"km"`. No slug prefix; shared by every map on the origin |
+| `mtb.units` | `"mi"` or `"km"` |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
 | `mtb.routePanelExpanded` | Boolean: the key panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |

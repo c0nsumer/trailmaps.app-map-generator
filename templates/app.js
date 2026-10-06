@@ -769,8 +769,8 @@ function watchSystemColorScheme() {
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
 // mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
-// mtb.welcomed, mtb.fabsLabeled, mtb.currentTrail. One key is shared across maps and
-// carries no prefix: mtb.units (see LS_ORIGIN).
+// mtb.welcomed, mtb.fabsLabeled, mtb.currentTrail, mtb.units. No key
+// is shared across maps: every setting belongs to one map.
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
 // emits CONFIG.defaultVisible as a list of layer names that should
@@ -837,26 +837,19 @@ function isForcedVisible(name) {
 }
 
 const LS_PREFIX = (CONFIG && CONFIG.slug ? CONFIG.slug + "." : "");
-function lsStore(prefix) {
-    return {
-        get(key, fallback) {
-            try {
-                const v = window.localStorage.getItem(prefix + key);
-                if (v === null) return fallback;
-                return JSON.parse(v);
-            } catch (_) { return fallback; }
-        },
-        set(key, value) {
-            try { window.localStorage.setItem(prefix + key, JSON.stringify(value)); }
-            catch (_) { /* private mode / quota */ }
-        },
-    };
-}
-const LS = lsStore(LS_PREFIX);
-// Unprefixed, for the rare preference that belongs to the rider rather
-// than to one map (mtb.units): set it on any map and every map on the
-// origin follows.
-const LS_ORIGIN = lsStore("");
+const LS = {
+    get(key, fallback) {
+        try {
+            const v = window.localStorage.getItem(LS_PREFIX + key);
+            if (v === null) return fallback;
+            return JSON.parse(v);
+        } catch (_) { return fallback; }
+    },
+    set(key, value) {
+        try { window.localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)); }
+        catch (_) { /* private mode / quota */ }
+    },
+};
 
 // Miles/feet or kilometers/meters for everything the app computes and
 // displays: route stats, the scale, the off-screen distance, contour
@@ -881,7 +874,7 @@ function regionUnits() {
 }
 
 let distanceUnits = (() => {
-    const stored = LS_ORIGIN.get("mtb.units", null);
+    const stored = LS.get("mtb.units", null);
     return stored === "mi" || stored === "km" ? stored : regionUnits();
 })();
 
@@ -11619,8 +11612,7 @@ function setupFloatingChrome() {
     // ----- Units: Miles / Kilometers --------------------------------
     // Two states, no Auto: until the rider picks, distanceUnits already
     // follows the device's region, and the pill shows what that
-    // resolved to. Picking stores the choice for every map on the
-    // origin (LS_ORIGIN).
+    // resolved to. Picking stores the choice for this map only.
     const unitsGroup = document.getElementById("units-segmented");
     if (unitsGroup) {
         const unitButtons = Array.from(
@@ -13952,7 +13944,7 @@ function formatCount(n) {
 // just changed units should see the change without moving the map.
 function setDistanceUnits(units) {
     if (units !== "mi" && units !== "km") return;
-    LS_ORIGIN.set("mtb.units", units);
+    LS.set("mtb.units", units);
     if (units === distanceUnits) return;
     distanceUnits = units;
     rebuildRoutePanel();

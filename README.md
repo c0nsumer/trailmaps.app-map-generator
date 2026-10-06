@@ -206,10 +206,6 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
 - `mtb.routePanelExpanded`: boolean (key panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
-
-One key has no slug prefix, because units are the visitor's preference and
-not a property of one map. Every map on the same origin shares it:
-
 - `mtb.units`: "mi" or "km"
 
 The app also writes two one-shot flags to `sessionStorage`, which is scoped to one tab. One holds the camera and highlight across a map-update reload. The other holds the "Map updated" toast flag. Each is removed as soon as it is read.
