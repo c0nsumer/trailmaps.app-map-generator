@@ -13,9 +13,8 @@ This is the framework that generates most of the maps at
 [trailmaps.app](https://trailmaps.app).
 
 ## Screenshot
-![Bloomer + Clinton River Oaks Map as of 2026-Jul-05](docs/screenshots/screenshot_bloomer_2026-jul-05.png?raw=true
-"Bloomer + Clinton River Oaks Map as of 2026-Jul-05") *Bloomer + Clinton River
-Oaks Map as of 2026-Jul-05*
+![RAMBA Map as of 2026-Oct-06](docs/screenshots/screenshot_ramba_2026-oct-06.png?raw=true
+"RAMBA Map as of 2026-Oct-06") *RAMBA Map as of 2026-Oct-06*
 
 ## Map / Generator Features
 
