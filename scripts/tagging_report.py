@@ -21,10 +21,15 @@ What that rules out, concretely:
 * Parking, trailheads, and hubs are never checked for distance from a trail.
   They are curator-placed and being off-trail is the point of a parking lot.
 
+A way listed more than once in a relation does qualify: it is a fact about
+the relation itself, not a rendering preference, and it changes a
+rider-facing distance, since each repeat counts as an extra pass.
+
 Runs on every build from data already in memory; prints only when it finds
 something, so an unremarkable build stays quiet.
 """
 
+import json
 import os
 
 import console
@@ -76,6 +81,24 @@ def _check_routes(routes):
         if not str(info.get("colour") or "").strip():
             missing_colour.append((rid, info.get("name") or ""))
     return missing_name, missing_colour
+
+
+def _check_repeated_members(routes):
+    """Relations whose fetch-time metadata records a way listed twice or more.
+
+    A relation describes a signed route, so each way normally appears once.
+    Out-and-back event courses repeat on purpose, which is why this only
+    lists them for a human look rather than judging which are wrong.
+    """
+    found = []
+    for rid in sorted(routes, key=natural_key):
+        repeated = routes[rid].get("repeated_ways") or {}
+        if not repeated:
+            continue
+        ways = sorted(((str(w), int(n)) for w, n in repeated.items()),
+                      key=lambda t: natural_key(t[0]))
+        found.append((rid, routes[rid].get("name") or "", ways))
+    return found
 
 
 def _check_ratings(features, show_difficulty):
@@ -262,15 +285,10 @@ def audit(trails_geojson, pois_geojson, config):
         "probable_gaps": _check_route_gaps(
             features, routes, _clipped_route_ids(trails_geojson, config)),
         "orphan_pois": _check_orphan_pois(pois_geojson, features),
+        "repeated_members": _check_repeated_members(routes),
         "difficulty_checked": bool(show_difficulty),
     }
-    findings["total"] = sum(
-        len(findings[k]) for k in (
-            "routes_missing_name", "routes_missing_colour",
-            "named_trails_missing_rating", "invalid_ratings",
-            "probable_gaps", "orphan_pois",
-        )
-    )
+    findings["total"] = sum(len(findings[k]) for k in _LIST_KEYS)
     return findings
 
 
@@ -294,6 +312,9 @@ def summarize(findings):
          "relation with no colour", "relations with no colour"),
         ("orphan_pois",
          "trail marker far from any trail", "trail markers far from any trail"),
+        ("repeated_members",
+         "relation with a way listed more than once",
+         "relations with a way listed more than once"),
     ]
     for key, singular, plural in labels:
         n = len(findings[key])
@@ -308,6 +329,23 @@ def _relation_link(rid):
     if str(rid).startswith("-"):
         return f"relation `{rid}` (not uploaded)"
     return f"https://www.openstreetmap.org/relation/{rid}"
+
+
+def _way_link(wid):
+    """openstreetmap.org link for a way, with the same not-uploaded rule
+    as _relation_link."""
+    if str(wid).startswith("-"):
+        return f"way `{wid}`"
+    return f"https://www.openstreetmap.org/way/{wid}"
+
+
+def _render_repeated(item):
+    rid, name, ways = item
+    # Twice is the expected out-and-back shape; only a higher count is
+    # worth spelling out.
+    links = ", ".join(
+        _way_link(w) + (f" ({n}x)" if n > 2 else "") for w, n in ways)
+    return f"{_relation_link(rid)} {name or '(unnamed)'}: {links}"
 
 
 def format_report(findings, slug):
@@ -382,11 +420,54 @@ def format_report(findings, slug):
         note="Either misplaced, or attached to a trail this map's relations "
              "don't include.",
     )
+    section(
+        "Relations that list a way more than once",
+        findings["repeated_members"],
+        _render_repeated,
+        note="A route relation describes the signed route, so each way "
+             "normally appears once. A repeat is counted toward the route's "
+             "distance as an extra pass. Confirm each one is intended, such "
+             "as an out-and-back course, and remove the rest.",
+    )
     return "\n".join(out)
 
 
 def report_path(cache_dir, slug):
     return os.path.join(cache_dir, "osm_diff", slug, "data-notes.md")
+
+
+# The checks whose findings are lists, in report order. Shared by the total,
+# the JSON sidecar and summarize's labels so a new check cannot be counted in
+# one place and missed in another.
+_LIST_KEYS = (
+    "routes_missing_name", "routes_missing_colour",
+    "named_trails_missing_rating", "invalid_ratings",
+    "probable_gaps", "orphan_pois", "repeated_members",
+)
+
+
+def sidecar_path(cache_dir, slug):
+    return os.path.join(cache_dir, "osm_diff", slug, "data-notes.json")
+
+
+def sidecar(findings, slug, lines):
+    """The machine-readable twin of the markdown report.
+
+    An orchestrator building many maps in one run reads this after each
+    engine subprocess and prints one aggregated block at the end, where a
+    colored heading scrolled off twenty maps ago cannot. Written on every
+    audit, clean maps included, so "no file" means "not audited" and
+    "total 0" means clean. ``summary`` repeats the console lines verbatim
+    so the aggregator never re-derives wording; ``counts`` is per check for
+    anyone who wants to filter.
+    """
+    return {
+        "slug": slug,
+        "total": findings.get("total", 0),
+        "summary": list(lines),
+        "counts": {k: len(findings.get(k) or ()) for k in _LIST_KEYS},
+        "report": "data-notes.md",
+    }
 
 
 def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
@@ -397,6 +478,15 @@ def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
     if not trails_geojson:
         # No readable OSM snapshot to audit. Silence, not a warning. A
         # route-only map's snapshot is an empty skeleton, which audits clean.
+        # Drop any report left by an earlier build, or an orchestrator
+        # aggregating the sidecars would keep repeating findings this
+        # map no longer has.
+        slug = config.get("slug", "map")
+        for stale in (report_path(cache_dir, slug), sidecar_path(cache_dir, slug)):
+            try:
+                os.remove(stale)
+            except OSError:
+                pass
         return
     try:
         findings = audit(trails_geojson, pois_geojson, config)
@@ -405,17 +495,21 @@ def report_tagging_quality(trails_geojson, pois_geojson, config, cache_dir):
         return
 
     lines = summarize(findings)
-    path = report_path(cache_dir, config.get("slug", "map"))
+    slug = config.get("slug", "map")
+    path = report_path(cache_dir, slug)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            f.write(format_report(findings, config.get("slug", "map")))
+            f.write(format_report(findings, slug))
+        with open(sidecar_path(cache_dir, slug), "w", encoding="utf-8") as f:
+            json.dump(sidecar(findings, slug, lines), f, indent=2)
+            f.write("\n")
     except OSError as e:
         console.warn(f"could not write OSM data notes: {e}")
         return
 
     if lines:
-        console.step("OSM data notes")
+        console.step("OSM data notes", attention=True)
         for line in lines:
             console.info(f"  {line}")
         console.info(f"  details: {console.rel_path(path)}")

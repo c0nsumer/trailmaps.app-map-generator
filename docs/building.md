@@ -225,6 +225,7 @@ OSM data notes
     3 possible unconnected way pairs
     3 named trails with no difficulty rating
     3 relations with no colour
+    1 relation with a way listed more than once
 ```
 
 This is **not** a "make the render look better" checklist.
@@ -256,8 +257,20 @@ but aren't. It breaks routing for every consumer of the data. Each finding links
 the spot on openstreetmap.org. Ordinary branch junctions share a node exactly and
 are excluded, so the check stays quiet on healthy data.
 
+The **relations that list a way more than once** check lists every route
+relation with a repeated member, with a link to each repeated way. A relation
+describes the signed route, so each way normally appears once. An out-and-back
+event course lists a way twice on purpose. Such a course appears in this list
+on every build. Every other repeat is usually a mapping error.
+
 The audit reads the pre-enrichment snapshot, so custom routes (not OSM's to
 fix) never reach it.
+
+Each audit also writes `cache/osm_diff/<slug>/data-notes.json` next to the
+markdown. It holds the slug, the finding total, the console summary lines
+verbatim, and a per-check count. A clean map writes it too, with a total of
+zero. An orchestrator that builds many maps in one run can read each file
+after its engine call and print one aggregated block at the end.
 
 Flags can be combined: `--refresh-trails --no-basemap --no-terrain`
 re-processes trail data and rebuilds templates without touching

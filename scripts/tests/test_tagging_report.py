@@ -233,3 +233,81 @@ def test_a_negative_josm_id_gets_no_osm_link():
     report = format_report(audit(snap, None, _CFG), "t")
     assert "openstreetmap.org/relation/-5" not in report
     assert "relation `-5` (not uploaded)" in report
+
+
+_LINE = [[-87.60, 46.50], [-87.59, 46.50]]
+
+
+def test_a_way_listed_twice_is_reported_for_a_human_look():
+    snap = _snap([_feature([10, 11, -12], _LINE)],
+                 routes={"1": {"name": "Race Course", "colour": "red",
+                               "repeated_ways": {"11": 3, "10": 2, "-12": 2}}})
+    f = audit(snap, None, _CFG)
+    assert f["repeated_members"] == [
+        ("1", "Race Course", [("10", 2), ("11", 3), ("-12", 2)])]
+    report = format_report(f, "t")
+    assert "## Relations that list a way more than once (1)" in report
+    assert "out-and-back course" in report
+    line = next(ln for ln in report.splitlines() if "Race Course" in ln)
+    assert line.startswith("- https://www.openstreetmap.org/relation/1 Race Course: ")
+    # Twice is the expected shape, so only a higher count shows a multiplier;
+    # a JOSM id has no page to link to.
+    assert "https://www.openstreetmap.org/way/10," in line
+    assert "https://www.openstreetmap.org/way/11 (3x)" in line
+    assert line.endswith("way `-12`")
+    assert "way/-12" not in line
+
+
+def test_a_route_without_repeats_is_not_reported():
+    snap = _snap([_feature([10], _LINE)])
+    f = audit(snap, None, _CFG)
+    assert f["repeated_members"] == []
+    assert "more than once" not in format_report(f, "t")
+
+
+def test_repeated_member_summary_pluralizes():
+    one = {"1": {"name": "A", "colour": "red", "repeated_ways": {"10": 2}}}
+    two = dict(one, **{"2": {"name": "B", "colour": "red", "repeated_ways": {"20": 2}}})
+    assert summarize(audit(_snap([_feature([10], _LINE)], one), None, _CFG)) == [
+        "1 relation with a way listed more than once"]
+    assert summarize(audit(_snap([_feature([10], _LINE)], two), None, _CFG)) == [
+        "2 relations with a way listed more than once"]
+
+
+def test_the_json_sidecar_mirrors_the_report(tmp_path):
+    import json
+
+    from tagging_report import report_tagging_quality, sidecar_path
+
+    snap = _snap([], routes={"7": {"name": "Loop", "colour": "",
+                                   "repeated_ways": {"70": 2}}})
+    report_tagging_quality(snap, None, {"slug": "m"}, str(tmp_path))
+    data = json.loads((tmp_path / "osm_diff" / "m" / "data-notes.json").read_text())
+    assert data["slug"] == "m"
+    assert data["total"] == 2
+    assert data["counts"]["repeated_members"] == 1
+    assert data["counts"]["routes_missing_colour"] == 1
+    assert "1 relation with a way listed more than once" in data["summary"]
+    assert data["report"] == "data-notes.md"
+    assert sidecar_path(str(tmp_path), "m").endswith("osm_diff/m/data-notes.json")
+
+    # A clean map still writes the sidecar, with total 0, so an aggregator
+    # can tell "audited and clean" from "never audited".
+    report_tagging_quality(_snap([], routes={}), None, {"slug": "c"}, str(tmp_path))
+    clean = json.loads((tmp_path / "osm_diff" / "c" / "data-notes.json").read_text())
+    assert clean["total"] == 0 and clean["summary"] == []
+
+
+def test_a_map_no_longer_audited_drops_its_stale_report(tmp_path):
+    from tagging_report import report_tagging_quality
+
+    snap = _snap([], routes={"7": {"name": "Loop", "colour": ""}})
+    report_tagging_quality(snap, None, {"slug": "m"}, str(tmp_path))
+    assert (tmp_path / "osm_diff" / "m" / "data-notes.json").exists()
+    assert (tmp_path / "osm_diff" / "m" / "data-notes.md").exists()
+
+    report_tagging_quality(None, None, {"slug": "m"}, str(tmp_path))
+    assert not (tmp_path / "osm_diff" / "m" / "data-notes.json").exists()
+    assert not (tmp_path / "osm_diff" / "m" / "data-notes.md").exists()
+    # And a map that never had a report is silent about it.
+    report_tagging_quality(None, None, {"slug": "never"}, str(tmp_path))
