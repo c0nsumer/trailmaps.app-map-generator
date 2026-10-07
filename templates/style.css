@@ -98,8 +98,10 @@
      * The tokens flip for dark mode, where a light-scheme shadow is
      * nearly invisible over a dark sheet. A few rules keep their own
      * geometry because they are composites at their own scale (the
-     * install-button icon and its "+" badge, the popup drop-shadow
-     * filter, the hub chip's SVG drop-shadow). */
+     * install-button icon and its "+" badge, the hub chip's SVG
+     * drop-shadow, the routes card). --elev-raised must stay
+     * spread-free: .fab-label and .maplibregl-popup substitute it
+     * into drop-shadow(), which has no spread radius. */
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.3);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.22);
@@ -123,6 +125,14 @@
      * Google Maps' crisp edge. Flips to a lightening line in the dark
      * scheme (see the [data-color-scheme] override). */
     --fab-edge: rgba(0, 0, 0, 0.25);
+    /* The same edge for the tap popup, pre-composited over the popup
+     * surface. A border on the popup body would stop at the vendor
+     * tip triangle, so the popup traces its edge with four 1 px
+     * drop-shadow() passes around the whole silhouette instead. Those
+     * paint over map tiles, not over the popup, so the translucent
+     * --fab-edge would shift with the tile under it; this solid mix
+     * is what --fab-edge looks like on the surface. */
+    --popup-edge: color-mix(in srgb, var(--popup-bg) 75%, black);
     /* Hairline around color-bar / dot swatches so a light trail color
      * stays visible against a light row. Single value, no dark override:
      * in dark mode a pale swatch already separates from the sheet on its
@@ -330,6 +340,7 @@
      * --fab-halo re-resolves from the color, no override needed. */
     --fab-halo-color: rgba(255, 255, 255, 0.2);
     --fab-edge: rgba(255, 255, 255, 0.3);
+    --popup-edge: color-mix(in srgb, var(--popup-bg) 70%, white);
     --swatch-outline: rgba(255, 255, 255, 0.18);
     /* Accent: swap to the lightened dark-mode shade + its on-accent
      * text, and flip --accent-strong to brighten (toward white) since
@@ -601,9 +612,11 @@ body::after {
 .highlight-chip {
     pointer-events: auto;
     background: var(--sheet-bg);
-    border: 1px solid var(--sheet-border);
+    /* Same sharp-edge + soft-halo + raised chrome as the FABs it
+     * docks beside, so the two read as one family of controls. */
+    border: 1px solid var(--fab-edge);
     border-radius: 999px;
-    box-shadow: 0 3px 10px var(--sheet-shadow);
+    box-shadow: var(--fab-halo), var(--elev-raised);
     padding: 6px 12px 6px 10px;
     font: inherit;
     font-size: 13px;
@@ -2599,15 +2612,32 @@ body::after {
 }
 
 /* ----- Popups ------------------------------------------------------ */
-/* Popup wrapper - shadow lives here (not on .content) so it
- * follows the COMBINED silhouette of body + tip as a single
- * shape. With the shadow on .content alone, the tip cast no
- * shadow of its own and the body's edge "ended" abruptly at
- * the tip's connection point, looking visually broken. Using
- * filter: drop-shadow on the wrapper paints one continuous
- * shadow around the rectangle-plus-triangle outline. */
+/* Popup wrapper - edge, halo and shadow all live here (not on
+ * .content) so they follow the COMBINED silhouette of body + tip as
+ * a single shape. With the shadow on .content alone, the tip cast no
+ * shadow of its own and the body's edge "ended" abruptly at the
+ * tip's connection point, looking visually broken. Using filter:
+ * drop-shadow on the wrapper paints one continuous outline around
+ * the rectangle-plus-triangle shape.
+ *
+ * Same chrome as the FABs and the on-trail chip: a sharp 1 px edge,
+ * the soft halo, then the raised shadow. The edge is four cardinal
+ * 1 px drop-shadow() passes rather than a border: a border on
+ * .content would stop at the vendor tip triangle (eight anchor
+ * variants, each a CSS border trick). Each pass dilates the painted
+ * silhouette by one pixel in its direction, so the four together
+ * ring the whole shape, tip included, in a 1 px line of
+ * --popup-edge. That color is solid on purpose: the passes paint
+ * over map tiles, and stacking translucent passes would double up
+ * where they overlap (see --popup-edge). */
 .maplibregl-popup {
-    filter: drop-shadow(0 3px 12px var(--sheet-shadow));
+    filter:
+        drop-shadow(1px 0 0 var(--popup-edge))
+        drop-shadow(-1px 0 0 var(--popup-edge))
+        drop-shadow(0 1px 0 var(--popup-edge))
+        drop-shadow(0 -1px 0 var(--popup-edge))
+        drop-shadow(0 0 4px var(--fab-halo-color))
+        drop-shadow(var(--elev-raised));
 }
 
 .maplibregl-popup-content {
