@@ -105,6 +105,8 @@
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.2);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.3);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.22);
+    /* Bottom-docked sheets cast upward onto the map. */
+    --elev-sheet-bottom: 0 -2px 12px rgba(0, 0, 0, 0.18);
     /* Soft halo just outside the FAB border (Google Maps Android
      * style: a sharp line at the button edge, then a slight
      * translucent ring around it). The opaque --sheet-border is tuned
@@ -335,6 +337,7 @@
     --elev-raised: 0 2px 6px rgba(0, 0, 0, 0.55);
     --elev-floating: 0 4px 16px rgba(0, 0, 0, 0.65);
     --elev-sheet: 0 8px 32px rgba(0, 0, 0, 0.6);
+    --elev-sheet-bottom: 0 -2px 12px rgba(0, 0, 0, 0.6);
     /* Light halo and edge for dark mode: the light scheme's darkening
      * versions vanish against dark basemap tiles and the dark FAB.
      * --fab-halo re-resolves from the color, no override needed. */
@@ -1897,7 +1900,7 @@ body::after {
     color: var(--sheet-text);
     border: 1px solid var(--sheet-border);
     border-radius: var(--radius-surface);
-    box-shadow: 0 6px 24px var(--sheet-shadow);
+    box-shadow: var(--elev-sheet);
     max-width: 480px;
     width: calc(100vw - 32px);
     max-height: 80vh;
@@ -3083,7 +3086,7 @@ body::after {
     background: var(--sheet-bg);
     color: var(--sheet-text);
     line-height: 1.45;
-    box-shadow: 0 4px 24px var(--sheet-shadow);
+    box-shadow: var(--elev-sheet);
     visibility: hidden;
     animation: boot-fallback-reveal 0s linear 10s forwards;
 }
@@ -3746,7 +3749,7 @@ body.fabs-labeled .fab-label {
     border-top: 1px solid var(--sheet-border);
     border-top-left-radius: var(--radius-surface);
     border-top-right-radius: var(--radius-surface);
-    box-shadow: 0 -2px 12px var(--sheet-shadow);
+    box-shadow: var(--elev-sheet-bottom);
     display: flex;
     flex-direction: column;
     padding-bottom: var(--safe-bottom);
@@ -4089,7 +4092,7 @@ body.modal-open .qr-overlay.is-open {
     border-top: 1px solid var(--sheet-border);
     border-top-left-radius: var(--radius-surface);
     border-top-right-radius: var(--radius-surface);
-    box-shadow: 0 -2px 12px var(--sheet-shadow);
+    box-shadow: var(--elev-sheet-bottom);
     display: flex;
     flex-direction: column;
     padding-bottom: var(--safe-bottom);
