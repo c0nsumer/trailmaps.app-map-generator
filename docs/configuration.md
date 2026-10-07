@@ -1229,12 +1229,15 @@ maps:
 | `mtb.currentTrail` | Boolean: Show Current Trail row on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
 | `mtb.units` | `"mi"` or `"km"` |
+| `mtb.savedView` | JSON: the last map view (center and zoom, plus the selected route, rating, point, or trail if any) and a timestamp. A relaunched map opens on it if it is less than six hours old. A share link wins over it |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
 | `mtb.routePanelExpanded` | Boolean: the key panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |
 
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.
+
+The saved view expires six hours after the last map move.
 
 While Locate is on, the chip that names the trail under the rider is resolved on
 the device from the position fix the map already has for the Locate dot.

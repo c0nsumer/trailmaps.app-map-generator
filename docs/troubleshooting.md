@@ -15,6 +15,7 @@ issues](#known-issues).
 - [Console warning: beforeinstallpromptevent preventDefault() called](#console-warning-beforeinstallpromptevent-preventdefault-called)
 - [Off-screen indicator points to the wrong location](#off-screen-indicator-points-to-the-wrong-location)
 - ["Updated map available" toast doesn't appear after deploy](#updated-map-available-toast-doesnt-appear-after-deploy)
+- [The map opens where I left it instead of the whole trail system](#the-map-opens-where-i-left-it-instead-of-the-whole-trail-system)
 - [Build is slow](#build-is-slow)
 - [Known issues](#known-issues)
 
@@ -180,6 +181,15 @@ just deployed and refreshed but no toast appears:
   exists. That means the deploy is an update rather than a first
   install. A fresh browser profile or cleared site data won't
   trigger it.
+
+## The map opens where I left it instead of the whole trail system
+
+This is expected. The map saves its last view in the browser. If you open
+it again within six hours of your last move, it opens on that view.
+
+- To see the whole map, pinch out.
+- To get the whole-map start back, wait six hours.
+- To reset it now, clear the site's browser data.
 
 ## Build is slow
 

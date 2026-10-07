@@ -206,8 +206,11 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.routePanelExpanded`: boolean (key panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
 - `mtb.units`: "mi" or "km"
+- `mtb.savedView`: the last map view (center and zoom, plus the selected
+  route or point if any), kept for six hours so a relaunched map opens where
+  it was left
 
-The app also writes two one-shot flags to `sessionStorage`, which is scoped to one tab. One holds the camera and highlight across a map-update reload. The other holds the "Map updated" toast flag. Each is removed as soon as it is read.
+The app also writes one flag to `sessionStorage`, which is scoped to one tab. It is the "Map updated" toast flag. The app removes it as soon as it reads it.
 
 Nothing else is stored. No identifiers, no geolocation traces, no analytics
 payloads.
