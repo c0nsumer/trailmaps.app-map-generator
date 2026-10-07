@@ -262,6 +262,8 @@ relation with a repeated member, with a link to each repeated way. A relation
 describes the signed route, so each way normally appears once. An out-and-back
 event course lists a way twice on purpose. Such a course appears in this list
 on every build. Every other repeat is usually a mapping error.
+To list the repeats from every built map in one worklist, run
+`python tools/list_repeated_members.py`.
 
 The audit reads the pre-enrichment snapshot, so custom routes (not OSM's to
 fix) never reach it.
@@ -658,6 +660,7 @@ tools/
   build_and_deploy.sh Convenience wrapper: validate then build then optional rsync deploy
   clean_config.py     Re-align a production YAML against the canonical template
   list_relations.py   Diagnostic: list the OSM relations a map is built from
+  list_repeated_members.py  Worklist of relations that repeat a way, across built maps
   update_webfont_coverage.py  Regenerate the committed coverage sidecar for each bundled webfont
   README.md           Tool documentation
 

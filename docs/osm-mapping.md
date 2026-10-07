@@ -77,6 +77,15 @@ way at the turnaround point, and repeat only the ridden part. The build's
 [OSM data notes](building.md#osm-data-notes) list every repeated member, so you
 can confirm each one is intended.
 
+Do not repeat a way in a relation unless the relation documents a posted
+route with out-and-back sections. A repeated member is usually a mapping
+mistake, such as a way added twice by accident. The build flags every
+relation that lists a way more than once, so you can check each one and
+either remove the duplicate or confirm it is intended. To list all of them
+across a set of generated maps, run `python tools/list_repeated_members.py`
+after a build. It reads each map's OSM data notes and prints a worklist
+grouped by map, with an iD link and a JOSM link for each relation.
+
 ### Super-relations (multi-loop trail systems)
 
 A trail system organized as several named loops or sub-routes under one

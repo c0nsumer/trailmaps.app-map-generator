@@ -4,8 +4,12 @@
 Maintainer helper for fixing OSM by hand. Each build writes
 ``cache/osm_diff/<slug>/data-notes.md``; this reads the "Relations that list
 a way more than once" section from every one and prints a worklist grouped
-by map: the relation, its name, an edit link, and each repeated way with
-its multiplier.
+by map: the relation, its name, an iD edit link, a JOSM remote-control link,
+and each repeated way with its multiplier.
+
+The JOSM link needs JOSM running with remote control enabled (Preferences >
+Remote Control). Opening it in a browser tells JOSM to download the relation
+and its members.
 
 The JSON sidecar only carries counts, so the markdown is the source of the
 ids. Purely offline: it reads the cache and never builds or fetches.
@@ -83,6 +87,12 @@ def _way_url(wid):
     return f"https://www.openstreetmap.org/way/{wid}"
 
 
+def _josm_url(rid):
+    # JOSM's remote control listens on localhost:8111. relation_members=true
+    # downloads the member ways too, so the repeats are visible on load.
+    return f"http://127.0.0.1:8111/load_object?objects=r{rid}&relation_members=true"
+
+
 def render(result):
     out = []
     for slug, items in result.items():
@@ -95,6 +105,7 @@ def render(result):
             out.append(f"    relation {rid}" if local else f"    {_rel_url(rid)}")
             if not local:
                 out.append(f"    edit: https://www.openstreetmap.org/edit?relation={rid}")
+                out.append(f"    josm: {_josm_url(rid)}")
             for w in it["ways"]:
                 tag = f"  ({w['times']}x)" if w["times"] > 2 else ""
                 wid = w["id"]
