@@ -207,8 +207,8 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.welcomed`: boolean (welcome modal dismissal)
 - `mtb.units`: "mi" or "km"
 - `mtb.savedView`: the last map view (center and zoom, plus the selected
-  route or point if any), kept for six hours so a relaunched map opens where
-  it was left
+  route, point, or tapped spot if any), kept for six hours so a relaunched
+  map opens where it was left
 
 The app also writes one flag to `sessionStorage`, which is scoped to one tab. It is the "Map updated" toast flag. The app removes it as soon as it reads it.
 
