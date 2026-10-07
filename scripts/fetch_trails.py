@@ -15,11 +15,12 @@ import json
 import math
 import os
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, datetime
 
 import cli
 import console
+from compute_route_stats import repeat_meters
 
 # Shared narrow-resolution loader (handles ``osm_file:`` only - the
 # full path-resolution path lives in build.py for the standard
@@ -744,6 +745,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
         console.step(f"Stage B: Extracting ways for {len(relations)} relations...", detail=True)
         all_ways = extract_ways(parsed, list(relations.keys()))
+        member_lists = {rid: parsed[2].get(rid, {}).get("members") or [] for rid in relations}
         _log_way_counts(relations, all_ways)
         if not any(all_ways.values()):
             console.error(
@@ -785,6 +787,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         all_ways, ways_osm_base = fetch_all_ways_bulk(
             list(relations.keys()), cache_dir, refresh=refresh
         )
+        member_lists = {rid: info.get("members") or [] for rid, info in relations.items()}
         _log_way_counts(relations, all_ways)
         # Same guard as the relations stage. overpass.py does not cache an
         # empty response so that a hiccup is retried, but an empty trail
@@ -817,6 +820,23 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     for rel_id in winter_relation_ids:
         if rel_id in relations:
             relations[rel_id]["seasonal"] = "winter"
+
+    # The ways dicts are keyed by way id, so a way a relation lists twice
+    # (an out-and-back) survives only once; measure the extra passes now,
+    # while the member list is at hand. Written only when nonzero, so a
+    # map without repeats keeps byte-identical metadata. The repeated way
+    # ids ride along for the OSM data notes, which list each one for the
+    # curator to confirm.
+    repeat_m = {}
+    repeated_ways = {}
+    for rel_id in relations:
+        way_refs = [m["ref"] for m in member_lists.get(rel_id, []) if m.get("type") == "way"]
+        extra = round(repeat_meters(way_refs, all_ways.get(rel_id, {})))
+        if extra > 0:
+            repeat_m[rel_id] = extra
+        repeats = {str(wid): n for wid, n in Counter(way_refs).items() if n >= 2}
+        if repeats:
+            repeated_ways[rel_id] = repeats
 
     # Build way-to-relations mapping
     way_relations = build_way_to_relations_map(all_ways)
@@ -958,6 +978,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
                 "colour": info["colour"],
                 "ref": info["ref"],
                 "seasonal": info.get("seasonal", ""),
+                **({"repeat_m": repeat_m[rel_id]} if rel_id in repeat_m else {}),
+                **({"repeated_ways": repeated_ways[rel_id]}
+                   if rel_id in repeated_ways else {}),
             }
             for rel_id, info in relations.items()
         },

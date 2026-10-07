@@ -12,6 +12,7 @@ from compute_route_stats import (
     _chain_segments,
     compute_and_attach,
     compute_distances,
+    repeat_meters,
 )
 from geodesy import haversine_m
 
@@ -57,6 +58,22 @@ def _line_m(coords):
 def test_compute_distances_counts_each_route_once():
     distances = compute_distances(_fc())
     assert distances["100"] == round(_line_m(_SEG_A) + _line_m(_SEG_B))
+    assert distances["200"] == round(_line_m(_SEG_B))
+
+
+def test_repeat_meters_counts_each_pass_beyond_the_first():
+    ways = {1: {"coords": _SEG_A}, 2: {"coords": _SEG_B}}
+    assert repeat_meters([1, 2], ways) == 0
+    assert repeat_meters([1, 2, 1], ways) == _line_m(_SEG_A)
+    assert repeat_meters([1, 1, 2, 1], ways) == 2 * _line_m(_SEG_A)
+    assert repeat_meters([9, 9, 2], ways) == 0
+
+
+def test_compute_distances_adds_repeat_m():
+    g = _fc()
+    g["metadata"]["routes"]["100"]["repeat_m"] = 500
+    distances = compute_distances(g)
+    assert distances["100"] == round(_line_m(_SEG_A) + _line_m(_SEG_B) + 500)
     assert distances["200"] == round(_line_m(_SEG_B))
 
 

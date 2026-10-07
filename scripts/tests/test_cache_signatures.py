@@ -70,7 +70,7 @@ def test_unchanged_config_and_file_reuse_the_cache(built):
 def test_changed_relations_trigger_a_refetch(built):
     needs, reason = _trails_needs_refetch(built, dict(CONFIG, relations=[1, 2, 3, 4]))
     assert needs
-    assert "config inputs changed" in reason
+    assert "fetch inputs or base format changed" in reason
 
 
 def test_styling_edit_does_not_trigger_a_refetch(built):
@@ -119,3 +119,13 @@ def test_sidecar_without_a_content_line_is_trusted(tmp_path):
         f.write("{}")
     _save_signature(path, _trails_fetch_fingerprint(CONFIG))
     assert _trails_needs_refetch(path, CONFIG) == (False, None)
+
+
+def test_a_base_format_bump_refetches_an_existing_base(built, monkeypatch):
+    import cache_signatures
+
+    assert _trails_needs_refetch(built, CONFIG) == (False, None)
+    monkeypatch.setattr(cache_signatures, "TRAILS_BASE_FORMAT",
+                        cache_signatures.TRAILS_BASE_FORMAT + 1)
+    needs, reason = _trails_needs_refetch(built, CONFIG)
+    assert needs and "base format" in reason

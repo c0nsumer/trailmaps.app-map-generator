@@ -607,7 +607,9 @@ featured routes boots with the card expanded; the panel starts expanded
 whenever the card fits comfortably in the viewport. The card shows each
 course's color and name. When
 [`show_distance`](configuration.md#build-time-data-gates) is on, it also
-shows distance. Tapping a row highlights that course and fits it in view.
+shows distance. The distance counts repeated member ways, so an out-and-back
+course measures as ridden (see [Relation members](osm-mapping.md#relation-members)).
+Tapping a row highlights that course and fits it in view.
 
 ## What event mode leaves unchanged
 

@@ -146,6 +146,8 @@ relations:
 # For difficulty-mode relations this also gates the per-rating and per-trail
 # distances shown in the key, the finder, and the tap popup. Set false to hide
 # every distance.
+# Route distance counts a way once per relation membership, so an out-and-back
+# listed twice measures as ridden.
 # show_distance: true
 
 # Max distance (m) from a visible trail for a feature / marker POI to render.

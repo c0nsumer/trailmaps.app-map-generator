@@ -4,6 +4,15 @@
                             segment lengths per route. No data
                             dependency and no network.
 
+Distance comes from two stages. Every build sums each route's ways
+once, by haversine over the cached GeoJSON. The fetch adds
+``repeat_m`` to the route's metadata: the length of every extra pass
+the relation lists, such as a way ridden out and back. Both loaders
+key ways by id, so a repeated member is gone from the GeoJSON, and
+only the fetch still sees the member list (see repeat_meters). The
+fetch re-runs over cached Overpass responses on every build, so no
+refresh is needed; an absent field counts as zero.
+
 Output: writes ``distance_m`` (integer meters) into
 trails_geojson["metadata"]["routes"][<id>]. The runtime reads it and
 formats it in the viewer's chosen units. Distance is cheap and not
@@ -30,6 +39,10 @@ def _coords_for_route(features, route_id):
 
     Segments come back in feature order, since a route has no canonical
     traversal through its junctions.
+
+    A way the relation lists more than once still appears once here.
+    Its extra passes reach the total through the fetch-time
+    ``repeat_m``, not by re-walking features.
     """
     target = str(route_id)
     out = []
@@ -43,19 +56,45 @@ def _coords_for_route(features, route_id):
     return out
 
 
+def repeat_meters(member_way_ids, ways):
+    """Return the meters a relation rides again on ways it lists twice or more.
+
+    ``member_way_ids`` is the relation's ordered way refs, repeats kept;
+    ``ways`` is its ``{way_id: {"coords": [[lon, lat], ...]}}`` dict.
+    Every appearance of a way beyond its first adds that way's
+    haversine length. A ref missing from ``ways`` adds nothing.
+
+    This runs at fetch time because only the fetch has per-way
+    geometry: build_geojson fuses consecutive ways into one feature, so
+    a single way's length cannot be recovered from the GeoJSON later.
+    """
+    seen = set()
+    total = 0.0
+    for wid in member_way_ids:
+        if wid not in seen:
+            seen.add(wid)
+            continue
+        coords = (ways.get(wid) or {}).get("coords") or []
+        for (lon1, lat1), (lon2, lat2) in zip(coords, coords[1:]):
+            total += _haversine_m(lon1, lat1, lon2, lat2)
+    return total
+
+
 def compute_distances(trails_geojson):
     """Return ``{route_id: distance_m_int}`` for every route in metadata.
 
     Sums haversine distance along each segment, then sums segment totals
-    per route. Cheap (~few thousand sqrt's per typical map). Always
-    returns an int (rounded meters); routes with no geometry get 0.
+    per route, then adds the route's fetch-time ``repeat_m`` for ways
+    the relation rides more than once. Cheap (~few thousand sqrt's per
+    typical map). Always returns an int (rounded meters); routes with
+    no geometry get 0.
     """
     metadata = trails_geojson.get("metadata") or {}
     routes = metadata.get("routes") or {}
     features = trails_geojson.get("features") or []
     out = {}
-    for route_id in routes.keys():
-        total = 0.0
+    for route_id, info in routes.items():
+        total = float((info or {}).get("repeat_m") or 0)
         for line in _coords_for_route(features, route_id):
             for (lon1, lat1), (lon2, lat2) in zip(line, line[1:]):
                 total += _haversine_m(lon1, lat1, lon2, lat2)
@@ -131,6 +170,9 @@ def compute_and_attach(trails_geojson, config):
 
     MUST run on canonical geometry: one feature per route per run of
     way. Geometry that repeats a route's ways inflates its stats.
+    A way the relation lists more than once enters only through the
+    fetch-time ``repeat_m``, which compute_distances adds to the
+    once-per-way sum.
     """
     routes = trails_geojson.setdefault("metadata", {}).setdefault("routes", {})
     if not routes or not config.get("show_distance", True):

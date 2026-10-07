@@ -64,7 +64,18 @@ A single physical trail can belong to multiple routes, for example a connector
 segment shared between two loops. Tag it as a member of **every** route
 relation it belongs to. The renderer collapses duplicates by way ID. It tracks
 the "shared routes" set on each geometry feature so taps surface the right
-thing.
+thing. The map draws each way once however many relations list it. Route
+distance is the one exception, described next.
+
+A relation describes the signed route, so it normally lists each way once.
+An out-and-back event course is the exception: it lists the way it rides out
+and back twice. The route distance counts both passes, so the route measures
+as ridden. Per-trail lengths, per-rating totals,
+and the tapped-section length still measure the ground once. If the route turns
+around partway along a way, repeating the member cannot express that. Split the
+way at the turnaround point, and repeat only the ridden part. The build's
+[OSM data notes](building.md#osm-data-notes) list every repeated member, so you
+can confirm each one is intended.
 
 ### Super-relations (multi-loop trail systems)
 

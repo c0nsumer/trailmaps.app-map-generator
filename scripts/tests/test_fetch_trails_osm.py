@@ -137,3 +137,69 @@ def test_a_file_without_the_member_ways_stops_the_fetch(tmp_path, capsys):
     out = capsys.readouterr()
     assert "No ways of relations [-5]" in out.out + out.err
     assert not (tmp_path / "trails.geojson").exists()
+
+
+# Relation 40 rides way 400 out and back, so it lists the way twice;
+# relation 50 lists it once.
+_OUT_BACK = {40: [400, 400], 50: [400]}
+_OUT_BACK_WAY = [[-87.0, 46.0], [-87.0, 46.001]]
+
+
+def _out_back_osm():
+    (lon1, lat1), (lon2, lat2) = _OUT_BACK_WAY
+    out = ["<osm version='0.6'>",
+           f"<node id='4001' lat='{lat1}' lon='{lon1}' />",
+           f"<node id='4002' lat='{lat2}' lon='{lon2}' />",
+           "<way id='400'><nd ref='4001' /><nd ref='4002' /></way>"]
+    for rid, ways in _OUT_BACK.items():
+        out.append(f"<relation id='{rid}'><tag k='name' v='R{rid}' />")
+        out += [f"<member type='way' ref='{w}' role='' />" for w in ways]
+        out.append("</relation>")
+    out.append("</osm>")
+    return "".join(out)
+
+
+def _out_back_overpass(query, cache_dir, **kw):
+    if kw["label"] == "relations":
+        return {"elements": [
+            {"type": "relation", "id": rid, "tags": {"name": f"R{rid}"},
+             "members": [{"type": "way", "ref": w, "role": ""} for w in ways]}
+            for rid, ways in _OUT_BACK.items()]}
+    elements = []
+    for rid in _OUT_BACK:
+        if f"relation({rid})" not in query:
+            continue
+        elements.append({"type": "relation", "id": rid})
+        elements.append({"type": "way", "id": 400, "geometry": [
+            {"lon": lon, "lat": lat} for lon, lat in _OUT_BACK_WAY]})
+    return {"elements": elements}
+
+
+def test_a_way_listed_twice_adds_repeat_m(tmp_path):
+    from geodesy import haversine_m
+
+    osm = tmp_path / "t.osm"
+    osm.write_text(_out_back_osm(), encoding="utf-8")
+    config = {"name": "M", "slug": "m", "relations": [40, 50], "osm_file": str(osm)}
+    gj = fetch_trails(config, str(tmp_path / "trails.geojson"), cache_dir=str(tmp_path / "c"))
+    routes = gj["metadata"]["routes"]
+    assert routes["40"]["repeat_m"] == round(haversine_m(*_OUT_BACK_WAY[0], *_OUT_BACK_WAY[1]))
+    assert "repeat_m" not in routes["50"]
+    assert routes["40"]["repeated_ways"] == {"400": 2}
+    assert "repeated_ways" not in routes["50"]
+
+
+def test_overpass_repeat_m_matches_the_file(tmp_path, monkeypatch):
+    import fetch_trails
+
+    monkeypatch.setattr(fetch_trails, "overpass_query", _out_back_overpass)
+    base = {"name": "M", "slug": "m", "relations": [40, 50]}
+    via_api = fetch_trails.fetch_trails(base, str(tmp_path / "a.geojson"),
+                                        cache_dir=str(tmp_path / "c"))
+    osm = tmp_path / "t.osm"
+    osm.write_text(_out_back_osm(), encoding="utf-8")
+    via_file = fetch_trails.fetch_trails(dict(base, osm_file=str(osm)),
+                                         str(tmp_path / "b.geojson"),
+                                         cache_dir=str(tmp_path / "c"))
+    assert via_api["metadata"]["routes"] == via_file["metadata"]["routes"]
+    assert via_api["metadata"]["routes"]["40"]["repeat_m"] > 0

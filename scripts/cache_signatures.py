@@ -60,12 +60,22 @@ def _clear_signature(output_path):
         console.warn(f"could not remove {_signature_path(output_path)}: {e}")
 
 
+# Format of the trails base fetch_trails() writes. Bump it whenever the
+# fetch starts writing something new into trails.src.geojson (a metadata
+# field, a property), so every existing base refetches once from the
+# cached Overpass responses, offline, instead of being reused without the
+# new field until the curator happens to pass --refresh-trails.
+#   2: route metadata carries repeat_m and repeated_ways (2026-10-06)
+TRAILS_BASE_FORMAT = 2
+
+
 def _trails_fetch_fingerprint(config):
-    """Stable hash of every config key fetch_trails() consumes. When
-    this changes between builds, the cached trails.src.geojson is stale
-    even though it exists on disk - adding a relation to
-    clipped_relations, swapping osm_file, or editing direction_schedule
-    all flip the hash and force a refetch.
+    """Stable hash of every config key fetch_trails() consumes, plus the
+    base format version. When this changes between builds, the cached
+    trails.src.geojson is stale even though it exists on disk - adding a
+    relation to clipped_relations, swapping osm_file, editing
+    direction_schedule, or an engine upgrade that bumps
+    TRAILS_BASE_FORMAT all flip the hash and force a refetch.
 
     custom_routes is intentionally NOT in the fingerprint:
     _enrich_trails_geojson runs idempotently on every build and folds
@@ -77,6 +87,7 @@ def _trails_fetch_fingerprint(config):
     tool when a file's contents change without the path changing.
     """
     inputs = {
+        "base_format": TRAILS_BASE_FORMAT,
         "relations": sorted(config.get("relations") or []),
         "clipped_relations": sorted(config.get("clipped_relations") or []),
         "winter_relations": sorted(config.get("winter_relations") or []),
@@ -144,7 +155,10 @@ def _trails_needs_refetch(trails_path, config):
     stored_fp = lines[0] if lines else ""
     expected_fp = _trails_fetch_fingerprint(config)
     if stored_fp != expected_fp:
-        return True, f"config inputs changed since last fetch ({stored_fp!r} → {expected_fp!r})"
+        return True, (
+            f"fetch inputs or base format changed since last fetch "
+            f"({stored_fp!r} → {expected_fp!r})"
+        )
 
     stored_content = None
     for ln in lines[1:]:
