@@ -124,6 +124,10 @@ changed bbox re-extracts tiles.
   Leave both on for deploys (see [Building unminified output](#building-unminified-output-for-local-debug)).
 - `--quiet` suppresses step and progress output. Only warnings and
   errors remain.
+- Color marks the `warn:`, `error:` and `note:` prefixes and the OSM data
+  notes heading. It appears only when stdout is a terminal. Set `NO_COLOR`
+  to turn it off, or `FORCE_COLOR` to keep it in a log viewer that renders
+  ANSI. Piped or captured output is always plain text.
 - `--verbose` prints the full build log. It adds the per-relation
   listing, every file written, the cache file behind each Overpass
   response, and the final table of output files. It does not replay
