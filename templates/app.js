@@ -769,7 +769,8 @@ function watchSystemColorScheme() {
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
 // mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
-// mtb.welcomed, mtb.fabsLabeled, mtb.currentTrail, mtb.units. No key
+// mtb.welcomed, mtb.fabsLabeled, mtb.currentTrail, mtb.units,
+// mtb.savedView (the last camera and highlight, see saveView()). No key
 // is shared across maps: every setting belongs to one map.
 // ============================================================
 // Per-map "what's visible by default on first visit" gate. The build
@@ -3025,9 +3026,9 @@ function validateConfigShape() {
 }
 
 // Module-scope holding pen for a parsed share-link state. Set in
-// init() from the share link or the resumed view before map
-// construction; consumed by the post-
-// trails-load handler to apply the highlight (and discarded after).
+// init() from the share link or the saved view before map
+// construction; consumed by the post-trails-load handler to apply the
+// highlight (and discarded after).
 let _pendingShareHighlight = null;
 
 // The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
@@ -3347,32 +3348,45 @@ function consumeShareHash() {
 }
 
 // ============================================================
-// Update-reload view continuity
+// Saved view: the last camera and highlight, kept across relaunches
 // ============================================================
-// An update reload (the silent swap at load, or the toast's Reload
-// button) replaces the page mid-session; without help the rider
-// snaps from wherever they were back to the default fit and loses
-// their highlight. reloadForUpdate() stashes the current view in
-// sessionStorage immediately before reloading, and the next load
-// consumes it exactly once as its initial view.
+// A phone locked mid-ride often comes back to a cold load: Chrome
+// discards a background tab, Android kills the PWA process, or an
+// update reload (the silent swap at load, or the toast's Reload
+// button) replaces the page. Without help each of those snaps the
+// rider back to the default fit and drops their highlight. So the
+// current view is persisted ambiently and the next load opens on it.
 //
-// sessionStorage, not localStorage: per-tab, survives exactly the
-// reload, evaporates with the tab; the same store the post-update
-// toast flag (SW_UPDATED_FLAG) uses. The stash is one-shot (deleted
-// on read whether used or not) and time-bounded (ignored when older
-// than RESUME_VIEW_MAX_AGE_MS, covering a stash whose reload never
-// happened, e.g. a tab killed mid-swap and restored hours later
-// with its sessionStorage intact). Only the camera + highlight need
-// stashing: toggles, season, and label state already persist in
-// slug-prefixed localStorage.
-const RESUME_VIEW_KEY = LS_PREFIX + "sw-resume-view";
-const RESUME_VIEW_MAX_AGE_MS = 2 * 60 * 1000;
+// localStorage, not sessionStorage: sessionStorage does not survive a
+// Chrome tab discard or an Android process kill, which is exactly the
+// mid-ride case that matters. The key carries the slug prefix like
+// every other LS key, so maps on one origin never share a view.
+//
+// Fresh for six hours measured from the LAST write, so an ongoing ride
+// keeps it alive and a next-morning open shows the whole map again.
+// A negative age (clock set back) counts as fresh rather than
+// discarding a view the rider just left.
+//
+// Written on moveend and when the page goes hidden. A crash-style
+// reload fires no lifecycle event, so moveend is what keeps the stored
+// camera current; the hide write is the last reliable moment before a
+// freeze or discard, captures a highlight changed without a camera
+// move, and refreshes the timestamp for a rider who opened the map and
+// never moved it.
+//
+// A stored center outside CONFIG.panBbox is ignored: a rebuilt map
+// whose extent moved should open on its default fit, not on the pan
+// wall MapLibre would clamp the old center to. A rejected view is left
+// in place; the next move overwrites it. Only the camera and highlight
+// are stored here: toggles, season and labels persist under their own
+// keys.
+const VIEW_KEY = "mtb.savedView";
+const VIEW_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-// Drop-in replacement for window.location.reload() on the update
-// paths. Best-effort: any failure (map not constructed yet, private
-// mode, storage quota) just reloads without continuity, which is
-// exactly the pre-feature behavior.
-function reloadForUpdate() {
+// Best-effort, never throws: before the map exists there is nothing to
+// save, and LS.set swallows private-mode and quota failures.
+function saveView() {
+    if (!map) return;
     try {
         const c = map.getCenter();
         const state = {
@@ -3392,47 +3406,51 @@ function reloadForUpdate() {
             state.highlight = { kind: "poi", key: _poiHighlightRef };
         } else if (sharedTrailName()) {
             state.highlight = { kind: "trail", key: sharedTrailName() };
+        } else if (_pendingShareHighlight) {
+            // Trails have not loaded yet, so the restored highlight is
+            // still pending. A boot-time moveend (a canvas resize) or a
+            // lock before load must not erase it from the saved view.
+            state.highlight = {
+                kind: _pendingShareHighlight.kind,
+                key: _pendingShareHighlight.key,
+            };
         }
-        window.sessionStorage.setItem(RESUME_VIEW_KEY, JSON.stringify(state));
+        LS.set(VIEW_KEY, state);
     } catch (e) {
-        // Continuity is a nicety; the update is not. Reload anyway.
+        // Continuity is a nicety; a failed save must not break a pan
+        // or an update reload.
     }
+}
+
+// Drop-in replacement for window.location.reload() on the update
+// paths, so the reloaded page opens on the view the rider had.
+function reloadForUpdate() {
+    saveView();
     window.location.reload();
 }
 
-// Read AND delete the stash (one-shot regardless of whether the
-// caller ends up using it), returning the same {center, zoom,
-// highlight} shape consumeShareHash() produces, or null when the
-// stash is absent, stale, or malformed.
-function consumeResumeView() {
-    let raw = null;
-    try {
-        raw = window.sessionStorage.getItem(RESUME_VIEW_KEY);
-        if (raw !== null) window.sessionStorage.removeItem(RESUME_VIEW_KEY);
-    } catch (e) {
-        return null; // private mode / storage disabled
-    }
-    if (!raw) return null;
-    let s = null;
-    try {
-        s = JSON.parse(raw);
-    } catch (e) {
-        return null;
-    }
+// Returns the same {center, zoom, highlight} shape consumeShareHash()
+// produces, or null when the saved view is absent, stale, malformed,
+// or outside this build's pan extent.
+function readSavedView() {
+    const s = LS.get(VIEW_KEY, null);
     if (!s || typeof s !== "object") return null;
     if (!Number.isFinite(s.savedAt)
-        || Date.now() - s.savedAt > RESUME_VIEW_MAX_AGE_MS) {
+        || Date.now() - s.savedAt > VIEW_MAX_AGE_MS) {
         return null;
     }
     if (!Array.isArray(s.center) || s.center.length !== 2
         || !isViewInRange(s.center[0], s.center[1], s.zoom)) {
         return null;
     }
+    const [lon, lat] = s.center;
+    const pb = CONFIG.panBbox;
+    if (lon < pb[0] || lat < pb[1] || lon > pb[2] || lat > pb[3]) return null;
     const h = s.highlight;
     return {
-        center: s.center,
+        center: [lon, lat],
         zoom: s.zoom,
-        highlight: (h && h.kind && highlightHasKey(h))
+        highlight: (h && typeof h === "object" && h.kind && highlightHasKey(h))
             ? { kind: String(h.kind), key: String(h.key) }
             : null,
     };
@@ -3637,12 +3655,9 @@ async function init() {
     // after trails load. The share hash is also stripped from the URL
     // here, it's a one-shot view restoration, not ambient state.
     const shareState = consumeShareHash();
-    // Update-reload continuity: a one-shot stash written by
-    // reloadForUpdate() just before an update reload. Consumed
-    // (deleted) unconditionally so it can never linger, but a share
-    // link beats it.
-    const resumeView = consumeResumeView();
-    const viewState = shareState || resumeView;
+    // Otherwise the saved view from the last session on this map, if
+    // fresh: a share link is an explicit request and beats it.
+    const viewState = shareState || readSavedView();
     if (viewState && viewState.highlight) {
         _pendingShareHighlight = viewState.highlight;
     }
@@ -3657,12 +3672,12 @@ async function init() {
     // to match panBbox so real tiles fill the full pannable
     // envelope.
     //
-    // Share-link / update-resume override: when a #share= hash was
-    // consumed above (or an update reload stashed its view), we use
-    // explicit center+zoom instead of bounds so the rider lands on
-    // the exact prior view. maxBounds still applies; if that view is
-    // somehow outside panBbox (shouldn't happen on the same map
-    // version) MapLibre will clamp it to the wall.
+    // Share-link / saved-view override: when a #share= hash was
+    // consumed above (or a fresh saved view was read), we use explicit
+    // center+zoom instead of bounds so the rider lands on the exact
+    // prior view. maxBounds still applies; a share link pointing
+    // outside panBbox gets clamped to the wall (readSavedView() already
+    // rejects an out-of-extent saved view).
     const mapOptions = {
         container: "map",
         style: style,
@@ -3769,6 +3784,11 @@ async function init() {
     map.once("render", fixStaleCanvasSize);
     document.addEventListener("visibilitychange", () => {
         if (!document.hidden) fixStaleCanvasSize();
+    });
+    // Saved-view writers; see the block comment above saveView().
+    map.on("moveend", saveView);
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) saveView();
     });
 
     // Controls
@@ -13209,7 +13229,7 @@ function rebuildBasemapLayers() {
 // complete). Net rider experience: old map paints instantly, a thin
 // bar runs a few seconds, one quick refresh, current data, a
 // one-shot "Map updated" toast (via a sessionStorage flag set just
-// before the reload). View state survives via the resume-view stash
+// before the reload). View state survives via the saved view
 // (reloadForUpdate).
 //
 // Found mid-session (deploy while the map is open). Auto-reloading a
