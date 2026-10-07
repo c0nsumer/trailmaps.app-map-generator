@@ -175,6 +175,45 @@ Two more flags are available:
 - `--cache-dir` sets the Overpass cache directory. The default is
   `<repo>/cache`.
 
+## list_repeated_members.py
+
+Lists every relation that repeats a member way, across all the maps you
+have built. Each build writes the repeats to
+`cache/osm_diff/<slug>/data-notes.md`. This tool reads those files and
+prints one worklist, grouped by map. Use it to clean up the OSM data by
+hand. Out-and-back routes repeat a way on purpose, so confirm each repeat
+before you remove it. [Mapping for this framework](../docs/osm-mapping.md#relation-members)
+explains when a repeat is correct.
+
+For each relation, the worklist shows the relation name, an openstreetmap.org
+link, an iD edit link, and a JOSM link. Each repeated way follows, with a
+multiplier when the relation lists it more than twice. Relations and ways with
+a negative id come from an unuploaded local OSM file. They have no
+openstreetmap.org page, so the tool prints them as-is and marks them
+`[local]`.
+
+The JOSM link needs JOSM running with remote control enabled. Enable it under
+Preferences > Remote Control. Opening the link in a browser tells JOSM to
+download the relation and its members.
+
+The tool works purely from the local cache. It never builds or fetches.
+
+### Usage
+
+```bash
+# Every map with a data-notes.md
+python tools/list_repeated_members.py
+
+# Only these slugs
+python tools/list_repeated_members.py bloomer drvg
+
+# Machine-readable output
+python tools/list_repeated_members.py --json
+
+# Read a different cache directory
+python tools/list_repeated_members.py --cache-dir /path/to/cache
+```
+
 ## update_webfont_coverage.py
 
 Regenerates the `.coverage.json` sidecar for each `.woff2` or `.woff` file in
