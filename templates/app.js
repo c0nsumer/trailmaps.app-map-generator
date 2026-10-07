@@ -3031,6 +3031,14 @@ function validateConfigShape() {
 // highlight (and discarded after).
 let _pendingShareHighlight = null;
 
+// True while applyPendingShareHighlight runs. The restored or shared
+// camera is already in effect from the map constructor, and it is the
+// view the rider chose; a highlight's own fit or fly would override it
+// a second or two after boot. The popups and the arrival pulse still
+// open, because each also arms a POI_ARRIVAL_FALLBACK_MS timer for a
+// fit that never fires moveend.
+let _applyingPendingView = false;
+
 // The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
 // what a clean URL opens on. There is no control that returns to it:
 // rotation and pitch are off and panning is bounded (maxBounds), so a
@@ -3040,42 +3048,48 @@ const HOME_VIEW_PADDING = 50;
 // Apply a highlight that was parsed from an incoming share link.
 // Called once, after trails + indexes are loaded. The view portion
 // (zoom / center) of the share link is already in effect via map
-// construction options. Best-effort: silently no-ops if the
-// referenced route, trail, or POI no longer exists in the data (so a
-// stale link doesn't render an error).
+// construction options, and the highlight is applied without its own
+// camera move so that view stays in effect. Best-effort: silently
+// no-ops if the referenced route, trail, or POI no longer exists in the
+// data (so a stale link doesn't render an error).
 function applyPendingShareHighlight() {
     const h = _pendingShareHighlight;
     _pendingShareHighlight = null;
     if (!h || !h.kind || !highlightHasKey(h)) return;
-    if (h.kind === "route") {
-        // h.key is the OSM relation ID (or custom-route ID), matching
-        // the keys of CONFIG.routes. Verify before calling: only a
-        // route-mode relation has lanes of its own to lift.
-        if (isRouteMode(h.key)) {
-            highlightRoute(h.key);
+    _applyingPendingView = true;
+    try {
+        if (h.kind === "route") {
+            // h.key is the OSM relation ID (or custom-route ID), matching
+            // the keys of CONFIG.routes. Verify before calling: only a
+            // route-mode relation has lanes of its own to lift.
+            if (isRouteMode(h.key)) {
+                highlightRoute(h.key);
+            }
+        } else if (h.kind === "trail") {
+            // h.key is the trail name as-stored on each feature's
+            // trail_name property. A trail link restores what the finder
+            // shows for it (showTrail): the popup and the lift.
+            // Sanity-check that at least one feature carries the name so
+            // a stale link opens plain.
+            if (trailIndex.some((t) => t.name === h.key)) {
+                showTrail(h.key);
+            }
+        } else if (h.kind === "rating") {
+            // h.key is a rating ("2", or "" for unrated). Applied only
+            // while the key lists it, so a link to a rating this map no
+            // longer shows (or a map with no rating lanes) opens plain.
+            if (keyRatings().includes(h.key)) {
+                highlightRating(h.key);
+            }
+        } else if (h.kind === "poi") {
+            // h.key is a Finder row descriptor (poi:/group:/refgroup:/category:).
+            // highlightPoiByRef resolves it against the live POI index and
+            // re-creates the single / group / category highlight, or no-ops
+            // if nothing matches.
+            highlightPoiByRef(h.key);
         }
-    } else if (h.kind === "trail") {
-        // h.key is the trail name as-stored on each feature's
-        // trail_name property. A trail link restores what the finder
-        // shows for it (showTrail): the fit, the popup and the lift.
-        // Sanity-check that at least one feature carries the name so
-        // a stale link opens plain.
-        if (trailIndex.some((t) => t.name === h.key)) {
-            showTrail(h.key);
-        }
-    } else if (h.kind === "rating") {
-        // h.key is a rating ("2", or "" for unrated). Applied only
-        // while the key lists it, so a link to a rating this map no
-        // longer shows (or a map with no rating lanes) opens plain.
-        if (keyRatings().includes(h.key)) {
-            highlightRating(h.key);
-        }
-    } else if (h.kind === "poi") {
-        // h.key is a Finder row descriptor (poi:/group:/refgroup:/category:).
-        // highlightPoiByRef resolves it against the live POI index and
-        // re-creates the single / group / category highlight, or no-ops
-        // if nothing matches.
-        highlightPoiByRef(h.key);
+    } finally {
+        _applyingPendingView = false;
     }
 }
 
@@ -8773,7 +8787,9 @@ function highlightPoiSet(pois, label) {
     _reconcileForcedTypes(newTypes);
 
     // Fit map. Single → flyTo with zoom-up. Multiple → fitBounds.
-    if (_highlightedPois.length === 1) {
+    if (_applyingPendingView) {
+        // Restored or shared view: the camera stays where the rider left it.
+    } else if (_highlightedPois.length === 1) {
         const p = _highlightedPois[0];
         map.flyTo({
             center: [p.lng, p.lat],
@@ -8894,6 +8910,7 @@ function clearHighlight() {
 // (featureColorKey), the same set highlightRating lights; "" is a real
 // key (unrated), so the selectors test for undefined, not falsiness.
 function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
+    if (_applyingPendingView) return;
     if (!routesData) return;
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
     let hasCoords = false;
