@@ -28,6 +28,9 @@ FUNCTIONS = [
     "buildShareUrl",
     "shareBaseUrl",
     "sharedTrailName",
+    "spotKey",
+    "sharedSpotKey",
+    "parseSpotKey",
 ]
 
 # Each case sets the stub state, then either builds a link and consumes
@@ -45,8 +48,13 @@ for (const c of src.cases) {
         map: { getCenter: () => ({ lng: c.lng, lat: c.lat }), getZoom: () => c.zoom },
         highlight: c.highlight || null,
         _poiHighlightRef: null,
-        _trailPopup: c.trail ? {} : null,
-        tapLiftTrail: c.trail || null,
+        maplibregl: { LngLat: { convert: ([lng, lat]) => ({ lng, lat }) } },
+        _trailPopup: c.trail || c.spot ? {} : null,
+        // A finder pick shares the name; a tap shares its spot.
+        _trailPopupScope: c.spot ? "section" : "trail",
+        _trailPopupAnchor: c.spot ? c.spot.anchor : null,
+        _trailPopupHit: c.spot ? { properties: { trail_name: c.spot.name } } : null,
+        tapLiftTrail: c.trail || (c.spot && c.spot.name) || null,
     };
     ctx.window = {
         location: { href: "https://example.test/map/", hash: "" },
@@ -98,12 +106,16 @@ def test_valid_links_round_trip():
         {**base, "trail": "Sentier de l'Écureuil"},
         {**base, "highlight": {"kind": "route", "key": "12345"}},
         {**base, "highlight": {"kind": "rating", "key": ""}},
+        {**base, "spot": {"anchor": [-87.123456, 45.678912], "name": "Bob's / Loop"}},
+        {**base, "spot": {"anchor": [-87.123456, 45.678912], "name": None}},
     ]
     expected = [
         {"kind": "trail", "key": "Bob's / Loop"},
         {"kind": "trail", "key": "Sentier de l'Écureuil"},
         {"kind": "route", "key": "12345"},
         {"kind": "rating", "key": ""},
+        {"kind": "spot", "key": "45.67891,-87.12346/Bob's / Loop"},
+        {"kind": "spot", "key": "45.67891,-87.12346"},
     ]
     for res, want in zip(_run(cases), expected, strict=True):
         assert res["view"] == {
@@ -122,4 +134,15 @@ def test_valid_links_round_trip():
 def test_unusable_links_open_the_default_view(hash_):
     [res] = _run([{"hash": hash_, "lng": 0, "lat": 0, "zoom": 0}])
     assert res["view"] is None
+    assert res["stripped"]
+
+
+@pytest.mark.parametrize("hash_", [
+    "#share=14/45/-87/s/abc",
+    "#share=14/45/-87/s/95,-87%2FLoop",
+    "#share=14/45/-87/s/%2C-87",
+])
+def test_malformed_spot_keeps_the_view_and_drops_the_highlight(hash_):
+    [res] = _run([{"hash": hash_, "lng": 0, "lat": 0, "zoom": 0}])
+    assert res["view"] == {"center": [-87, 45], "zoom": 14, "highlight": None}
     assert res["stripped"]

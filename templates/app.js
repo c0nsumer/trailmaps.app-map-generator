@@ -1201,7 +1201,7 @@ function closeTrailPopup() {
 // popup's Length row measures, so the lit stretch and the number agree.
 // A section and an unnamed edge are both a set of edge ids, which wins
 // over the name for the lift; the name is still kept for a section,
-// because sharedTrailName shares the open popup by it.
+// because the share title and a spot link name the trail by it.
 // An edge id is an index into one graph, so the lift remembers which
 // graph it came from and drops out rather than light different
 // edges once that graph is replaced. (A visibility change, the one
@@ -3087,7 +3087,98 @@ function applyPendingShareHighlight() {
             // re-creates the single / group / category highlight, or no-ops
             // if nothing matches.
             highlightPoiByRef(h.key);
+        } else if (h.kind === "spot") {
+            // h.key is a tapped spot (spotKey). It reopens the tap's own
+            // popup and section lift at the tapped point. The lane layer
+            // arrives after trails load and needs a build at this zoom to
+            // answer a query, so a miss here waits for the next build
+            // (retryPendingSpot) instead of giving up.
+            const spot = parseSpotKey(h.key);
+            if (spot && !openSpot(spot)) _pendingSpot = spot;
         }
+    } finally {
+        _applyingPendingView = false;
+    }
+}
+
+// A restored spot that missed at apply time, held for one retry from
+// the next lane build. One retry and not a loop: a spot that misses a
+// built layer is stale, and a stale link must not keep reaching for
+// the map while the rider moves it. Dropped by anything that opens or
+// closes a popup or replaces the view (cancelPendingTrailPopup), so a
+// late fallback never lands over a newer choice.
+let _pendingSpot = null;  // { anchor: [lon, lat], name } | null
+
+// The share and saved-view key for a tapped spot: "<lat>,<lon>", plus
+// "/<name>" for a named trail. Five decimals, like the share center.
+// The name goes last and unencoded so a name with slashes survives; the
+// share hash percent-encodes the whole key.
+function spotKey(anchor, name) {
+    const ll = maplibregl.LngLat.convert(anchor);
+    const key = `${ll.lat.toFixed(5)},${ll.lng.toFixed(5)}`;
+    return name ? `${key}/${name}` : key;
+}
+
+// The open popup's spot key when a map tap opened it, or null. A finder
+// pick (scope "trail") asked for the whole name and shares by it.
+function sharedSpotKey() {
+    if (!_trailPopup || !_trailPopupAnchor || _trailPopupScope !== "section") return null;
+    const props = (_trailPopupHit && _trailPopupHit.properties) || {};
+    return spotKey(_trailPopupAnchor, props.trail_name || "");
+}
+
+// Inverse of spotKey: { anchor: [lon, lat], name | null }, or null for
+// a key that does not hold a real coordinate. Keys arrive from links
+// and storage, so nothing here may throw.
+function parseSpotKey(key) {
+    if (typeof key !== "string") return null;
+    const slash = key.indexOf("/");
+    const coords = (slash < 0 ? key : key.slice(0, slash)).split(",");
+    if (coords.length !== 2 || !coords[0] || !coords[1]) return null;
+    const lat = Number(coords[0]);
+    const lon = Number(coords[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)
+        || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+        return null;
+    }
+    const name = slash < 0 ? "" : key.slice(slash + 1);
+    return { anchor: [lon, lat], name: name || null };
+}
+
+// Opens the tap popup for a spot, the way the tap did, with the
+// finder's lane query and 30 px reach (openTrailPopupOnRun): the anchor
+// sits on the lane it came from, so the nearest lane is the tapped one
+// unless the data changed. A hit on a different trail (or a named lane
+// for an unnamed spot) is refused, so a stale link opens plain. True
+// when a popup opened.
+function openSpot({ anchor, name }) {
+    if (!laneLayer) return false;
+    const tolerancePx = 30;
+    const match = (hit) => (hit && hit.properties
+        && (hit.properties.trail_name || null) === name ? hit : null);
+    const hit = match(laneLayer.queryLaneAt(anchor, map.getZoom(), tolerancePx))
+        || match(laneLayer.queryLane(map.project(anchor), tolerancePx));
+    if (!hit) return false;
+    openTrailPopup(hit, anchor);
+    return true;
+}
+
+// The one retry for a held spot, run from the lane build callback. The
+// restore flag is set because the named fallback is the finder's
+// whole-trail popup (showTrail), whose camera fit must stand down: the
+// camera is the shared or saved one. An unnamed spot has no fallback.
+// It runs in the boot path's spirit, so a bad spot is swallowed.
+function retryPendingSpot() {
+    const spot = _pendingSpot;
+    _pendingSpot = null;
+    _applyingPendingView = true;
+    try {
+        if (!openSpot(spot) && spot.name
+            && trailIndex.some((t) => t.name === spot.name)) {
+            showTrail(spot.name);
+        }
+    } catch (e) {
+        // A spot is a nicety; a failure must not break the lane build.
     } finally {
         _applyingPendingView = false;
     }
@@ -3125,10 +3216,14 @@ function buildShareUrl() {
         // single-highlight invariant. consumeShareHash + highlightPoiByRef
         // re-expand it against live data on the receiving side.
         path += `/p/${encodeURIComponent(_poiHighlightRef)}`;
+    } else if (sharedSpotKey()) {
+        // A tapped trail's popup, named or not, shares the tapped spot so
+        // the receiver gets the same section and anchor. Popups come
+        // last: a popup is a look, gone on the next tap, and a selection
+        // that is still on the map is the more deliberate thing to pass on.
+        path += `/s/${encodeURIComponent(sharedSpotKey())}`;
     } else if (sharedTrailName()) {
-        // A named trail's popup. It comes last: a popup is a look, gone
-        // on the next tap, and a selection that is still on the map is
-        // the more deliberate thing to pass on.
+        // A finder pick's popup asked for the whole name and shares it.
         path += `/t/${encodeURIComponent(sharedTrailName())}`;
     }
     const url = new URL(shareBaseUrl());
@@ -3207,9 +3302,9 @@ function buildShareTitle() {
     return baseTitle;
 }
 
-// The named trail whose popup is open, which a share link or an update
-// reload carries as a /t/ link, or null. An unnamed way's popup has no
-// name to restore it by, so it shares as a plain view.
+// The named trail whose popup is open, or null. It names the trail in
+// the share title, and a finder pick's popup shares and saves as /t/ by
+// it. A tapped popup, named or not, travels as its spot (sharedSpotKey).
 function sharedTrailName() {
     return _trailPopup && tapLiftTrail ? tapLiftTrail : null;
 }
@@ -3297,7 +3392,7 @@ function isViewInRange(lon, lat, zoom) {
         && Number.isFinite(zoom) && zoom >= 0 && zoom <= 24;
 }
 
-// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/d/<rating>|/p/<poiRef>]"
+// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/s/<spotKey>|/d/<rating>|/p/<poiRef>]"
 // hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
 // null if no share hash is present / parseable. Side effect: strips
 // any share hash, parseable or not, from the URL via
@@ -3348,6 +3443,7 @@ function consumeShareHash() {
             // plain.
             if (kindCode === "r" && isRouteMode(key)) highlight = { kind: "route", key };
             else if (kindCode === "t") highlight = { kind: "trail", key };
+            else if (kindCode === "s" && parseSpotKey(key)) highlight = { kind: "spot", key };
             else if (kindCode === "d") {
                 highlight = { kind: "rating", key: key === "unrated" ? "" : key };
             }
@@ -3412,14 +3508,23 @@ function saveView() {
         // Same serialization the Share button uses: route and rating
         // highlights carry {kind, key}; a POI highlight (single,
         // group, or category) carries the Finder ref, re-expanded
-        // against live data on the receiving side; a named trail's
-        // popup carries the trail name.
+        // against live data on the receiving side; a tapped popup
+        // carries its spot and a finder pick's popup the trail name.
         if (highlight && highlight.kind && highlightHasKey(highlight)) {
             state.highlight = { kind: highlight.kind, key: highlight.key };
         } else if (_poiHighlightRef) {
             state.highlight = { kind: "poi", key: _poiHighlightRef };
+        } else if (sharedSpotKey()) {
+            state.highlight = { kind: "spot", key: sharedSpotKey() };
         } else if (sharedTrailName()) {
             state.highlight = { kind: "trail", key: sharedTrailName() };
+        } else if (_pendingSpot) {
+            // A restored spot still waiting for its lane build: a
+            // boot-time moveend must not erase it either.
+            state.highlight = {
+                kind: "spot",
+                key: spotKey(_pendingSpot.anchor, _pendingSpot.name),
+            };
         } else if (_pendingShareHighlight) {
             // Trails have not loaded yet, so the restored highlight is
             // still pending. A boot-time moveend (a canvas resize) or a
@@ -7518,6 +7623,7 @@ function refreshLaneSymbols() {
 }
 
 function onLaneBuild() {
+    if (_pendingSpot) retryPendingSpot();
     if (!map.isMoving()) refreshLaneSymbols();
 }
 
@@ -8106,6 +8212,7 @@ let _trailPopupTimer = null;
 let _trailPopupMoveHandler = null;
 
 function cancelPendingTrailPopup() {
+    _pendingSpot = null;
     if (_trailPopupTimer !== null) {
         clearTimeout(_trailPopupTimer);
         _trailPopupTimer = null;
