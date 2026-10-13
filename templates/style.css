@@ -2833,8 +2833,13 @@ body::after {
 /* ----- Geolocate user dot ------------------------------------------ */
 /* Same specificity as the vendor rules and loaded after them, so no
  * !important is needed. */
+/* The fill alone washed out over park fill, contours and hillshade, so
+ * the circle's size (the fix's quality) was hard to judge. A thin ring
+ * marks the edge while the fill stays light enough to read the trails
+ * under it. Inset, so the ring sits inside the radius MapLibre sizes. */
 .maplibregl-user-location-accuracy-circle {
     background-color: color-mix(in srgb, var(--user-dot) 15%, transparent);
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--user-dot) 55%, transparent);
 }
 
 .maplibregl-user-location-dot {
