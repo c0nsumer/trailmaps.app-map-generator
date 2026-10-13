@@ -9748,6 +9748,9 @@ function rebuildRoutePanel() {
         appendRatingRows(list, rated);
     }
     if (ratings.includes("")) appendRatingRows(list, [""]);
+    // A freeride row's pill is wider than the 18px mark column; widen
+    // the column for every row instead, so names stay aligned.
+    list.classList.toggle("has-freeride", rated.some(isFreerideKey));
     syncRoutePanelActiveRow();
 }
 
@@ -12324,6 +12327,8 @@ function rebuildFinderList() {
     // As Tab stops, a 150-row list sat between the filters and the
     // wrap back to the input.
     const rows = list.querySelectorAll(".finder-row");
+    // As the route panel: a listed pill widens every row's mark column.
+    list.classList.toggle("has-freeride", !!list.querySelector(".finder-row-glyph.is-freeride"));
     rows.forEach((row, i) => {
         row.id = `finder-opt-${i}`;
         row.tabIndex = -1;

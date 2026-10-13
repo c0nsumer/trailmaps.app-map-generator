@@ -1004,6 +1004,24 @@ body::after {
     width: auto;
 }
 
+/* In the key rows and the finder, a listed pill (30px at 15px tall)
+ * widens the mark column to match, so the names line up instead of
+ * the pill rows reading as indented. The other marks keep their 18px
+ * and pad out to 30px rather than stretch: a line swatch would grow
+ * longer than every other list's, and the dashed swatch's SVG is
+ * pinned at 18px. Finder place rows pad their 22px marker the same way. */
+.has-freeride .route-panel-glyph:not(.is-freeride),
+.has-freeride .route-panel-swatch,
+.has-freeride .finder-row-glyph:not(.is-freeride),
+.has-freeride .finder-row-swatch,
+.has-freeride .finder-row-trail-mark {
+    margin-right: 12px;
+}
+
+.has-freeride .finder-row-poi-swatch {
+    margin-right: 8px;
+}
+
 .opt-key-name {
     font-size: 11px;
     line-height: 1.3;
