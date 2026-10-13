@@ -20,6 +20,14 @@ import console
 LOGO_DESKTOP_W = 200
 LOGO_DESKTOP_H = 48
 
+# Corner radius, as a fraction of the shorter side, for the bundled
+# placeholder's on-page copy. The placeholder is a square full-bleed
+# tile, and everywhere else it shows (home screens, map listings) a
+# platform or page rounds it, 7px on a 26px tile being typical; square
+# on the page, it read as a different mark. Only the logo.webp is
+# rounded: the PWA icons stay square because the platforms mask them.
+DEFAULT_BRAND_CORNER_RATIO = 7 / 26
+
 
 def logo_output_filename(source_path):
     """Return the filename the logo asset should be written as in the build dir.
@@ -154,7 +162,24 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
     return (int(round(vb_w)), int(round(vb_h)))
 
 
-def process_logo(source_path, output_path):
+def _round_corners(img, ratio):
+    """Return img (RGBA) with its corners cut to a radius of `ratio` times
+    the shorter side, antialiased by drawing the mask at 4x."""
+    from PIL import Image, ImageChops, ImageDraw
+
+    img = img.convert("RGBA")
+    w, h = img.size
+    ss = 4
+    mask = Image.new("L", (w * ss, h * ss), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, w * ss - 1, h * ss - 1), radius=ratio * min(w, h) * ss, fill=255,
+    )
+    mask = mask.resize((w, h), Image.Resampling.LANCZOS)
+    img.putalpha(ImageChops.multiply(img.getchannel("A"), mask))
+    return img
+
+
+def process_logo(source_path, output_path, corner_ratio=None):
     """Resample a logo source down to ~2× its on-screen render size and save.
 
     For raster sources the output is always WebP (even if the input was PNG/
@@ -169,6 +194,9 @@ def process_logo(source_path, output_path):
     intrinsic size for our `width: auto; height: auto; max-*` CSS to anchor.
     Without this, e.g. `<svg width="100%" height="100%" viewBox="0 0 600 600">`
     renders at 0x0 inside an <img>.
+
+    `corner_ratio` (raster only) rounds the output's corners to that
+    fraction of its shorter side; see DEFAULT_BRAND_CORNER_RATIO.
 
     Returns (width, height) integers - the dimensions actually written to
     output_path - for the caller to substitute into the brand-img HTML
@@ -224,6 +252,9 @@ def process_logo(source_path, output_path):
                 max(1, int(round(src_h * scale))),
             )
             img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+        if corner_ratio:
+            img = _round_corners(img, corner_ratio)
 
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size

@@ -19,3 +19,30 @@ def test_indexed_png_logo_is_resampled_smoothly(tmp_path):
 
     alpha = Image.open(out).convert("RGBA").getchannel("A")
     assert len(alpha.getcolors()) > 2
+
+
+def test_corner_ratio_rounds_the_corners_and_keeps_the_middle(tmp_path):
+    # The bundled placeholder is a full-bleed square; its on-page copy
+    # gets rounded corners while the edges' midpoints stay opaque.
+    src = tmp_path / "tile.png"
+    Image.new("RGB", (512, 512), (58, 107, 62)).save(src)
+
+    out = tmp_path / "logo.webp"
+    w, h = process_logo(str(src), str(out), corner_ratio=7 / 26)
+
+    alpha = Image.open(out).convert("RGBA").getchannel("A")
+    assert alpha.getpixel((0, 0)) == 0
+    assert alpha.getpixel((w - 1, h - 1)) == 0
+    assert alpha.getpixel((w // 2, 0)) == 255
+    assert alpha.getpixel((w // 2, h // 2)) == 255
+    assert len(alpha.getcolors()) > 2  # antialiased edge
+
+
+def test_no_corner_ratio_leaves_a_square_logo_opaque(tmp_path):
+    src = tmp_path / "tile.png"
+    Image.new("RGB", (512, 512), (58, 107, 62)).save(src)
+
+    out = tmp_path / "logo.webp"
+    process_logo(str(src), str(out))
+
+    assert Image.open(out).convert("RGBA").getpixel((0, 0))[3] == 255

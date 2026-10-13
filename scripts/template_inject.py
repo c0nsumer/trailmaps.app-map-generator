@@ -28,7 +28,7 @@ from font_trimmer import (
 )
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
-from logo import logo_output_filename, process_logo
+from logo import DEFAULT_BRAND_CORNER_RATIO, logo_output_filename, process_logo
 from pmtiles_util import EXTRACT_MINZOOM
 from validate_config import (
     DEFAULT_FIRST_VISIT_LAYERS,
@@ -1134,7 +1134,10 @@ def copy_assets(config, output_dir):
         # (None, None) for unrecognized SVGs / Pillow-missing / etc.;
         # copy_templates falls back to omitting the attributes in that
         # case, accepting the small CLS risk over emitting wrong dims.
-        config["_brand_img_dims"] = process_logo(logo_src, out_path)
+        config["_brand_img_dims"] = process_logo(
+            logo_src, out_path,
+            corner_ratio=DEFAULT_BRAND_CORNER_RATIO if config.get("_default_brand") else None,
+        )
         ship(config, out_name)
 
     # Secondary brand images (event + sponsor logos). Each is processed

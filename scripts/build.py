@@ -1054,6 +1054,9 @@ def apply_default_brand(config, project_root):
     if not os.path.isfile(default_icon):
         return False
     config["icon"] = default_icon
+    # Lets the on-page logo round the placeholder's corners
+    # (logo.DEFAULT_BRAND_CORNER_RATIO); a curator's icon is left as drawn.
+    config["_default_brand"] = True
     return True
 
 

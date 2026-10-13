@@ -37,6 +37,7 @@ def test_apply_default_brand_when_no_logo_or_icon():
     assert build.apply_default_brand(config, REPO_ROOT) is True
     assert config["icon"] == os.path.join(REPO_ROOT, "assets", "placeholder-logo.png")
     assert os.path.isfile(config["icon"])
+    assert config["_default_brand"] is True
 
 
 def test_apply_default_brand_skipped_when_icon_set():
@@ -45,6 +46,7 @@ def test_apply_default_brand_skipped_when_icon_set():
     config = {"icon": "/somewhere/custom-icon.png"}
     assert build.apply_default_brand(config, REPO_ROOT) is False
     assert config["icon"] == "/somewhere/custom-icon.png"
+    assert "_default_brand" not in config
 
 
 def test_apply_default_brand_skipped_when_logo_set():
