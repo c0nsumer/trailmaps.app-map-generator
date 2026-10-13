@@ -173,9 +173,16 @@ inside an orange oval, as on the NSAA freeride sign set. The renderer tests
 list membership, so `allmountain;freeride` counts. It does not count
 `downhill`, because the NSAA set ties the oval to freeride trails and shows
 downhill trails both with and without it. The oval only wraps a rated way. A
-freeride way with no `mtb:scale:imba` value shows no symbol. The
-text never says "freeride": the popup, key, and finder show the plain rating
-name beside the oval symbol.
+freeride way with no `mtb:scale:imba` value shows no symbol. The popup, key,
+and finder show the plain rating name beside the oval symbol. The word
+"Freeride" appears only once, in the Options legend that explains the oval.
+
+The engine reads `mtb:type` from the trail's ways, not from its route
+relation. Many networks tag `mtb:type` only on the relation (Copper Harbor
+does), and those tags change nothing on the map. To get the oval, tag
+`freeride` on the ways of the freeride line itself. That's also more precise:
+a relation tag would mark the whole route, not the one section that is a
+freeride line.
 
 Tag the segment's actual difficulty rather than what you wish were on the map. A
 segment without a rating renders as the default trail color (so it's still

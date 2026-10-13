@@ -603,9 +603,11 @@ on individual ways. Segments without this tag show no symbols.
 If a way's `mtb:type` list contains `freeride`, its symbol draws inside an
 orange oval. Rating 5 keeps its look inside the oval, and its white halo
 separates it from the orange. `downhill` does not count. The oval only wraps a
-rated way, so an unrated freeride way shows no symbol. Text never says
-"freeride". The tap popup, the key, and the finder show the plain rating name
-beside the oval symbol.
+rated way, so an unrated freeride way shows no symbol. The engine reads
+`mtb:type` from ways only; a route relation's `mtb:type` does not count. The
+tap popup, the key, and the finder show the plain rating name beside the oval
+symbol. The only "Freeride" text is the key strip's legend entry, described
+below.
 
 The symbols use ski-trail-style iconography. They are always oriented
 vertically (not rotated to follow the trail line) and include a white halo for
