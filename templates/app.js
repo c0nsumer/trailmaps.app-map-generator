@@ -997,6 +997,7 @@ function glyphCanvas(w, h, draw) {
 // halo as every other glyph (it sits on any basemap) plus a thin darker
 // edge, and the symbol keeps its own white halo: that halo is what
 // separates the orange rating-5 double diamond from the orange pill.
+// A null rating draws the bare pill, the key strip's freeride entry.
 const FREERIDE_ICON_H = 28;
 const FREERIDE_ICON_W = 56;
 const FREERIDE_INNER_SCALE = 0.9;
@@ -1028,6 +1029,7 @@ function drawFreerideOval(ctx, rating) {
     ctx.strokeStyle = FREERIDE_EDGE;
     ctx.lineWidth = 1;
     ctx.stroke();
+    if (!rating) return;
 
     const s = RATING_ICON_SIZE * FREERIDE_INNER_SCALE;
     ctx.save();
@@ -1382,8 +1384,8 @@ function difficultyGlyphWidth(key, height) {
 
 // Fill in the difficulty rating key under the Options Difficulty row:
 // one glyph + official IMBA name per rating THIS map actually carries
-// (CONFIG.difficultyRatings and CONFIG.freerideRatings, build-time
-// scans of mtb:scale:imba values on plain and freeride ways; see the
+// (CONFIG.difficultyRatings and CONFIG.freerideRatings together,
+// build-time scans of mtb:scale:imba values on plain and freeride ways; see the
 // trail-property scan in template_inject.py). Reuses
 // difficultyIconDataUrl so the key and the on-map diamonds are the same
 // canvas render and can't drift apart.
@@ -1406,46 +1408,45 @@ function difficultyGlyphWidth(key, height) {
 function buildDifficultyKey() {
     const strip = document.getElementById("difficulty-key");
     if (!strip) return;
-    // Freeride ways get their own line, headed "Freeride": the legend
-    // is the one place that explains the pill, so the label lives here
-    // and nowhere else. Each pill keeps its plain rating's name so the
-    // inner symbol needn't be matched against the line above.
-    const plain = sortColorKeys((CONFIG.difficultyRatings || []).map(String))
-        .filter((k) => k !== "");
-    const freeride = sortColorKeys(
-        (CONFIG.freerideRatings || []).map((n) => `${n}${FREERIDE_KEY_SUFFIX}`),
-    );
-    if (!plain.length && !freeride.length) return;
+    // Legend style: the first line lists every rating on the map as its
+    // plain symbol, whether plain or freeride ways carry it, and a
+    // second line explains the modifier once, as a bare orange pill
+    // named "Freeride". A rating isn't listed twice, and the legend is
+    // the one place that names the pill; everywhere else the pill
+    // stands next to the plain rating name.
+    const freerideRatings = CONFIG.freerideRatings || [];
+    const keys = sortColorKeys([...new Set(
+        [...(CONFIG.difficultyRatings || []), ...freerideRatings].map(String),
+    )]).filter((k) => k !== "");
+    if (!keys.length) return;
     strip.textContent = "";
-    for (const key of [...plain, ...freeride]) {
-        const url = difficultyIconDataUrl(key);
-        if (!url) continue;
-        if (key === freeride[0]) {
-            if (strip.children.length) {
-                const brk = document.createElement("li");
-                brk.className = "opt-key-break";
-                brk.setAttribute("aria-hidden", "true");
-                strip.appendChild(brk);
-            }
-            const label = document.createElement("li");
-            label.className = "opt-key-group";
-            label.textContent = "Freeride";
-            strip.appendChild(label);
-        }
+    const addItem = (url, name, freeride) => {
         const li = document.createElement("li");
         li.className = "opt-key-item";
         const img = document.createElement("img");
         img.className = "opt-key-glyph";
-        if (isFreerideKey(key)) img.classList.add("is-freeride");
+        if (freeride) img.classList.add("is-freeride");
         img.src = url;
         // Decorative: the adjacent name text already carries the meaning.
         img.alt = "";
         li.appendChild(img);
-        const name = document.createElement("span");
-        name.className = "opt-key-name";
-        name.textContent = keyName(key);
-        li.appendChild(name);
+        const label = document.createElement("span");
+        label.className = "opt-key-name";
+        label.textContent = name;
+        li.appendChild(label);
         strip.appendChild(li);
+    };
+    for (const key of keys) {
+        const url = difficultyIconDataUrl(key);
+        if (url) addItem(url, keyName(key), false);
+    }
+    if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
+        const brk = document.createElement("li");
+        brk.className = "opt-key-break";
+        brk.setAttribute("aria-hidden", "true");
+        strip.appendChild(brk);
+        addItem(glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
+            (ctx) => drawFreerideOval(ctx, null)).toDataURL(), "Freeride", true);
     }
     if (strip.children.length) strip.classList.remove("hidden");
 }
