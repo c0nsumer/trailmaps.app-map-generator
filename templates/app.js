@@ -899,6 +899,15 @@ const IMBA_RATINGS = [
 // The mtb:scale:imba values that draw a glyph: "0" through "5".
 const RATED_KEYS = new Set(IMBA_RATINGS.map((_, i) => String(i)));
 
+// A freeride way's key is its rating plus this suffix ("2f"), so its
+// ways get their own lanes, key row, highlight and finder mark while
+// sharing the plain rating's color and name.
+const FREERIDE_KEY_SUFFIX = "f";
+
+// Every rated color key in the key's order: each rating, then its
+// freeride twin right after it.
+const RATING_KEYS = IMBA_RATINGS.flatMap((_, i) => [String(i), `${i}${FREERIDE_KEY_SUFFIX}`]);
+
 function drawDifficultyShape(ctx, size, rating) {
     const cx = size / 2;
     const cy = size / 2;
@@ -979,20 +988,82 @@ function glyphCanvas(w, h, draw) {
     return canvas;
 }
 
-function ratingCanvas(rating) {
+// A freeride way's glyph: the plain symbol inside an orange pill, as on
+// the NSAA freeride signs (the orange is sampled from that art, ~2.2:1).
+// The canvas is taller than the plain glyph's so the symbol keeps 90%
+// of its plain size inside the pill, where fitting it into a 24 px
+// height would shrink it to ~75% and blur the square/diamond/double
+// distinction at overview zooms. The pill gets the same white outer
+// halo as every other glyph (it sits on any basemap) plus a thin darker
+// edge, and the symbol keeps its own white halo: that halo is what
+// separates the orange rating-5 double diamond from the orange pill.
+const FREERIDE_ICON_H = 28;
+const FREERIDE_ICON_W = 56;
+const FREERIDE_INNER_SCALE = 0.9;
+const FREERIDE_FILL = "#F29326";
+const FREERIDE_EDGE = "#B8661A";
+
+function drawFreerideOval(ctx, rating) {
+    const w = FREERIDE_ICON_W;
+    const h = FREERIDE_ICON_H;
+    const m = 2;   // the halo's outer half
+    const rad = (h - 2 * m) / 2;
+    function pillPath() {
+        ctx.beginPath();
+        ctx.moveTo(m + rad, m);
+        ctx.lineTo(w - m - rad, m);
+        ctx.arc(w - m - rad, h / 2, rad, -Math.PI / 2, Math.PI / 2);
+        ctx.lineTo(m + rad, h - m);
+        ctx.arc(m + rad, h / 2, rad, Math.PI / 2, Math.PI * 1.5);
+        ctx.closePath();
+    }
+    pillPath();
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    pillPath();
+    ctx.fillStyle = FREERIDE_FILL;
+    ctx.fill();
+    pillPath();
+    ctx.strokeStyle = FREERIDE_EDGE;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const s = RATING_ICON_SIZE * FREERIDE_INNER_SCALE;
+    ctx.save();
+    ctx.translate((w - s) / 2, (h - s) / 2);
+    ctx.scale(FREERIDE_INNER_SCALE, FREERIDE_INNER_SCALE);
+    drawDifficultyShape(ctx, RATING_ICON_SIZE, rating);
+    ctx.restore();
+}
+
+function ratingCanvas(rating, freeride = false) {
+    if (freeride) {
+        return glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
+            (ctx) => drawFreerideOval(ctx, rating));
+    }
     return glyphCanvas(RATING_ICON_SIZE, RATING_ICON_SIZE,
         (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, rating));
 }
 
+// The map image a rated color key draws: "imba-2", or "imba-2-fr" for
+// the freeride key "2f".
+function difficultyImageId(key) {
+    return `imba-${keyRating(key)}${isFreerideKey(key) ? "-fr" : ""}`;
+}
+
 function registerDifficultyIcons() {
     for (const rating of IMBA_RATINGS) {
-        if (map.hasImage(rating.id)) continue;
-        const canvas = ratingCanvas(rating);
-        map.addImage(rating.id, {
-            width: canvas.width,
-            height: canvas.height,
-            data: canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data,
-        }, { pixelRatio: GLYPH_PIXEL_RATIO });
+        for (const freeride of [false, true]) {
+            const id = freeride ? `${rating.id}-fr` : rating.id;
+            if (map.hasImage(id)) continue;
+            const canvas = ratingCanvas(rating, freeride);
+            map.addImage(id, {
+                width: canvas.width,
+                height: canvas.height,
+                data: canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data,
+            }, { pixelRatio: GLYPH_PIXEL_RATIO });
+        }
     }
 }
 
@@ -1287,22 +1358,33 @@ function refreshTapLift() {
     }).catch((e) => console.error("lanes: tap lift layout failed", e));
 }
 
-function difficultyIconDataUrl(imba) {
+// A color key's glyph ("2", or "2f" in the freeride pill) as a data
+// URL, or null for a key with no glyph.
+function difficultyIconDataUrl(key) {
     // The map's own test, so the popup never shows a rating glyph for
     // a way the lanes draw as unrated ("2+" parses as 2).
-    if (!isRatedDifficulty(imba)) return null;
-    const n = Number(imba);
-    const key = `imba-${n}`;
-    if (!_popupIconCache[key]) {
-        _popupIconCache[key] = ratingCanvas(IMBA_RATINGS[n]).toDataURL();
+    if (!isRatedKey(key)) return null;
+    const id = difficultyImageId(key);
+    if (!_popupIconCache[id]) {
+        _popupIconCache[id] = ratingCanvas(IMBA_RATINGS[Number(keyRating(key))],
+            isFreerideKey(key)).toDataURL();
     }
-    return _popupIconCache[key];
+    return _popupIconCache[id];
+}
+
+// An <img> of a key's glyph at `height` CSS px: the freeride pill is
+// wider than tall, so its width follows the canvas's aspect instead of
+// squeezing the pill into the plain glyph's square.
+function difficultyGlyphWidth(key, height) {
+    return isFreerideKey(key)
+        ? Math.round(height * FREERIDE_ICON_W / FREERIDE_ICON_H) : height;
 }
 
 // Fill in the difficulty rating key under the Options Difficulty row:
 // one glyph + official IMBA name per rating THIS map actually carries
-// (CONFIG.difficultyRatings, a build-time scan of mtb:scale:imba values;
-// see the trail-property scan in template_inject.py). Reuses
+// (CONFIG.difficultyRatings and CONFIG.freerideRatings, build-time
+// scans of mtb:scale:imba values on plain and freeride ways; see the
+// trail-property scan in template_inject.py). Reuses
 // difficultyIconDataUrl so the key and the on-map diamonds are the same
 // canvas render and can't drift apart.
 //
@@ -1324,23 +1406,29 @@ function difficultyIconDataUrl(imba) {
 function buildDifficultyKey() {
     const strip = document.getElementById("difficulty-key");
     if (!strip) return;
-    const ratings = CONFIG.difficultyRatings || [];
-    if (!ratings.length) return;
+    // Freeride ways list after the plain ways of their rating, each
+    // under the plain rating's name: the pill alone says freeride.
+    const keys = sortColorKeys([
+        ...(CONFIG.difficultyRatings || []).map(String),
+        ...(CONFIG.freerideRatings || []).map((n) => `${n}${FREERIDE_KEY_SUFFIX}`),
+    ]).filter((k) => k !== "");
+    if (!keys.length) return;
     strip.textContent = "";
-    for (const n of ratings) {
-        const url = difficultyIconDataUrl(n);
+    for (const key of keys) {
+        const url = difficultyIconDataUrl(key);
         if (!url) continue;
         const li = document.createElement("li");
         li.className = "opt-key-item";
         const img = document.createElement("img");
         img.className = "opt-key-glyph";
+        if (isFreerideKey(key)) img.classList.add("is-freeride");
         img.src = url;
         // Decorative: the adjacent name text already carries the meaning.
         img.alt = "";
         li.appendChild(img);
         const name = document.createElement("span");
         name.className = "opt-key-name";
-        name.textContent = RATING_NAMES[n] || `Rating ${n}`;
+        name.textContent = keyName(key);
         li.appendChild(name);
         strip.appendChild(li);
     }
@@ -1525,6 +1613,15 @@ function pointAtArcLength(segments, totalLength, arc) {
 // works across the visible range.
 const DECOR_RADIUS_M = {
     diamond:  35,
+    // A freeride way's symbol is the 2:1 pill (FREERIDE_ICON_W), which
+    // the map draws viewport-aligned, so along a north-south way its
+    // long side lies across the line and along an east-west way it
+    // runs with it. The disc covers the pill's half-width, scaled
+    // from the square glyph's, so no two pills (or a pill and a
+    // diamond) overlap at a junction whichever way they face. On a
+    // short skills line that leaves one pill where the per-way pass
+    // would place two, which reads better than two overlapping ones.
+    diamond_freeride: Math.round(35 * FREERIDE_ICON_W / RATING_ICON_SIZE),
     obstacle: 30,  // POI / parking / trailhead / feature markers
     // Cap on an overview label's clear disc, which scales with the
     // name's length (emitOverviewLabel). The largest radius placed, so
@@ -1719,6 +1816,7 @@ function collectCanonicalWays() {
             coords,
             trailName: props.trail_name || "",
             imba: props.imba_difficulty || "",
+            freeride: props.freeride === true,
             oneway: props.oneway || "",
             routeId,
             sharedRoutes: shared,
@@ -1744,7 +1842,7 @@ function collectCanonicalWays() {
 // see them in collision checks.
 function tryPlaceDecoration(way, candidateArcs, kind, minZoom,
                             decorations, placedIndex, extraPropsFn) {
-    const radius = DECOR_RADIUS_M.diamond;
+    const radius = diamondRadius(way);
     for (const arc of candidateArcs) {
         if (arc < 0 || arc > way.totalLength) continue;
         const pt = pointAtArcLength(way.segments, way.totalLength, arc);
@@ -1915,8 +2013,11 @@ function computeConnectedRuns(ways, isEligible, groupKey) {
 // footprints via the shared `placed` index and registers itself there so
 // detail-tier markers don't stack on it. extraPropsFn(way, pt) supplies the
 // kind-specific feature properties.
+// `radius` is meters, or a function of the way for markers whose
+// footprint depends on it (diamondRadius).
 function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
                            decorations, placed, extraPropsFn) {
+    const radiusOf = typeof radius === "function" ? radius : () => radius;
     const acceptedPts = [];
     const farEnough = (lng, lat) => {
         for (const p of acceptedPts) {
@@ -1931,6 +2032,7 @@ function placeOverviewRuns(runs, kind, radius, minZoom, spacingM,
             const pt = pointAtArcLength(w.segments, L, L * f);
             if (!pt) continue;
             if (!ignoreSpacing && !farEnough(pt.lng, pt.lat)) continue;
+            const radius = radiusOf(w);
             if (placedCollides(pt.lng, pt.lat, radius, placed)) continue;
             decorations.push({
                 type: "Feature",
@@ -1985,10 +2087,17 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
 function diamondProps(way) {
     return {
         imba_difficulty: way.imba,
+        freeride: way.freeride,
         trail_name: way.trailName,
         shared_routes: way.sharedRoutes,
         ...(way.colorKey != null && { color_key: way.colorKey }),
     };
+}
+
+// A way's difficulty marker footprint: the freeride pill is wider
+// than the square glyph (DECOR_RADIUS_M.diamond_freeride).
+function diamondRadius(way) {
+    return way.freeride ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
 }
 
 // Build the full decoration FeatureCollection for the current visible
@@ -2084,6 +2193,7 @@ function computeDecorations() {
                         // A rating highlight keeps its own ways' names
                         // bright (ratingIdentityMatch).
                         imba_difficulty: way.imba,
+                        freeride: way.freeride,
                         ...(way.colorKey != null && { color_key: way.colorKey }),
                     },
                 });
@@ -2112,10 +2222,12 @@ function computeDecorations() {
     //      out, without the per-way speckle. Placed before the
     //      per-way passes so they seed the collision index and
     //      coincident detail-tier diamonds get suppressed. ----
+    // Keyed like the lanes (wayKey), so a freeride line inside a blue
+    // loop keeps its own overview pill.
     const diamondRuns = computeConnectedRuns(ways,
         (w) => RATED_KEYS.has(w.imba),
-        (w) => w.imba);
-    placeOverviewRuns(diamondRuns, KIND.DIAMOND, DECOR_RADIUS_M.diamond,
+        (w) => w.imba + (w.freeride ? FREERIDE_KEY_SUFFIX : ""));
+    placeOverviewRuns(diamondRuns, KIND.DIAMOND, diamondRadius,
         DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
         diamondProps);
 
@@ -2193,6 +2305,7 @@ function computeDecorations() {
             emitOverviewLabel(tname, way,
                 { kind: KIND.TRAIL_LABEL_PT, trail_name: tname,
                   imba_difficulty: way.imba,
+                  freeride: way.freeride,
                   ...(way.colorKey != null && { color_key: way.colorKey }) });
         }
     }
@@ -2375,16 +2488,7 @@ function addDecorationLayers() {
             ],
             layout: {
                 "symbol-placement": "point",
-                "icon-image": [
-                    "match", ["get", "imba_difficulty"],
-                    "0", "imba-0",
-                    "1", "imba-1",
-                    "2", "imba-2",
-                    "3", "imba-3",
-                    "4", "imba-4",
-                    "5", "imba-5",
-                    "",
-                ],
+                "icon-image": ratingMatchExpr(difficultyImageId, ""),
                 "icon-size": ["interpolate", ["linear"], ["zoom"],
                     12, 0.5, 14, 0.7, 18, 1.0],
                 "icon-rotation-alignment": "viewport",
@@ -2605,7 +2709,8 @@ let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
 let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 
 // Single-highlight invariant: at most one route OR rating highlighted.
-// A rating key is "0".."5", or "" for unrated (wayRating). A trail is
+// A rating key is "0".."5", "0f".."5f" for freeride, or "" for unrated
+// (wayKey). A trail is
 // never a highlight: it opens a popup (showTrail, openTrailPopup).
 let highlight = null; // { kind: "route"|"rating", key: string } | null
 
@@ -3075,7 +3180,7 @@ function applyPendingShareHighlight() {
                 showTrail(h.key);
             }
         } else if (h.kind === "rating") {
-            // h.key is a rating ("2", or "" for unrated). Applied only
+            // h.key is a rating key ("2", "2f", or "" for unrated). Applied only
             // while the key lists it, so a link to a rating this map no
             // longer shows (or a map with no rating lanes) opens plain.
             if (keyRatings().includes(h.key)) {
@@ -3207,8 +3312,8 @@ function buildShareUrl() {
         // Unrated ("") travels as a word: an empty last segment would
         // be lost to any client that trims a trailing slash, and
         // consumeShareHash would then see too few parts and drop the
-        // highlight. The other keys are ratings "0".."5", so the word
-        // cannot collide with one.
+        // highlight. The other keys are ratings "0".."5" or freeride
+        // "0f".."5f", so the word cannot collide with one.
         path += `/d/${highlight.key === "" ? "unrated" : encodeURIComponent(highlight.key)}`;
     } else if (_poiHighlightRef) {
         // POI highlight (single, name-group, or category). The ref is the
@@ -5794,17 +5899,35 @@ function sharedArrowColor() {
     ];
 }
 
-// imba_difficulty → IMBA color, for the lane layer's per-key look
-// (laneKeyMeta).
+// Whether a raw mtb:scale:imba value is on the IMBA scale ("0".."5").
 function isRatedDifficulty(value) {
     // Test the value, never compare it: unrated ways carry an empty
     // string, and "" >= 0 is true, so a range check reads them as rating 0.
     return !!IMBA_RATINGS[Number(value)] && String(Number(value)) === String(value);
 }
 
-function difficultyColor(value) {
-    return isRatedDifficulty(value)
-        ? IMBA_RATINGS[Number(value)].color : CONFIG.defaultTrailColor;
+// Whether a color key is a rated one ("0".."5" or "0f".."5f"). Keys,
+// unlike raw tag values, can carry the freeride suffix, so a site
+// holding a key asks this rather than isRatedDifficulty.
+function isRatedKey(key) {
+    return typeof key === "string" && RATING_KEYS.includes(key);
+}
+
+function isFreerideKey(key) {
+    return isRatedKey(key) && key.endsWith(FREERIDE_KEY_SUFFIX);
+}
+
+// A rated key's plain rating ("2f" -> "2"), or "" for any other key.
+function keyRating(key) {
+    if (!isRatedKey(key)) return "";
+    return isFreerideKey(key) ? key.slice(0, -FREERIDE_KEY_SUFFIX.length) : key;
+}
+
+// A color key's IMBA color, for the lane layer's per-key look
+// (laneKeyMeta); a freeride key shares its plain rating's color.
+function difficultyColor(key) {
+    return isRatedKey(key)
+        ? IMBA_RATINGS[Number(keyRating(key))].color : CONFIG.defaultTrailColor;
 }
 
 // A way's rating as the difficulty model keys it: "0".."5", or "" for
@@ -5812,6 +5935,15 @@ function difficultyColor(value) {
 // that is how the map draws it (laneKeyMeta, ratingMatchExpr).
 function wayRating(value) {
     return isRatedDifficulty(value) ? String(Number(value)) : "";
+}
+
+// A way's color key from its tags: its rating, with the freeride suffix
+// when mtb:type names freeride (the `freeride` flag the fetch writes;
+// custom routes carry none). An unrated freeride way stays "": there is
+// no symbol to put in the pill.
+function wayKey(props) {
+    const rating = wayRating(props.imba_difficulty);
+    return rating && props.freeride === true ? rating + FREERIDE_KEY_SUFFIX : rating;
 }
 
 // The name a rider reads for a rating, as on the trailhead signs and
@@ -5842,13 +5974,13 @@ function unratedSwatchModel() {
 function featureColorKey(props) {
     const parents = props.shared_routes || [props.route_id];
     if (!parents.some((id) => visibleRoutes.has(id) && !isRouteMode(id))) return null;
-    return wayRating(props.imba_difficulty);
+    return wayKey(props);
 }
 
-// Whether a lane's color key is a rating lane's ("0".."5", or "" for
-// unrated) rather than a route-mode relation's id.
+// Whether a lane's color key is a rating lane's ("0".."5", "0f".."5f",
+// or "" for unrated) rather than a route-mode relation's id.
 function isRatingKey(key) {
-    return key === "" || isRatedDifficulty(key);
+    return key === "" || isRatedKey(key);
 }
 
 // The look of a rating's ways as a routeSwatchModel-shaped object, so
@@ -5856,23 +5988,25 @@ function isRatingKey(key) {
 // rating the way laneKeyMeta draws its lanes: the IMBA palette, or the
 // unrated look.
 function keyLook(key) {
-    if (isRatedDifficulty(key)) {
+    if (isRatedKey(key)) {
         return { color: difficultyColor(key), dashed: null, dashCap: null, dashColors: null };
     }
     return unratedSwatchModel();
 }
 
 // The name a rider reads for a rating key: the rating's name, or
-// "Unrated".
+// "Unrated". A freeride key reads as its plain rating; its pill glyph
+// is what says freeride.
 function keyName(key) {
-    return isRatedDifficulty(key) ? ratingName(key) : "Unrated";
+    return isRatedKey(key) ? ratingName(keyRating(key)) : "Unrated";
 }
 
-// Rating keys in the key's order: easiest first, then unrated last,
-// where a curator reads it as the data still to tag.
+// Rating keys in the key's order: easiest first, each freeride key
+// after its plain rating, then unrated last, where a curator reads it
+// as the data still to tag.
 function sortColorKeys(keys) {
     const list = [...keys];
-    const ratings = IMBA_RATINGS.map((_, i) => String(i)).filter((r) => list.includes(r));
+    const ratings = RATING_KEYS.filter((r) => list.includes(r));
     return ratings.concat(list.includes("") ? [""] : []);
 }
 
@@ -7255,7 +7389,7 @@ function laneKeyMeta(features) {
     for (const f of features) {
         const key = f.properties.color_key;
         if (key === undefined || meta[key]) continue;
-        if (isRatedDifficulty(key)) {
+        if (isRatedKey(key)) {
             meta[key] = { color: difficultyColor(key), name: keyName(key) };
         } else if (!isRatingKey(key)) {
             meta[key] = routeMeta[key];
@@ -7323,7 +7457,7 @@ function initLaneRenderer() {
         routes: laneRouteMeta(),
         // Way facts the chevron filters read. An edge ends where one of
         // these changes, and every lane feature carries them by name.
-        uniformProperties: ["oneway", "trail_name", "imba_difficulty"],
+        uniformProperties: ["oneway", "trail_name", "imba_difficulty", "freeride"],
     });
     refreshLaneGraph();
 }
@@ -7394,7 +7528,7 @@ function laneFeaturesByMode() {
                 properties: {
                     ...base.properties,
                     route_id: owner,
-                    color_key: wayRating(base.properties.imba_difficulty),
+                    color_key: wayKey(base.properties),
                     reverses_by_day: reverses,
                 },
             });
@@ -7443,7 +7577,7 @@ function refreshLaneGraph() {
         next = L.buildLineGraph(difficultyVisibleFeatures, {
             routeProperty: "color_key",
             routes: laneKeyMeta(difficultyVisibleFeatures),
-            uniformProperties: ["oneway", "trail_name", "imba_difficulty",
+            uniformProperties: ["oneway", "trail_name", "imba_difficulty", "freeride",
                 "route_id", "reverses_by_day"],
         });
     }
@@ -7747,8 +7881,8 @@ function computeTrailsSourceData() {
 // either (clip_endpoints.geojson is shared by both models), but every
 // endpoint is the first or last vertex of one of its routes' clipped
 // trail features, so the nearest such vertex names the way. Rating is
-// stored normalized ("2", or "" for unrated) so ratingMatchExpr reads
-// it the way it reads the lane features.
+// stored normalized ("2", or "" for unrated) with the way's freeride
+// flag, so ratingMatchExpr reads its key the way the lanes key it.
 function stampClipEndpointWays() {
     for (const ep of clipEndpointsData.features) {
         const [x, y] = ep.geometry.coordinates;
@@ -7766,6 +7900,7 @@ function stampClipEndpointWays() {
         const rating = best ? best.properties.imba_difficulty : "";
         ep.properties.imba_difficulty =
             isRatedDifficulty(rating) ? String(Number(rating)) : "";
+        ep.properties.freeride = !!best && best.properties.freeride === true;
         ep.properties.trail_name = best ? (best.properties.trail_name || "") : "";
     }
     // Rebuild lazily on next use rather than here: callers that only
@@ -8045,7 +8180,7 @@ function updateClipArrowsDim() {
         }
         const routeFilter = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
         const filter = byRating
-            ? ["all", routeFilter, ["==", ["get", "imba_difficulty"], key]]
+            ? ["all", routeFilter, ["==", ratingMatchExpr((k) => k), key]]
             : routeFilter;
         map.setFilter(layerId, filter);
         map.setPaintProperty(layerId, "icon-halo-color", halo);
@@ -8140,13 +8275,18 @@ function parseColorRgb(cssColor) {
 }
 
 
-// ["match", imba_difficulty, ...] with `pick(rating)` as each branch and
-// `unrated` as the fallback, pick("") unless given. For features that
-// carry a rating but no color key: the clip endpoints, whose layers are
-// per route and so know the relation an unrated endpoint continues.
+// ["match", <the feature's key>, ...] with `pick(key)` as each branch
+// and `unrated` as the fallback, pick("") unless given. The key is
+// wayKey's, read from imba_difficulty and freeride, so an unrated
+// freeride way ("f") and an off-scale value fall to unrated as the
+// lanes draw them. For features that carry a rating but no color key:
+// the clip endpoints, whose layers are per route and so know the
+// relation an unrated endpoint continues, and the diamonds.
 function ratingMatchExpr(pick, unrated) {
-    const expr = ["match", ["get", "imba_difficulty"]];
-    IMBA_RATINGS.forEach((_, i) => expr.push(String(i), pick(String(i))));
+    const key = ["concat", ["get", "imba_difficulty"],
+        ["case", ["==", ["get", "freeride"], true], FREERIDE_KEY_SUFFIX, ""]];
+    const expr = ["match", key];
+    for (const k of RATING_KEYS) expr.push(k, pick(k));
     expr.push(unrated === undefined ? pick("") : unrated);
     return expr;
 }
@@ -8350,10 +8490,11 @@ function highlightRating(rating) {
     // The chip carries the key row's own mark (a rating's glyph, else
     // the key's line) and, where the map shows distances, the key's
     // visible length.
-    const rated = isRatedDifficulty(rating);
+    const rated = isRatedKey(rating);
     showHighlightChip({
         label: keyName(rating),
         glyph: rated ? difficultyIconDataUrl(rating) : null,
+        glyphFreeride: isFreerideKey(rating),
         line: rated ? null : keyLook(rating),
         stats: ratingStatsText(rating),
     });
@@ -9054,7 +9195,7 @@ function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
     );
 }
 
-function showHighlightChip({ label, color, stats, line, glyph, poiType, markerLabel }) {
+function showHighlightChip({ label, color, stats, line, glyph, glyphFreeride, poiType, markerLabel }) {
     const chip = document.getElementById("highlight-chip");
     if (!chip) return;
     const swatch = chip.querySelector(".highlight-chip-swatch");
@@ -9078,6 +9219,7 @@ function showHighlightChip({ label, color, stats, line, glyph, poiType, markerLa
             // difficultyIconDataUrl.
             next = document.createElement("img");
             next.className = "highlight-chip-swatch is-glyph";
+            if (glyphFreeride) next.classList.add("is-freeride");
             next.src = glyph;
             next.alt = "";
         } else if (poiType) {
@@ -9925,7 +10067,7 @@ function refreshTrailRatings() {
         let best = -1;
         // Unrated first, then easiest to hardest, so `>=` hands a tie
         // to the harder rating and nothing ties over to unrated.
-        const byPrecedence = [""].concat(t.ratings.filter((k) => isRatedDifficulty(k)));
+        const byPrecedence = [""].concat(t.ratings.filter((k) => isRatedKey(k)));
         for (const k of byPrecedence) {
             const len = lengths.get(k);
             if (len === undefined) continue;
@@ -12597,7 +12739,10 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     name.textContent = t.name;
     row.appendChild(name);
 
-    const metaParts = (t.ratings || []).map(keyName);
+    // Deduped: a freeride key reads as its plain rating's name, so a
+    // trail with plain and freeride stretches of one rating would name
+    // it twice.
+    const metaParts = [...new Set((t.ratings || []).map(keyName))];
     if (parents.length) metaParts.push(routeParentsText(parents));
     if (metaParts.length) {
         const meta = document.createElement("span");
@@ -12620,9 +12765,10 @@ function appendDifficultyTrailRowContent(row, t, parents) {
 // `glyphClass`, or for unrated, which has no glyph, the unrated line
 // swatch (keyLook) in `swatchClass`.
 function ratingMarkEl(rating, glyphClass, swatchClass) {
-    if (!isRatedDifficulty(rating)) return routeSwatchEl(keyLook(rating), swatchClass);
+    if (!isRatedKey(rating)) return routeSwatchEl(keyLook(rating), swatchClass);
     const glyph = document.createElement("img");
     glyph.className = glyphClass;
+    if (isFreerideKey(rating)) glyph.classList.add("is-freeride");
     glyph.src = difficultyIconDataUrl(rating);
     // Decorative: the name beside it carries the meaning.
     glyph.alt = "";
@@ -12869,7 +13015,7 @@ function trailPopupHtml(laneHit, scope = "section") {
     const routeIds = [laneHit.route,
         ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
     const trailName = laneProps.trail_name || "";
-    const imba = laneProps.imba_difficulty || "";
+    const key = wayKey(laneProps);
     const oneway = laneProps.oneway || "";
 
     // List only memberships the rider can currently see, using the
@@ -12905,8 +13051,9 @@ function trailPopupHtml(laneHit, scope = "section") {
         })
         .join("");
 
-    const iconUrl = difficultyIconDataUrl(imba);
-    const ratingName = iconUrl ? RATING_NAMES[parseInt(imba, 10)] : "";
+    const iconUrl = difficultyIconDataUrl(key);
+    const ratingName = iconUrl ? keyName(key) : "";
+    const iconW = difficultyGlyphWidth(key, 16);
     let html = "";
     if (trailName) {
         // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -12975,7 +13122,7 @@ function trailPopupHtml(laneHit, scope = "section") {
         // Symbol + rating name on their own row, same quiet
         // typography as the one-way row below (with or without
         // a trail name above).
-        html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
+        html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><img class="popup-difficulty-icon" width="${iconW}" height="16" style="flex:none;" src="${iconUrl}" alt=""><span>${escapeHtml(ratingName)}</span></div>`;
     }
     // An unrated way gets no difficulty row: its lane already reads
     // as Unrated in the key, and a route-mode parent names itself

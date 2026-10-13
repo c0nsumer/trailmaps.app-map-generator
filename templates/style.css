@@ -993,6 +993,17 @@ body::after {
     object-fit: contain;
 }
 
+/* The freeride pill is twice as wide as tall: at the plain glyph's
+ * height its width follows the image's own aspect, where the square
+ * box would shrink it to half height. The same rule covers every list
+ * that shows a rating's glyph (key strip, key rows, finder, chip). */
+.opt-key-glyph.is-freeride,
+.route-panel-glyph.is-freeride,
+.finder-row-glyph.is-freeride,
+.highlight-chip-swatch.is-glyph.is-freeride {
+    width: auto;
+}
+
 .opt-key-name {
     font-size: 11px;
     line-height: 1.3;
