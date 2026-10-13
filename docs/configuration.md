@@ -487,9 +487,12 @@ bottom opens the [finder](#trail-finder), the panel's expanded search state.
 
 For [difficulty-mode relations](#color-modes), the panel adds a difficulty key
 headed **Difficulty**. It lists one row per rating on the map, easiest first.
-Each row shows the rating's symbol and name. An **Unrated** row follows when
-unrated difficulty-mode ways are visible. On a map with both modes, the panel
-is headed **Key**. The rows of the default mode come first, then the other
+Each row shows the rating's symbol and name. If freeride ways carry a rating
+on this map, that rating gets a second row. It has the same name and line
+color, with the oval symbol, and tapping it highlights only the freeride ways
+of that rating. The plain row covers only plain ways. An **Unrated** row
+follows when unrated difficulty-mode ways are visible. On a map with both
+modes, the panel is headed **Key**. The rows of the default mode come first, then the other
 mode's rows, and **Unrated** comes last. If `show_distance` is on, each row shows that rating's
 visible length. Tapping a row highlights every visible way with that rating.
 The map fits to those ways. The first-visit chip label reads **Difficulty key**,
@@ -575,8 +578,9 @@ If no relation is in route mode, the finder lists trails and places only. It
 has no Routes section and no Routes chip. On a map with difficulty-mode
 relations, a trail row shows the symbol
 of the rating that most of the trail's visible length carries. An unrated trail
-shows the unrated line instead. The row names every rating on the trail, such
-as "Easy, More Difficult", then the trail's visible route-mode parents, if
+shows the unrated line instead. If the main rating is carried by freeride
+ways, the symbol sits in the orange oval. The row names every rating on the
+trail, such as "Easy, More Difficult", then the trail's visible route-mode parents, if
 any. If `show_distance` is on, the row also shows the
 trail's visible length. Tapping a trail row fits the map to the trail and
 opens the trail's popup, as on a routes map.
@@ -596,6 +600,13 @@ on individual ways. Segments without this tag show no symbols.
 | 4 | Double diamond | Black (Extremely Difficult) |
 | 5 | Double diamond | Orange (Pro-Only) |
 
+If a way's `mtb:type` list contains `freeride`, its symbol draws inside an
+orange oval. Rating 5 keeps its look inside the oval, and its white halo
+separates it from the orange. `downhill` does not count. The oval only wraps a
+rated way, so an unrated freeride way shows no symbol. Text never says
+"freeride". The tap popup, the key, and the finder show the plain rating name
+beside the oval symbol.
+
 The symbols use ski-trail-style iconography. They are always oriented
 vertically (not rotated to follow the trail line) and include a white halo for
 visibility against any background. The Difficulty toggle appears under "What
@@ -603,7 +614,9 @@ to show" in the Options overlay. First-visit visibility is controlled by
 `default_visible` (include `difficulty` to default on; otherwise off). The
 rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the
 map carries an `mtb:scale:imba` value, the toggle is hidden entirely, since
-there is nothing to display.
+there is nothing to display. The key strip under the toggle lists the oval
+symbols only for ratings that freeride ways on the map carry. It lists the
+plain symbols only for ratings that plain ways carry.
 
 Difficulty symbols only appear on segments of visible trails.
 If you hide a trail (for example, by switching season), its difficulty symbols disappear too.
@@ -655,9 +668,10 @@ tags but no route colors worth keying, such as Copper Harbor. Choose a mix for
 a system such as NTN Marquette, where long routes cross a rated trail network.
 
 The bottom-right key lists a row for each route-mode relation and a row for
-each rating. An **Unrated** row follows when unrated difficulty-mode ways are
-visible. The finder has a Routes section and a Routes filter chip when any
-relation is in route mode. Labels show trail names, and the `"routes"` label
+each rating, with a separate row for the freeride ways of a rating. An
+**Unrated** row follows when unrated difficulty-mode ways are visible. The
+finder has a Routes section and a Routes filter chip when any relation is in
+route mode. Labels show trail names, and the `"routes"` label
 mode is offered when any relation is in route mode. The tap popup lists the
 way's route-mode parents. The popup's yellow glow lifts the trail it describes and
 changes nothing else. On a map tap, that is the tapped section of the trail,

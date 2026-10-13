@@ -155,6 +155,7 @@ than on the relation itself.
 | Tag | Value | What this renderer does with it |
 |---|---|---|
 | [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (in difficulty mode), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
+| [`mtb:type`](https://wiki.openstreetmap.org/wiki/Key:mtb:type) | semicolon list, eg: `allmountain;freeride` | If the list contains `freeride`, the way's difficulty symbol draws inside an orange oval. Other values, including `downhill`, change nothing. |
 
 The IMBA-rating scale, condensed:
 
@@ -166,6 +167,15 @@ The IMBA-rating scale, condensed:
 | `3` | black diamond | Very Difficult |
 | `4` | double black diamond | Extremely Difficult |
 | `5` | double black with orange highlight | Pro-Only / extreme features |
+
+A way whose `mtb:type` list contains `freeride` draws its difficulty symbol
+inside an orange oval, as on the NSAA freeride sign set. The renderer tests
+list membership, so `allmountain;freeride` counts. It does not count
+`downhill`, because the NSAA set ties the oval to freeride trails and shows
+downhill trails both with and without it. The oval only wraps a rated way. A
+freeride way with no `mtb:scale:imba` value shows no symbol. The
+text never says "freeride": the popup, key, and finder show the plain rating
+name beside the oval symbol.
 
 Tag the segment's actual difficulty rather than what you wish were on the map. A
 segment without a rating renders as the default trail color (so it's still

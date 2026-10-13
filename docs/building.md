@@ -191,9 +191,9 @@ OSM data diff vs previous snapshot
 The build writes the full report to
 `cache/osm_diff/<slug>/last-refresh.md`, overwriting it each refresh.
 The report lists routes added, removed, renamed, recolored, or
-reseasoned; trails added, removed, or renamed; per-way `mtb:scale:imba`
-and `oneway` changes with `openstreetmap.org/way/<id>` links; and
-per-trail length changes. The previous snapshot itself is kept beside
+reseasoned; trails added, removed, or renamed; per-way `mtb:scale:imba`,
+`mtb:type`, and `oneway` changes with `openstreetmap.org/way/<id>` links;
+and per-trail length changes. The previous snapshot itself is kept beside
 it as `trails.prev.geojson`.
 
 Both live under the cache directory, never under `build/<slug>/`, so there is
@@ -203,9 +203,11 @@ Two things the diff deliberately does not do:
 
 - **It never diffs merged features.** `merge_consecutive_ways` fuses
   consecutive ways sharing a `(relation membership, name, mtb:scale:imba,
-  resolved oneway)` signature, so a way that merely gains a rating moves
-  between features. The diff keys on OSM way IDs, which survive the
-  merge. A one-tag edit therefore reports as one tag change rather than
+  freeride, resolved oneway)` signature, so a way that merely gains a rating
+  moves between features. Freeride is true when the way's `mtb:type` list
+  contains `freeride`, so consecutive ways only fuse when they agree on it. A
+  way that gains or loses `freeride` reports as an `mtb:type` change. The
+  diff keys on OSM way IDs, which survive the merge. A one-tag edit therefore reports as one tag change rather than
   wholesale churn.
 - **It never compares vertices.** Contributors nudge geometry constantly.
   Length is the only geometry signal. Per-trail changes under 20 m are
