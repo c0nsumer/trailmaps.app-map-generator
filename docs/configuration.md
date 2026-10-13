@@ -610,8 +610,11 @@ symbol. The only "Freeride" text is the key strip's legend entry, described
 below.
 
 The symbols use ski-trail-style iconography. They are always oriented
-vertically (not rotated to follow the trail line) and include a white halo for
-visibility against any background. The Difficulty toggle appears under "What
+vertically (not rotated to follow the trail line). On the map, each symbol
+sits on a white plate with a soft shadow, like a POI marker's chip. The plate
+keeps it readable on a line of its own color, eg: a blue square on a
+difficulty-colored blue line. The freeride oval's plate follows the oval's
+shape. The Difficulty toggle appears under "What
 to show" in the Options overlay. First-visit visibility is controlled by
 `default_visible` (include `difficulty` to default on; otherwise off). The
 rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the

@@ -1054,12 +1054,57 @@ function difficultyImageId(key) {
     return `imba-${keyRating(key)}${isFreerideKey(key) ? "-fr" : ""}`;
 }
 
+// On the map a difficulty symbol sits on a white plate, the way it's
+// printed on a trail sign. In difficulty color mode the line under it
+// is the symbol's own color (blue square on a blue line), and the
+// glyph's thin white halo alone let it sink into the line. The plate
+// separates it on any line color and basemap. A pill's plate follows
+// the pill's shape. Map images only: the key, popup and lists show the
+// symbol on their own sheet, where a plate would add nothing.
+//
+// At full size the plate is a POI marker's chip: 26px, 4px corners
+// (--poi-marker-size, --poi-marker-radius) and the markers' soft drop
+// shadow (--poi-marker-map-shadow, light scheme), so it reads as their
+// sibling. The Options Difficulty swatch (.difficulty-swatch) draws the
+// same plate in CSS, at its own 28px with the diamond scaled to match;
+// change them together.
+const PLATE_PAD = 1;              // 24px glyph + 1 a side = 26px plate
+const PLATE_RADIUS = 4;
+const PLATE_FILL = "#fff";
+const PLATE_SHADOW = "rgba(0,0,0,0.3)";
+const PLATE_SHADOW_BLUR = 4;
+const PLATE_SHADOW_Y = 1;
+// Room around the plate for the shadow to fall into: blur plus offset.
+const PLATE_MARGIN = PLATE_SHADOW_BLUR + PLATE_SHADOW_Y;
+
+function platedRatingCanvas(rating, freeride) {
+    const pw = (freeride ? FREERIDE_ICON_W : RATING_ICON_SIZE) + 2 * PLATE_PAD;
+    const ph = (freeride ? FREERIDE_ICON_H : RATING_ICON_SIZE) + 2 * PLATE_PAD;
+    const m = PLATE_MARGIN;
+    return glyphCanvas(pw + 2 * m, ph + 2 * m, (ctx) => {
+        ctx.save();
+        // Shadow sizes ignore the canvas transform, so scale them by
+        // hand to stay in CSS px.
+        ctx.shadowColor = PLATE_SHADOW;
+        ctx.shadowBlur = PLATE_SHADOW_BLUR * GLYPH_PIXEL_RATIO;
+        ctx.shadowOffsetY = PLATE_SHADOW_Y * GLYPH_PIXEL_RATIO;
+        ctx.beginPath();
+        ctx.roundRect(m, m, pw, ph, freeride ? ph / 2 : PLATE_RADIUS);
+        ctx.fillStyle = PLATE_FILL;
+        ctx.fill();
+        ctx.restore();
+        ctx.translate(m + PLATE_PAD, m + PLATE_PAD);
+        if (freeride) drawFreerideOval(ctx, rating);
+        else drawDifficultyShape(ctx, RATING_ICON_SIZE, rating);
+    });
+}
+
 function registerDifficultyIcons() {
     for (const rating of IMBA_RATINGS) {
         for (const freeride of [false, true]) {
             const id = freeride ? `${rating.id}-fr` : rating.id;
             if (map.hasImage(id)) continue;
-            const canvas = ratingCanvas(rating, freeride);
+            const canvas = platedRatingCanvas(rating, freeride);
             map.addImage(id, {
                 width: canvas.width,
                 height: canvas.height,
@@ -1628,6 +1673,9 @@ function pointAtArcLength(segments, totalLength, arc) {
 // tiered min_zoom keeps fewer items on screen, so a static radius
 // works across the visible range.
 const DECOR_RADIUS_M = {
+    // Sized for the bare 24px glyph. The map's plate (PLATE_PAD) adds
+    // 2px a side, within this margin; scaling the radii up to match
+    // cost Maybury's Central Skills Line its only pill.
     diamond:  35,
     // A freeride way's symbol is the 2:1 pill (FREERIDE_ICON_W), which
     // the map draws viewport-aligned, so along a north-south way its

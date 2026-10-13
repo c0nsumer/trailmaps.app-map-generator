@@ -1739,6 +1739,11 @@ body::after {
  * its own (white on dark = high contrast); the outline (from
  * .layer-swatch base) gives it edge in light mode where the white
  * blends with the sheet. */
+/* The map's difficulty plate (platedRatingCanvas) is a 26px chip with
+ * an 18px diamond, tip to tip. This chip is 28px (.opt-toggle-row
+ * .layer-swatch), so its diamond scales to 18 * 28/26 = 19.4px tip to
+ * tip, a 13.71px square rotated: the symbol fills the chip in the same
+ * proportion on the map and in Options. */
 .difficulty-swatch {
     background: #fff;
 }
@@ -1747,8 +1752,8 @@ body::after {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 10px;
-    height: 10px;
+    width: 13.71px;
+    height: 13.71px;
     background: #111;
     border: 1px solid #000;
     transform: translate(-50%, -50%) rotate(45deg);
