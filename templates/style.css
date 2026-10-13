@@ -1022,6 +1022,24 @@ body::after {
     margin-right: 8px;
 }
 
+/* Forces the freeride group onto its own line: a zero-height item that
+ * spans the strip, so a centered wrap can't pull a pill up onto the
+ * plain ratings' line. */
+.opt-key-break {
+    flex: 0 0 100%;
+    height: 0;
+}
+
+/* Heads the freeride line. Same size as the names but heavier, so it
+ * reads as the group's heading rather than another entry. */
+.opt-key-group {
+    font-size: 11px;
+    line-height: 1.3;
+    font-weight: 600;
+    color: var(--sheet-text-muted);
+    white-space: nowrap;
+}
+
 .opt-key-name {
     font-size: 11px;
     line-height: 1.3;

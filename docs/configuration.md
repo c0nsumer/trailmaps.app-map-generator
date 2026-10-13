@@ -616,7 +616,10 @@ rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the
 map carries an `mtb:scale:imba` value, the toggle is hidden entirely, since
 there is nothing to display. The key strip under the toggle lists the oval
 symbols only for ratings that freeride ways on the map carry. It lists the
-plain symbols only for ratings that plain ways carry.
+plain symbols only for ratings that plain ways carry. If the map has freeride
+ways, their oval symbols get their own line in the key strip, headed
+"Freeride". That heading is the only place the app uses the word: everywhere
+else, the oval stands for itself next to the plain rating name.
 
 Difficulty symbols only appear on segments of visible trails.
 If you hide a trail (for example, by switching season), its difficulty symbols disappear too.

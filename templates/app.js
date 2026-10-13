@@ -1406,17 +1406,32 @@ function difficultyGlyphWidth(key, height) {
 function buildDifficultyKey() {
     const strip = document.getElementById("difficulty-key");
     if (!strip) return;
-    // Freeride ways list after the plain ways of their rating, each
-    // under the plain rating's name: the pill alone says freeride.
-    const keys = sortColorKeys([
-        ...(CONFIG.difficultyRatings || []).map(String),
-        ...(CONFIG.freerideRatings || []).map((n) => `${n}${FREERIDE_KEY_SUFFIX}`),
-    ]).filter((k) => k !== "");
-    if (!keys.length) return;
+    // Freeride ways get their own line, headed "Freeride": the legend
+    // is the one place that explains the pill, so the label lives here
+    // and nowhere else. Each pill keeps its plain rating's name so the
+    // inner symbol needn't be matched against the line above.
+    const plain = sortColorKeys((CONFIG.difficultyRatings || []).map(String))
+        .filter((k) => k !== "");
+    const freeride = sortColorKeys(
+        (CONFIG.freerideRatings || []).map((n) => `${n}${FREERIDE_KEY_SUFFIX}`),
+    );
+    if (!plain.length && !freeride.length) return;
     strip.textContent = "";
-    for (const key of keys) {
+    for (const key of [...plain, ...freeride]) {
         const url = difficultyIconDataUrl(key);
         if (!url) continue;
+        if (key === freeride[0]) {
+            if (strip.children.length) {
+                const brk = document.createElement("li");
+                brk.className = "opt-key-break";
+                brk.setAttribute("aria-hidden", "true");
+                strip.appendChild(brk);
+            }
+            const label = document.createElement("li");
+            label.className = "opt-key-group";
+            label.textContent = "Freeride";
+            strip.appendChild(label);
+        }
         const li = document.createElement("li");
         li.className = "opt-key-item";
         const img = document.createElement("img");
