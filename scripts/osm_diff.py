@@ -10,7 +10,7 @@ Three deliberate choices about WHAT gets compared:
 * **Keyed on OSM way IDs, never on merged features.**
   ``fetch_trails.merge_consecutive_ways`` fuses consecutive ways sharing a
   signature of ``(relation membership, name, mtb:scale:imba, resolved
-  oneway)``. So a way that merely gains a name or a rating migrates between
+  oneway, freeride)``. So a way that merely gains a name or a rating migrates between
   merged features, and a feature-level diff would report wholesale churn for
   a one-tag edit. ``way_ids`` is tracked through the merge and is stable.
 
@@ -64,7 +64,10 @@ _MAX_INLINE_NAMES = 6
 
 _ROUTE_FIELDS = ("name", "colour", "ref", "seasonal")
 # Way-level tag fields, mapped to the label used in output.
-_WAY_TAG_FIELDS = (("imba", "mtb:scale:imba"), ("oneway", "oneway"))
+# "freeride" tracks only whether mtb:type names freeride (the one value the
+# map draws), so a change reports as "" <-> "freeride".
+_WAY_TAG_FIELDS = (("imba", "mtb:scale:imba"), ("freeride", "mtb:type"),
+                   ("oneway", "oneway"))
 
 
 def _feature_length_m(feature):
@@ -191,6 +194,7 @@ def _index_snapshot(snap):
         tags = {
             "trail": trail,
             "imba": str(props.get("imba_difficulty") or "").strip(),
+            "freeride": "freeride" if props.get("freeride") is True else "",
             "oneway": str(props.get("oneway") or "").strip(),
         }
 

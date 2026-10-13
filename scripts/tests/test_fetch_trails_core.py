@@ -7,6 +7,7 @@ one-way arrow points.
 
 from fetch_trails import (
     _expand_through_supers,
+    _is_freeride,
     _resolve_oneway,
     build_geojson,
     build_way_to_relations_map,
@@ -20,6 +21,19 @@ BBOX = [0, 0, 10, 10]
 
 def _way(*coords, **tags):
     return {"coords": [list(c) for c in coords], "tags": tags}
+
+
+# --- _is_freeride ---------------------------------------------------------
+
+
+def test_freeride_is_found_anywhere_in_the_mtb_type_list():
+    assert _is_freeride({"mtb:type": "freeride"})
+    assert _is_freeride({"mtb:type": "allmountain; freeride"})
+
+
+def test_downhill_and_untagged_ways_are_not_freeride():
+    assert not _is_freeride({"mtb:type": "downhill;singletrack"})
+    assert not _is_freeride({})
 
 
 # --- _resolve_oneway -------------------------------------------------------
@@ -87,6 +101,13 @@ def test_a_name_change_splits_the_segment():
     ways = {1: _way((0, 0), (1, 0), name="A"), 2: _way((1, 0), (2, 0), name="B")}
     segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
     assert [s["trail_name"] for s in segs] == ["A", "B"]
+
+
+def test_a_freeride_change_splits_the_segment():
+    ways = {1: _way((0, 0), (1, 0), name="A"),
+            2: _way((1, 0), (2, 0), name="A", **{"mtb:type": "freeride"})}
+    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    assert sorted(s["freeride"] for s in segs) == [False, True]
 
 
 def test_different_route_membership_splits_the_segment():
@@ -168,6 +189,7 @@ def test_features_carry_the_route_and_segment_properties():
         "trail_name": "A",
         "shared_routes": [10],
         "imba_difficulty": "2",
+        "freeride": False,
         "oneway": "",
         "way_ids": [1],
     }

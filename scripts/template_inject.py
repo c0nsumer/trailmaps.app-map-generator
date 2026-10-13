@@ -656,6 +656,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #     the rating key rendered under the difficulty toggle, so a map
     #     whose trails are all green and blue doesn't advertise double
     #     blacks it has none of.
+    #   - split by the way's freeride flag: plain ways fill
+    #     difficultyRatings, freeride ways CONFIG.freerideRatings (the
+    #     oval glyphs), so a rating whose only ways are freeride never
+    #     lists a plain glyph the map doesn't draw.
     # See setupFloatingChrome() in app.js where these are read.
     #
     # No early exit: the rating set needs every feature, and one pass
@@ -668,6 +672,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     has_oneway = False
     has_difficulty = False
     ratings = set()
+    freeride_ratings = set()
     for f in (trails_geojson.get("features") or []) if trails_geojson else []:
         props = f.get("properties") or {}
         if not has_oneway:
@@ -682,10 +687,11 @@ def inject_config_into_template(template_content, config, trails_geojson):
             except (TypeError, ValueError):
                 n = None
             if n is not None and 0 <= n < _IMBA_RATING_COUNT:
-                ratings.add(n)
+                (freeride_ratings if props.get("freeride") is True else ratings).add(n)
     config_obj["hasOnewayTrails"] = has_oneway
     config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["difficultyRatings"] = sorted(ratings)
+    config_obj["freerideRatings"] = sorted(freeride_ratings)
     config_obj["about"] = config.get("about") or None
     # Welcome/Help modal config. Three forms accepted: omitted (None →
     # framework default), false (first-visit auto-open suppressed), or

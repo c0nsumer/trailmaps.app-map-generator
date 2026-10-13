@@ -17,13 +17,15 @@ Run from repo root:
 from osm_diff import diff_snapshots, format_report, summarize
 
 
-def _feature(way_ids, coords, *, route_id="1", trail="", imba="", oneway=""):
+def _feature(way_ids, coords, *, route_id="1", trail="", imba="", oneway="",
+             freeride=False):
     return {
         "type": "Feature",
         "properties": {
             "route_id": route_id,
             "trail_name": trail,
             "imba_difficulty": imba,
+            "freeride": freeride,
             "oneway": oneway,
             "way_ids": list(way_ids),
             "shared_routes": [route_id],
@@ -88,6 +90,15 @@ def test_remerge_after_tag_change_is_not_reported_as_churn():
     assert diff["tag_changes"] == [{
         "way_id": "11", "trail": "Bootjack",
         "tag": "mtb:scale:imba", "old": "", "new": "3",
+    }]
+
+
+def test_gaining_freeride_is_a_tag_change():
+    before = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3")])
+    after = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3", freeride=True)])
+    assert diff_snapshots(before, after)["tag_changes"] == [{
+        "way_id": "11", "trail": "Bootjack",
+        "tag": "mtb:type", "old": "", "new": "freeride",
     }]
 
 

@@ -216,8 +216,20 @@ def _resolve_oneway(tags):
     return bike if bike else tags.get("oneway", "")
 
 
+def _is_freeride(tags):
+    """Whether a way's ``mtb:type`` list names ``freeride``.
+
+    ``mtb:type`` is a semicolon list in practice (``allmountain;freeride``),
+    so this tests membership, not equality. ``downhill`` is deliberately not
+    counted: the NSAA sign set ties the orange oval to freeride trails and
+    shows DH trails both with and without it.
+    """
+    values = tags.get("mtb:type", "").split(";")
+    return "freeride" in (v.strip().lower() for v in values)
+
+
 def merge_consecutive_ways(ways_dict, way_relation_ids):
-    """Merge consecutive ways that share relations, name, difficulty and oneway.
+    """Merge consecutive ways that share relations, name, difficulty, oneway, freeride.
 
     Given a dict of ways belonging to one relation and a mapping of
     ``{way_id: set(relation_ids)}``, merge consecutive ways where the
@@ -229,6 +241,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
     - shared_routes: sorted list of route (relation) IDs sharing this segment
     - trail_name: name of the trail segment (from the way's name tag)
     - imba_difficulty: IMBA difficulty rating (0-5) or empty string
+    - freeride: True when the way's mtb:type list names freeride
     - oneway: the resolved oneway value (see _resolve_oneway)
     - way_ids: the source OSM way IDs fused into the segment
     """
@@ -264,9 +277,13 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         # generically two-way). Both tags follow the same value
         # vocabulary: "" | "yes" | "no" | "-1" | "reversible".
         oneway = _resolve_oneway(way.get("tags", {}))
-        way_signatures[way_id] = (sig, name, imba, oneway)
+        # Freeride joins the signature so the oval glyph never spreads
+        # from a freeride way onto a same-named, same-rated neighbor.
+        freeride = _is_freeride(way.get("tags", {}))
+        way_signatures[way_id] = (sig, name, imba, oneway, freeride)
 
-    # Merge consecutive ways with the same signature (relations + name + difficulty + oneway)
+    # Merge consecutive ways with the same signature
+    # (relations + name + difficulty + oneway + freeride)
     visited = set()
     merged_segments = []
 
@@ -276,7 +293,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         visited.add(start_way_id)
 
         full_sig = way_signatures[start_way_id]
-        sig, name, imba, oneway = full_sig
+        sig, name, imba, oneway, freeride = full_sig
         # `reversible` ways have a direction-of-travel (just one that flips by
         # schedule), so they must not be glued to a neighbor in reversed
         # orientation any more than `yes`/`-1` ways can.
@@ -349,6 +366,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
                 "shared_routes": sorted(sig),
                 "trail_name": name,
                 "imba_difficulty": imba,
+                "freeride": freeride,
                 "oneway": oneway,
                 "way_ids": member_way_ids,
             }
@@ -517,6 +535,7 @@ def build_geojson(relations, all_ways, way_relations):
                     "trail_name": segment.get("trail_name", ""),
                     "shared_routes": segment["shared_routes"],
                     "imba_difficulty": segment.get("imba_difficulty", ""),
+                    "freeride": segment.get("freeride", False),
                     "oneway": oneway,
                     # Source OSM way IDs fused into this segment. Used by
                     # template_inject's reversible-without-schedule check so

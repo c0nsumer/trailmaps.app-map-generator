@@ -66,7 +66,8 @@ def _clear_signature(output_path):
 # cached Overpass responses, offline, instead of being reused without the
 # new field until the curator happens to pass --refresh-trails.
 #   2: route metadata carries repeat_m and repeated_ways (2026-10-06)
-TRAILS_BASE_FORMAT = 2
+#   3: ways carry freeride (mtb:type names freeride) (2026-10-12)
+TRAILS_BASE_FORMAT = 3
 
 
 def _trails_fetch_fingerprint(config):
