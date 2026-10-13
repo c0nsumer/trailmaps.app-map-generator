@@ -11383,12 +11383,33 @@ function setupFloatingChrome() {
     // The FAB ALWAYS opens the sheet, even with a single configured
     // file, so a curiosity tap shows a dismissible sheet naming the
     // route instead of instantly dropping a file into the rider's
-    // Downloads folder. Tapping a row downloads that row's file via a
-    // temporary same-origin <a download>; the saved filename is the
-    // URL basename, preserved verbatim from the curator's file so it
-    // matches copies distributed by the event's official source. The
-    // sheet stays open across row taps so a rider can grab several
-    // routes in one visit.
+    // Downloads folder. Tapping a row hands that row's file to the
+    // system share sheet on phones and tablets whose browser allows
+    // it (Garmin Connect, Komoot, Save to Files...), and otherwise
+    // saves it through a temporary same-origin <a download>. Either
+    // way the filename is the URL basename, preserved verbatim from
+    // the curator's file so it matches copies distributed by the
+    // event's official source. The sheet stays open across row taps
+    // so a rider can grab several routes in one visit.
+    //
+    // Why two paths: a download has no feedback the page can see, and
+    // the browser's own signal is unreliable (Android Chrome reports
+    // downloads only through a system notification, silent whenever
+    // its notification permission is off, and the installed app has
+    // no toolbar bubble). The share sheet is its own feedback, and it
+    // is how a phone gets a file into a bike-computer app anyway. The
+    // download path gets a toast instead, worded as what was started,
+    // not as a success the page can't confirm.
+    //
+    // Where each path lands: Chromium's Web Share file allowlist
+    // (chrome/browser/webshare/share_service_impl.cc and the Android
+    // ShareServiceImpl.java it mirrors) admits neither a .gpx
+    // extension nor any XML MIME type, so canShare() is false for
+    // these files in Chrome on Android and desktop and they download.
+    // WebKit has no such allowlist, so iOS and iPadOS get the sheet.
+    // Desktop Safari could share too, but a Mac share sheet has no
+    // save-to-disk target, so sharing is held to coarse-pointer
+    // devices and the desktop keeps the visible browser download.
     //
     // Wording is count-aware and shared across every surface (FAB
     // discovery label, FAB aria-label, sheet title, welcome-modal
@@ -11427,7 +11448,61 @@ function setupFloatingChrome() {
             if (e.target === qrOverlay) closeQrOverlay();
         });
     }
+    // url -> File once fetched and shareable, "pending" while the
+    // fetch runs, absent or null otherwise (null retries on the next
+    // open). Files are fetched when the sheet opens, not on the tap:
+    // share() must run while the tap's transient activation is still
+    // live, and WebKit's window does not survive a network round
+    // trip, so an await between the tap and the call ends in
+    // NotAllowedError. They are small and precached by the service
+    // worker, so this is cheap and works offline.
+    const gpxShareFiles = new Map();
+    // Decided once per session with a stand-in file: a browser that
+    // refuses the .gpx type (every Chromium) would otherwise fetch
+    // every file on every open just to be told no again.
+    let gpxShareProbe = null;
+    function gpxShareCapable() {
+        if (gpxShareProbe === null) {
+            gpxShareProbe = typeof navigator.share === "function"
+                && typeof navigator.canShare === "function"
+                && window.matchMedia("(pointer: coarse)").matches
+                && navigator.canShare({ files: [
+                    new File(["<gpx/>"], "probe.gpx", { type: "application/gpx+xml" })] });
+        }
+        return gpxShareProbe;
+    }
+    function prefetchGpxShareFiles() {
+        if (!gpxShareCapable()) return;
+        for (const entry of CONFIG.gpxDownloads || []) {
+            const state = gpxShareFiles.get(entry.url);
+            if (state instanceof File || state === "pending") continue;
+            gpxShareFiles.set(entry.url, "pending");
+            fetch(entry.url)
+                .then((r) => {
+                    if (!r.ok) throw new Error("HTTP " + r.status);
+                    return r.blob();
+                })
+                .then((blob) => {
+                    const base = decodeURIComponent(entry.url.split("/").pop());
+                    const file = new File([blob], base, { type: "application/gpx+xml" });
+                    gpxShareFiles.set(entry.url,
+                        navigator.canShare({ files: [file] }) ? file : null);
+                })
+                .catch(() => gpxShareFiles.set(entry.url, null));
+        }
+    }
+    function downloadGpx(entry) {
+        const a = document.createElement("a");
+        a.href = entry.url;
+        // Empty download attr = save under the URL's basename.
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        showToast(`Downloading ${entry.name}.`);
+    }
     function openGpxOverlay() {
+        prefetchGpxShareFiles();
         const returnTo = closeOtherOverlays(gpxOverlay);
         setOverlayOpen(gpxOverlay, gpxBtn, true);
         dialogFocusIn(gpxOverlay, ".gpx-overlay-panel");
@@ -11447,7 +11522,9 @@ function setupFloatingChrome() {
             glyph.className = "gpx-row-glyph";
             glyph.setAttribute("aria-hidden", "true");
             // mdi:download (Apache 2.0, Pictogrammers), trailing cue
-            // that tapping the row saves a file.
+            // that tapping the row produces a file. Kept on the share
+            // path too: the rider's goal is the file, and the sheet
+            // is titled Download either way.
             glyph.innerHTML =
                 '<svg viewBox="0 0 24 24" width="18" height="18" ' +
                 'fill="currentColor" aria-hidden="true">' +
@@ -11455,13 +11532,22 @@ function setupFloatingChrome() {
             row.appendChild(glyph);
             row.addEventListener("click", (e) => {
                 e.stopPropagation();
-                const a = document.createElement("a");
-                a.href = entry.url;
-                // Empty download attr = save under the URL's basename.
-                a.download = "";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
+                const file = gpxShareFiles.get(entry.url);
+                if (!(file instanceof File)) {
+                    downloadGpx(entry);
+                    return;
+                }
+                // Called synchronously inside the tap, see the
+                // prefetch note above.
+                navigator.share({ files: [file], title: entry.name }).catch((err) => {
+                    // AbortError = the rider dismissed the sheet, a
+                    // deliberate act (same rule as shareCurrentView).
+                    // Anything else means the browser refused the
+                    // share after canShare() said yes, so fall back
+                    // to the download rather than do nothing.
+                    if (err && err.name === "AbortError") return;
+                    downloadGpx(entry);
+                });
             });
             gpxList.appendChild(row);
         }

@@ -376,12 +376,25 @@ Each entry needs:
 
 What the rider sees: a download FAB (down-arrow glyph) in the top-right stack
 below Options, present only when `gpx:` is configured. Tapping it opens a
-compact bottom sheet with one row per entry; tapping a row downloads that
-file. The sheet always opens, even with a single file. An exploratory tap
-shows a dismissible sheet naming the route rather than instantly dropping
-a file into the rider's Downloads. The sheet stays open across row taps, so
-grabbing several routes is just several taps. There is deliberately no
-"download all" bundle: bike computers import one course per file anyway.
+compact bottom sheet with one row per entry. The sheet always opens, even with
+a single file. An exploratory tap shows a dismissible sheet naming the route
+rather than instantly dropping a file into the rider's Downloads. The sheet
+stays open across row taps, so grabbing several routes is just several taps.
+There is deliberately no "download all" bundle: bike computers import one
+course per file anyway.
+
+What a row tap does depends on the device. On a phone or tablet whose browser
+can share the file, the system share sheet opens with the GPX attached, so the
+rider can send it straight to Garmin Connect, Komoot, Files, Mail, or whatever
+else is installed. As of this writing (2026-Oct-13) that is iOS and iPadOS:
+Chrome's Web Share allowlist admits neither `.gpx` nor any XML type, so Android
+Chrome falls through to the download path. The files are fetched when the
+sheet opens, so a tap in the first second on a slow first visit may download
+instead of share. Everywhere else the file downloads through the browser, and
+the app shows a short toast saying the download started. The toast exists because the browser's own signal is
+unreliable: Android Chrome reports downloads only through a system
+notification, which is silent when its notification permission is off, and the
+installed app has no toolbar bubble.
 
 The files land in `build/<slug>/gpx/`. The service-worker precache picks them
 up automatically. Once the map has been visited, they remain downloadable

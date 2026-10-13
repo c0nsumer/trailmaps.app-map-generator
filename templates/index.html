@@ -494,9 +494,11 @@
          Same backdrop/panel pattern as the Search overlay. Opens via
          the GPX FAB - ALWAYS, even for a single file, so a curiosity
          tap shows a dismissible sheet instead of instantly dropping a
-         file. Stays open across row taps so a rider can grab several
-         routes. The panel's tabindex="-1" is the initial focus target,
-         as in Options. -->
+         file. A row tap shares the file on phones and tablets where
+         the browser allows it, and downloads it (with a toast)
+         elsewhere; see app.js. Stays open across row taps so a rider
+         can grab several routes. The panel's tabindex="-1" is the
+         initial focus target, as in Options. -->
     <div id="gpx-overlay" class="gpx-overlay" role="dialog" aria-modal="true" aria-labelledby="gpx-overlay-title" hidden>
         <div class="gpx-overlay-panel" tabindex="-1">
             <div class="gpx-overlay-header">
