@@ -494,7 +494,7 @@ of that rating. The plain row covers only plain ways. An **Unrated** row
 follows when unrated difficulty-mode ways are visible. On a map with both
 modes, the panel is headed **Key**. The rows of the default mode come first, then the other
 mode's rows, and **Unrated** comes last. If `show_distance` is on, each row shows that rating's
-visible length. Tapping a row highlights every visible way with that rating.
+visible length. Tapping a row highlights every visible way that row covers.
 The map fits to those ways. The first-visit chip label reads **Difficulty key**,
 or **Key** on a map with both modes.
 

@@ -102,6 +102,13 @@ def test_gaining_freeride_is_a_tag_change():
     }]
 
 
+def test_a_snapshot_from_before_freeride_reports_no_change():
+    old = _feature([11], _LEG_B, trail="Bootjack", imba="3")
+    del old["properties"]["freeride"]
+    after = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3", freeride=True)])
+    assert diff_snapshots(_snap([old]), after)["tag_changes"] == []
+
+
 def test_vertex_noise_is_not_a_length_change():
     """A sub-metre vertex nudge must not surface as an edit."""
     nudged = [[-87.60, 46.50], [-87.59, 46.500002]]

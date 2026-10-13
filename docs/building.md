@@ -203,7 +203,7 @@ Two things the diff deliberately does not do:
 
 - **It never diffs merged features.** `merge_consecutive_ways` fuses
   consecutive ways sharing a `(relation membership, name, mtb:scale:imba,
-  freeride, resolved oneway)` signature, so a way that merely gains a rating
+  resolved oneway, freeride)` signature, so a way that merely gains a rating
   moves between features. Freeride is true when the way's `mtb:type` list
   contains `freeride`, so consecutive ways only fuse when they agree on it. A
   way that gains or loses `freeride` reports as an `mtb:type` change. The

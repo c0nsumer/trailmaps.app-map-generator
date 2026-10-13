@@ -194,7 +194,11 @@ def _index_snapshot(snap):
         tags = {
             "trail": trail,
             "imba": str(props.get("imba_difficulty") or "").strip(),
-            "freeride": "freeride" if props.get("freeride") is True else "",
+            # None when the snapshot predates the field (TRAILS_BASE_FORMAT
+            # 3), so the first refresh after the upgrade does not report
+            # every freeride way as newly tagged.
+            "freeride": (None if "freeride" not in props
+                         else "freeride" if props["freeride"] is True else ""),
             "oneway": str(props.get("oneway") or "").strip(),
         }
 
@@ -282,6 +286,8 @@ def diff_snapshots(prev, cur):
         if old_trail != new_trail:
             renames[(old_trail, new_trail)] = renames.get((old_trail, new_trail), 0) + 1
         for key, label in _WAY_TAG_FIELDS:
+            if wa[wid].get(key, "") is None or wb[wid].get(key, "") is None:
+                continue
             old = wa[wid].get(key) or ""
             new = wb[wid].get(key) or ""
             if old != new:
