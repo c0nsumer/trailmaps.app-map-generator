@@ -26,6 +26,8 @@ FUNCTIONS = [
     "isViewInRange",
     "consumeShareHash",
     "buildShareUrl",
+    "currentViewHighlight",
+    "highlightHasKey",
     "shareBaseUrl",
     "sharedTrailName",
     "spotKey",

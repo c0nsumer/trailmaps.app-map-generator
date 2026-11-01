@@ -134,8 +134,8 @@ const MAP_PAINT_TOKENS = {
         // same way: dark on the light basemap, light on the dark basemap.
         // Re-applied on scheme toggle by applyMapPaintForScheme.
         //
-        // Casing effective alpha is this value times the 0.5 that
-        // laneCasingColor folds in, so 1.0 here paints at 0.50. Light deliberately
+        // The casing alpha is the one the lane layer paints
+        // (laneCasingColor). Light deliberately
         // runs twice as strong as dark (0.50 vs 0.30): measured across 4,145
         // colored segments, 39% fall below 1.5:1 against the light basemap's
         // vegetation, versus 2% against the dark one. Trail signage favors
@@ -147,7 +147,7 @@ const MAP_PAINT_TOKENS = {
         // (1.99:1 vs the vegetation, 1.95:1 vs a gold fill); 0.50 gives the
         // edge a real step (3.51 / 3.43) without tipping into the black
         // outline around a colored core that shows up past ~0.6.
-        trailCasing:      "rgba(0,0,0,1)",
+        trailCasing:      "rgba(0,0,0,0.5)",
         arrowHalo:        "rgba(0,0,0,0.85)",
         // Contour lines: warm brown at moderate alpha so they read
         // as terrain annotation under the trail network, not as
@@ -171,11 +171,11 @@ const MAP_PAINT_TOKENS = {
         // that plain #ffffff produces.
         hillshadeShadow:    "#000000",
         hillshadeHighlight: "rgba(255, 255, 255, 0.15)",
-        // 0.6 (effective 0.30), weaker than light on purpose. See the light
+        // 0.30, weaker than light on purpose. See the light
         // casing note: the dark basemap's collision rate is 2%, so a
         // stronger casing here would only fatten lines that already
         // separate cleanly.
-        trailCasing:      "rgba(255,255,255,0.6)",
+        trailCasing:      "rgba(255,255,255,0.3)",
         arrowHalo:        "rgba(255,255,255,0.85)",
         // Lower alpha than light: pale lines on a dark ground gain
         // apparent contrast; 0.25 was judged right on-device.
@@ -618,34 +618,12 @@ const TRAIL_WIDTH_STOPS = {
 function applyMapPaintForScheme(scheme) {
     const t = mapPaintTokens(scheme);
     if (!map) return;
-    for (const id of ["decor-trail-name", "decor-route-name", "decor-route-name-pt", "decor-trail-name-pt"]) {
-        if (map.getLayer(id)) {
-            map.setPaintProperty(id, "text-color", t.labelText);
-            map.setPaintProperty(id, "text-halo-color", t.labelHalo);
-        }
-    }
-    // Per-route overlay layers that carry a scheme-dependent color and
-    // survive a scheme toggle verbatim (setStyle({diff:true}) preserves
-    // overlays), so their color is re-applied here rather than only at
-    // build time:
-    //   trail-label-<id>: name text + halo
-    //   clip-arrow-<id>: continuation-arrow halo (basemap-contrasting,
-    //                    or the lift's yellow; updateClipArrowsDim owns it)
-    // Without the label flip they'd freeze at light-mode values (the "some
-    // labels dark-inner light-outer" bug); without the halo flip the
-    // arrow edges would freeze at the build-time scheme.
-    // One getStyle() call: it serializes every source and layer
-    // (~130 basemap layers plus ~5 per route), on the boot path and
-    // every scheme toggle.
-    const style = map.getStyle();
-    if (style) {
-        for (const layer of style.layers) {
-            if (layer.id.startsWith("trail-label-")) {
-                map.setPaintProperty(layer.id, "text-color", t.labelText);
-                map.setPaintProperty(layer.id, "text-halo-color", t.labelHalo);
-            }
-        }
-    }
+    // Overlay layers survive a scheme toggle verbatim (setStyle({diff:
+    // true}) preserves them), so their scheme colors are re-applied
+    // here rather than only at build time. The continuation-arrow halo
+    // (basemap-contrasting, or the lift's yellow) belongs to
+    // updateClipArrowsDim; without it the arrow edges would freeze at
+    // the build-time scheme.
     updateClipArrowsDim();
     // The lane casing is one color on the lane layer, not a layer per
     // route, so it is swapped through the layer's setter.
@@ -667,11 +645,9 @@ function applyMapPaintForScheme(scheme) {
         map.setPaintProperty("contour-labels", "text-color", t.contourLabelText);
         map.setPaintProperty("contour-labels", "text-halo-color", t.contourLabelHalo);
     }
-    // The loops above just set every name label back to the flat
-    // scheme color; updateLabels() re-applies the highlight-aware
-    // dim/bright split on top, so a scheme toggle mid-highlight
-    // doesn't flash every label bright for a frame or leave them all
-    // stuck bright.
+    // Name labels (decor-*-name*, trail-label-<id>): updateLabels()
+    // paints every visible one in the new scheme with its highlight
+    // dim, and a hidden one gets its colors when updateLabels shows it.
     updateLabels();
 }
 
@@ -829,6 +805,16 @@ function keyTitle() {
     if (!hasRatingLanes()) return "Routes";
     if (hasRouteLanes()) return "Key";
     return activeAspect() === EXPOSURE_ASPECT ? "Exposure" : "Difficulty";
+}
+
+// The key named in a phrase, lowercase: "route key", "key",
+// "difficulty key" or "exposure key". One derivation for the chip's
+// spoken name (labelRatingKey) and its first-visit label
+// (setupFabLabels), so the two cannot drift.
+function keyNoun() {
+    const title = keyTitle();
+    if (title === "Key") return "key";
+    return `${title === "Routes" ? "route" : title.toLowerCase()} key`;
 }
 
 // Curator-forced visibility: when a layer name appears in
@@ -1269,11 +1255,6 @@ function isWideSymbol(sym) {
     return freeride || (!!tech && !!expo);
 }
 
-// The map image a rated color key draws (see symbolParts).
-function difficultyImageId(key) {
-    return symbolImageId(key);
-}
-
 // On the map a difficulty symbol sits on a white plate, the way it's
 // printed on a trail sign. In difficulty color mode the line under it
 // is the symbol's own color (blue square on a blue line), and the
@@ -1587,13 +1568,18 @@ const _popupIconCache = {};
 let _trailPopup = null;
 
 // The laneHit, anchor and scope last passed to openTrailPopup for the
-// popup above, so setDistanceUnits can re-render its Length row (see
-// trailPopupHtml) without a fresh map hit test, measuring the same
-// section or whole trail it measured before. Cleared alongside
-// _trailPopup so a units change after close has nothing stale to redraw.
+// popup above, and the section it measured (trailPopupSection), so
+// setDistanceUnits can re-render its Length row (see trailPopupHtml)
+// without a fresh map hit test or graph walk, measuring the same
+// section or whole trail it measured before. The section's edge ids
+// belong to the graph in force at open, and a graph swap closes the
+// popup first (applyVisibilityChange), so a kept section cannot go
+// stale. Cleared alongside _trailPopup so a units change after close
+// has nothing stale to redraw.
 let _trailPopupHit = null;
 let _trailPopupAnchor = null;
 let _trailPopupScope = "section";
+let _trailPopupSection = null;
 
 // Also closed when a new highlight replaces the view (route key, finder,
 // share link): those fly or fit the camera elsewhere, and MapLibre's
@@ -1609,6 +1595,7 @@ function closeTrailPopup() {
     }
     _trailPopupHit = null;
     _trailPopupAnchor = null;
+    _trailPopupSection = null;
 }
 
 // While a trail popup is open, the trail it describes is lifted
@@ -1746,7 +1733,7 @@ function difficultyIconDataUrl(key) {
     // The map's own test, so the popup never shows a rating glyph for
     // a way the lanes draw as unrated ("2+" parses as 2).
     if (!isRatedKey(key)) return null;
-    const id = difficultyImageId(key);
+    const id = symbolImageId(key);
     if (!_popupIconCache[id]) _popupIconCache[id] = symbolCanvas(key).toDataURL();
     return _popupIconCache[id];
 }
@@ -2228,18 +2215,26 @@ function clipCoordsAroundObstacles(coords, obstaclesIndex, radius) {
 // read.
 let _canonicalWays = null;  // { key, ways }
 
+// The relations a trails feature belongs to, its own route_id when it
+// carries no shared_routes list. One spelling for every reader, so the
+// fallback cannot drift between them.
+function wayParents(props) {
+    return props.shared_routes || [props.route_id];
+}
+
 function collectCanonicalWays() {
     if (!routesData) return [];
     const inputs = laneInputsKey();
     if (_canonicalWays && _canonicalWays.key === inputs) return _canonicalWays.ways.slice();
 
     const globalRank = routeRank();
+    const ratingLanes = hasRatingLanes();
 
     const ways = [];
     for (const f of routesData.features) {
         const props = f.properties;
         const routeId = props.route_id;
-        const shared = props.shared_routes || [routeId];
+        const shared = wayParents(props);
         const visibleShared = shared
             .filter((id) => visibleRoutes.has(id))
             .sort((a, b) => globalRank.get(a) - globalRank.get(b));
@@ -2264,24 +2259,18 @@ function collectCanonicalWays() {
             totalLength,
             coords,
             trailName: props.trail_name || "",
-            imba: props.imba_difficulty || "",
-            freeride: props.freeride === true,
-            itrs: props.itrs_difficulty || "",
-            itrsExposure: props.itrs_exposure || "",
-            bikeOnly: props.bike_only === true,
             symbol,
             wide: isWideSymbol(symbol),
             symbolImage: symbolImageId(symbol),
-            oneway: props.oneway || "",
             routeId,
             sharedRoutes: shared,
             soloRouteName,
             soloRouteId,
             // Maps with rating lanes: the way's rating key, for the
             // labels a rating highlight keeps bright (ratingIdentityMatch).
-            // The false stand-in marks a way with no rating lane, so a
-            // rating highlight does not fall back to its rating.
-            colorKey: hasRatingLanes() ? (featureColorKey(props) ?? false) : null,
+            // The false stand-in marks a way with no rating lane, which
+            // no rating highlight matches.
+            colorKey: ratingLanes ? (featureColorKey(props) ?? false) : null,
         });
     }
     _canonicalWays = { key: inputs, ways };
@@ -2431,9 +2420,7 @@ function computeConnectedRuns(ways, isEligible, groupKey) {
     const atNode = new Map();   // endpoint key -> [{ idx, routes, gk }]
     for (let i = 0; i < eligible.length; i++) {
         const c = eligible[i].coords;
-        const routes = new Set(
-            (eligible[i].sharedRoutes && eligible[i].sharedRoutes.length)
-                ? eligible[i].sharedRoutes : [eligible[i].routeId]);
+        const routes = new Set(eligible[i].sharedRoutes);
         const gk = groupKey(eligible[i]);
         for (const e of [c[0], c[c.length - 1]]) {
             const k = endpointKey(e[0], e[1]);
@@ -2536,22 +2523,24 @@ function chooseOnPathLabelPoint(way, placed, radiusM) {
     return fallback;
 }
 
+// The color_key a decoration carries on a map with rating lanes, for
+// the labels, diamonds and chevrons a rating highlight keeps bright
+// (ratingIdentityMatch); nothing on a map without them.
+function colorKeyProp(way) {
+    return way.colorKey != null ? { color_key: way.colorKey } : {};
+}
+
 // Feature properties for a difficulty diamond on `way`. color_key is
 // bucketed as the lanes are, so a rated way whose only visible parents
 // are route-mode (no rating lane) dims with its lane under a rating
-// highlight instead of falling back to its tag.
+// highlight.
 function diamondProps(way) {
     return {
-        imba_difficulty: way.imba,
-        freeride: way.freeride,
-        itrs_difficulty: way.itrs,
-        itrs_exposure: way.itrsExposure,
-        bike_only: way.bikeOnly,
         // The map image decor-diamond draws.
         symbol: way.symbolImage,
         trail_name: way.trailName,
         shared_routes: way.sharedRoutes,
-        ...(way.colorKey != null && { color_key: way.colorKey }),
+        ...colorKeyProp(way),
     };
 }
 
@@ -2604,9 +2593,7 @@ function routeLabelAllowed(rid) {
 // is a background relation, because the course runs on it.
 function trailLabelAllowed(way) {
     if (!CONFIG.eventModeActive) return true;
-    const rids = (way.sharedRoutes && way.sharedRoutes.length)
-        ? way.sharedRoutes : [way.routeId];
-    return rids.some((rid) => {
+    return way.sharedRoutes.some((rid) => {
         const info = CONFIG.routes[String(rid)];
         return !!(info && info.featured);
     });
@@ -2658,13 +2645,7 @@ function computeDecorations() {
                         text: way.trailName,
                         trail_name: way.trailName,
                         shared_routes: way.sharedRoutes,
-                        // A rating highlight keeps its own ways' names
-                        // bright (ratingIdentityMatch).
-                        imba_difficulty: way.imba,
-                        freeride: way.freeride,
-                        itrs_difficulty: way.itrs,
-                        itrs_exposure: way.itrsExposure,
-                        ...(way.colorKey != null && { color_key: way.colorKey }),
+                        ...colorKeyProp(way),
                     },
                 });
             }
@@ -2743,9 +2724,7 @@ function computeDecorations() {
     {
         const routeAgg = new Map();   // routeId -> { longest }
         for (const way of ways) {
-            const rids = (way.sharedRoutes && way.sharedRoutes.length)
-                ? way.sharedRoutes : [way.routeId];
-            for (const rid of rids) {
+            for (const rid of way.sharedRoutes) {
                 if (!visibleRoutes.has(rid)) continue;
                 let agg = routeAgg.get(rid);
                 if (!agg) { agg = { longest: way }; routeAgg.set(rid, agg); }
@@ -2775,11 +2754,7 @@ function computeDecorations() {
         for (const [tname, way] of trailLongest) {
             emitOverviewLabel(tname, way,
                 { kind: KIND.TRAIL_LABEL_PT, trail_name: tname,
-                  imba_difficulty: way.imba,
-                  freeride: way.freeride,
-                  itrs_difficulty: way.itrs,
-                  itrs_exposure: way.itrsExposure,
-                  ...(way.colorKey != null && { color_key: way.colorKey }) });
+                  ...colorKeyProp(way) });
         }
     }
 
@@ -3245,52 +3220,63 @@ let eventPoiMarkers = [];
 //                      POI_PROXIMITY_METERS, "amenity" is
 //                      POI_AMENITY_PROXIMITY_METERS; named rather than
 //                      referenced because those are defined further down)
+//   showGate           the CONFIG flag that lets the type on the map at all
+//   addMarkers         creates the type's markers (loadPOIs)
 // Event POIs have no toggle and no proximity gate.
 const POI_TYPES = {
     [POI.TRAIL_MARKER]: {
         lsKey: "mtb.poi.markers", defaultVisibleName: "trail_markers",
         toggleRowId: "toggle-markers", markers: trailMarkerMarkers,
         fallbackName: "Trail Marker", metaLabel: "trail marker", proximity: "trail",
+        showGate: "showMarkers", addMarkers: addTrailMarkers,
     },
     [POI.PARKING]: {
         lsKey: "mtb.poi.parking", defaultVisibleName: "parking",
         toggleRowId: "toggle-parking", markers: parkingMarkers,
         fallbackName: "Parking", metaLabel: "parking", proximity: null,
+        showGate: "showParking", addMarkers: addParkingMarkers,
     },
     [POI.TRAILHEAD]: {
         lsKey: "mtb.poi.trailheads", defaultVisibleName: "trailheads",
         toggleRowId: "toggle-trailheads", markers: trailheadMarkers,
         fallbackName: "Trailhead", metaLabel: "trailhead", proximity: null,
+        showGate: "showTrailheads", addMarkers: addTrailheadMarkers,
     },
     [POI.HUB]: {
         lsKey: "mtb.poi.hubs", defaultVisibleName: "hubs",
         toggleRowId: "toggle-hubs", markers: hubMarkers,
         fallbackName: "Trail Hub", metaLabel: "trail hub", proximity: null,
+        showGate: "showHubs", addMarkers: addHubMarkers,
     },
     [POI.FEATURE]: {
         lsKey: "mtb.poi.features", defaultVisibleName: "features",
         toggleRowId: "toggle-features", markers: featureMarkers,
         fallbackName: "Feature", metaLabel: "feature", proximity: "trail",
+        showGate: "showFeatures", addMarkers: addFeatureMarkers,
     },
     [POI.TOILET]: {
         lsKey: "mtb.poi.toilets", defaultVisibleName: "toilets",
         toggleRowId: "toggle-toilets", markers: toiletMarkers,
         fallbackName: "Toilets", metaLabel: "toilets", proximity: "amenity",
+        showGate: "showToilets", addMarkers: addToiletMarkers,
     },
     [POI.DRINKING_WATER]: {
         lsKey: "mtb.poi.drinking_water", defaultVisibleName: "drinking_water",
         toggleRowId: "toggle-drinking-water", markers: drinkingWaterMarkers,
         fallbackName: "Drinking Water", metaLabel: "drinking water", proximity: "amenity",
+        showGate: "showDrinkingWater", addMarkers: addDrinkingWaterMarkers,
     },
     [POI.BICYCLE_REPAIR_STATION]: {
         lsKey: "mtb.poi.bicycle_repair_stations", defaultVisibleName: "bicycle_repair_stations",
         toggleRowId: "toggle-bicycle-repair-stations", markers: bicycleRepairStationMarkers,
         fallbackName: "Bicycle Repair", metaLabel: "bicycle repair", proximity: "amenity",
+        showGate: "showBicycleRepairStations", addMarkers: addBicycleRepairStationMarkers,
     },
     [POI.EVENT]: {
         lsKey: null, defaultVisibleName: null,
         toggleRowId: null, markers: eventPoiMarkers,
         fallbackName: "Event Markers", metaLabel: "event marker", proximity: null,
+        showGate: "hasEventPois", addMarkers: addEventPoiMarkers,
     },
 };
 const _poiTypeColumn = (field) => Object.fromEntries(
@@ -3766,6 +3752,31 @@ function highlightHasKey(h) {
     return !!h.key || (h.kind === "rating" && h.key === "");
 }
 
+// What the view has lit, as {kind, key}, or null: the one walk behind
+// both the share link (buildShareUrl) and the saved view (saveView), so
+// a new highlight kind is added once. Route and rating highlights carry
+// their key; a POI highlight (single, name-group, or category) carries
+// the Finder ref, re-expanded against live data on the receiving side;
+// a tapped popup carries its spot and a finder pick's popup the trail
+// name. Popups come last: a popup is a look, gone on the next tap, and
+// a selection that is still on the map is the more deliberate thing to
+// pass on.
+function currentViewHighlight() {
+    if (highlight && highlight.kind && highlightHasKey(highlight)) {
+        return { kind: highlight.kind, key: highlight.key };
+    }
+    // Mutually exclusive with `highlight` by the single-highlight
+    // invariant.
+    if (_poiHighlightRef) return { kind: "poi", key: _poiHighlightRef };
+    // A tapped trail's popup, named or not, travels as the tapped spot
+    // so the receiver gets the same section and anchor.
+    const spot = sharedSpotKey();
+    if (spot) return { kind: "spot", key: spot };
+    const trail = sharedTrailName();
+    if (trail) return { kind: "trail", key: trail };
+    return null;
+}
+
 // Build the "#share=..." URL for the current map view + active
 // highlight. Used by the Share sheet and its Share/Copy link button.
 // Format mirrors what consumeShareHash() parses on the receiving
@@ -3777,31 +3788,19 @@ function buildShareUrl() {
     const lat = c.lat.toFixed(5);
     const lon = c.lng.toFixed(5);
     let path = `share=${zoom}/${lat}/${lon}`;
-    if (highlight && highlight.kind === "route" && highlight.key) {
-        path += `/r/${encodeURIComponent(highlight.key)}`;
-    } else if (highlight && highlight.kind === "rating") {
+    const h = currentViewHighlight();
+    if (h) {
         // Unrated ("") travels as a word: an empty last segment would
         // be lost to any client that trims a trailing slash, and
         // consumeShareHash would then see too few parts and drop the
         // highlight. The other keys are ratings "0".."5", freeride
         // "0f".."5f" or exposure "x1".."x4", so the word cannot collide
         // with one. The key alone names its aspect (adoptHighlightAspect).
-        path += `/d/${highlight.key === "" ? "unrated" : encodeURIComponent(highlight.key)}`;
-    } else if (_poiHighlightRef) {
-        // POI highlight (single, name-group, or category). The ref is the
-        // Finder row's uid; mutually exclusive with `highlight` by the
-        // single-highlight invariant. consumeShareHash + highlightPoiByRef
-        // re-expand it against live data on the receiving side.
-        path += `/p/${encodeURIComponent(_poiHighlightRef)}`;
-    } else if (sharedSpotKey()) {
-        // A tapped trail's popup, named or not, shares the tapped spot so
-        // the receiver gets the same section and anchor. Popups come
-        // last: a popup is a look, gone on the next tap, and a selection
-        // that is still on the map is the more deliberate thing to pass on.
-        path += `/s/${encodeURIComponent(sharedSpotKey())}`;
-    } else if (sharedTrailName()) {
-        // A finder pick's popup asked for the whole name and shares it.
-        path += `/t/${encodeURIComponent(sharedTrailName())}`;
+        // One letter per currentViewHighlight kind, as consumeShareHash
+        // parses them.
+        const code = { route: "r", rating: "d", poi: "p", spot: "s", trail: "t" }[h.kind];
+        const key = h.kind === "rating" && h.key === "" ? "unrated" : encodeURIComponent(h.key);
+        path += `/${code}/${key}`;
     }
     const url = new URL(shareBaseUrl());
     url.hash = path;
@@ -4070,48 +4069,34 @@ function consumeShareHash() {
 const VIEW_KEY = "mtb.savedView";
 const VIEW_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
+// A restored highlight still waiting on its data, or null. A boot-time
+// moveend (a canvas resize) or a lock before load must not erase it from
+// the saved view.
+function pendingViewHighlight() {
+    // A restored spot still waiting for its lane build.
+    if (_pendingSpot) {
+        return { kind: "spot", key: spotKey(_pendingSpot.anchor, _pendingSpot.name) };
+    }
+    // Trails have not loaded yet.
+    if (_pendingShareHighlight) {
+        return { kind: _pendingShareHighlight.kind, key: _pendingShareHighlight.key };
+    }
+    return null;
+}
+
 // Best-effort, never throws: before the map exists there is nothing to
 // save, and LS.set swallows private-mode and quota failures.
 function saveView() {
     if (!map) return;
     try {
         const c = map.getCenter();
-        const state = {
+        LS.set(VIEW_KEY, {
             center: [c.lng, c.lat],
             zoom: map.getZoom(),
-            highlight: null,
+            // The same highlight the Share button sends.
+            highlight: currentViewHighlight() || pendingViewHighlight(),
             savedAt: Date.now(),
-        };
-        // Same serialization the Share button uses: route and rating
-        // highlights carry {kind, key}; a POI highlight (single,
-        // group, or category) carries the Finder ref, re-expanded
-        // against live data on the receiving side; a tapped popup
-        // carries its spot and a finder pick's popup the trail name.
-        if (highlight && highlight.kind && highlightHasKey(highlight)) {
-            state.highlight = { kind: highlight.kind, key: highlight.key };
-        } else if (_poiHighlightRef) {
-            state.highlight = { kind: "poi", key: _poiHighlightRef };
-        } else if (sharedSpotKey()) {
-            state.highlight = { kind: "spot", key: sharedSpotKey() };
-        } else if (sharedTrailName()) {
-            state.highlight = { kind: "trail", key: sharedTrailName() };
-        } else if (_pendingSpot) {
-            // A restored spot still waiting for its lane build: a
-            // boot-time moveend must not erase it either.
-            state.highlight = {
-                kind: "spot",
-                key: spotKey(_pendingSpot.anchor, _pendingSpot.name),
-            };
-        } else if (_pendingShareHighlight) {
-            // Trails have not loaded yet, so the restored highlight is
-            // still pending. A boot-time moveend (a canvas resize) or a
-            // lock before load must not erase it from the saved view.
-            state.highlight = {
-                kind: _pendingShareHighlight.kind,
-                key: _pendingShareHighlight.key,
-            };
-        }
-        LS.set(VIEW_KEY, state);
+        });
     } catch (e) {
         // Continuity is a nicety; a failed save must not break a pan
         // or an update reload.
@@ -5278,6 +5263,11 @@ function isWelcomeOpen() {
     return !!modal && !modal.classList.contains("hidden");
 }
 
+function isAboutOpen() {
+    const modal = document.getElementById("about-modal");
+    return !!modal && !modal.classList.contains("hidden");
+}
+
 // MDI SVG paths for the welcome controls hint. Same paths as the
 // FAB buttons, keeps the rider's mental model consistent ("the
 // icon I see in the welcome is the icon I'll see on the map").
@@ -6354,22 +6344,6 @@ function effectiveRouteColor(routeInfo) {
     return CONFIG.defaultTrailColor;
 }
 
-// Trail casing (outline halo) color. A casing's job is to separate the
-// trail from the BASEMAP, so its contrast follows the basemap, which
-// tracks the color scheme (light basemap → dark casing; dark basemap →
-// light casing), not the trail's own fill. Keying off the fill (the
-// prior casingFromFill approach) gave dark fills a translucent-light
-// casing that vanished on the light basemap, so blue/black trails read
-// skinny (and, symmetrically, light trails would in dark mode). Both
-// map models (color_by: route and difficulty) share this one value, so every trail
-// gets the same visible halo regardless of difficulty/route color. The
-// colors live in MAP_PAINT_TOKENS so applyMapPaintForScheme() can
-// re-apply them on a scheme toggle.
-function trailCasingColor() {
-    const t = mapPaintTokens();
-    return t.trailCasing;
-}
-
 // icon-halo-color for clip-arrow continuation arrowheads. The halo's
 // job is to lift the arrow off the basemap, so, like the trail casing
 // and the highlight outline, it contrasts the BASEMAP via the color
@@ -6481,8 +6455,7 @@ function unratedSwatchModel() {
 // routesData (labels, chevrons), which must bucket a way exactly as
 // laneFeaturesByMode does.
 function featureColorKey(props) {
-    const parents = props.shared_routes || [props.route_id];
-    if (!parents.some((id) => visibleRoutes.has(id) && !isRouteMode(id))) return null;
+    if (!wayParents(props).some((id) => visibleRoutes.has(id) && !isRouteMode(id))) return null;
     return wayKey(props);
 }
 
@@ -6712,18 +6685,30 @@ const POI_AMENITY_PROXIMITY_METERS = 500;
 // knob like POI_PROXIMITY_METERS.
 const HIGHLIGHT_POI_PROXIMITY_METERS = 50;
 
-function pointToSegmentDistance(px, py, ax, ay, bx, by) {
-    const cosLat = Math.cos(((py + ay + by) / 3) * Math.PI / 180);
+// Where the nearest point to (px, py) falls on segment a-b, as t in
+// [0, 1] along it, in a local flat-earth frame whose longitudes are
+// scaled by cosLat (segmentCosLat). A bare number, not an object:
+// pointToSegmentDistance calls it once per segment in the proximity
+// walks.
+function projectToSegment(px, py, ax, ay, bx, by, cosLat) {
     const dx = (bx - ax) * cosLat;
     const dy = by - ay;
     const lenSq = dx * dx + dy * dy;
-    let t = 0;
-    if (lenSq > 0) {
-        t = Math.max(0, Math.min(1, ((px - ax) * cosLat * dx + (py - ay) * dy) / lenSq));
-    }
+    return lenSq > 0
+        ? Math.max(0, Math.min(1, ((px - ax) * cosLat * dx + (py - ay) * dy) / lenSq))
+        : 0;
+}
+
+function segmentCosLat(py, ay, by) {
+    return Math.cos(((py + ay + by) / 3) * Math.PI / 180);
+}
+
+function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+    const cosLat = segmentCosLat(py, ay, by);
+    const t = projectToSegment(px, py, ax, ay, bx, by, cosLat);
     const projX = (ax + t * (bx - ax) - px) * cosLat;
     const projY = ay + t * (by - ay) - py;
-    return Math.sqrt(projX * projX + projY * projY) * 111320;
+    return Math.sqrt(projX * projX + projY * projY) * _LAT_M_PER_DEG;
 }
 
 // The segment walk behind nearestTrail, for a point that moves (a GPS
@@ -6834,22 +6819,15 @@ function distanceToVisibleTrails(lng, lat) {
 
 // The nearest feature `predicate(props)` accepts, as {feature, distM,
 // point}, where point is the nearest [lng, lat] on that feature's
-// centerline, or null. The projection repeats pointToSegmentDistance's
-// local flat-earth math for the one winning segment only, so the walk
-// stays as cheap as the POI proximity pass.
+// centerline, or null. The foot point is projected for the one winning
+// segment only, so the walk stays as cheap as the POI proximity pass.
 function nearestTrail(lng, lat, predicate) {
     if (!routesData) return null;
     const best = nearestFeatureSegment(lng, lat, predicate);
     if (!best) return null;
     const [ax, ay] = best.a;
     const [bx, by] = best.b;
-    const cosLat = Math.cos(((lat + ay + by) / 3) * Math.PI / 180);
-    const dx = (bx - ax) * cosLat;
-    const dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    const t = lenSq > 0
-        ? Math.max(0, Math.min(1, ((lng - ax) * cosLat * dx + (lat - ay) * dy) / lenSq))
-        : 0;
+    const t = projectToSegment(lng, lat, ax, ay, bx, by, segmentCosLat(lat, ay, by));
     return {
         feature: best.feature,
         distM: best.distM,
@@ -6876,8 +6854,7 @@ function distanceToHighlighted(lng, lat) {
     if (!routesData || !highlight) return Infinity;
     return minDistanceToFeatures(lng, lat, (props) => {
         if (highlight.kind === "route") {
-            const shared = props.shared_routes || [props.route_id];
-            return shared.includes(highlight.key);
+            return wayParents(props).includes(highlight.key);
         }
         if (highlight.kind === "rating") {
             // A color key spans routes the rider may have hidden, and
@@ -7006,6 +6983,14 @@ function updateMarkerDimState() {
             }
             washMarkerElement(marker.getElement(), type, dimmed);
         }
+    }
+}
+
+// Paint a segmented row (a radiogroup of .opt-segmented-btn) with the
+// segment whose data-value is `value` checked and every other one not.
+function setSegmentedChecked(buttons, value) {
+    for (const b of buttons) {
+        b.setAttribute("aria-checked", b.dataset.value === value ? "true" : "false");
     }
 }
 
@@ -7141,15 +7126,9 @@ function hasVisibleProximityPois(poiType, threshold) {
 // nothing on the map. Now the row tracks whether any marker is
 // currently in scope; out-of-scope markers hide the row.
 function updatePoiToggleVisibility() {
-    const flips = [
-        ["toggle-markers",        CONFIG.showMarkers,        POI.TRAIL_MARKER,    POI_PROXIMITY_METERS,         "trail_markers"],
-        ["toggle-features",       CONFIG.showFeatures,       POI.FEATURE,         POI_PROXIMITY_METERS,         "features"],
-        ["toggle-toilets",        CONFIG.showToilets,        POI.TOILET,          POI_AMENITY_PROXIMITY_METERS, "toilets"],
-        ["toggle-drinking-water", CONFIG.showDrinkingWater,  POI.DRINKING_WATER,  POI_AMENITY_PROXIMITY_METERS, "drinking_water"],
-        ["toggle-bicycle-repair-stations", CONFIG.showBicycleRepairStations, POI.BICYCLE_REPAIR_STATION, POI_AMENITY_PROXIMITY_METERS, "bicycle_repair_stations"],
-    ];
-    for (const [id, gate, type, threshold, layerName] of flips) {
-        const btn = document.getElementById(id);
+    for (const type of _PROXIMITY_TYPES) {
+        const t = POI_TYPES[type];
+        const btn = document.getElementById(t.toggleRowId);
         if (!btn) continue;
         // Curator-forced layers: wirePeekToggle already hid this row and
         // skipped the click wiring (the rider gets no off affordance).
@@ -7157,11 +7136,12 @@ function updatePoiToggleVisibility() {
         // resurrect a dead, unclickable control. The layer itself stays
         // visible via the data-on default + proximity filter,
         // independent of the row. See isForcedVisible / wirePeekToggle.
-        if (isForcedVisible(layerName)) {
+        if (isForcedVisible(t.defaultVisibleName)) {
             btn.classList.add("hidden");
             continue;
         }
-        const show = gate && hasVisibleProximityPois(type, threshold);
+        const show = CONFIG[t.showGate]
+            && hasVisibleProximityPois(type, _proximityThresholdForType(type));
         btn.classList.toggle("hidden", !show);
     }
 }
@@ -7320,14 +7300,7 @@ async function loadTrails() {
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
         stampClipEndpointWays();
-        for (const f of clipEndpointsData.features) {
-            const ids = f.properties.route_ids || [];
-            let n = 0;
-            for (const rid of ids) {
-                if (visibleRoutes.has(rid)) n++;
-            }
-            f.properties.visible_count = n;
-        }
+        stampClipEndpointVisibleCounts();
         map.addSource("clip-endpoints", {
             type: "geojson",
             data: clipEndpointsData,
@@ -7645,14 +7618,14 @@ async function loadTrails() {
     // casing, and updateLabels' highlight-aware dim split.
     applyMapPaintForScheme(currentColorScheme());
 
-    // Sync layer visibility to the current bucket-model state before
-    // we return, without this, every route's layers default to
-    // "visible" and any route hidden by the bucket model (e.g.,
-    // emergency-access while emergencyOn is false) would briefly
-    // paint during the await loadPOIs() yield in init() before
-    // setupFloatingChrome → applyVisibilityChange runs. See the
-    // comment on _applyPerRouteLayerVisibility for the full reasoning.
-    _applyPerRouteLayerVisibility();
+    // Sync the clip-arrow layers' visibility to the current
+    // bucket-model state before we return. Without this, every route's
+    // layers default to "visible" and any route hidden by the bucket
+    // model (e.g., emergency-access while emergencyOn is false) would
+    // briefly paint during the await loadPOIs() yield in init() before
+    // setupFloatingChrome → applyVisibilityChange runs. On a fast
+    // connection that's imperceptible; on 4G it's a visible flicker.
+    updateClipArrowsDim();
 }
 
 // Blend a scheme paint color toward black by the highlight wash's own
@@ -7716,15 +7689,14 @@ function trailIdentityMatch() {
     if (!names.length) return own;
     return ["any", own, ["in", ["get", "trail_name"], ["literal", names]]];
 }
-// A color key highlight: the feature's own way has that key. Labels
-// and chevrons carry color_key (stamped per visibility pass, false for
-// a way with no visible difficulty-mode parent); features without it,
-// the diamonds among them, fall back to their rating, read through
-// ratingMatchExpr so an off-scale value matches unrated, as the map
-// draws it. Only maps with rating lanes have these highlights.
+// A color key highlight: the feature's own way has that key. Only maps
+// with rating lanes have these highlights, and there every feature it
+// is asked about carries color_key: labels and diamonds from
+// colorKeyProp, chevrons from computeTrailsSourceData, each stamped per
+// visibility pass and false for a way with no visible difficulty-mode
+// parent.
 function ratingIdentityMatch() {
-    return ["==", ["coalesce", ["get", "color_key"], ratingMatchExpr((r) => r)],
-        highlight.key];
+    return ["==", ["get", "color_key"], highlight.key];
 }
 
 // Visibility and highlight-aware paint for one decor name-label layer,
@@ -7951,16 +7923,23 @@ function laneStyleAt(zoom) {
     return { spacing: width + 1, width, casingWidth: casing };
 }
 
-// The lane layer has no casing opacity, so the casing's 50% is folded
-// into the alpha of the scheme's casing color (the tokens are rgba()
-// strings). Drawn under the fill, a translucent casing shows the
-// basemap through its outer rim. A single-color dashed route draws
-// bare, per route, through RouteMeta.casing (see laneRouteMeta).
+// Trail casing (outline halo) color. A casing's job is to separate the
+// trail from the BASEMAP, so its contrast follows the basemap, which
+// tracks the color scheme (light basemap → dark casing; dark basemap →
+// light casing), not the trail's own fill. Keying off the fill (the
+// prior casingFromFill approach) gave dark fills a translucent-light
+// casing that vanished on the light basemap, so blue/black trails read
+// skinny (and, symmetrically, light trails would in dark mode). Both
+// map models (color_by: route and difficulty) share this one value, so every trail
+// gets the same visible halo regardless of difficulty/route color. The
+// colors live in MAP_PAINT_TOKENS so applyMapPaintForScheme() can
+// re-apply them on a scheme toggle.
+// The lane layer has no casing opacity, so the tokens carry the
+// casing's effective alpha. Drawn under the fill, a translucent casing
+// shows the basemap through its outer rim. A single-color dashed route
+// draws bare, per route, through RouteMeta.casing (see laneRouteMeta).
 function laneCasingColor() {
-    const css = trailCasingColor();
-    const m = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/.exec(css);
-    if (!m) return css;
-    return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${(parseFloat(m[4]) * 0.5).toFixed(3)})`;
+    return mapPaintTokens().trailCasing;
 }
 
 // Per-key metadata for buildLineGraph on a map with rating lanes,
@@ -8101,7 +8080,7 @@ function laneFeaturesByMode() {
     const out = [];
     for (const copies of runs.values()) {
         const first = copies[0].properties;
-        const parents = (first.shared_routes || [first.route_id])
+        const parents = wayParents(first)
             .filter((id) => visibleRoutes.has(id));
         if (!parents.length) continue;
         const reverses = parents.some((id) => !!schedules[id]);
@@ -8443,7 +8422,7 @@ function computeTrailsSourceData() {
     const features = routesData.features.map((f) => {
         const props = f.properties;
         const routeId = props.route_id;
-        const shared = props.shared_routes || [routeId];
+        const shared = wayParents(props);
 
         const visibleShared = shared
             .filter((id) => visibleRoutes.has(id))
@@ -8569,11 +8548,9 @@ function isTruncatedTrail(name) {
     return truncatedTrailNames.has(name);
 }
 
-// Recompute `visible_count` on every clip-endpoint feature.
-function recomputeClipEndpointVisibility() {
-    if (!clipEndpointsData) return;
-    const src = map.getSource("clip-endpoints");
-    if (!src) return;
+// Stamp `visible_count` (how many of its routes are visible) on every
+// clip-endpoint feature.
+function stampClipEndpointVisibleCounts() {
     for (const f of clipEndpointsData.features) {
         const ids = f.properties.route_ids || [];
         let n = 0;
@@ -8582,6 +8559,14 @@ function recomputeClipEndpointVisibility() {
         }
         f.properties.visible_count = n;
     }
+}
+
+// Recompute `visible_count` on every clip-endpoint feature.
+function recomputeClipEndpointVisibility() {
+    if (!clipEndpointsData) return;
+    const src = map.getSource("clip-endpoints");
+    if (!src) return;
+    stampClipEndpointVisibleCounts();
     src.setData(clipEndpointsData);
 }
 
@@ -8629,7 +8614,12 @@ function applyVisibilityChange(immediate = false) {
     // mode's lane offsets until the deferred setData re-tiles, but
     // that transient window always existed (the worker re-tile takes
     // 0.3-1 s); the deferral only moves one frame of it to the front.
-    _applyPerRouteLayerVisibility();
+    // The clip arrows go through updateClipArrowsDim so a highlight
+    // keeps them narrowed: a bare bucket flip would show every visible
+    // route's arrows over the wash until the deferred pass. The route
+    // name labels are left to updateLabels(), the only place that also
+    // honors labelMode.
+    updateClipArrowsDim();
 
     // Everything below is the expensive half of a bucket toggle
     // (trails/labels setData recompute, marker proximity, finder +
@@ -8699,27 +8689,6 @@ function _refreshVisibilityDependents() {
             else refreshRatingChipStats();
         }
     }
-}
-
-// Sync every per-route clip-arrow layer's MapLibre visibility with the current
-// visibleRoutes set. Called from applyVisibilityChange()'s synchronous
-// part on every bucket-model change (the flips are worker-free, so
-// they paint in the tap's own frame while the setData recompute is
-// deferred) AND from loadTrails() right after the layers
-// are added, without that initial sync, MapLibre's default
-// visibility ("visible") would let bucket-hidden routes (e.g., an
-// emergency-access route while emergencyOn is false) paint briefly
-// during the await loadPOIs() yield in init(), before
-// setupFloatingChrome → applyVisibilityChange runs. On a fast
-// connection that's imperceptible; on 4G it's a visible flicker.
-function _applyPerRouteLayerVisibility() {
-    // trail-label-<id> is left to updateLabels(), the only place
-    // that also honors labelMode; forcing it visible here would
-    // flash route names on a map whose Labels setting is trails.
-    // The clip arrows go through updateClipArrowsDim so a highlight
-    // keeps them narrowed: a bare bucket flip would show every visible
-    // route's arrows over the wash until the deferred pass.
-    updateClipArrowsDim();
 }
 
 // laneInputsKey() of the data the "trails" source holds. The boot
@@ -8831,11 +8800,7 @@ function updateClipArrowsDim() {
 // Options panel sitting behind them, see refreshSpotlightDim. Search /
 // Options are overlays, NOT modals, and are deliberately excluded.
 function anyModalOpen() {
-    const shown = (id) => {
-        const el = document.getElementById(id);
-        return !!el && !el.classList.contains("hidden");
-    };
-    return shown("about-modal") || shown("welcome-modal");
+    return isAboutOpen() || isWelcomeOpen();
 }
 
 // Drive the in-map spotlight wash + mirror its state onto <body
@@ -8947,9 +8912,8 @@ function highlightRoute(routeId) {
 
     // The route stays exactly as drawn, dashes and all: the lane plugin
     // lifts it above the other routes with a yellow halo, the tap lift's
-    // color, and dims the rest (syncLaneHighlight). The chip carries the
-    // route's own color and dash.
-    syncLaneHighlight();
+    // color, and dims the rest (syncLaneHighlight, through applyDimState
+    // below). The chip carries the route's own color and dash.
 
     // Fit bounds to the route
     fitToRouteOrTrail({ routeId });
@@ -9036,7 +9000,7 @@ function longestVisibleTrailRun(trailName) {
     } else {
         candidates = routesData ? routesData.features.filter((f) => {
             const p = f.properties;
-            return (p.shared_routes || [p.route_id]).some((id) => visibleRoutes.has(id));
+            return wayParents(p).some((id) => visibleRoutes.has(id));
         }) : [];
     }
     let best = null;
@@ -9092,7 +9056,7 @@ function openTrailPopupOnRun(trailName, run) {
     const route = p.route_id;
     openTrailPopup({
         route,
-        routes: p.shared_routes || [route],
+        routes: wayParents(p),
         edge: null,
         properties: p,
     }, run.mid, { scope: "trail" });
@@ -9122,8 +9086,6 @@ function highlightRating(rating) {
     clearPoiHighlight();
     closeTrailPopup();
     highlight = { kind: "rating", key: rating };
-
-    syncLaneHighlight();
 
     fitToRouteOrTrail({ colorKey: rating });
 
@@ -9791,15 +9753,14 @@ function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
         const props = f.properties;
         let match = false;
         if (routeId !== undefined) {
-            const shared = props.shared_routes || [props.route_id];
-            match = shared.includes(routeId);
+            match = wayParents(props).includes(routeId);
         } else if (trailName !== undefined) {
             // Visible stretches only, as longestVisibleTrailRun and the
             // finder's length count them: a name that also runs on a
             // hidden (winter-only, emergency) relation would otherwise
             // frame a stretch the map is not drawing.
             match = props.trail_name === trailName
-                && (props.shared_routes || [props.route_id]).some((id) => visibleRoutes.has(id));
+                && wayParents(props).some((id) => visibleRoutes.has(id));
         } else if (colorKey !== undefined) {
             match = featureColorKey(props) === colorKey;
         }
@@ -10138,8 +10099,7 @@ function renderTrailChip() {
     // against what is drawn. The stored copy is one route's, so the
     // test reads every route on the way.
     const onProps = _onTrail && _onTrail.feature.properties;
-    if (!onProps || !(onProps.shared_routes || [onProps.route_id])
-        .some((id) => visibleRoutes.has(id))) {
+    if (!onProps || !wayParents(onProps).some((id) => visibleRoutes.has(id))) {
         chip.classList.add("hidden");
         syncHereLift();
         return;
@@ -10478,8 +10438,9 @@ function appendRatingRows(list, ratings) {
 // the global highlight state rather than taking a parameter so every
 // call site, highlightRoute, highlightRating, clearRouteTrailHighlight,
 // rebuildRoutePanel, stays a bare one-liner that can't pass stale
-// data. String() both sides: route ids arrive as strings from dataset
-// but may be set as numbers by map-tap handlers.
+// data. Route ids are strings throughout (enrichment stringifies them,
+// and dataset and share links hold strings); String() keeps the compare
+// exact should one ever arrive as a number.
 function syncRoutePanelActiveRow() {
     const list = document.getElementById("route-panel-list");
     if (!list) return;
@@ -10563,7 +10524,7 @@ function initRoutePanel() {
 // renames its key at boot (keyTitle), and again on a Color flip.
 function labelRatingKey(chip, collapseBtn) {
     const name = keyTitle();
-    const noun = name === "Key" ? "key" : `${name.toLowerCase()} key`;
+    const noun = keyNoun();
     const card = document.getElementById("route-panel-card");
     const title = card && card.querySelector(".route-panel-title");
     if (title) title.textContent = name;
@@ -10644,8 +10605,7 @@ function buildTrailIndex() {
             routeIds = new Set();
             byName.set(name, routeIds);
         }
-        const shared = f.properties.shared_routes || [f.properties.route_id];
-        for (const rid of shared) routeIds.add(rid);
+        for (const rid of wayParents(f.properties)) routeIds.add(rid);
     }
     trailIndex = [...byName.entries()]
         .map(([name, routeIds]) => ({ name, routeIds: [...routeIds] }))
@@ -10759,8 +10719,7 @@ function refreshTrailLengths() {
     const byName = new Map();  // trail name -> meters
     for (const f of runs.values()) {
         const props = f.properties;
-        const parents = props.shared_routes || [props.route_id];
-        if (!parents.some((id) => visibleRoutes.has(id))) continue;
+        if (!wayParents(props).some((id) => visibleRoutes.has(id))) continue;
         const len = lineLengthMeters(f.geometry.coordinates);
         byName.set(props.trail_name, (byName.get(props.trail_name) || 0) + len);
     }
@@ -10869,28 +10828,11 @@ async function loadPOIs() {
 
     // Count features by type in a single pass. Trail markers merge
     // guideposts + emergency access points into one category.
-    const poiCounts = {
-        [POI.TRAIL_MARKER]: 0,
-        [POI.PARKING]: 0,
-        [POI.TRAILHEAD]: 0,
-        [POI.HUB]: 0,
-        [POI.FEATURE]: 0,
-        [POI.TOILET]: 0,
-        [POI.DRINKING_WATER]: 0,
-        [POI.BICYCLE_REPAIR_STATION]: 0,
-    };
+    const poiCounts = {};
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
-        if (t in poiCounts) poiCounts[t]++;
+        poiCounts[t] = (poiCounts[t] || 0) + 1;
     }
-    const tmCount = poiCounts[POI.TRAIL_MARKER];
-    const pkCount = poiCounts[POI.PARKING];
-    const thCount = poiCounts[POI.TRAILHEAD];
-    const hbCount = poiCounts[POI.HUB];
-    const ftCount = poiCounts[POI.FEATURE];
-    const wcCount = poiCounts[POI.TOILET];
-    const dwCount = poiCounts[POI.DRINKING_WATER];
-    const brCount = poiCounts[POI.BICYCLE_REPAIR_STATION];
 
     // Read persisted toggle state. Per-layer default-on/off is
     // driven by the per-map default_visible YAML list (see
@@ -10898,77 +10840,29 @@ async function loadPOIs() {
     // until the rider opts in via Options.
     const persistedOn = (type) => LS.get(POI_TYPES[type].lsKey,
         isDefaultVisible(POI_TYPES[type].defaultVisibleName));
-    const mkDefault = persistedOn(POI.TRAIL_MARKER);
-    const pkDefault = persistedOn(POI.PARKING);
-    const thDefault = persistedOn(POI.TRAILHEAD);
-    const hbDefault = persistedOn(POI.HUB);
-    const ftDefault = persistedOn(POI.FEATURE);
-    const wcDefault = persistedOn(POI.TOILET);
-    const dwDefault = persistedOn(POI.DRINKING_WATER);
-    const brDefault = persistedOn(POI.BICYCLE_REPAIR_STATION);
 
-    // Hide a toggle row in the Options overlay when its layer has no
-    // data, keeps the rider from seeing a dead control.
-    const hideToggleRow = (id) => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add("hidden");
-    };
-
-    // Trail markers, merged guideposts + emergency-access layer. The
-    // toggle is shown whenever the layer has any data.
-    if (CONFIG.showMarkers && tmCount > 0) {
-        addTrailMarkers(mkDefault);
-    } else {
-        hideToggleRow("toggle-markers");
-    }
-
-    if (CONFIG.showParking && pkCount > 0) {
-        addParkingMarkers(pkDefault);
-    } else {
-        hideToggleRow("toggle-parking");
-    }
-
-    if (CONFIG.showTrailheads && thCount > 0) {
-        addTrailheadMarkers(thDefault);
-    } else {
-        hideToggleRow("toggle-trailheads");
-    }
-
-    if (CONFIG.showHubs && hbCount > 0) {
-        addHubMarkers(hbDefault);
-    } else {
-        hideToggleRow("toggle-hubs");
-    }
-
-    // Toilets + drinking water + bicycle repair stations, proximity-
-    // gated like Features. Set the row's state from persisted state
-    // (used by updateMarkerProximity when it filters), but the
-    // toggle ROW visibility is decided by updatePoiToggleVisibility()
-    // on the first applyVisibilityChange() pass after init, based on
-    // whether anything is in proximity range
-    // (POI_AMENITY_PROXIMITY_METERS = 500 m, wider than features).
-    if (CONFIG.showToilets && wcCount > 0) {
-        addToiletMarkers(wcDefault);
-        const wcBtn = document.getElementById("toggle-toilets");
-        if (wcBtn) setRowToggleState(wcBtn, wcDefault);
-    }
-    if (CONFIG.showDrinkingWater && dwCount > 0) {
-        addDrinkingWaterMarkers(dwDefault);
-        const dwBtn = document.getElementById("toggle-drinking-water");
-        if (dwBtn) setRowToggleState(dwBtn, dwDefault);
-    }
-    if (CONFIG.showBicycleRepairStations && brCount > 0) {
-        addBicycleRepairStationMarkers(brDefault);
-        const brBtn = document.getElementById("toggle-bicycle-repair-stations");
-        if (brBtn) setRowToggleState(brBtn, brDefault);
-    }
-
-    // Event POIs (event_mode.pois), always rendered, no rider toggle,
-    // no proximity gate. Race-day fixtures (start / finish, aid
-    // stations, support areas) are essential to the event map's
-    // purpose; hiding them under any condition would defeat that.
-    if (CONFIG.hasEventPois) {
-        addEventPoiMarkers(true);
+    // Registry order, except that features mount last: a marker drawn
+    // later sits on top where two overlap, and the order predates the
+    // registry.
+    const order = [...Object.keys(POI_TYPES).filter((type) => type !== POI.FEATURE),
+        POI.FEATURE];
+    for (const type of order) {
+        const t = POI_TYPES[type];
+        // Event POIs (event_mode.pois), always rendered, no rider
+        // toggle, no proximity gate. Race-day fixtures (start / finish,
+        // aid stations, support areas) are essential to the event map's
+        // purpose; hiding them under any condition would defeat that.
+        if (!t.lsKey) {
+            if (CONFIG[t.showGate]) t.addMarkers(true);
+            continue;
+        }
+        if (CONFIG[t.showGate] && poiCounts[type] > 0) {
+            t.addMarkers(persistedOn(type));
+        } else {
+            // Hide a toggle row in the Options overlay when its layer
+            // has no data, keeps the rider from seeing a dead control.
+            document.getElementById(t.toggleRowId)?.classList.add("hidden");
+        }
     }
 
     // Trail markers, features, toilets, water and bike repair are all
@@ -10978,10 +10872,8 @@ async function loadPOIs() {
     // respectively; toilets are often at parking lots beyond the
     // trail polyline). Always create the markers so they can pop in
     // if a route change brings them into scope; updatePoiToggleVisibility
-    // is the source of truth for whether each toggle row is shown.
-    if (CONFIG.showFeatures && ftCount > 0) {
-        addFeatureMarkers(ftDefault);
-    }
+    // is the source of truth for whether each toggle row is shown, and
+    // wirePeekToggle paints each row's stored On/Off.
     updatePoiToggleVisibility();
 }
 
@@ -11527,10 +11419,9 @@ function setupFabLabels() {
     const mountPanelLabel = () => {
         const label = document.createElement("span");
         label.className = "fab-label";
-        const title = keyTitle();
+        const noun = keyNoun();
         label.textContent = noKey ? "Search"
-            : title === "Routes" ? "Route key"
-            : title === "Key" ? "Key" : `${title} key`;
+            : noun[0].toUpperCase() + noun.slice(1);
         label.setAttribute("aria-hidden", "true");
         (noKey ? document.getElementById("route-panel-search") : panelChip).appendChild(label);
         mounted.push({ btn: panel, label });
@@ -12157,11 +12048,6 @@ function setupFloatingChrome() {
     // handlers must stand down, the modal sits on top of everything
     // and owns the foreground. Without this guard a stray Escape
     // would close the overlay behind the modal silently.
-    function isAboutOpen() {
-        const aboutModal = document.getElementById("about-modal");
-        return aboutModal && !aboutModal.classList.contains("hidden");
-    }
-
     // Escape = dismiss topmost state, one press at a time. Priority
     // order: Welcome/Help modal > About modal > Options, GPX and Share
     // sheets > Search overlay > trail popup > highlight. Consolidated
@@ -12283,10 +12169,7 @@ function setupFloatingChrome() {
                 // keeps the colors discoverable in style.css.
                 seasonSwatch.classList.toggle("is-winter", !isSummer);
             }
-            for (const b of seasonButtons) {
-                b.setAttribute("aria-checked",
-                    b.dataset.value === seasonMode ? "true" : "false");
-            }
+            setSegmentedChecked(seasonButtons, seasonMode);
         };
         for (const b of seasonButtons) {
             b.addEventListener("click", (e) => {
@@ -12610,24 +12493,13 @@ function setupFloatingChrome() {
         // Stored *intent*, may be "auto" even though the resolved
         // scheme on <html> is "light" or "dark". The pill highlights
         // the intent so the rider sees what they chose.
-        const storedScheme = LS.get("mtb.colorScheme",
-            CONFIG.defaultColorScheme || "light");
-        const syncSchemePressed = () => {
-            for (const b of schemeButtons) {
-                b.setAttribute("aria-checked",
-                    b.dataset.value === storedScheme ? "true" : "false");
-            }
-        };
-        syncSchemePressed();
+        setSegmentedChecked(schemeButtons, LS.get("mtb.colorScheme",
+            CONFIG.defaultColorScheme || "light"));
         for (const b of schemeButtons) {
             b.addEventListener("click", () => {
                 const next = b.dataset.value;
                 applyColorScheme(next);
-                // Update local copy so re-syncs paint the right pill.
-                for (const x of schemeButtons) {
-                    x.setAttribute("aria-checked",
-                        x.dataset.value === next ? "true" : "false");
-                }
+                setSegmentedChecked(schemeButtons, next);
             });
         }
         watchSystemColorScheme();
@@ -12642,17 +12514,11 @@ function setupFloatingChrome() {
     if (unitsGroup) {
         const unitButtons = Array.from(
             unitsGroup.querySelectorAll(".opt-segmented-btn"));
-        const syncUnitsPressed = () => {
-            for (const b of unitButtons) {
-                b.setAttribute("aria-checked",
-                    b.dataset.value === distanceUnits ? "true" : "false");
-            }
-        };
-        syncUnitsPressed();
+        setSegmentedChecked(unitButtons, distanceUnits);
         for (const b of unitButtons) {
             b.addEventListener("click", () => {
                 setDistanceUnits(b.dataset.value);
-                syncUnitsPressed();
+                setSegmentedChecked(unitButtons, distanceUnits);
             });
         }
         wireRadiogroupKeys(unitsGroup);
@@ -12703,10 +12569,7 @@ function setupFloatingChrome() {
             LS.set("mtb.labels", labelMode);
         }
         const syncPressed = () => {
-            for (const b of buttons) {
-                b.setAttribute("aria-checked",
-                    b.dataset.value === labelMode ? "true" : "false");
-            }
+            setSegmentedChecked(buttons, labelMode);
             // Mirror the binary-toggle off-state visual on the row when
             // the rider has picked "None", chip grays out + slash
             // overlay, same treatment as a layer toggle that's been
@@ -12759,10 +12622,7 @@ function setupFloatingChrome() {
             return `<svg viewBox="${o} ${o} ${w} ${w}" fill="currentColor" aria-hidden="true"><path d="${ITRS_SHAPE_PATHS[shape]}"/></svg>`;
         };
         const syncPressed = () => {
-            for (const b of buttons) {
-                b.setAttribute("aria-checked",
-                    b.dataset.value === colorAspect ? "true" : "false");
-            }
+            setSegmentedChecked(buttons, colorAspect);
             if (aspectSwatch) {
                 aspectSwatch.innerHTML = swatchSvg(colorAspect === "exposure" ? "exposure" : "diamond");
             }
@@ -13871,15 +13731,26 @@ function setupInteractions() {
 // to text scale (the canvases' natural size is 4x for crispness, not
 // for display).
 const POPUP_ROW_STYLE = "display:flex;align-items:center;gap:6px;font-size:12px;margin-top:2px;";
+const POPUP_ROUTE_ROW_STYLE = "display:flex;align-items:center;gap:6px;";
+const POPUP_ONEWAY_ROW_STYLE = "display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;";
+
+// The named stretch a tap measures and lifts (trailSection), or null: a
+// finder pick or /t/ link (scope "trail") answers for the whole name,
+// and an unnamed way or a hit with no edge has no section to walk.
+function trailPopupSection(laneHit, scope) {
+    const trailName = (laneHit.properties || {}).trail_name || "";
+    return trailName && scope === "section" && Number.isInteger(laneHit.edge)
+        ? trailSection(laneHit.edge) : null;
+}
 
 // Builds the popup body for one lane hit: title, Length row, difficulty
 // row, one-way row, and route memberships. Split out of openTrailPopup
 // so a units change (setDistanceUnits) can re-render just this markup
 // into an already-open popup via _trailPopup.setHTML, without moving
 // the popup or re-laying out the tap lift (see the comment there).
-// `scope` is openTrailPopup's: "section" measures the named stretch
-// under the tap, "trail" the whole name.
-function trailPopupHtml(laneHit, scope = "section") {
+// `section` is trailPopupSection's: the named stretch under a tap, or
+// null to measure the whole name.
+function trailPopupHtml(laneHit, section) {
     const laneProps = laneHit.properties || {};
     const routeIds = [laneHit.route,
         ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
@@ -13916,7 +13787,7 @@ function trailPopupHtml(laneHit, scope = "section") {
             // rides inline like the difficulty/one-way rows below.
             const swatchHtml =
                 routeSwatchEl(routeSwatchModel(rel), "popup-route-swatch").outerHTML;
-            return `<div class="popup-routes" style="display:flex;align-items:center;gap:6px;">${swatchHtml}<span>${escapeHtml(rel.name)}</span></div>`;
+            return `<div class="popup-routes" style="${POPUP_ROUTE_ROW_STYLE}">${swatchHtml}<span>${escapeHtml(rel.name)}</span></div>`;
         })
         .join("");
 
@@ -13953,8 +13824,6 @@ function trailPopupHtml(laneHit, scope = "section") {
         // stale-stylesheet reason as POPUP_ROW_STYLE.
         html += `<div class="popup-title" style="font-weight:400;opacity:0.7;">Unnamed</div>`;
     }
-    const section = trailName && scope === "section" && Number.isInteger(laneHit.edge)
-        ? trailSection(laneHit.edge) : null;
     if (section && CONFIG.showDistance) {
         // A tap measures the section under it, the stretch its lift
         // marks (showTapLift), deduped by way like the finder row. The
@@ -14057,7 +13926,7 @@ function trailPopupHtml(laneHit, scope = "section") {
             : routeIds.some((id) => schedules[id]);
         const text = reverses
             ? "One-way (reverses by day)" : "One-way";
-        html += `<div class="popup-oneway" style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:2px;"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
+        html += `<div class="popup-oneway" style="${POPUP_ONEWAY_ROW_STYLE}"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
     }
     if (routeItems) {
         const label = matchedRoutes.length === 1
@@ -14082,15 +13951,14 @@ function openTrailPopup(laneHit, anchor, { scope = "section" } = {}) {
     // Whatever opens a popup supersedes a finder popup still waiting
     // for its camera, which would otherwise land on top of this one.
     cancelPendingTrailPopup();
-    const html = trailPopupHtml(laneHit, scope);
+    const section = trailPopupSection(laneHit, scope);
+    const html = trailPopupHtml(laneHit, section);
     const trailName = (laneHit.properties || {}).trail_name || "";
-    const hasEdge = Number.isInteger(laneHit.edge);
     let liftEdges = null;
-    if (!trailName && hasEdge) {
+    if (!trailName && Number.isInteger(laneHit.edge)) {
         liftEdges = new Set([laneHit.edge]);
-    } else if (trailName && scope === "section" && hasEdge) {
-        const section = trailSection(laneHit.edge);
-        if (section) liftEdges = section.edges;
+    } else if (section) {
+        liftEdges = section.edges;
     }
 
     // The old popup's close clears its lift, so the new lift is
@@ -14110,11 +13978,13 @@ function openTrailPopup(laneHit, anchor, { scope = "section" } = {}) {
     _trailPopupHit = laneHit;
     _trailPopupAnchor = anchor;
     _trailPopupScope = scope;
+    _trailPopupSection = section;
     const popup = _trailPopup;
     popup.on("close", () => {
         clearTapLift();
         _trailPopupHit = null;
         _trailPopupAnchor = null;
+        _trailPopupSection = null;
         // A map tap closes the popup through MapLibre (closeOnClick),
         // not through closeTrailPopup, so the reference is dropped
         // here too. With it left standing, the next Escape "closed"
@@ -15184,7 +15054,7 @@ function setDistanceUnits(units) {
         // DOM swap, so there's nothing to flicker, and re-asserting the
         // anchor (itself unchanged) keeps the popup pinned exactly
         // where it was.
-        _trailPopup.setHTML(trailPopupHtml(_trailPopupHit, _trailPopupScope))
+        _trailPopup.setHTML(trailPopupHtml(_trailPopupHit, _trailPopupSection))
             .setLngLat(_trailPopupAnchor);
     }
     updateLocationIndicator();
