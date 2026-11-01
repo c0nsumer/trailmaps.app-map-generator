@@ -67,8 +67,9 @@ def _clear_signature(output_path):
 # new field until the curator happens to pass --refresh-trails.
 #   2: route metadata carries repeat_m and repeated_ways (2026-10-06)
 #   3: ways carry freeride (mtb:type names freeride) (2026-10-12)
-#   4: ways carry itrs_difficulty, itrs_exposure, and bike_only (2026-10-31)
-TRAILS_BASE_FORMAT = 4
+#   4: ways carry itrs_difficulty and itrs_exposure (2026-10-31)
+#   5: ways carry bike_only; the ITRS fields are read on ITRS maps only (2026-10-31)
+TRAILS_BASE_FORMAT = 5
 
 
 def _trails_fetch_fingerprint(config):
@@ -97,6 +98,10 @@ def _trails_fetch_fingerprint(config):
         "emergency_access_relations": sorted(config.get("emergency_access_relations") or []),
         "osm_file": config.get("osm_file") or "",
         "direction_schedule": config.get("direction_schedule") or {},
+        # The scale decides whether the ITRS fields join the merge
+        # signature, so flipping it re-derives the base (offline, from the
+        # cached Overpass data; no refetch).
+        "difficulty_scale": config.get("difficulty_scale") or "imba",
     }
     blob = json.dumps(inputs, sort_keys=True, default=str)
     return "trails-fp=" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]

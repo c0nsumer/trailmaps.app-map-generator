@@ -130,10 +130,10 @@ def _check_repeated_members(routes):
 def _check_ratings(features, show_difficulty, scale="imba"):
     """Named trails with no rating, and any out-of-range rating value.
 
-    Invalid values are always reported, for all three rating keys (IMBA,
-    ITRS technical difficulty, ITRS exposure): a rating outside its range is
-    wrong regardless of whether this map draws difficulty or which scale it
-    uses. Each entry is (way id, trail name, value, OSM key).
+    Invalid values are always reported for every rating key the fetch read
+    (IMBA on every map, the two ITRS keys on an ITRS map): a rating outside
+    its range is wrong regardless of whether this map draws difficulty. Each
+    entry is (way id, trail name, value, OSM key).
 
     "No rating" reads the active scale's technical key only; on an ITRS map
     an IMBA-only way is exactly a named trail with no rating.

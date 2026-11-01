@@ -116,8 +116,11 @@ def test_bike_only_needs_bikes_allowed_foot_no_and_no_horse():
 def test_a_bike_only_change_splits_the_segment():
     ways = {1: _way((0, 0), (1, 0), name="A", bicycle="designated", foot="yes"),
             2: _way((1, 0), (2, 0), name="A", bicycle="designated", foot="no")}
-    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}}, itrs=True)
     assert sorted(s["bike_only"] for s in segs) == [False, True]
+    # An IMBA map never draws the plate, so the same pair stays one feature.
+    (seg,) = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    assert seg["bike_only"] is False
 
 
 def test_a_freeride_change_splits_the_segment():
@@ -301,13 +304,22 @@ def test_an_itrs_change_splits_the_segment():
         1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:exposure": "1"}),
         2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:exposure": "3"}),
     }
-    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}}, itrs=True)
     assert sorted(s["itrs_exposure"] for s in segs) == ["1", "3"]
     ways = {
         1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "2"}),
         2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "3"}),
     }
-    assert len(merge_consecutive_ways(ways, {1: {10}, 2: {10}})) == 2
+    assert len(merge_consecutive_ways(ways, {1: {10}, 2: {10}}, itrs=True)) == 2
+
+
+def test_an_imba_map_neither_reads_nor_splits_on_itrs_tags():
+    ways = {
+        1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "2"}),
+        2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "3"}),
+    }
+    (seg,) = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    assert seg["itrs_difficulty"] == "" and seg["itrs_exposure"] == ""
 
 
 def test_untagged_ways_carry_empty_itrs_properties():
@@ -323,7 +335,8 @@ def test_itrs_tags_reach_the_feature_properties(tmp_path):
     from fetch_trails import fetch_trails
 
     osm = os.path.join(os.path.dirname(__file__), "itrs_fixture.osm")
-    config = {"name": "H", "slug": "h", "relations": [-190], "osm_file": osm}
+    config = {"name": "H", "slug": "h", "relations": [-190], "osm_file": osm,
+              "difficulty_scale": "itrs"}
     out = tmp_path / "trails.geojson"
     fetch_trails(config, str(out), cache_dir=str(tmp_path / "c"))
     props = [f["properties"] for f in json.loads(out.read_text())["features"]]

@@ -248,7 +248,7 @@ def _is_bike_only(tags):
             and tags.get("horse", "").strip().lower() not in _ALLOWS)
 
 
-def merge_consecutive_ways(ways_dict, way_relation_ids):
+def merge_consecutive_ways(ways_dict, way_relation_ids, itrs=False):
     """Merge consecutive ways that share relations, name, difficulty, oneway, freeride.
 
     Given a dict of ways belonging to one relation and a mapping of
@@ -263,6 +263,11 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
     - imba_difficulty: IMBA difficulty rating (0-5) or empty string
     - itrs_difficulty / itrs_exposure: ITRS ratings as tagged, or empty string
     - bike_only: True when bikes are allowed and foot and horse are not
+
+    The three ITRS properties are read, and join the signature, only when
+    ``itrs`` is set (the map's difficulty_scale is itrs). An IMBA map never
+    displays them, so letting them split its features would move arrows and
+    labels on maps that must not change; there they are always "" / False.
     - freeride: True when the way's mtb:type list names freeride
     - oneway: the resolved oneway value (see _resolve_oneway)
     - way_ids: the source OSM way IDs fused into the segment
@@ -302,14 +307,14 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         # Freeride joins the signature so the oval glyph never spreads
         # from a freeride way onto a same-named, same-rated neighbor.
         freeride = _is_freeride(way.get("tags", {}))
-        # Both ITRS keys join the signature so a rating change along a trail
-        # splits the feature on an ITRS map the way an IMBA change does.
+        # On an ITRS map both ITRS keys join the signature so a rating change
+        # along a trail splits the feature the way an IMBA change does, and
+        # bike-only joins too, so the yellow plate stops where walkers are let
+        # back on.
         tags = way.get("tags", {})
-        itrs_difficulty = tags.get("mtb:scale:itrs:technical_difficulty", "")
-        itrs_exposure = tags.get("mtb:scale:itrs:exposure", "")
-        # Bike-only joins too, so the yellow plate stops where walkers are
-        # let back on.
-        bike_only = _is_bike_only(tags)
+        itrs_difficulty = tags.get("mtb:scale:itrs:technical_difficulty", "") if itrs else ""
+        itrs_exposure = tags.get("mtb:scale:itrs:exposure", "") if itrs else ""
+        bike_only = _is_bike_only(tags) if itrs else False
         way_signatures[way_id] = (
             sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure, bike_only)
 
@@ -530,8 +535,12 @@ def _compass_bearing(p1, p2):
     return bearing
 
 
-def build_geojson(relations, all_ways, way_relations):
-    """Build GeoJSON FeatureCollection from merged trail segments."""
+def build_geojson(relations, all_ways, way_relations, itrs=False):
+    """Build GeoJSON FeatureCollection from merged trail segments.
+
+    ``itrs`` says whether the ITRS properties are read (see
+    merge_consecutive_ways).
+    """
     features = []
 
     for rel_id, rel_info in sorted(relations.items(), key=lambda x: x[1]["name"]):
@@ -543,7 +552,7 @@ def build_geojson(relations, all_ways, way_relations):
         # Build per-way relation membership lookup for this relation's ways
         way_rel_lookup = {way_id: way_relations.get(way_id, {rel_id}) for way_id in ways}
 
-        merged = merge_consecutive_ways(ways, way_rel_lookup)
+        merged = merge_consecutive_ways(ways, way_rel_lookup, itrs=itrs)
 
         for segment in merged:
             # Normalize oneway=-1 to oneway=yes with reversed coordinates so
@@ -902,7 +911,9 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
     # Stage C: Merge ways and build GeoJSON
     console.step("Stage C: Merging ways and building GeoJSON...", detail=True)
-    geojson = build_geojson(relations, all_ways, way_relations)
+    geojson = build_geojson(
+        relations, all_ways, way_relations,
+        itrs=config.get("difficulty_scale", "imba") == "itrs")
 
     # Stage D: Clip features for clipped_relations to the core trail bbox.
     # Always initialize the endpoints accumulator so the writer below has a
