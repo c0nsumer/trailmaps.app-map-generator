@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import concurrent.futures
+import contextlib
 import functools
 import hashlib
 import json
@@ -21,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from typing import NamedTuple
@@ -41,15 +43,15 @@ import basemap_paths
 import cache_manifest
 import console
 from cache_signatures import (
+    BASE_FORMAT_CHANGED,
     SIDECAR_MISSING,
     _bbox_signature,
     _clear_signature,
     _load_signature,
     _pmtiles_needs_regen,
     _save_signature,
-    _trails_content_hash,
-    _trails_fetch_fingerprint,
     _trails_needs_refetch,
+    trails_sidecar,
 )
 from colors import resolve_accent_palette
 from config_io import read_config_yaml
@@ -636,22 +638,97 @@ def clear_precompressed_sidecars(output_dir):
                 os.remove(os.path.join(root, fname))
 
 
-def precompress_assets(output_dir):
+# Sidecar bytes depend only on the input bytes and these settings, so the
+# cache key hashes both: changing a level or the encoder set must miss.
+# gzip's header mtime is pinned to 0 so a sidecar is a pure function of
+# its input and a cached copy matches a fresh one byte for byte.
+_PRECOMPRESS_KEY = b"precompress-v1;gzip-9-mtime0;brotli-11\n"
+
+
+def _precompress_one(path, store, brotli_mod):
+    """Write ``path``'s sidecars. Returns (raw_bytes, gzip_bytes), or None
+    when the file is skipped. ``store`` is the content-addressed sidecar
+    cache directory, or None to always compress."""
+    import gzip as _gzip
+
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return None
+    if len(raw) < PRECOMPRESS_MIN_BYTES:
+        return None
+    digest = hashlib.sha256(_PRECOMPRESS_KEY + raw).hexdigest()
+    encoders = [("gz", lambda: _gzip.compress(raw, 9, mtime=0))]
+    if brotli_mod is not None:
+        encoders.append(("br", lambda: brotli_mod.compress(raw, quality=11)))
+
+    gz_len = 0
+    for ext, encode in encoders:
+        dst = f"{path}.{ext}"
+        cached = os.path.join(store, f"{digest}.{ext}") if store else None
+        hit = False
+        if cached and os.path.isfile(cached):
+            # A concurrent build sharing the cache can prune the entry
+            # between the check and the copy; then compress as on a miss.
+            try:
+                size = os.path.getsize(cached)
+                # Only keep a sidecar if it actually saves bytes (guards
+                # the rare incompressible case so we never ship a larger
+                # file).
+                if size < len(raw):
+                    shutil.copyfile(cached, dst)
+                hit = True
+            except OSError:
+                pass
+        if not hit:
+            data = encode()
+            size = len(data)
+            if size < len(raw):
+                with open(dst, "wb") as f:
+                    f.write(data)
+            if cached:
+                tmp = f"{cached}.{os.getpid()}.{threading.get_ident()}.tmp"
+                try:
+                    with open(tmp, "wb") as f:
+                        f.write(data)
+                    os.replace(tmp, cached)
+                except OSError as e:
+                    console.warn(f"could not cache {cached}: {e}")
+                    with contextlib.suppress(OSError):
+                        os.remove(tmp)
+                    cached = None
+        if cached:
+            cache_manifest.record(cached)
+        if ext == "gz":
+            gz_len = size
+    return len(raw), gz_len
+
+
+def precompress_assets(output_dir, cache_dir=None):
     """Write .gz + .br sidecars for compressible assets in output_dir.
 
     MUST run after generate_service_worker: the SW hashes and precaches the
     ORIGINAL files, and the sidecars must not exist when that file list is
     built (the runtime requests e.g. ``0-255.pbf``, never ``0-255.pbf.gz``).
     The caller clears stale sidecars first (see clear_precompressed_sidecars).
-    """
-    import gzip as _gzip
 
+    With ``cache_dir``, sidecars are kept under ``precompress/`` there,
+    keyed by content, and copied on a hit: vendor/ and the 0-255 glyphs
+    are the same bytes on every map and every build, and brotli at
+    quality 11 is most of a no-change rebuild's time. Each entry is
+    claimed in the cache manifest so pruning keeps what a map uses.
+    """
     try:
         import brotli as _brotli
     except ImportError:
         _brotli = None
 
-    count = orig_total = comp_total = 0
+    store = os.path.join(cache_dir, "precompress") if cache_dir else None
+    if store:
+        os.makedirs(store, exist_ok=True)
+
+    paths = []
     for root, _dirs, files in os.walk(output_dir):
         for fname in files:
             # Don't compress build-only artifacts - they aren't deployed,
@@ -660,29 +737,17 @@ def precompress_assets(output_dir):
                 continue
             if not fname.lower().endswith(PRECOMPRESS_EXTENSIONS):
                 continue
-            path = os.path.join(root, fname)
-            try:
-                with open(path, "rb") as f:
-                    raw = f.read()
-            except OSError:
-                continue
-            if len(raw) < PRECOMPRESS_MIN_BYTES:
-                continue
-            # Only keep a sidecar if it actually saves bytes (guards the rare
-            # incompressible case so we never ship a larger "compressed" file).
-            gz = _gzip.compress(raw, 9)
-            if len(gz) < len(raw):
-                with open(path + ".gz", "wb") as f:
-                    f.write(gz)
-            if _brotli is not None:
-                br = _brotli.compress(raw, quality=11)
-                if len(br) < len(raw):
-                    with open(path + ".br", "wb") as f:
-                        f.write(br)
-            count += 1
-            orig_total += len(raw)
-            comp_total += len(gz)
+            paths.append(os.path.join(root, fname))
 
+    # zlib and brotli release the GIL while compressing, so threads give
+    # a real speedup without a process pool's pickling.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1)) as pool:
+        results = list(pool.map(lambda p: _precompress_one(p, store, _brotli), paths))
+
+    done = [r for r in results if r]
+    count = len(done)
+    orig_total = sum(r[0] for r in done)
+    comp_total = sum(r[1] for r in done)
     if count:
         console.detail(
             f"Precompressed {count} assets "
@@ -1188,19 +1253,15 @@ def _fetch_and_snapshot(config, trails_path, trails_src_path, cache_dir, refresh
     # changed upstream). Read before fetch_trails so a fetch that
     # rewrites trails_path can't race it; returns None on a first build.
     #
-    # diff=False for a refetch that only restores a lost sidecar: it
-    # rebuilds the same data from the cache, and a "no change" report
-    # would replace the record of the last real refresh.
+    # diff=False for a refetch that only restores a lost sidecar or
+    # re-derives an older base format: it rebuilds the same data from the
+    # cache, and a "no change" report would replace the record of the
+    # last real refresh.
     prev_snapshot = stash_previous_snapshot(
         trails_src_path, cache_dir, config["slug"]) if diff else None
     fetched = fetch_trails(config, trails_path, cache_dir, refresh=refresh_trails)
     shutil.copyfile(trails_path, trails_src_path)
-    _save_signature(
-        trails_src_path,
-        _trails_fetch_fingerprint(config)
-        + "\ntrails-content="
-        + (_trails_content_hash(trails_src_path) or ""),
-    )
+    _save_signature(trails_src_path, trails_sidecar(config, trails_src_path))
     report_refresh_diff(prev_snapshot, fetched, cache_dir, config["slug"])
     return fetched
 
@@ -1240,7 +1301,8 @@ def _stage_trails(config, args, output_dir, cache_dir):
         fetch_ran = True
         trails_geojson = _fetch_and_snapshot(
             config, trails_path, trails_src_path, cache_dir, refresh_trails,
-            diff=refresh_trails or auto_refetch_reason != SIDECAR_MISSING)
+            diff=refresh_trails
+            or auto_refetch_reason not in (SIDECAR_MISSING, BASE_FORMAT_CHANGED))
     else:
         console.step(f"Trails: reusing base {trails_src_path}", detail=True)
         try:
@@ -1771,7 +1833,7 @@ def _pwa_warnings(output_dir):
     return pwa_warnings
 
 
-def _stage_pwa(config, args, output_dir):
+def _stage_pwa(config, args, output_dir, cache_dir):
     """Service worker, then precompression.
 
     MUST run after every other output file is written: the service worker
@@ -1797,7 +1859,7 @@ def _stage_pwa(config, args, output_dir):
     clear_precompressed_sidecars(output_dir)
     if args.precompress:
         console.step("Precompressing static assets...", detail=True)
-        precompress_assets(output_dir)
+        precompress_assets(output_dir, cache_dir)
         console.blank(detail=True)
 
 
@@ -1824,6 +1886,12 @@ def _stage_cache_manifest(config, args, cache_dir, cats, trails_fetch_ran):
         # build fetched.
         cats["overpass_basemap"] = [
             os.path.join(cache_dir, p) for p in old_cats.get("overpass_basemap", [])
+        ]
+    if not args.precompress and old_cats:
+        # A --no-precompress build compressed nothing; the sidecars the
+        # last full build cached are what makes the next one fast.
+        cats["precompress"] = [
+            os.path.join(cache_dir, p) for p in old_cats.get("precompress", [])
         ]
     new_cats = cache_manifest.save(cache_dir, config["slug"], cats)
     if old_cats is not None and new_cats is not None:
@@ -1971,12 +2039,17 @@ def main(argv=None, prog=None):
         ship(config, "basemap.pmtiles")
 
     _stage_templates(config, args, output_dir, cache_dir, trails_geojson)
-    _stage_pwa(config, args, output_dir)
+    # The tile worker's late re-record of the path data lands here; it is
+    # a basemap claim, so it must not be filed under precompress.
+    overpass_basemap_paths += cache_manifest.drain()
+    _stage_pwa(config, args, output_dir, cache_dir)
+    precompress_paths = cache_manifest.drain()
     _stage_cache_manifest(config, args, cache_dir, {
         "overpass_trails": overpass_trails_paths,
         "overpass_pois": overpass_pois_paths,
         "overpass_basemap": overpass_basemap_paths,
         "derive_accent": derive_accent_paths,
+        "precompress": precompress_paths,
     }, trails_fetch_ran)
 
     total = print_summary(output_dir)

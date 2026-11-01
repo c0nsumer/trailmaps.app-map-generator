@@ -9,17 +9,18 @@ once, by haversine over the cached GeoJSON. The fetch adds
 ``repeat_m`` to the route's metadata: the length of every extra pass
 the relation lists, such as a way ridden out and back. Both loaders
 key ways by id, so a repeated member is gone from the GeoJSON, and
-only the fetch still sees the member list (see repeat_meters). The
-fetch re-runs over cached Overpass responses on every build, so no
-refresh is needed; an absent field counts as zero.
+only the fetch still sees the member list (see repeat_meters).
+``repeat_m`` arrives with the cached trails base, so a reuse build never
+recomputes it; a ``TRAILS_BASE_FORMAT`` bump is what re-derives it
+(offline, from the cached Overpass responses). An absent field counts
+as zero.
 
 Output: writes ``distance_m`` (integer meters) into
 trails_geojson["metadata"]["routes"][<id>]. The runtime reads it and
 formats it in the viewer's chosen units. Distance is cheap and not
 cached.
 
-Elevation gain and loss are not computed. ``_chain_segments`` stays because tagging_report uses it to decide
-whether a route's segments connect.
+Elevation gain and loss are not computed.
 """
 
 import console
@@ -56,6 +57,14 @@ def _coords_for_route(features, route_id):
     return out
 
 
+def _line_m(coords):
+    """Haversine length of one line. Positions are indexed, not unpacked,
+    because a GPX-derived position can carry elevation as a third value."""
+    return sum(
+        _haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(coords, coords[1:])
+    )
+
+
 def repeat_meters(member_way_ids, ways):
     """Return the meters a relation rides again on ways it lists twice or more.
 
@@ -75,8 +84,7 @@ def repeat_meters(member_way_ids, ways):
             seen.add(wid)
             continue
         coords = (ways.get(wid) or {}).get("coords") or []
-        for (lon1, lat1), (lon2, lat2) in zip(coords, coords[1:]):
-            total += _haversine_m(lon1, lat1, lon2, lat2)
+        total += _line_m(coords)
     return total
 
 
@@ -96,77 +104,19 @@ def compute_distances(trails_geojson):
     for route_id, info in routes.items():
         total = float((info or {}).get("repeat_m") or 0)
         for line in _coords_for_route(features, route_id):
-            for (lon1, lat1), (lon2, lat2) in zip(line, line[1:]):
-                total += _haversine_m(lon1, lat1, lon2, lat2)
+            total += _line_m(line)
         out[str(route_id)] = round(total)
     return out
-
-
-def _chain_segments(coord_lines):
-    """Orient and join segments whose endpoints touch into continuous
-    chains, so tagging_report can tell which of a route's ways connect.
-
-    OSM relations don't order their member ways, so a closed loop
-    arrives as many disconnected pieces in arbitrary order and
-    direction.
-
-    Greedy: seed a chain from the first unused segment, then repeatedly
-    absorb any unused segment one of whose endpoints coincides with
-    either end of the chain (reversing the segment as needed).
-    Segments are only ever from ONE route, so a join is always a
-    physically walkable continuation - at a junction shared by more
-    than two of the route's segments, whichever continuation is
-    absorbed first is still real terrain, and the leftover branch
-    seeds its own chain. Deterministic: input order drives seeding
-    and absorption.
-
-    Endpoint matching is exact to 7 decimals (~1 cm) - segments from
-    the same OSM way/node share coordinates bit-for-bit, so this is a
-    node-identity check, not a proximity heuristic (two trails passing
-    1 m apart must NOT join).
-
-    Returns a new list of chains; input lines are not mutated.
-    Degenerate (< 2 point) segments are dropped.
-    """
-
-    def _ckey(pt):
-        return (round(pt[0], 7), round(pt[1], 7))
-
-    segs = [list(line) for line in coord_lines if len(line) >= 2]
-    used = [False] * len(segs)
-    chains = []
-    for i in range(len(segs)):
-        if used[i]:
-            continue
-        used[i] = True
-        chain = list(segs[i])
-        extended = True
-        while extended:
-            extended = False
-            for j in range(len(segs)):
-                if used[j]:
-                    continue
-                s = segs[j]
-                if _ckey(chain[-1]) == _ckey(s[0]):
-                    chain.extend(s[1:])
-                elif _ckey(chain[-1]) == _ckey(s[-1]):
-                    chain.extend(reversed(s[:-1]))
-                elif _ckey(chain[0]) == _ckey(s[-1]):
-                    chain[:0] = s[:-1]
-                elif _ckey(chain[0]) == _ckey(s[0]):
-                    chain[:0] = reversed(s[1:])
-                else:
-                    continue
-                used[j] = True
-                extended = True
-        chains.append(chain)
-    return chains
 
 
 def compute_and_attach(trails_geojson, config):
     """Attach ``distance_m`` to trails_geojson in place when ``show_distance`` is on.
 
     Returns True if anything changed (caller writes back to disk).
+
+    With ``show_distance`` off, any ``distance_m`` already on a route is
+    removed, so a rebuild over a base that once carried distances cannot
+    ship numbers the map no longer asks for.
 
     MUST run on canonical geometry: one feature per route per run of
     way. Geometry that repeats a route's ways inflates its stats.
@@ -175,8 +125,14 @@ def compute_and_attach(trails_geojson, config):
     once-per-way sum.
     """
     routes = trails_geojson.setdefault("metadata", {}).setdefault("routes", {})
-    if not routes or not config.get("show_distance", True):
+    if not routes:
         return False
+    if not config.get("show_distance", True):
+        changed = False
+        for info in routes.values():
+            if isinstance(info, dict) and info.pop("distance_m", None) is not None:
+                changed = True
+        return changed
 
     console.detail("computing per-route distance...")
     changed = False

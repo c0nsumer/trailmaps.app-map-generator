@@ -197,3 +197,15 @@ def test_the_file_path_resolves_like_the_overpass_path(parsed):
     assert clipped == {}
     assert expansions == {200: [100, 101]}
     assert members[100]["name"] == "Ridge Loop"
+
+
+def test_an_unchanged_file_is_parsed_once_and_a_resave_is_reread(tmp_path):
+    path = tmp_path / "m.osm"
+    path.write_text(OSM, encoding="utf-8")
+    first = parse_osm_file(str(path))
+    assert parse_osm_file(str(path)) is first
+    # A JOSM re-save changes the file; the next read must see it.
+    path.write_text(OSM.replace("Ridge Loop", "Ridge Loop Renamed"), encoding="utf-8")
+    again = parse_osm_file(str(path))
+    assert again is not first
+    assert again[2][100]["tags"]["name"] == "Ridge Loop Renamed"

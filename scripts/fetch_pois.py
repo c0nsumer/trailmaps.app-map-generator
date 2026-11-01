@@ -369,9 +369,7 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     if osm_file:
         from osm_parser import extract_pois, parse_osm_file
 
-        if not os.path.isabs(osm_file):
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            osm_file = os.path.join(project_root, osm_file)
+        # load_config has already made osm_file absolute against the config dir.
         parsed = parse_osm_file(osm_file)
         osm_data = extract_pois(parsed, bbox)
     elif not any(config.get(k, True) for k in POI_SHOW_FLAGS):

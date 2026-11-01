@@ -113,6 +113,13 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
     glyph ranges into the trim; the guard keeps the scan honest either
     way.
     """
+    result = _scan_pmtiles(path, rendered_fields, minzoom)
+    return None if result is None else result[0]
+
+
+def _scan_pmtiles(path, rendered_fields, minzoom):
+    """collect_text_from_pmtiles' scan, also saying whether it read every
+    tile: (chars, complete), or None when the libraries are missing."""
     try:
         import mapbox_vector_tile
         import pmtiles.reader as pmreader
@@ -120,6 +127,7 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
         return None  # Signal that scanning is unavailable
 
     chars = set()
+    complete = False
     try:
         with open(path, "rb") as f:
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -152,6 +160,7 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
                     count += 1
                 below = f" (skipped {skipped} below zoom {minzoom})" if skipped else ""
                 console.detail(f"Scanned {count} basemap tiles{below}")
+                complete = True
             finally:
                 mm.close()
     except Exception as e:
@@ -161,6 +170,69 @@ def collect_text_from_pmtiles(path, rendered_fields=RENDERED_NAME_FIELDS, minzoo
         # of its own (a bad magic number, a short directory). Fall
         # through with whatever chars we have.
         console.warn(f"Could not read basemap for font scan: {type(e).__name__}: {e}")
+    return chars, complete
+
+
+# The basemap's character set, kept beside the archive. The scan decodes
+# every tile in pure Python (seconds on a large map) and its answer only
+# changes when the basemap step rewrites the archive. The .sig suffix
+# keeps it out of the service worker, precompression and every deploy
+# exclude list, like the archive's own signature.
+GLYPH_SCAN_SUFFIX = ".glyphs.sig"
+
+
+def _glyph_scan_key(path, minzoom):
+    """What the scan's answer depends on, or None when the archive has no
+    signature to vouch for its inputs (then the scan always runs)."""
+    try:
+        with open(path + ".sig", encoding="utf-8") as f:
+            sig = f.read().strip()
+        st = os.stat(path)
+    except OSError:
+        return None
+    return {
+        "sig": sig,
+        "size": st.st_size,
+        "mtime_ns": st.st_mtime_ns,
+        "minzoom": minzoom,
+        "fields": sorted(RENDERED_NAME_FIELDS),
+    }
+
+
+def basemap_chars(path, minzoom=0):
+    """collect_text_from_pmtiles for the build's basemap, reusing the
+    last scan's answer while the archive, its signature and the scan
+    bounds are unchanged. Falls back to a fresh scan otherwise."""
+    key = _glyph_scan_key(path, minzoom)
+    sidecar = path + GLYPH_SCAN_SUFFIX
+    if key is not None:
+        try:
+            with open(sidecar, encoding="utf-8") as f:
+                saved = json.load(f)
+            if saved.get("key") == key and isinstance(saved.get("chars"), str):
+                console.detail("Basemap characters: reused the previous scan")
+                return set(saved["chars"])
+        except (OSError, ValueError, AttributeError):
+            pass
+    result = _scan_pmtiles(path, RENDERED_NAME_FIELDS, minzoom)
+    if result is None:
+        return None
+    chars, complete = result
+    # A partial scan (a damaged archive) is never remembered, so the
+    # next build tries again.
+    if key is not None and complete:
+        tmp = sidecar + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"key": key, "chars": "".join(sorted(chars))}, f)
+            os.replace(tmp, sidecar)
+        except OSError as e:
+            console.warn(f"could not write {sidecar}: {e}")
+    else:
+        try:
+            os.remove(sidecar)
+        except OSError:
+            pass
     return chars
 
 
@@ -329,13 +401,13 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     # cover every glyph the page needs.
     basemap_path = os.path.join(output_dir, "basemap.pmtiles")
     if os.path.exists(basemap_path):
-        basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=minzoom)
-        if basemap_chars is None:
+        found = basemap_chars(basemap_path, minzoom=minzoom)
+        if found is None:
             # PMTiles libraries not available - fall back to full copy
             console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
             shutil.copytree(fonts_src, fonts_dst)
             return
-        all_chars.update(basemap_chars)
+        all_chars.update(found)
     else:
         console.detail("No basemap - font scan covers trails and POIs only")
 

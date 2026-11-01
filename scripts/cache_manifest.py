@@ -42,6 +42,7 @@ _SLUG_RE = re.compile(r"[a-z0-9_-]+")
 _PRUNABLE = (
     re.compile(r"overpass_[0-9a-f]{12}\.json"),
     re.compile(r"derive_accent/[0-9a-f]{16}\.json"),
+    re.compile(r"precompress/[0-9a-f]{64}\.(gz|br)"),
 )
 
 CATEGORIES = (
@@ -49,6 +50,7 @@ CATEGORIES = (
     "overpass_pois",
     "overpass_basemap",
     "derive_accent",
+    "precompress",
 )
 
 # Module-level collector. Every cache-path computation site records
@@ -94,9 +96,10 @@ def load(cache_dir, slug):
     out = {}
     for key in CATEGORIES:
         # A manifest written before a category existed (overpass_basemap
-        # arrived in 2026-09) claims nothing in it. Reading that as
-        # unreadable made every OTHER map skip its prune until the old
-        # map was rebuilt, since _other_claims aborts on any None.
+        # arrived in 2026-09, precompress in 2026-11) claims nothing in
+        # it. Reading that as unreadable made every OTHER map skip its
+        # prune until the old map was rebuilt, since _other_claims
+        # aborts on any None.
         vals = cats.get(key, [])
         if not isinstance(vals, list) or not all(isinstance(p, str) for p in vals):
             return None

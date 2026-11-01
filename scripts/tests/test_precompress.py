@@ -12,6 +12,7 @@ import gzip
 import os
 
 import brotli
+import cache_manifest
 
 from build import clear_precompressed_sidecars, precompress_assets
 
@@ -69,3 +70,36 @@ def test_sidecars_cleared_without_precompression(tmp_path):
     assert not os.path.exists(os.path.join(root, "app.js.br"))
     assert not os.path.exists(os.path.join(root, "sub/data.json.gz"))
     assert os.path.exists(os.path.join(root, "app.js"))
+
+
+def test_cached_sidecars_are_reused_and_match_a_fresh_compress(tmp_path, monkeypatch):
+    raw = b"var shared = 1;" * 400
+    cache = str(tmp_path / "cache")
+    first = str(tmp_path / "first")
+    _plant(first, "vendor/lib.js", raw)
+    cache_manifest.drain()
+    precompress_assets(first, cache)
+    claimed = cache_manifest.drain()
+    assert sorted(os.path.splitext(p)[1] for p in claimed) == [".br", ".gz"]
+    assert all(os.path.isfile(p) for p in claimed)
+
+    # A second map shipping the same bytes copies them without compressing.
+    def boom(*a, **k):
+        raise AssertionError("compressed on a cache hit")
+
+    monkeypatch.setattr(brotli, "compress", boom)
+    monkeypatch.setattr(gzip, "compress", boom)
+    second = str(tmp_path / "second")
+    _plant(second, "app/lib.js", raw)
+    precompress_assets(second, cache)
+    assert sorted(cache_manifest.drain()) == sorted(claimed)
+    monkeypatch.undo()
+
+    # And the copies are exactly what an uncached run writes.
+    fresh = str(tmp_path / "fresh")
+    _plant(fresh, "lib.js", raw)
+    precompress_assets(fresh)
+    for ext in (".gz", ".br"):
+        with open(os.path.join(second, "app", "lib.js" + ext), "rb") as a, \
+                open(os.path.join(fresh, "lib.js" + ext), "rb") as b:
+            assert a.read() == b.read()

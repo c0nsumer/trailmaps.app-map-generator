@@ -1,17 +1,19 @@
 """Tests for the trail-data refetch decision in cache_signatures.py.
 
 Contract: a config edit that changes what fetch_trails() consumes
-(relations, osm_file, schedules) forces a refetch, a styling edit never
-does, and a trails.geojson changed behind the build's back is refetched.
+(relations, osm_file, scale) forces a refetch, a styling or
+direction_schedule edit never does, and a trails.geojson changed behind the build's back is refetched.
 """
 
 import pytest
 from cache_signatures import (
+    BASE_FORMAT_CHANGED,
     _pmtiles_needs_regen,
     _save_signature,
     _trails_content_hash,
     _trails_fetch_fingerprint,
     _trails_needs_refetch,
+    trails_sidecar,
 )
 
 CONFIG = {
@@ -27,10 +29,7 @@ def built(tmp_path):
     path = str(tmp_path / "trails.src.geojson")
     with open(path, "w", encoding="utf-8") as f:
         f.write('{"features": []}')
-    _save_signature(
-        path,
-        _trails_fetch_fingerprint(CONFIG) + "\ntrails-content=" + _trails_content_hash(path),
-    )
+    _save_signature(path, trails_sidecar(CONFIG, path))
     return path
 
 
@@ -48,14 +47,19 @@ def test_fingerprint_changes_with_every_fetch_input():
         ("summer_relations", [2]),
         ("emergency_access_relations", [3]),
         ("osm_file", "trails.osm"),
-        ("direction_schedule", {"1": "odd"}),
     ):
         assert _trails_fetch_fingerprint(dict(CONFIG, **{key: value})) != base, key
 
 
 def test_fingerprint_ignores_styling_and_custom_routes():
     base = _trails_fetch_fingerprint(CONFIG)
-    edited = dict(CONFIG, relation_colors={1: "#0000ff"}, custom_routes=[{"name": "x"}])
+    edited = dict(
+        CONFIG,
+        relation_colors={1: "#0000ff"},
+        custom_routes=[{"name": "x"}],
+        # Resolved at inject and enrich time; the fetch never reads it.
+        direction_schedule={"reverse_days": ["tuesday"]},
+    )
     assert _trails_fetch_fingerprint(edited) == base
 
 
@@ -127,5 +131,24 @@ def test_a_base_format_bump_refetches_an_existing_base(built, monkeypatch):
     assert _trails_needs_refetch(built, CONFIG) == (False, None)
     monkeypatch.setattr(cache_signatures, "TRAILS_BASE_FORMAT",
                         cache_signatures.TRAILS_BASE_FORMAT + 1)
-    needs, reason = _trails_needs_refetch(built, CONFIG)
-    assert needs and "base format" in reason
+    assert _trails_needs_refetch(built, CONFIG) == (True, BASE_FORMAT_CHANGED)
+
+
+def test_a_format_bump_with_a_config_edit_is_a_real_change(built, monkeypatch):
+    # Only an unchanged config at an older format skips the diff report;
+    # a relation added in the same build must still be reported.
+    import cache_signatures
+
+    monkeypatch.setattr(cache_signatures, "TRAILS_BASE_FORMAT",
+                        cache_signatures.TRAILS_BASE_FORMAT + 1)
+    needs, reason = _trails_needs_refetch(built, dict(CONFIG, relations=[1, 2, 3, 4]))
+    assert needs and reason != BASE_FORMAT_CHANGED
+
+
+def test_a_sidecar_from_before_the_format_line_is_a_format_change(tmp_path):
+    # Format 5 sidecars carry no format line and are stale on format alone.
+    path = str(tmp_path / "trails.src.geojson")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("{}")
+    _save_signature(path, "trails-fp=0123456789abcdef\ntrails-content=" + _trails_content_hash(path))
+    assert _trails_needs_refetch(path, CONFIG) == (True, BASE_FORMAT_CHANGED)

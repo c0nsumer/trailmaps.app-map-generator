@@ -83,6 +83,7 @@ def test_save_load_roundtrip(tmp_path):
         "overpass_pois": [],
         "overpass_basemap": [],
         "derive_accent": [],
+        "precompress": [],
     }
     assert cache_manifest.load(cache_dir, "mymap") == rel
     manifests = os.listdir(os.path.join(cache_dir, "manifests"))
@@ -156,6 +157,23 @@ def test_prune_protects_other_maps_claims(tmp_path):
     removed, freed = cache_manifest.prune(cache_dir, "mymap", old, new)
     assert (removed, freed) == (0, 0)
     assert os.path.exists(path_a)
+
+
+def test_precompress_entries_prune_unless_another_map_claims_them(tmp_path):
+    cache_dir = str(tmp_path)
+    shared = "precompress/" + "e" * 64 + ".br"
+    mine = "precompress/" + "f" * 64 + ".gz"
+    paths = [_plant(cache_dir, rel) for rel in (shared, mine)]
+    other = _cats(cache_dir)
+    other["precompress"] = [paths[0]]
+    cache_manifest.save(cache_dir, "othermap", other)
+    claims = _cats(cache_dir)
+    claims["precompress"] = list(paths)
+    old = cache_manifest.save(cache_dir, "mymap", claims)
+    new = cache_manifest.save(cache_dir, "mymap", _cats(cache_dir))
+    removed, _freed = cache_manifest.prune(cache_dir, "mymap", old, new)
+    assert removed == 1
+    assert os.path.exists(paths[0]) and not os.path.exists(paths[1])
 
 
 def test_prune_allowlist_blocks_unexpected_paths(tmp_path):

@@ -319,10 +319,14 @@ def generate_safari_pinned_tab(source_img, output_dir):
             ["potrace", tmp_path, "-s", "-o", svg_path],
             check=True,
             capture_output=True,
+            timeout=120,
         )
         return True
     except subprocess.CalledProcessError as e:
         console.warn(f"potrace failed: {e.stderr.decode().strip()}")
+        return False
+    except (OSError, subprocess.TimeoutExpired) as e:
+        console.warn(f"potrace failed: {e}")
         return False
     finally:
         os.unlink(tmp_path)

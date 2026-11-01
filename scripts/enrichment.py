@@ -198,13 +198,8 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
     # filter expressions). fetch_trails.py emits OSM ids as ints;
     # custom routes already emit strings. Normalize both here so the
     # downstream JSON has a single consistent type.
-    #
-    # A base fetched by an older engine also carries `route_ref` and
-    # `segment_index`; the runtime reads neither, so they do not ship.
     for feat in trails_geojson["features"]:
         props = feat.setdefault("properties", {})
-        props.pop("route_ref", None)
-        props.pop("segment_index", None)
         rid = props.get("route_id")
         if isinstance(rid, int):
             props["route_id"] = str(rid)
@@ -308,6 +303,10 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
             for line in linestrings:
                 if not isinstance(line, list) or len(line) < 2:
                     continue
+                # GPX converters often emit [lon, lat, ele]. Nothing
+                # downstream reads elevation, and the distance sum and
+                # basemap plane once crashed unpacking three values.
+                line = [[p[0], p[1]] for p in line]
                 if against:
                     line = line[::-1]
                 new_feat = {

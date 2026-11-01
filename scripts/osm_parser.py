@@ -13,6 +13,7 @@ Usage as standalone:
 """
 
 import argparse
+import os
 import sys
 import xml.etree.ElementTree as ET
 
@@ -42,6 +43,13 @@ def _poi_match(tags, ways_only=False):
     )
 
 
+# The last file parse_osm_file read, keyed on (absolute path, size,
+# mtime_ns). A build reads the same file for trails, POIs and the basemap
+# paths, and a large JOSM save costs seconds per parse. One entry only, so
+# a long-lived process never holds more than one parsed file.
+_parse_memo = {}
+
+
 def parse_osm_file(osm_path):
     """Parse a .osm XML file into nodes, ways, and relations.
 
@@ -49,7 +57,22 @@ def parse_osm_file(osm_path):
         nodes: dict[int, (lon, lat, tags)]
         ways: dict[int, {"id", "nd_refs", "tags"}]
         relations: dict[int, {"id", "members", "tags"}]
+
+    Repeat calls for an unchanged file return the same objects, so
+    callers must treat the result as read-only (none mutates it today).
     """
+    path = os.path.abspath(osm_path)
+    st = os.stat(path)
+    key = (path, st.st_size, st.st_mtime_ns)
+    if key in _parse_memo:
+        return _parse_memo[key]
+    parsed = _parse_osm_file(path)
+    _parse_memo.clear()
+    _parse_memo[key] = parsed
+    return parsed
+
+
+def _parse_osm_file(osm_path):
     tree = ET.parse(osm_path)
     root = tree.getroot()
 

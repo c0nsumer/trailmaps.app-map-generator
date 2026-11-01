@@ -102,6 +102,11 @@ DRAWN_MIN_LENGTH_M = 10.0
 
 BUCKET_FLAGS = (("summer", "tm_s"), ("winter", "tm_w"), ("emergency", "tm_e"))
 
+# Ceiling for one tippecanoe, tile-join or pmtiles verify run. The largest
+# map takes well under a minute; this only stops a hung tool from hanging
+# the build.
+TOOL_TIMEOUT_S = 600
+
 # What tile-join drops from the extract: exactly the classes generated
 # here. Legacy filter syntax; "none" is the negated "any".
 STRIP_GENERATED_FILTER = json.dumps(
@@ -225,8 +230,7 @@ def overpass_query(bounds):
 
 def overpass_cache_path(bounds, cache_dir):
     """Where overpass.query caches this area's response (same keying)."""
-    h = hashlib.md5(overpass_query(bounds).encode()).hexdigest()[:12]
-    return os.path.join(cache_dir, f"overpass_{h}.json")
+    return overpass.cache_path(overpass_query(bounds), cache_dir)
 
 
 def fetch_ways(bounds, cache_dir, refresh=False):
@@ -333,7 +337,8 @@ class _Plane:
         self.ky = M_PER_DEG_LAT
 
     def to_m(self, coords):
-        return [(x * self.kx, y * self.ky) for x, y in coords]
+        # Indexed, not unpacked: a position may carry elevation.
+        return [(p[0] * self.kx, p[1] * self.ky) for p in coords]
 
     def to_deg(self, coords):
         return [(x / self.kx, y / self.ky) for x, y in coords]
@@ -389,10 +394,7 @@ def drawn_covers(trails_geojson, plane):
         elif geom.get("type") != "MultiLineString":
             continue
         for bucket, flag in BUCKET_FLAGS:
-            # Buckets are absent from old snapshots; a route with none
-            # named is a summer route, as it is in the app.
-            on = info.get(bucket) if any(b in info for b, _ in BUCKET_FLAGS) else bucket == "summer"
-            if not on:
+            if not info.get(bucket):
                 continue
             for part in parts:
                 if len(part) >= 2:
@@ -527,12 +529,25 @@ def _run(cmd, cwd):
     # TMPDIR too: tippecanoe and tile-join keep their own scratch files
     # wherever it points, and that must be the work directory's disk,
     # not /tmp (see tile_and_join).
-    proc = subprocess.run(
-        cmd, cwd=cwd, capture_output=True, text=True, env={**os.environ, "TMPDIR": cwd}
-    )
+    # The timeout is generous (a large map tiles in well under a minute);
+    # it only turns a hung tool into a soft basemap failure.
+    name = os.path.basename(cmd[0])
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "TMPDIR": cwd},
+            timeout=TOOL_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        raise BasemapPathsError(f"{name} timed out after {TOOL_TIMEOUT_S} s") from None
+    except OSError as e:
+        raise BasemapPathsError(f"{name} could not run: {e}") from None
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-5:]
-        raise BasemapPathsError(f"{os.path.basename(cmd[0])} failed: " + " | ".join(tail))
+        raise BasemapPathsError(f"{name} failed: " + " | ".join(tail))
 
 
 def archive_ok(path):
@@ -548,7 +563,11 @@ def archive_ok(path):
     cli = find_pmtiles_cli()
     if not cli or not os.path.exists(path):
         return False
-    return subprocess.run([cli, "verify", path], capture_output=True).returncode == 0
+    try:
+        proc = subprocess.run([cli, "verify", path], capture_output=True, timeout=TOOL_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
 
 
 def tile_and_join(features, extract_path, output_path, bounds, minzoom, maxzoom, work_root=None):

@@ -502,10 +502,12 @@ OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
 [Build options](#build-options) explains each flag.
 
 The trails base (the merged ways before enrichment) carries a format number,
-`TRAILS_BASE_FORMAT`, which is 5 now. Version 4 added the ITRS rating fields.
-Version 5 added `bike_only` and limited all three to ITRS maps. A build that
-finds an older base re-derives it from the cached Overpass data, so a format
-bump needs no refetch.
+`TRAILS_BASE_FORMAT`, which is 6 now. Version 4 added the ITRS rating fields.
+Version 5 added `bike_only` and limited all three to ITRS maps. Version 6
+took `direction_schedule` out of the trails fingerprint, since the fetch never
+reads it. A build that finds an older base re-derives it from the cached
+Overpass data, so a format bump needs no refetch. That re-derive leaves the
+OSM diff report alone, so the report still describes the last real refresh.
 
 The map's `difficulty_scale` is part of the trails fingerprint. If you flip it
 between `imba` and `itrs`, the next build re-derives the trails base offline
@@ -675,6 +677,7 @@ build/<slug>/         Generated output (deployable static site)
 cache/                Cached Overpass API responses
   basemap/            Basemap extracts and their work files
   derive_accent/      Cached accent colors derived from logos (accent_color: auto)
+  precompress/        .gz and .br sidecars keyed by content, copied into builds that ship the same bytes
   vendor/             Downloaded vendor JS and CSS, copied into each build
   manifests/<slug>.json  Cache entries the map's last build used (drives stale-entry pruning)
   osm_diff/<slug>/    Previous trail snapshot, refresh diff, OSM data notes

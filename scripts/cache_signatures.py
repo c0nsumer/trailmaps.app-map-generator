@@ -69,16 +69,27 @@ def _clear_signature(output_path):
 #   3: ways carry freeride (mtb:type names freeride) (2026-10-12)
 #   4: ways carry itrs_difficulty and itrs_exposure (2026-10-31)
 #   5: ways carry bike_only; the ITRS fields are read on ITRS maps only (2026-10-31)
-TRAILS_BASE_FORMAT = 5
+#   6: direction_schedule leaves the fingerprint; the sidecar records the
+#      format so a format-only re-derive is told apart (2026-11-01)
+TRAILS_BASE_FORMAT = 6
 
 
-def _trails_fetch_fingerprint(config):
+def _trails_fetch_fingerprint(config, base_format=None):
     """Stable hash of every config key fetch_trails() consumes, plus the
     base format version. When this changes between builds, the cached
     trails.src.geojson is stale even though it exists on disk - adding a
-    relation to clipped_relations, swapping osm_file, editing
-    direction_schedule, or an engine upgrade that bumps
-    TRAILS_BASE_FORMAT all flip the hash and force a refetch.
+    relation to clipped_relations, swapping osm_file, or an engine
+    upgrade that bumps TRAILS_BASE_FORMAT all flip the hash and force a
+    refetch.
+
+    direction_schedule is NOT in the fingerprint: nothing in the fetch
+    reads it (template_inject and enrichment resolve it on every build),
+    so a scheduling edit must not re-derive the base or write an OSM
+    diff record over the last real refresh.
+
+    ``base_format`` lets _trails_needs_refetch recompute the fingerprint
+    a sidecar from an older format would carry, to tell a format-only
+    re-derive from a config change.
 
     custom_routes is intentionally NOT in the fingerprint:
     _enrich_trails_geojson runs idempotently on every build and folds
@@ -90,14 +101,13 @@ def _trails_fetch_fingerprint(config):
     tool when a file's contents change without the path changing.
     """
     inputs = {
-        "base_format": TRAILS_BASE_FORMAT,
+        "base_format": TRAILS_BASE_FORMAT if base_format is None else base_format,
         "relations": sorted(config.get("relations") or []),
         "clipped_relations": sorted(config.get("clipped_relations") or []),
         "winter_relations": sorted(config.get("winter_relations") or []),
         "summer_relations": sorted(config.get("summer_relations") or []),
         "emergency_access_relations": sorted(config.get("emergency_access_relations") or []),
         "osm_file": config.get("osm_file") or "",
-        "direction_schedule": config.get("direction_schedule") or {},
         # The scale decides whether the ITRS fields join the merge
         # signature, so flipping it re-derives the base (offline, from the
         # cached Overpass data; no refetch).
@@ -131,6 +141,39 @@ def _trails_content_hash(trails_path):
 # it is not a refresh to report.
 SIDECAR_MISSING = "fingerprint sidecar missing"
 
+# The reason for a base whose fetch inputs are unchanged but whose format
+# is older than this engine's. Like SIDECAR_MISSING, the re-derive reads
+# the cached Overpass responses, so it is not a refresh to report.
+BASE_FORMAT_CHANGED = "trails base format changed; re-deriving from the cached data"
+
+
+def trails_sidecar(config, trails_path):
+    """The sidecar text vouching for the trails base just written."""
+    return (
+        _trails_fetch_fingerprint(config)
+        + "\ntrails-content="
+        + (_trails_content_hash(trails_path) or "")
+        + f"\ntrails-format={TRAILS_BASE_FORMAT}"
+    )
+
+
+def _format_only_change(stored_fp, stored_format, config):
+    """True when the stored fingerprint is this config's at an older format.
+
+    A sidecar from before format 6 records no format line. Every such
+    sidecar is stale on format alone (6 is the first format that writes
+    the line), so it counts as format-only too; a config edit landing in
+    the same build as that one-time upgrade goes unreported, which is
+    the lesser loss next to overwriting the last real refresh record.
+    """
+    if stored_format is None:
+        return True
+    try:
+        fmt = int(stored_format)
+    except ValueError:
+        return False
+    return fmt != TRAILS_BASE_FORMAT and stored_fp == _trails_fetch_fingerprint(config, fmt)
+
 
 def _trails_needs_refetch(trails_path, config):
     """True iff the cached trails.src.geojson must be refetched. Returns
@@ -158,10 +201,17 @@ def _trails_needs_refetch(trails_path, config):
     # Sidecar layout (newest format, oldest is just line 0):
     #   trails-fp=<config fingerprint>
     #   trails-content=<sha256 of trails.src.geojson as last written>
+    #   trails-format=<TRAILS_BASE_FORMAT that wrote it>
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     stored_fp = lines[0] if lines else ""
+    stored_format = next(
+        (ln[len("trails-format="):] for ln in lines[1:] if ln.startswith("trails-format=")),
+        None,
+    )
     expected_fp = _trails_fetch_fingerprint(config)
     if stored_fp != expected_fp:
+        if _format_only_change(stored_fp, stored_format, config):
+            return True, BASE_FORMAT_CHANGED
         return True, (
             f"fetch inputs or base format changed since last fetch "
             f"({stored_fp!r} → {expected_fp!r})"

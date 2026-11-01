@@ -9,12 +9,12 @@ Run from repo root:
 """
 
 from compute_route_stats import (
-    _chain_segments,
     compute_and_attach,
     compute_distances,
     repeat_meters,
 )
 from geodesy import haversine_m
+from tagging_report import _chain_segments
 
 # Two segments of route 100; the second is shared with route 200 and
 # emitted once per parent (route_id 100 and route_id 200), matching
@@ -105,3 +105,25 @@ def test_chain_segments_keeps_disconnected_apart_and_drops_degenerate():
     x, y = [5.0, 5.0], [6.0, 5.0]
     chains = _chain_segments([[a, b], [[9.0, 9.0]], [x, y]])
     assert chains == [[a, b], [x, y]]  # 1 cm apart is NOT a join; 1-pt seg dropped
+
+
+def test_attach_with_distance_off_drops_a_stale_distance():
+    # A cached base or an earlier enrichment can already carry
+    # distance_m; turning show_distance off must not ship it.
+    g = _fc()
+    assert compute_and_attach(g, {})
+    assert compute_and_attach(g, {"show_distance": False})
+    assert all("distance_m" not in info for info in g["metadata"]["routes"].values())
+    assert not compute_and_attach(g, {"show_distance": False})
+
+
+def test_positions_with_elevation_measure_like_2d():
+    flat = _fc()
+    raised = _fc()
+    for f in raised["features"]:
+        f["geometry"]["coordinates"] = [
+            [lon, lat, 250.0] for lon, lat in f["geometry"]["coordinates"]
+        ]
+    assert compute_distances(raised) == compute_distances(flat)
+    ways = {1: {"coords": [[lon, lat, 9.0] for lon, lat in _SEG_A]}}
+    assert repeat_meters([1, 1], ways) == _line_m(_SEG_A)

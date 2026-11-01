@@ -136,3 +136,46 @@ def test_a_damaged_basemap_does_not_crash_the_font_scan(tmp_path, capsys):
         bad.write_bytes(content)
         assert collect_text_from_pmtiles(str(bad)) == set()
     assert "Could not read basemap" in capsys.readouterr().out
+
+
+def test_basemap_chars_reuses_the_scan_until_the_archive_changes(tmp_path, monkeypatch):
+    import font_trimmer
+
+    scans = []
+
+    def fake_scan(path, fields, minzoom):
+        scans.append(path)
+        return {"a", "é"}, True
+
+    monkeypatch.setattr(font_trimmer, "_scan_pmtiles", fake_scan)
+    archive = tmp_path / "basemap.pmtiles"
+    archive.write_bytes(b"tiles")
+    (tmp_path / "basemap.pmtiles.sig").write_text("bbox=1;maxzoom=15\n")
+
+    assert font_trimmer.basemap_chars(str(archive), minzoom=9) == {"a", "é"}
+    assert font_trimmer.basemap_chars(str(archive), minzoom=9) == {"a", "é"}
+    assert len(scans) == 1
+    # A new signature (the basemap step regenerated it) or other scan
+    # bounds mean a new answer.
+    (tmp_path / "basemap.pmtiles.sig").write_text("bbox=2;maxzoom=15\n")
+    font_trimmer.basemap_chars(str(archive), minzoom=9)
+    font_trimmer.basemap_chars(str(archive), minzoom=10)
+    assert len(scans) == 3
+    # The remembered answer is a build-only artifact, never deployed.
+    from build import _is_build_only_artifact
+
+    assert _is_build_only_artifact("basemap.pmtiles" + font_trimmer.GLYPH_SCAN_SUFFIX)
+
+
+def test_basemap_chars_never_remembers_a_partial_scan(tmp_path, monkeypatch):
+    import font_trimmer
+
+    scans = []
+    monkeypatch.setattr(
+        font_trimmer, "_scan_pmtiles", lambda *a: scans.append(1) or ({"a"}, False))
+    archive = tmp_path / "basemap.pmtiles"
+    archive.write_bytes(b"tiles")
+    (tmp_path / "basemap.pmtiles.sig").write_text("sig\n")
+    font_trimmer.basemap_chars(str(archive))
+    font_trimmer.basemap_chars(str(archive))
+    assert len(scans) == 2

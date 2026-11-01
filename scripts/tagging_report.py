@@ -33,7 +33,7 @@ import json
 import os
 
 import console
-from compute_route_stats import _chain_segments, _coords_for_route
+from compute_route_stats import _coords_for_route
 from fetch_trails import gather_relation_ids
 from geodesy import haversine_m, natural_key, point_to_polyline_m
 from validate_config import (
@@ -80,6 +80,67 @@ _RANGE_TEXT = {
 }
 
 _MAX_LIST = 40
+
+
+def _chain_segments(coord_lines):
+    """Orient and join segments whose endpoints touch into continuous
+    chains, so the gap check can tell which of a route's ways connect.
+
+    OSM relations don't order their member ways, so a closed loop
+    arrives as many disconnected pieces in arbitrary order and
+    direction.
+
+    Greedy: seed a chain from the first unused segment, then repeatedly
+    absorb any unused segment one of whose endpoints coincides with
+    either end of the chain (reversing the segment as needed).
+    Segments are only ever from ONE route, so a join is always a
+    physically walkable continuation - at a junction shared by more
+    than two of the route's segments, whichever continuation is
+    absorbed first is still real terrain, and the leftover branch
+    seeds its own chain. Deterministic: input order drives seeding
+    and absorption.
+
+    Endpoint matching is exact to 7 decimals (~1 cm) - segments from
+    the same OSM way/node share coordinates bit-for-bit, so this is a
+    node-identity check, not a proximity heuristic (two trails passing
+    1 m apart must NOT join).
+
+    Returns a new list of chains; input lines are not mutated.
+    Degenerate (< 2 point) segments are dropped.
+    """
+
+    def _ckey(pt):
+        return (round(pt[0], 7), round(pt[1], 7))
+
+    segs = [list(line) for line in coord_lines if len(line) >= 2]
+    used = [False] * len(segs)
+    chains = []
+    for i in range(len(segs)):
+        if used[i]:
+            continue
+        used[i] = True
+        chain = list(segs[i])
+        extended = True
+        while extended:
+            extended = False
+            for j in range(len(segs)):
+                if used[j]:
+                    continue
+                s = segs[j]
+                if _ckey(chain[-1]) == _ckey(s[0]):
+                    chain.extend(s[1:])
+                elif _ckey(chain[-1]) == _ckey(s[-1]):
+                    chain.extend(reversed(s[:-1]))
+                elif _ckey(chain[0]) == _ckey(s[-1]):
+                    chain[:0] = s[:-1]
+                elif _ckey(chain[0]) == _ckey(s[0]):
+                    chain[:0] = reversed(s[1:])
+                else:
+                    continue
+                used[j] = True
+                extended = True
+        chains.append(chain)
+    return chains
 
 
 def _technical_key(findings):

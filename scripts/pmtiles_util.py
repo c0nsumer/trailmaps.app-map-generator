@@ -27,6 +27,11 @@ TERRAIN_MAXZOOM = 12
 # map) that no rider can ever pan out far enough to see.
 EXTRACT_MINZOOM = max(0, MIN_ZOOM - 1)
 
+# pmtiles extract streams ranges from a remote planet archive, so a slow
+# link can legitimately take a long while; the ceiling only stops a
+# stalled connection from hanging the build forever.
+EXTRACT_TIMEOUT_S = 30 * 60
+
 
 def find_pmtiles_cli():
     """Find the pmtiles CLI binary, or None if not installed."""
@@ -74,7 +79,16 @@ def extract(pmtiles_cli, source_url, output_path, bbox, maxzoom, minzoom=0):
     ]
     console.detail(f"Running: {' '.join(cmd)}")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT_S
+            )
+        except subprocess.TimeoutExpired:
+            console.error(f"pmtiles extract timed out after {EXTRACT_TIMEOUT_S} s")
+            return False
+        except OSError as e:
+            console.error(f"pmtiles extract could not run: {e}")
+            return False
 
         if result.returncode != 0:
             console.error("pmtiles extract failed:")
