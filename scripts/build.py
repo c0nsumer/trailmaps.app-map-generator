@@ -107,7 +107,7 @@ VENDOR_LIBS = {
     # inside-corner bevel that ended the low-zoom lane spike, the
     # loop-removal cut anchor, every route at every overview zoom, and
     # the dash phase fixed to the map.
-    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.3.0/dist/maplibre-gl-lanes.js",
+    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.4.0/dist/maplibre-gl-lanes.js",
 }
 
 
