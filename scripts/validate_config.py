@@ -24,7 +24,7 @@ import re
 import sys
 
 import console
-import yaml
+from config_io import ConfigReadError, parse_config_yaml
 
 # ----------------------------------------------------------------------
 # Schema
@@ -1949,14 +1949,17 @@ def validate_config(config, *, config_path=None):
 
 
 def validate_config_file(path):
-    """Load + validate a single YAML file. Returns (errors, warnings)."""
+    """Load + validate a single YAML file. Returns (errors, warnings).
+
+    Reads through the same parser as build.py so both entry points judge
+    the same shape (an empty file is {}, a non-mapping is an error), but
+    reports a read failure instead of exiting, so one bad file does not
+    stop a multi-file run.
+    """
     try:
-        with open(path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        return ([f"  [error] root: YAML parse error: {e}"], [])
-    except OSError as e:
-        return ([f"  [error] root: cannot open {path}: {e}"], [])
+        config = parse_config_yaml(path)
+    except ConfigReadError as e:
+        return ([f"  [error] root: {e}"], [])
     return validate_config(config, config_path=path)
 
 

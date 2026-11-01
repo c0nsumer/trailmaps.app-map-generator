@@ -731,11 +731,12 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
         # geometry either, there's genuinely nothing to build.
         if _has_custom_geometry(config):
             return _write_empty_trails(output_path, config["name"])
-        sys.exit(
-            "ERROR: config must specify `relations:` (a non-empty list of "
+        console.error(
+            "config must specify `relations:` (a non-empty list of "
             "OSM relation IDs) or supply `custom_routes` / "
             "`event_mode.routes` geometry."
         )
+        sys.exit(1)
     # Discard outcomes from any earlier query so the summary below describes this fetch only.
     drain_outcomes()
     winter_relation_ids = set(config.get("winter_relations") or [])
@@ -767,10 +768,7 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
                 f"  {label}: super-relation {parent_id} → {len(child_ids)} child route(s)")
 
     if osm_file:
-        if not os.path.isabs(osm_file):
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            osm_file = os.path.join(project_root, osm_file)
-
+        # load_config has already made osm_file absolute against the config dir.
         # The .osm file IS the data source, so its mtime is the honest
         # "data as of" record (and, like buildDate's inputs, survives
         # rebuilds and machine moves that preserve mtimes).
@@ -1089,12 +1087,10 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
 
 if __name__ == "__main__":
     parser = cli.config_output_parser("Fetch trail data from OpenStreetMap via Overpass.")
-    parser.add_argument(
-        "--cache-dir", default="cache", help="Cache directory (default: cache)"
-    )
+    cli.add_cache_dir_arg(parser)
     args = parser.parse_args()
     console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
-    output = args.output or os.path.join("build", config["slug"], "trails.geojson")
+    output = args.output or cli.repo_path("build", config["slug"], "trails.geojson")
     fetch_trails(config, output, args.cache_dir)

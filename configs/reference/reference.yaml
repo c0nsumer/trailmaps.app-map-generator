@@ -214,7 +214,7 @@ relations:
 # First-visit layers ON. Unset = markers, trailheads, hubs, parking, toilets,
 # water, repair stations, direction arrows. [] = all off, "all" = all on, or a
 # list of layer names.
-# default_visible: []
+# default_visible: []  # example, not the default
 
 # Layers forced ON with their toggle hidden. Same forms as default_visible.
 # Unset = direction arrows. [] = nothing forced.
@@ -226,7 +226,7 @@ relations:
 # default_labels: none
 
 # Lock the label mode and hide the Labels control: "routes", "trails", or "none".
-# forced_labels: trails
+# forced_labels: trails  # example, not the default
 
 # First-visit color scheme: "light", "dark", or "auto" (follows the OS).
 # default_color_scheme: light

@@ -176,19 +176,3 @@ def test_successful_extract_prints_no_progress_replay(monkeypatch, tmp_path, cap
     out = str(tmp_path / "o.pmtiles")
     assert pmtiles_util.extract("pmtiles", "https://x/p.pmtiles", out, [0, 0, 1, 1], 12, 9)
     assert "fetching chunks" not in capsys.readouterr().out
-
-
-def test_example_config_gains_only_the_three_itrs_keys():
-    """An IMBA map's CONFIG changes by difficultyScale, exposureRatings, hasBikeOnlyTrails only."""
-    from conftest import MINIMAL_CONFIG, inject_config
-
-    obj = inject_config(dict(MINIMAL_CONFIG))
-    assert obj["difficultyScale"] == "imba"
-    assert obj["exposureRatings"] == []
-    rating_keys = sorted(
-        k for k in obj
-        if any(s in k.lower() for s in ("difficulty", "rating", "exposure", "scale", "bikeonly")))
-    assert rating_keys == [
-        "difficultyRatings", "difficultyScale", "exposureRatings", "freerideRatings",
-        "hasBikeOnlyTrails", "hasDifficultyTrails", "showDifficulty"]
-    assert obj["hasBikeOnlyTrails"] is False

@@ -282,7 +282,8 @@ fix) never reach it.
 
 Each audit also writes `cache/osm_diff/<slug>/data-notes.json` next to the
 markdown. It holds the slug, the finding total, the console summary lines
-verbatim, and a per-check count. A clean map writes it too, with a total of
+verbatim, a per-check count, and the relation and way ids behind the
+repeated-member check. A clean map writes it too, with a total of
 zero. An orchestrator that builds many maps in one run can read each file
 after its engine call and print one aggregated block at the end.
 

@@ -179,3 +179,39 @@ def test_basemap_chars_never_remembers_a_partial_scan(tmp_path, monkeypatch):
     font_trimmer.basemap_chars(str(archive))
     font_trimmer.basemap_chars(str(archive))
     assert len(scans) == 2
+
+
+def test_plan_trim_matches_what_copy_trimmed_fonts_ships(tmp_path, monkeypatch):
+    # The dry-run CLI reports plan_trim, so the plan has to be what the
+    # build copies, in both the trimmed case and the copy-everything
+    # fallback (a basemap that cannot be scanned).
+    import font_trimmer
+
+    fonts_src = tmp_path / "fonts"
+    for face_name in ("Noto Sans Regular", "Noto Sans Devanagari Regular v1"):
+        face = fonts_src / face_name
+        face.mkdir(parents=True)
+        for name in ("0-255.pbf", "256-511.pbf"):
+            (face / name).write_bytes(b"x")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "basemap.pmtiles").write_bytes(b"")
+
+    def shipped():
+        root = out / "fonts"
+        return {(d.name, f.name) for d in root.iterdir() if d.is_dir() for f in d.iterdir()}
+
+    monkeypatch.setattr(font_trimmer, "basemap_chars", lambda *a, **k: {"a"})
+    plan = font_trimmer.plan_trim(str(out), str(fonts_src))
+    assert not plan.copy_all
+    font_trimmer.copy_trimmed_fonts(str(out), str(fonts_src))
+    assert shipped() == {
+        (face, f"{s}-{e}.pbf") for face in plan.faces for s, e in plan.ranges}
+    assert len(shipped()) < 4
+
+    monkeypatch.setattr(font_trimmer, "basemap_chars", lambda *a, **k: None)
+    plan = font_trimmer.plan_trim(str(out), str(fonts_src))
+    assert plan.copy_all
+    assert plan.faces == set(plan.available_faces)
+    font_trimmer.copy_trimmed_fonts(str(out), str(fonts_src))
+    assert len(shipped()) == 4

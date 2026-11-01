@@ -13,35 +13,49 @@ import console
 import yaml
 
 
-def read_config_yaml(config_path):
-    """Parse a config YAML and return its top-level mapping.
+class ConfigReadError(Exception):
+    """A config file that cannot be read as a mapping; str() is the
+    one-line, curator-facing reason."""
+
+
+def parse_config_yaml(config_path):
+    """Parse a config YAML and return its top-level mapping, raising
+    ConfigReadError instead of exiting.
 
     An empty file reads as ``{}``. A file whose top level is a scalar or
-    a list, a missing or unreadable file, and a YAML syntax error each exit
-    with a one-line message, because every caller reads it with
-    ``config.get`` and would otherwise die with a traceback.
+    a list, a missing or unreadable file, and a YAML syntax error each
+    raise. The standalone validator reports the reason in its own format
+    and moves on to the next file, so it cannot use the exiting form.
     """
     try:
         with open(config_path, encoding="utf-8") as f:
             config = yaml.safe_load(f)
     except OSError as e:
-        console.error(f"cannot read config {config_path}: {e.strerror or e}")
-        sys.exit(1)
+        raise ConfigReadError(f"cannot read config {config_path}: {e.strerror or e}") from e
     except yaml.YAMLError as e:
         mark = getattr(e, "problem_mark", None)
         where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
         problem = getattr(e, "problem", None) or "invalid YAML"
-        console.error(f"{config_path}: {problem}{where}")
-        sys.exit(1)
+        raise ConfigReadError(f"{config_path}: {problem}{where}") from e
     if config is None:
         return {}
     if not isinstance(config, dict):
-        console.error(
+        raise ConfigReadError(
             f"{config_path}: the top level must be a mapping of config keys, "
             f"not a {type(config).__name__}"
         )
-        sys.exit(1)
     return config
+
+
+def read_config_yaml(config_path):
+    """parse_config_yaml, exiting with a one-line message on failure,
+    because every build-side caller reads the result with ``config.get``
+    and would otherwise die with a traceback."""
+    try:
+        return parse_config_yaml(config_path)
+    except ConfigReadError as e:
+        console.error(str(e))
+        sys.exit(1)
 
 
 def load_config_for_fetch(config_path):

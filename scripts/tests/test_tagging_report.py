@@ -349,3 +349,39 @@ def test_missing_rating_reads_the_active_scale():
     itrs = audit(snap, None, {"slug": "t", "difficulty_scale": "itrs"})
     assert itrs["named_trails_missing_rating"] == ["ImbaOnly"]
     assert "mtb:scale:itrs:technical_difficulty is a genuine gap" in format_report(itrs, "t")
+
+
+def test_list_repeated_members_reads_what_the_build_writes(tmp_path):
+    # The worklist tool reads the sidecar the audit writes, so the pair
+    # stays in step without either side parsing the markdown's wording.
+    from list_repeated_members import collect
+    from tagging_report import report_tagging_quality
+
+    snap = _snap([_feature([10, 11, -12], _LINE)],
+                 routes={"1": {"name": "Race Course", "colour": "red",
+                               "repeated_ways": {"11": 3, "10": 2, "-12": 2}},
+                         "2": {"name": "Loop", "colour": "red"}})
+    report_tagging_quality(snap, None, {"slug": "m"}, str(tmp_path))
+    report_tagging_quality(_snap([], routes={}), None, {"slug": "c"}, str(tmp_path))
+
+    assert collect(str(tmp_path), set()) == {"m": [{
+        "relation": "1",
+        "name": "Race Course",
+        "ways": [{"id": "10", "times": 2}, {"id": "11", "times": 3},
+                 {"id": "-12", "times": 2}],
+    }]}
+    assert collect(str(tmp_path), {"c"}) == {}
+
+
+def test_list_repeated_members_names_a_sidecar_without_the_ids(tmp_path, capsys):
+    # A sidecar from before the ids existed is not the same as a clean
+    # map: the tool says which map needs a rebuild instead of going quiet.
+    import json
+
+    from list_repeated_members import collect
+
+    d = tmp_path / "osm_diff" / "old"
+    d.mkdir(parents=True)
+    (d / "data-notes.json").write_text(json.dumps({"slug": "old", "total": 1}))
+    assert collect(str(tmp_path), set()) == {}
+    assert "old" in capsys.readouterr().err

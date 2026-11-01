@@ -1,4 +1,5 @@
-"""Tests for the `color_by` / `default_labels` / `show_distance` injector defaults.
+"""Tests for the `color_by` / `default_labels` / `show_distance` injector defaults,
+and the ITRS-era difficulty keys an IMBA map emits.
 
 `color_by` defaults to `"route"` (a routes map). On a difficulty map
 (`color_by: difficulty`) the trail name is the only name there is, so an
@@ -236,3 +237,13 @@ def test_itrs_exposure_alone_turns_the_toggle_on():
     obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
     assert obj["hasDifficultyTrails"] is True
     assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == [2]
+
+
+def test_an_imba_map_carries_the_three_itrs_keys_at_their_defaults():
+    """An unconfigured (IMBA) map emits the ITRS-era keys with values that
+    leave the runtime on the IMBA scale: no exposure ratings, no bike-only
+    trails."""
+    obj = inject_config(dict(MINIMAL_CONFIG))
+    assert obj["difficultyScale"] == "imba"
+    assert obj["exposureRatings"] == []
+    assert obj["hasBikeOnlyTrails"] is False

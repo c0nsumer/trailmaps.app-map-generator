@@ -86,7 +86,7 @@ if __name__ == "__main__":
     console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
-    output = args.output or os.path.join("build", config["slug"], "terrain.pmtiles")
+    output = args.output or cli.repo_path("build", config["slug"], "terrain.pmtiles")
     # The CLI extracts the config bbox, not build.py's pan_bbox, and writes
     # no signature: an old one must not vouch for this file.
     _clear_signature(output)

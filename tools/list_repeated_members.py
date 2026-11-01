@@ -2,17 +2,19 @@
 """List every relation that repeats a member way, across all audited maps.
 
 Maintainer helper for fixing OSM by hand. Each build writes
-``cache/osm_diff/<slug>/data-notes.md``; this reads the "Relations that list
-a way more than once" section from every one and prints a worklist grouped
-by map: the relation, its name, an iD edit link, a JOSM remote-control link,
-and each repeated way with its multiplier.
+``cache/osm_diff/<slug>/data-notes.json`` (the machine-readable twin of
+``data-notes.md``); this reads the ``repeated_members`` list from every one
+and prints a worklist grouped by map: the relation, its name, an iD edit
+link, a JOSM remote-control link, and each repeated way with its multiplier.
 
 The JOSM link needs JOSM running with remote control enabled (Preferences >
 Remote Control). Opening it in a browser tells JOSM to download the relation
 and its members.
 
-The JSON sidecar only carries counts, so the markdown is the source of the
-ids. Purely offline: it reads the cache and never builds or fetches.
+Purely offline: it reads the cache and never builds or fetches. A sidecar
+written before the ids were added has no ``repeated_members`` key; the tool
+names that map on stderr so a rebuild can refresh it, rather than reporting
+it as clean.
 
 Relations and ways with a negative id come from an unuploaded local OSM
 file. They have no openstreetmap.org page, so they print as-is and are
@@ -29,51 +31,44 @@ import argparse
 import glob
 import json
 import os
-import re
 import sys
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_HEADING = "## Relations that list a way more than once"
-_WAY = r"(?:https://www\.openstreetmap\.org/way/\d+|way `-?\d+`)(?: \(\d+x\))?"
-_ITEM = re.compile(
-    r"^- (?P<rel>https://www\.openstreetmap\.org/relation/\d+|relation `-?\d+`) "
-    r"(?P<name>.*): (?P<ways>" + _WAY + r"(?:, " + _WAY + r")*)$"
-)
-_WAY_PARTS = re.compile(r"(?:way/|way `)(-?\d+)`?(?: \((\d+)x\))?")
-_ID = re.compile(r"(-?\d+)`?$")
 
-
-def parse_report(text):
-    """Return [{relation, name, ways: [{id, times}]}] from one data-notes.md."""
-    found = []
-    in_section = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            in_section = line.startswith(_HEADING)
-            continue
-        if not in_section or not line.startswith("- "):
-            continue
-        m = _ITEM.match(line)
-        if not m:
-            print(f"warning: unparsed line: {line}", file=sys.stderr)
-            continue
-        rid = _ID.search(m["rel"]).group(1)
-        ways = [{"id": w, "times": int(n) if n else 2}
-                for w, n in _WAY_PARTS.findall(m["ways"])]
-        found.append({"relation": rid, "name": m["name"], "ways": ways})
-    return found
+def read_sidecar(data):
+    """Return [{relation, name, ways: [{id, times}]}] from one parsed
+    data-notes.json, or None when the sidecar predates the ids."""
+    items = data.get("repeated_members")
+    if items is None:
+        return None
+    return [
+        {
+            "relation": str(it["relation"]),
+            "name": it.get("name") or "",
+            "ways": [{"id": str(w["id"]), "times": int(w["times"])} for w in it["ways"]],
+        }
+        for it in items
+    ]
 
 
 def collect(cache_dir, slugs):
-    pattern = os.path.join(cache_dir, "osm_diff", "*", "data-notes.md")
+    pattern = os.path.join(cache_dir, "osm_diff", "*", "data-notes.json")
     result = {}
     for path in sorted(glob.glob(pattern)):
         slug = os.path.basename(os.path.dirname(path))
         if slugs and slug not in slugs:
             continue
-        with open(path, encoding="utf-8") as f:
-            items = parse_report(f.read())
+        try:
+            with open(path, encoding="utf-8") as f:
+                items = read_sidecar(json.load(f))
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            print(f"warning: {slug}: unreadable {path}: {e}", file=sys.stderr)
+            continue
+        if items is None:
+            print(f"warning: {slug}: data-notes.json predates the repeated-member ids; "
+                  "rebuild the map to list them", file=sys.stderr)
+            continue
         if items:
             result[slug] = items
     return result

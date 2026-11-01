@@ -252,7 +252,8 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
             with open(cgeom_abs, encoding="utf-8") as f:
                 gj = json.load(f)
         except (OSError, ValueError) as e:
-            sys.exit(f"ERROR: custom_routes[{cid!r}].geometry: cannot read {cgeom_abs!r}: {e}")
+            console.error(f"custom_routes[{cid!r}].geometry: cannot read {cgeom_abs!r}: {e}")
+            sys.exit(1)
 
         gj_type = gj.get("type") if isinstance(gj, dict) else type(gj).__name__
         if gj_type == "FeatureCollection":
@@ -260,25 +261,28 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         elif gj_type == "Feature":
             gj_features = [gj]
         else:
-            sys.exit(
-                f"ERROR: custom_routes[{cid!r}].geometry: top-level type "
+            console.error(
+                f"custom_routes[{cid!r}].geometry: top-level type "
                 f"must be Feature or FeatureCollection "
                 f"(got {gj_type!r})"
             )
+            sys.exit(1)
         lines_added = 0
 
         for i, feat in enumerate(gj_features):
             geom = feat.get("geometry") or {}
             gtype = geom.get("type")
             if gtype not in ("LineString", "MultiLineString"):
-                sys.exit(
-                    f"ERROR: custom_routes[{cid!r}].geometry feature {i}: "
+                console.error(
+                    f"custom_routes[{cid!r}].geometry feature {i}: "
                     f"geometry type must be LineString or MultiLineString "
                     f"(got {gtype!r})"
                 )
+                sys.exit(1)
             coords = geom.get("coordinates") or []
             if not coords:
-                sys.exit(f"ERROR: custom_routes[{cid!r}].geometry feature {i}: empty coordinates")
+                console.error(f"custom_routes[{cid!r}].geometry feature {i}: empty coordinates")
+                sys.exit(1)
 
             # Normalize MultiLineString into separate LineString features
             # (matches fetch_trails.py's per-segment shape).
@@ -345,10 +349,11 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
         # with no relations it would otherwise surface later as a
         # misleading "check the relation ids" bbox error.
         if not lines_added:
-            sys.exit(
-                f"ERROR: custom_routes[{cid!r}].geometry: {cgeom_abs!r} holds no "
+            console.error(
+                f"custom_routes[{cid!r}].geometry: {cgeom_abs!r} holds no "
                 f"line with at least two points"
             )
+            sys.exit(1)
 
         # Metadata.routes entry - shape mirrors OSM-sourced routes plus
         # the three bucket flags and isCustom.

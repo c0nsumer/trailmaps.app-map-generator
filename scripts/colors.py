@@ -13,6 +13,7 @@ import os
 
 import cache_manifest
 import console
+from logo import resolve_logo_source
 
 
 def _relative_luminance(rgb):
@@ -222,7 +223,7 @@ def _palette_from_base(base_rgb, darken_light):
     }
 
 
-def resolve_accent_palette(config, project_root, cache_dir):
+def resolve_accent_palette(config, cache_dir):
     """Resolve `accent_color` config into a 4-value palette for runtime.
 
     Returns a dict of hex strings:
@@ -244,7 +245,7 @@ def resolve_accent_palette(config, project_root, cache_dir):
         deepened + saturated for the light shade (vividness) so
         it reads vivid and white text stays AA-legible.
     """
-    base_rgb, darken_light, is_default = _resolve_accent_base(config, project_root, cache_dir)
+    base_rgb, darken_light, is_default = _resolve_accent_base(config, cache_dir)
     palette = _palette_from_base(base_rgb, darken_light)
     # Only nag about contrast for an accent the curator actually chose
     # (explicit hex / successful auto-derive). The framework-default
@@ -255,7 +256,7 @@ def resolve_accent_palette(config, project_root, cache_dir):
     return palette
 
 
-def _resolve_accent_base(config, project_root, cache_dir):
+def _resolve_accent_base(config, cache_dir):
     """Resolve config → (base_rgb, darken_light, is_default).
 
     base_rgb is the (r, g, b) the palette is derived from; darken_light
@@ -273,13 +274,13 @@ def _resolve_accent_base(config, project_root, cache_dir):
     if raw != "auto":
         # Explicit hex: validator already checked the format.
         return _hex_to_rgb(raw.upper()), False, False
-    pick = _derive_accent_cached(config, project_root, cache_dir)
+    pick = _derive_accent_cached(config, cache_dir)
     if pick is None:
         return _hex_to_rgb(FRAMEWORK_DEFAULT_ACCENT), False, True
     return pick, True, False
 
 
-def _derive_accent_cached(config, project_root, cache_dir):
+def _derive_accent_cached(config, cache_dir):
     """Run derive_accent on the logo (falling back to icon), cached by
     source content hash. Returns the RAW (r, g, b) pixel pick -
     pre-contrast-adjustment - so the palette can be recomputed cheaply
@@ -290,20 +291,16 @@ def _derive_accent_cached(config, project_root, cache_dir):
     # An unset accent_color means "auto" by default; only an explicit
     # "auto" earns a warning when it cannot derive a color.
     explicit = config.get("accent_color") == "auto"
-    logo_p = config.get("logo") or ""
-    icon_p = config.get("icon") or ""
-    candidates = []
-    for rel in (logo_p, icon_p):
-        if not rel:
-            continue
-        abs_path = os.path.join(project_root, rel)
-        if not os.path.isfile(abs_path):
-            continue
-        if abs_path.lower().endswith(".svg"):
-            # Pillow can't read SVG - try the next candidate.
-            continue
-        candidates.append(abs_path)
-    if not candidates:
+    source = resolve_logo_source(config)
+    if source.lower().endswith(".svg"):
+        # Pillow can't read SVG, so an SVG brand mark hands the pick to
+        # a raster icon: the accent derives from pixels, not the mark.
+        icon_p = config.get("icon") or ""
+        raster_icon = (
+            icon_p and os.path.isfile(icon_p) and not icon_p.lower().endswith(".svg")
+        )
+        source = icon_p if raster_icon else ""
+    if not source:
         if not explicit:
             return None
         console.warn(
@@ -311,8 +308,6 @@ def _derive_accent_cached(config, project_root, cache_dir):
             "(PNG/WebP/JPG); none found. Falling back to framework default."
         )
         return None
-
-    source = candidates[0]
 
     # Cache by content hash so re-builds skip the Pillow walk. We store
     # the RAW pick (not a finished shade) - see the docstring.

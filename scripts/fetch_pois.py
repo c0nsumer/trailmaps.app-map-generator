@@ -480,12 +480,10 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
 
 if __name__ == "__main__":
     parser = cli.config_output_parser("Fetch points of interest from OpenStreetMap via Overpass.")
-    parser.add_argument(
-        "--cache-dir", default="cache", help="Cache directory (default: cache)"
-    )
+    cli.add_cache_dir_arg(parser)
     args = parser.parse_args()
     console.set_verbosity(verbose=True)
 
     config = load_config_for_fetch(args.config)
-    output = args.output or os.path.join("build", config["slug"], "pois.geojson")
+    output = args.output or cli.repo_path("build", config["slug"], "pois.geojson")
     fetch_pois(config, output, args.cache_dir)

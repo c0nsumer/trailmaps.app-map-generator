@@ -17,6 +17,7 @@ import json
 import mmap
 import os
 import shutil
+from typing import NamedTuple
 
 import console
 from pmtiles_util import EXTRACT_MINZOOM
@@ -376,6 +377,57 @@ def warn_uncovered_canvas_ranges(all_chars, needed_ranges, needed_faces, fonts_s
     return missing
 
 
+class TrimPlan(NamedTuple):
+    """What copy_trimmed_fonts will copy. ``copy_all`` means the basemap
+    could not be scanned, so every face and range ships; ``chars``,
+    ``ranges`` and ``faces`` are then unused."""
+
+    copy_all: bool
+    chars: set
+    ranges: set
+    faces: set
+    available_faces: list
+
+
+def plan_trim(output_dir, fonts_src, minzoom=0):
+    """Decide which faces and PBF ranges a build into ``output_dir`` keeps.
+
+    Shared by copy_trimmed_fonts and the dry-run CLI, so the dry run
+    reports what the build would actually do (including the copy-all
+    fallback). The basemap scan goes through basemap_chars, so it reuses
+    (and may refresh) the archive's ``.glyphs.sig`` scan cache.
+    ``minzoom`` bounds the basemap scan (see collect_text_from_pmtiles).
+    """
+    available_faces = [
+        d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
+    ]
+    console.detail("Scanning map data for font trimming...")
+    all_chars = set()
+
+    # No basemap (a --no-basemap build into a fresh directory) means no
+    # basemap labels can render, so trails, POIs and the 0-255 baseline
+    # cover every glyph the page needs.
+    basemap_path = os.path.join(output_dir, "basemap.pmtiles")
+    if os.path.exists(basemap_path):
+        found = basemap_chars(basemap_path, minzoom=minzoom)
+        if found is None:
+            return TrimPlan(True, set(), set(), set(available_faces), available_faces)
+        all_chars.update(found)
+    else:
+        console.detail("No basemap - font scan covers trails and POIs only")
+
+    for geojson_name in ["trails.geojson", "pois.geojson"]:
+        all_chars.update(collect_text_from_geojson(os.path.join(output_dir, geojson_name)))
+
+    return TrimPlan(
+        False,
+        all_chars,
+        compute_needed_ranges(all_chars),
+        determine_needed_faces(all_chars, available_faces),
+        available_faces,
+    )
+
+
 def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     """Copy only the needed font face directories and PBF range files.
 
@@ -392,35 +444,16 @@ def copy_trimmed_fonts(output_dir, fonts_src, minzoom=0):
     if os.path.exists(fonts_dst):
         shutil.rmtree(fonts_dst)
 
-    # Collect all text from map data
-    console.detail("Scanning map data for font trimming...")
-    all_chars = set()
-
-    # No basemap (a --no-basemap build into a fresh directory) means no
-    # basemap labels can render, so trails, POIs and the 0-255 baseline
-    # cover every glyph the page needs.
-    basemap_path = os.path.join(output_dir, "basemap.pmtiles")
-    if os.path.exists(basemap_path):
-        found = basemap_chars(basemap_path, minzoom=minzoom)
-        if found is None:
-            # PMTiles libraries not available - fall back to full copy
-            console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
-            shutil.copytree(fonts_src, fonts_dst)
-            return
-        all_chars.update(found)
-    else:
-        console.detail("No basemap - font scan covers trails and POIs only")
-
-    for geojson_name in ["trails.geojson", "pois.geojson"]:
-        all_chars.update(collect_text_from_geojson(os.path.join(output_dir, geojson_name)))
-
-    # Compute needed ranges and faces
-    needed_ranges = compute_needed_ranges(all_chars)
-
-    available_faces = [
-        d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
-    ]
-    needed_faces = determine_needed_faces(all_chars, available_faces)
+    plan = plan_trim(output_dir, fonts_src, minzoom)
+    if plan.copy_all:
+        # PMTiles libraries not available - fall back to full copy
+        console.warn("pmtiles/mapbox-vector-tile not installed - copying all fonts")
+        shutil.copytree(fonts_src, fonts_dst)
+        return
+    all_chars = plan.chars
+    needed_ranges = plan.ranges
+    available_faces = plan.available_faces
+    needed_faces = plan.faces
 
     # Copy only needed PBF files from needed faces. The directory is made
     # here, not by the face loop, so the license copy below has a target
@@ -497,35 +530,30 @@ if __name__ == "__main__":
     console.step(f"Fonts source: {fonts_src}")
     console.blank()
 
-    # Collect text
-    all_chars = set()
-    basemap_path = os.path.join(output_dir, "basemap.pmtiles")
-    if os.path.exists(basemap_path):
-        basemap_chars = collect_text_from_pmtiles(basemap_path, minzoom=EXTRACT_MINZOOM)
-        if basemap_chars:
-            all_chars.update(basemap_chars)
-    for name in ["trails.geojson", "pois.geojson"]:
-        all_chars.update(collect_text_from_geojson(os.path.join(output_dir, name)))
-
-    console.step(f"\nUnique characters: {len(all_chars)}")
-
-    needed_ranges = compute_needed_ranges(all_chars)
-    console.step(f"PBF ranges needed: {len(needed_ranges)}/256")
-
-    available_faces = [
-        d for d in os.listdir(fonts_src) if os.path.isdir(os.path.join(fonts_src, d))
-    ]
-    needed_faces = determine_needed_faces(all_chars, available_faces)
-    console.step(f"Font faces needed: {len(needed_faces)}/{len(available_faces)}")
-    console.info(f"Included: {', '.join(sorted(needed_faces))}")
-    skipped = set(available_faces) - needed_faces
-    if skipped:
-        console.info(f"Skipped: {', '.join(sorted(skipped))}")
-
-    warn_uncovered_canvas_ranges(all_chars, needed_ranges, needed_faces, fonts_src)
+    if not os.path.isdir(fonts_src) or not os.listdir(fonts_src):
+        console.error(f"Fonts not found at {fonts_src}")
+        raise SystemExit(1)
+    plan = plan_trim(output_dir, fonts_src, EXTRACT_MINZOOM)
+    available_faces = plan.available_faces
+    if plan.copy_all:
+        # The build's fallback when the basemap cannot be scanned.
+        console.step("Basemap scan unavailable: the build would copy every font")
+        needed_faces = set(available_faces)
+    else:
+        all_chars = plan.chars
+        console.step(f"\nUnique characters: {len(all_chars)}")
+        needed_ranges = plan.ranges
+        console.step(f"PBF ranges needed: {len(needed_ranges)}/256")
+        needed_faces = plan.faces
+        console.step(f"Font faces needed: {len(needed_faces)}/{len(available_faces)}")
+        console.info(f"Included: {', '.join(sorted(needed_faces))}")
+        skipped = set(available_faces) - needed_faces
+        if skipped:
+            console.info(f"Skipped: {', '.join(sorted(skipped))}")
+        warn_uncovered_canvas_ranges(all_chars, needed_ranges, needed_faces, fonts_src)
 
     # Estimate size savings
-    range_filenames = {f"{s}-{e}.pbf" for s, e in needed_ranges}
+    range_filenames = {f"{s}-{e}.pbf" for s, e in plan.ranges}
     total_original = 0
     total_kept = 0
     for face in available_faces:
@@ -535,7 +563,7 @@ if __name__ == "__main__":
                 continue
             size = os.path.getsize(os.path.join(face_dir, pbf))
             total_original += size
-            if face in needed_faces and pbf in range_filenames:
+            if face in needed_faces and (plan.copy_all or pbf in range_filenames):
                 total_kept += size
 
     console.step(f"\nOriginal: {total_original / (1024 * 1024):.1f} MB")

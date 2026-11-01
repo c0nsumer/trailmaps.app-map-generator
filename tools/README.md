@@ -179,8 +179,9 @@ Two more flags are available:
 
 Lists every relation that repeats a member way, across all the maps you
 have built. Each build writes the repeats to
-`cache/osm_diff/<slug>/data-notes.md`. This tool reads those files and
-prints one worklist, grouped by map. Use it to clean up the OSM data by
+`cache/osm_diff/<slug>/data-notes.md` for people and to its JSON twin,
+`data-notes.json`, for tools. This tool reads the JSON files and prints one
+worklist, grouped by map. Use it to clean up the OSM data by
 hand. Out-and-back routes repeat a way on purpose, so confirm each repeat
 before you remove it. [Mapping for this framework](../docs/osm-mapping.md#relation-members)
 explains when a repeat is correct.
@@ -197,11 +198,14 @@ Preferences > Remote Control. Opening the link in a browser tells JOSM to
 download the relation and its members.
 
 The tool works purely from the local cache. It never builds or fetches.
+If a map's `data-notes.json` was written before it carried the repeated-way
+ids, the tool names that map on stderr and skips it. Rebuild the map to
+refresh the file (no `--refresh` needed, as the audit runs on every build).
 
 ### Usage
 
 ```bash
-# Every map with a data-notes.md
+# Every map with a data-notes.json
 python tools/list_repeated_members.py
 
 # Only these slugs

@@ -28,7 +28,13 @@ from font_trimmer import (
 )
 from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
-from logo import DEFAULT_BRAND_CORNER_RATIO, logo_output_filename, process_logo
+from logo import (
+    DEFAULT_BRAND_CORNER_RATIO,
+    logo_output_filename,
+    process_logo,
+    resolve_icon_source,
+    resolve_logo_source,
+)
 from pmtiles_util import EXTRACT_MINZOOM
 from validate_config import (
     DEFAULT_FIRST_VISIT_LAYERS,
@@ -290,10 +296,11 @@ def _normalize_days(days_in, error_label):
     for d in days_in or []:
         match = match_day_token(d)
         if match is None:
-            sys.exit(
-                f"ERROR: {error_label} contains unknown day token {d!r}; "
+            console.error(
+                f"{error_label} contains unknown day token {d!r}; "
                 f"valid: {sorted(VALID_DAYS)}"
             )
+            sys.exit(1)
         days_norm.append(match)
     return sorted(set(days_norm))
 
@@ -427,32 +434,33 @@ def _check_reversible_ways_scheduled(trails_geojson, effective_schedules):
                 unscheduled.append((wid, sorted(parents)))
         if unscheduled:
             lines = [
-                "ERROR: Found oneway=reversible way(s) without a direction",
-                "       schedule covering them. Reversible trails change",
-                "       direction by schedule and cannot render correctly",
-                "       without one.",
+                "Found oneway=reversible way(s) without a direction",
+                "         schedule covering them. Reversible trails change",
+                "         direction by schedule and cannot render correctly",
+                "         without one.",
                 "",
-                "       Either set a system-wide schedule that covers every route:",
+                "         Either set a system-wide schedule that covers every route:",
                 "",
-                "         direction_schedule:",
-                "           reverse_days: [tuesday, thursday, saturday]",
+                "           direction_schedule:",
+                "             reverse_days: [tuesday, thursday, saturday]",
                 "",
-                "       …or schedule the specific parent relation:",
+                "         …or schedule the specific parent relation:",
                 "",
-                "         direction_schedule:",
-                "           per_route:",
-                "             <relation_id>:",
-                "               reverse_days: [tuesday, thursday, saturday]",
+                "           direction_schedule:",
+                "             per_route:",
+                "               <relation_id>:",
+                "                 reverse_days: [tuesday, thursday, saturday]",
                 "",
-                "       Offending ways (way_id → parent relation IDs):",
+                "         Offending ways (way_id → parent relation IDs):",
             ]
             for way_id, parents in unscheduled[:20]:
                 lines.append(
-                    f"         https://www.openstreetmap.org/way/{way_id}  →  {parents}"
+                    f"           https://www.openstreetmap.org/way/{way_id}  →  {parents}"
                 )
             if len(unscheduled) > 20:
-                lines.append(f"         ... and {len(unscheduled) - 20} more")
-            sys.exit("\n".join(lines))
+                lines.append(f"           ... and {len(unscheduled) - 20} more")
+            console.error("\n".join(lines))
+            sys.exit(1)
 
 
 def inject_config_into_template(template_content, config, trails_geojson):
@@ -805,60 +813,14 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # on this map.
     config_obj["poiCounts"] = config.get("_poi_counts") or {}
 
-    # Logo: derived from `logo:` if set, else falls back to `icon:`. Processed
-    # in copy_assets() into a normalized `logo.webp` (raster) or `logo.svg`
-    # (vector). Only emit logoUrl when the chosen source actually exists.
-    # build.load_config has already made both paths absolute.
-    logo_p = config.get("logo") or ""
-    icon_p = config.get("icon") or ""
-    logo_source = ""
-    if logo_p and os.path.isfile(logo_p):
-        logo_source = logo_p
-    elif not logo_p and icon_p and os.path.isfile(icon_p):
-        logo_source = icon_p
+    # Logo: processed in copy_assets() into a normalized `logo.webp`
+    # (raster) or `logo.svg` (vector). The shared resolver keeps logoUrl
+    # null whenever copy_assets would write no logo file.
+    logo_source = resolve_logo_source(config)
     config_obj["logoUrl"] = logo_output_filename(logo_source) if logo_source else None
 
     config_json = json.dumps(config_obj, indent=2)
     return template_content.replace("/*__CONFIG__*/", f"const CONFIG = {config_json};")
-
-
-# Pillow-readable raster extensions used by the icon-source resolver
-# below. SVG and PDF aren't readable by Pillow, so a logo with one of
-# those extensions can't fall back to icon source - generate_icons
-# would crash. Defined at module scope so resolve_icon_source() and
-# the icon-generation call site (copy_assets) share one definition.
-_PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
-
-
-def resolve_icon_source(config):
-    """Return the resolved icon source path, or "" if none exists.
-
-    Three input shapes, in priority order:
-      1. config["icon"]: explicit. Returned as-is when set (any value,
-         even non-raster, is the curator's call - generate_icons will
-         flag the failure if Pillow can't read it).
-      2. config["logo"]: automatic fallback when icon: is unset, but
-         only when the logo file exists AND has a Pillow-readable
-         extension. SVG logos can't fall back (Pillow won't read).
-      3. Empty string: no usable source. Caller should skip icon
-         generation AND strip the icon links from the HTML.
-
-    Used by both copy_templates (to decide whether to keep the icons
-    HTML block) AND copy_assets (to decide whether to call
-    generate_icons). One function so they can't drift - the previous
-    bug was copy_templates checking only `icon:` while copy_assets
-    also accepted `logo:`, producing builds with manifest+icons on
-    disk but no <link rel="manifest"> in the HTML.
-    """
-    icon_path = config.get("icon", "")
-    if icon_path:
-        return icon_path
-    logo_path = config.get("logo", "")
-    if logo_path:
-        ext = os.path.splitext(logo_path)[1].lower()
-        if ext in _PIL_READABLE_EXTS and os.path.isfile(logo_path):
-            return logo_path
-    return ""
 
 
 def _process_index_html(content, config):
@@ -1035,17 +997,15 @@ def _process_index_html(content, config):
     # occurrence. No-op when the icons block (which carries
     # both tags) was stripped for icon-less maps.
     content = content.replace("__THEME_COLOR__", _tc_light)
-    # Inject or remove brand image. Logo source falls back to
-    # icon: when logo: is omitted; raster sources are normalized
+    # Inject or remove brand image. Raster sources are normalized
     # to `logo.webp` in copy_assets() while SVG sources are
     # copied as `logo.svg`. The template ships the brand-img
     # with src="logo.webp"; rename to .svg if the source is
-    # vector. Strip the brand-img tag entirely when neither
-    # source is set, so the brand element falls back to the
-    # title span only.
-    logo_path = config.get("logo", "")
-    icon_path_for_logo = config.get("icon", "")
-    logo_chosen = logo_path or icon_path_for_logo
+    # vector. Strip the brand-img tag entirely when there is no
+    # usable source (the same resolver copy_assets uses, so the
+    # tag never points at a file that was not written), and the
+    # brand element falls back to the title span only.
+    logo_chosen = resolve_logo_source(config)
     if logo_chosen:
         out_name = logo_output_filename(logo_chosen)
         if out_name != "logo.webp":
@@ -1150,17 +1110,11 @@ def copy_assets(config, output_dir):
     # If `logo:` is omitted but `icon:` is set, the icon source is used as the
     # logo automatically (square icons render as ~48x48 badges).
     logo_path = config.get("logo", "")
-    icon_path = config.get("icon", "")
-    logo_src = None
-    if logo_path:
-        if os.path.isfile(logo_path):
-            logo_src = logo_path
-        else:
-            console.warn(f"Logo not found: {logo_path}")
-    elif icon_path:
-        if os.path.isfile(icon_path):
-            logo_src = icon_path
-            console.detail("No logo configured - using icon as logo")
+    logo_src = resolve_logo_source(config)
+    if logo_path and not logo_src:
+        console.warn(f"Logo not found: {logo_path}")
+    elif logo_src and not logo_path:
+        console.detail("No logo configured - using icon as logo")
     if logo_src:
         out_name = logo_output_filename(logo_src)
         out_path = os.path.join(output_dir, out_name)

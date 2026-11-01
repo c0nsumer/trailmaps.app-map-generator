@@ -40,6 +40,65 @@ def logo_output_filename(source_path):
     return "logo.svg" if ext == ".svg" else "logo.webp"
 
 
+# Pillow-readable raster extensions used by the icon-source resolver
+# below. SVG and PDF aren't readable by Pillow, so a logo with one of
+# those extensions can't fall back to icon source - generate_icons
+# would crash.
+_PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
+
+
+def resolve_icon_source(config):
+    """Return the resolved icon source path, or "" if none exists.
+
+    Three input shapes, in priority order:
+      1. config["icon"]: explicit. Returned as-is when set (any value,
+         even non-raster, is the curator's call - generate_icons will
+         flag the failure if Pillow can't read it).
+      2. config["logo"]: automatic fallback when icon: is unset, but
+         only when the logo file exists AND has a Pillow-readable
+         extension. SVG logos can't fall back (Pillow won't read).
+      3. Empty string: no usable source. Caller should skip icon
+         generation AND strip the icon links from the HTML.
+
+    Used by both _process_index_html (to decide whether to keep the icons
+    HTML block) AND copy_assets (to decide whether to call
+    generate_icons). One function so they can't drift - the previous
+    bug was copy_templates checking only `icon:` while copy_assets
+    also accepted `logo:`, producing builds with manifest+icons on
+    disk but no <link rel="manifest"> in the HTML.
+    """
+    icon_path = config.get("icon", "")
+    if icon_path:
+        return icon_path
+    logo_path = config.get("logo", "")
+    if logo_path:
+        ext = os.path.splitext(logo_path)[1].lower()
+        if ext in _PIL_READABLE_EXTS and os.path.isfile(logo_path):
+            return logo_path
+    return ""
+
+
+def resolve_logo_source(config):
+    """Return the primary logo source path, or "" if there is none.
+
+    `logo:` when set and the file exists; else `icon:` when `logo:` is
+    unset and the icon file exists; else "". A `logo:` that is set but
+    missing resolves to "" rather than falling back to the icon, so a
+    typo shows up as a missing logo (plus copy_assets' warning) instead
+    of silently branding the map with the icon.
+
+    One function for copy_assets (writes the file), the CONFIG logoUrl,
+    the index.html brand-img, and the auto accent pick, so none of them
+    can point at a logo file the build never wrote. Paths are already
+    absolute (build.load_config resolves them against the config dir).
+    """
+    logo_path = config.get("logo") or ""
+    if logo_path:
+        return logo_path if os.path.isfile(logo_path) else ""
+    icon_path = config.get("icon") or ""
+    return icon_path if icon_path and os.path.isfile(icon_path) else ""
+
+
 def _copy_svg_with_intrinsic_size(source_path, output_path):
     """Copy an SVG, ensuring the root <svg> tag has pixel width/height.
 

@@ -553,7 +553,9 @@ def sidecar(findings, slug, lines):
     audit, clean maps included, so "no file" means "not audited" and
     "total 0" means clean. ``summary`` repeats the console lines verbatim
     so the aggregator never re-derives wording; ``counts`` is per check for
-    anyone who wants to filter.
+    anyone who wants to filter. ``repeated_members`` carries the ids behind
+    that count for tools/list_repeated_members.py, so the worklist never
+    depends on the markdown's wording. Ids are strings, as in the report.
     """
     return {
         "slug": slug,
@@ -561,6 +563,14 @@ def sidecar(findings, slug, lines):
         "summary": list(lines),
         "counts": {k: len(findings.get(k) or ()) for k in _LIST_KEYS},
         "report": "data-notes.md",
+        "repeated_members": [
+            {
+                "relation": str(rid),
+                "name": name,
+                "ways": [{"id": str(w), "times": n} for w, n in ways],
+            }
+            for rid, name, ways in findings.get("repeated_members") or ()
+        ],
     }
 
 

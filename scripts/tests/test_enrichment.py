@@ -196,18 +196,24 @@ def _enrich_custom(tmp_path, payload):
         "geometry": str(geom)}]}, trails)
 
 
-def test_custom_route_file_that_is_a_list_exits_cleanly(tmp_path):
+def test_custom_route_file_that_is_a_list_exits_cleanly(tmp_path, capsys):
     import pytest
 
-    with pytest.raises(SystemExit, match="must be Feature or FeatureCollection"):
+    with pytest.raises(SystemExit) as exc:
         _enrich_custom(tmp_path, [])
+    assert exc.value.code == 1
+    assert "must be Feature or FeatureCollection" in capsys.readouterr().out
 
 
-def test_custom_route_with_no_lines_exits_naming_the_route(tmp_path):
+def test_custom_route_with_no_lines_exits_naming_the_route(tmp_path, capsys):
+    import re
+
     import pytest
 
-    with pytest.raises(SystemExit, match=r"custom_routes\['course'\].*no line"):
+    with pytest.raises(SystemExit) as exc:
         _enrich_custom(tmp_path, {"type": "FeatureCollection", "features": []})
+    assert exc.value.code == 1
+    assert re.search(r"custom_routes\['course'\].*no line", capsys.readouterr().out)
 
 
 def test_custom_route_itrs_properties_are_empty(tmp_path):

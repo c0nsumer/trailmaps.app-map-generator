@@ -123,7 +123,7 @@ def fetch_basemap(config_or_path, output_path, planet_url=None):
 if __name__ == "__main__":
     parser = cli.config_output_parser(
         "Extract basemap tiles from a Protomaps planet build.",
-        output_help="Output path (default: cache/basemap/<slug>-protomaps.pmtiles)")
+        output_help="Output path (default: <repo>/cache/basemap/<slug>-protomaps.pmtiles)")
     parser.add_argument(
         "planet_url", nargs="?", help="Planet build URL (default: auto-detect the latest)"
     )
@@ -136,8 +136,7 @@ if __name__ == "__main__":
     # not be overwritten with a raw extract. The CLI writes no signature,
     # so any existing one is removed rather than left vouching for a file
     # it did not describe.
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    output = args.output or os.path.join(
-        project_root, "cache", "basemap", f"{config['slug']}-protomaps.pmtiles")
+    output = args.output or cli.repo_path(
+        "cache", "basemap", f"{config['slug']}-protomaps.pmtiles")
     _clear_signature(output)
     fetch_basemap(config, output, args.planet_url)

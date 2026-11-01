@@ -1990,7 +1990,7 @@ def main(argv=None, prog=None):
     # derivation, cached per-source-hash as the raw pick), explicit hex,
     # and unset (the same as "auto") uniformly, and emits per-shade
     # WCAG contrast warnings. Always returns a palette (never None).
-    config["_accent_palette"] = resolve_accent_palette(config, project_root, cache_dir)
+    config["_accent_palette"] = resolve_accent_palette(config, cache_dir)
     derive_accent_paths = cache_manifest.drain()
 
     _event_mode_prepass(config)

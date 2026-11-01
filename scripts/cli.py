@@ -8,9 +8,21 @@ caller before ``parse_args``.
 """
 
 import argparse
+import os
+
+# Defaults resolve here, as build.py's do, so a debug run from any working
+# directory reads the same cache and writes the same build dir as a build.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def config_output_parser(description, output_help="Output path (default: build/<slug>/…)"):
+def repo_path(*parts):
+    """Join ``parts`` onto the repo root."""
+    return os.path.join(PROJECT_ROOT, *parts)
+
+
+def config_output_parser(
+    description, output_help="Output path (default: <repo>/build/<slug>/…)"
+):
     """Return an ArgumentParser with a required ``config`` and optional ``output``.
 
     Callers add any further arguments (positionals or options) before
@@ -20,3 +32,12 @@ def config_output_parser(description, output_help="Output path (default: build/<
     parser.add_argument("config", help="Path to the YAML config file")
     parser.add_argument("output", nargs="?", help=output_help)
     return parser
+
+
+def add_cache_dir_arg(parser):
+    """The ``--cache-dir`` option the Overpass-backed stages share."""
+    parser.add_argument(
+        "--cache-dir",
+        default=repo_path("cache"),
+        help="Cache directory (default: <repo>/cache)",
+    )

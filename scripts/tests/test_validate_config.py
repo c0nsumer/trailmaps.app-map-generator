@@ -577,3 +577,24 @@ def test_difficulty_scale_rejects_anything_else():
     for value in ("ITRS", "sac", ""):
         errors = [e for e in _errors(difficulty_scale=value) if "difficulty_scale" in e]
         assert len(errors) == 1 and "must be one of" in errors[0], (value, errors)
+
+
+def test_validate_config_file_reads_the_shape_build_reads(tmp_path):
+    # The standalone validator reads through build.py's parser: an empty
+    # file is {} (so the missing required keys are reported, not a
+    # "not a mapping" error), and a list top level fails with the same
+    # reason the build gives. Neither exits, so a multi-file run goes on.
+    from config_io import ConfigReadError, parse_config_yaml
+    from validate_config import validate_config_file
+
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("", encoding="utf-8")
+    errors, _ = validate_config_file(str(empty))
+    assert any(e.startswith("  [error] name:") for e in errors)
+
+    as_list = tmp_path / "list.yaml"
+    as_list.write_text("- a\n", encoding="utf-8")
+    errors, _ = validate_config_file(str(as_list))
+    with pytest.raises(ConfigReadError) as exc:
+        parse_config_yaml(str(as_list))
+    assert errors == [f"  [error] root: {exc.value}"]
