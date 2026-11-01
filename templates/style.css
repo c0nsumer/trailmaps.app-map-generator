@@ -983,6 +983,16 @@ body::after {
     white-space: nowrap;
 }
 
+/* ITRS exposure names are long ("Life threatening consequences") and
+ * are the license's wording, so they are not shortened. Each still
+ * keeps to one line where the strip has room; on a strip narrower than
+ * one name, the name wraps beside its pictogram instead of overflowing
+ * the sheet. */
+.opt-key-item.is-long {
+    max-width: 100%;
+    white-space: normal;
+}
+
 .opt-key-glyph {
     flex: 0 0 auto;
     width: 15px;

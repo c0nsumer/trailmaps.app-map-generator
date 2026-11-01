@@ -886,29 +886,174 @@ const ROUTE_ID_COMPARE = (a, b) =>
     String(a).localeCompare(String(b), undefined, { numeric: true });
 
 // ============================================================
-// IMBA Difficulty Icons
+// Difficulty scales: one scheme table
 // ============================================================
-const IMBA_RATINGS = [
-    { id: "imba-0", shape: "circle",         color: "#ffffff", border: "#888888" },
-    { id: "imba-1", shape: "circle",         color: "#2ecc40", border: "#27ae60" },
-    { id: "imba-2", shape: "square",         color: "#0074D9", border: "#005fa3" },
-    { id: "imba-3", shape: "diamond",        color: "#111111", border: "#000000" },
-    { id: "imba-4", shape: "double-diamond", color: "#111111", border: "#000000" },
-    { id: "imba-5", shape: "double-diamond", color: "#FF8C00", border: "#CC7000" },
-];
-// The mtb:scale:imba values that draw a glyph: "0" through "5".
-const RATED_KEYS = new Set(IMBA_RATINGS.map((_, i) => String(i)));
+// Every rating the runtime reads, names, colors, or draws comes from
+// this table, so an IMBA map and an ITRS map run the same code. The
+// scale is the map's (CONFIG.difficultyScale), fixed at build time:
+// one scale per map, no fallback between them. Each aspect is one
+// rated tag; a color key is the aspect's prefix plus the level ("3",
+// "x2"), so a key names its aspect without a second field.
+//
+// IMBA: names are the official rating names as printed on trailhead
+// signage (title case, proper names). The colors, borders, and image
+// ids are the ones every IMBA map has always drawn; changing them
+// changes every built map.
+//
+// ITRS (https://itrs.bike): names and colors are the official ones,
+// which ITRS asks displays to use unchanged, so they are not
+// shortened or retinted. Shapes are flat fills with no border, as
+// ITRS draws them. Exposure has one pictogram for every level, in
+// the level's color.
+const SCHEMES = {
+    imba: {
+        id: "imba",
+        freeride: true,
+        aspects: [{
+            id: "difficulty", prop: "imba_difficulty", keyPrefix: "",
+            levels: {
+                "0": { name: "Easiest", shape: "circle", color: "#ffffff", border: "#888888", image: "imba-0" },
+                "1": { name: "Easy", shape: "circle", color: "#2ecc40", border: "#27ae60", image: "imba-1" },
+                "2": { name: "More Difficult", shape: "square", color: "#0074D9", border: "#005fa3", image: "imba-2" },
+                "3": { name: "Very Difficult", shape: "diamond", color: "#111111", border: "#000000", image: "imba-3" },
+                "4": { name: "Extremely Difficult", shape: "double-diamond", color: "#111111", border: "#000000", image: "imba-4" },
+                "5": { name: "Pro-Only", shape: "double-diamond", color: "#FF8C00", border: "#CC7000", image: "imba-5" },
+            },
+        }],
+    },
+    itrs: {
+        id: "itrs",
+        freeride: false,
+        aspects: [{
+            id: "difficulty", prop: "itrs_difficulty", keyPrefix: "",
+            levels: {
+                "1": { name: "Beginner", shape: "circle", color: "#72bf44", flat: true, image: "itrs-1" },
+                "2": { name: "Intermediate", shape: "square", color: "#0080c6", flat: true, image: "itrs-2" },
+                "3": { name: "Advanced", shape: "triangle", color: "#ee3124", flat: true, image: "itrs-3" },
+                "4": { name: "Expert", shape: "diamond", color: "#000000", flat: true, image: "itrs-4" },
+                "5": { name: "Extreme", shape: "double-diamond", color: "#f68b1f", flat: true, image: "itrs-5" },
+            },
+        }, {
+            id: "exposure", prop: "itrs_exposure", keyPrefix: "x",
+            levels: {
+                "1": { name: "Normal injury risk", shape: "exposure", color: "#72bf44", flat: true, image: "itrs-x1" },
+                "2": { name: "High risk of serious injury", shape: "exposure", color: "#0080c6", flat: true, image: "itrs-x2" },
+                "3": { name: "Life threatening consequences", shape: "exposure", color: "#ee3124", flat: true, image: "itrs-x3" },
+                "4": { name: "Fatal consequences", shape: "exposure", color: "#000000", flat: true, image: "itrs-x4" },
+            },
+        }],
+    },
+};
 
 // A freeride way's key is its rating plus this suffix ("2f"), so its
 // ways get their own lanes, key row, highlight and finder mark while
-// sharing the plain rating's color and name.
+// sharing the plain rating's color and name. IMBA maps only.
 const FREERIDE_KEY_SUFFIX = "f";
 
-// Every rated color key in the key's order: each rating, then its
-// freeride twin right after it.
-const RATING_KEYS = IMBA_RATINGS.flatMap((_, i) => [String(i), `${i}${FREERIDE_KEY_SUFFIX}`]);
+// Every rated color key of a scheme in the key's order: each aspect in
+// turn, easiest first, each freeride key right after its plain rating.
+// Maps each key to its aspect, level, and freeride flag.
+function schemeKeys(scheme) {
+    const keys = new Map();
+    for (const aspect of scheme.aspects) {
+        for (const level of Object.keys(aspect.levels)) {
+            const def = aspect.levels[level];
+            keys.set(aspect.keyPrefix + level, { aspect, level, def, freeride: false });
+            if (scheme.freeride && aspect === scheme.aspects[0]) {
+                keys.set(level + FREERIDE_KEY_SUFFIX, { aspect, level, def, freeride: true });
+            }
+        }
+    }
+    return keys;
+}
+
+const SCHEME = SCHEMES[CONFIG.difficultyScale] || SCHEMES.imba;
+const SCHEME_KEYS = schemeKeys(SCHEME);
+const TECH_ASPECT = SCHEME.aspects[0];
+// null on an IMBA map.
+const EXPOSURE_ASPECT = SCHEME.aspects.find((a) => a.id === "exposure") || null;
+// Exposure 1 means no worse than a fall on the trail itself, and ITRS's
+// own app and signs mark exposure from blue up, so the map and the key
+// strip draw the pictogram from this level; the popup names every level.
+const EXPOSURE_SYMBOL_MIN = 2;
+// A symbol id's mark for a bike-only way on an ITRS map (waySymbol).
+const BIKE_ONLY_SUFFIX = "-y";
+// The way facts a rating reads, for the lane graph's uniformProperties:
+// an edge ends where one changes, so a lane feature carries each.
+const SCHEME_WAY_PROPS = SCHEME.freeride
+    ? [TECH_ASPECT.prop, "freeride"]
+    : [...SCHEME.aspects.map((a) => a.prop), "bike_only"];
+
+// The aspect the lanes are colored by and color keys follow (wayKey,
+// featureColorKey, ratingMatchExpr). Technical difficulty for now; the
+// runtime color aspect (P3 of the ITRS plan) wires its state in here.
+function activeAspect() {
+    return TECH_ASPECT;
+}
+
+// A way's level on `aspect` from its raw tag value ("2"), or "" for a
+// value off the scale. Test membership, never compare: unrated ways
+// carry an empty string, and "" >= 0 is true.
+function aspectLevel(aspect, value) {
+    if (value === undefined || value === null) return "";
+    const s = String(value);
+    return Object.hasOwn(aspect.levels, s) ? s : "";
+}
+
+// ITRS symbol outlines in their 150 by 150 design box (ITRS Graphic
+// Resources 26.1), centered on (75, 75). The exposure pictogram is ITRS
+// material used with permission (https://itrs.bike/licensing-conditions/);
+// its path data is verbatim from ITRS_Icons_26.1_RGB_exposure_N-on-transp.svg.
+const ITRS_SHAPE_PATHS = {
+    square: "M36.04,36.05h77.91v77.91h-77.91Z",
+    triangle: "M30.6,113.95L75,36.05L119.41,113.95Z",
+    diamond: "M75,31.48L119.4,75L75,118.52L30.59,75Z",
+    "double-diamond": "M124.27,75L96.75,31.48L75,65.88L53.25,31.48L25.73,75L53.25,118.52L75,84.12L96.75,118.52Z",
+    exposure: "M98.03,106.5l6.46,16.35H31.6V27.21l19.07-.06,11.75,29.42,15.2,7.32,5.57,25.77,14.85,16.84ZM99.47,27.21l3.91,45.51h11.11l3.91-45.51h0s-18.93,0-18.93,0ZM102.32,93.65h13.24v-13.24h-13.24v13.24Z",
+};
+// The ITRS diamond's tip-to-tip height in the design box. Scaling it to
+// the IMBA diamond's 18 px (at a 24 px glyph) keeps the two scales'
+// symbols one size, so plates, footprints, and key rows fit both.
+const ITRS_DIAMOND_SPAN = 118.52 - 31.48;
+const _itrsPathCache = {};
+
+function itrsShapePath(shape) {
+    if (!_itrsPathCache[shape]) {
+        let p;
+        if (shape === "circle") {
+            p = new Path2D();
+            p.arc(75, 75, 38.95, 0, Math.PI * 2);
+        } else {
+            p = new Path2D(ITRS_SHAPE_PATHS[shape]);
+        }
+        _itrsPathCache[shape] = p;
+    }
+    return _itrsPathCache[shape];
+}
+
+// A flat ITRS symbol: the white halo every glyph wears (it sits on any
+// line color and basemap), then the fill, and no darker inner border,
+// which ITRS's own graphics do not have.
+function drawFlatShape(ctx, size, rating) {
+    const k = (size - 6) / ITRS_DIAMOND_SPAN;
+    const path = itrsShapePath(rating.shape);
+    ctx.save();
+    ctx.translate(size / 2, size / 2);
+    ctx.scale(k, k);
+    ctx.translate(-75, -75);
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 4 / k;
+    ctx.stroke(path);
+    ctx.fillStyle = rating.color;
+    ctx.fill(path);
+    ctx.restore();
+}
 
 function drawDifficultyShape(ctx, size, rating) {
+    if (rating.flat) {
+        drawFlatShape(ctx, size, rating);
+        return;
+    }
     const cx = size / 2;
     const cy = size / 2;
     const r = size / 2 - 3;  // margin for outer halo
@@ -1048,10 +1193,65 @@ function ratingCanvas(rating, freeride = false) {
         (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, rating));
 }
 
-// The map image a rated color key draws: "imba-2", or "imba-2-fr" for
-// the freeride key "2f".
+// What a way draws, as a symbol id: on an IMBA map its color key ("2",
+// "2f" in the freeride pill); on an ITRS map its technical level, its
+// exposure from EXPOSURE_SYMBOL_MIN up, or both ("3", "x2", "3-x2"),
+// with BIKE_ONLY_SUFFIX for a bike-only way ("3-y"); "" when it draws
+// nothing. Independent of the color aspect: the plate
+// shows both ITRS aspects whichever one colors the lanes.
+function waySymbol(props) {
+    const t = aspectLevel(TECH_ASPECT, props[TECH_ASPECT.prop]);
+    if (SCHEME.freeride) return t && props.freeride === true ? t + FREERIDE_KEY_SUFFIX : t;
+    const x = EXPOSURE_ASPECT ? aspectLevel(EXPOSURE_ASPECT, props[EXPOSURE_ASPECT.prop]) : "";
+    const xs = x && Number(x) >= EXPOSURE_SYMBOL_MIN ? EXPOSURE_ASPECT.keyPrefix + x : "";
+    const sym = t && xs ? `${t}-${xs}` : (t || xs);
+    return sym && props.bike_only === true ? sym + BIKE_ONLY_SUFFIX : sym;
+}
+
+// A symbol id's parts: the technical level's entry, whether it rides
+// the freeride pill, and the exposure level's entry (each null when
+// absent). Rated color keys parse too ("2f", "x1"): a key's glyph is
+// the symbol of a way that carries only that key.
+function symbolParts(sym) {
+    let tech = null, freeride = false, expo = null, xLevel = "", bikeOnly = false;
+    for (const part of String(sym).split("-")) {
+        if (!SCHEME.freeride && "-" + part === BIKE_ONLY_SUFFIX) {
+            bikeOnly = true;
+            continue;
+        }
+        const info = SCHEME_KEYS.get(part);
+        if (!info) continue;
+        if (info.aspect === EXPOSURE_ASPECT) {
+            expo = info.def;
+            xLevel = info.level;
+        } else {
+            tech = info.def;
+            freeride = info.freeride;
+        }
+    }
+    return { tech, freeride, expo, xLevel, bikeOnly };
+}
+
+// The map image a symbol id draws: "imba-2", "imba-2-fr" for the
+// freeride key "2f", "itrs-3", "itrs-x2", "itrs-3-x2", and each ITRS
+// one with "-y" on the bike-only plate ("itrs-3-x2-y").
+function symbolImageId(sym) {
+    const { tech, freeride, expo, xLevel, bikeOnly } = symbolParts(sym);
+    const y = bikeOnly ? BIKE_ONLY_SUFFIX : "";
+    if (!tech) return expo ? expo.image + y : "";
+    return tech.image + (freeride ? "-fr" : "") + (expo ? `-x${xLevel}` : "") + y;
+}
+
+// A symbol needs the wide plate when it carries two marks: the freeride
+// pill, or an ITRS technical glyph beside an exposure pictogram.
+function isWideSymbol(sym) {
+    const { tech, freeride, expo } = symbolParts(sym);
+    return freeride || (!!tech && !!expo);
+}
+
+// The map image a rated color key draws (see symbolParts).
 function difficultyImageId(key) {
-    return `imba-${keyRating(key)}${isFreerideKey(key) ? "-fr" : ""}`;
+    return symbolImageId(key);
 }
 
 // On the map a difficulty symbol sits on a white plate, the way it's
@@ -1077,9 +1277,16 @@ const PLATE_SHADOW_Y = 1;
 // Room around the plate for the shadow to fall into: blur plus offset.
 const PLATE_MARGIN = PLATE_SHADOW_BLUR + PLATE_SHADOW_Y;
 
-function platedRatingCanvas(rating, freeride) {
-    const pw = (freeride ? FREERIDE_ICON_W : RATING_ICON_SIZE) + 2 * PLATE_PAD;
-    const ph = (freeride ? FREERIDE_ICON_H : RATING_ICON_SIZE) + 2 * PLATE_PAD;
+// ITRS marks a bike-only trail with a yellow background behind its
+// symbol (the palette's bike-only yellow), so on an ITRS map a bike-only
+// way's plate is that yellow; the glyph and its halo stay as they are.
+const BIKE_ONLY_PLATE_FILL = "#ffeb33";
+
+// `drawInner` paints the symbol in plate coordinates, at the plate's
+// inner corner. A wide plate is the freeride pill's shape and size.
+function platedCanvas(wide, drawInner, fill = PLATE_FILL) {
+    const pw = (wide ? FREERIDE_ICON_W : RATING_ICON_SIZE) + 2 * PLATE_PAD;
+    const ph = (wide ? FREERIDE_ICON_H : RATING_ICON_SIZE) + 2 * PLATE_PAD;
     const m = PLATE_MARGIN;
     return glyphCanvas(pw + 2 * m, ph + 2 * m, (ctx) => {
         ctx.save();
@@ -1089,29 +1296,100 @@ function platedRatingCanvas(rating, freeride) {
         ctx.shadowBlur = PLATE_SHADOW_BLUR * GLYPH_PIXEL_RATIO;
         ctx.shadowOffsetY = PLATE_SHADOW_Y * GLYPH_PIXEL_RATIO;
         ctx.beginPath();
-        ctx.roundRect(m, m, pw, ph, freeride ? ph / 2 : PLATE_RADIUS);
-        ctx.fillStyle = PLATE_FILL;
+        ctx.roundRect(m, m, pw, ph, wide ? ph / 2 : PLATE_RADIUS);
+        ctx.fillStyle = fill;
         ctx.fill();
         ctx.restore();
         ctx.translate(m + PLATE_PAD, m + PLATE_PAD);
-        if (freeride) drawFreerideOval(ctx, rating);
-        else drawDifficultyShape(ctx, RATING_ICON_SIZE, rating);
+        drawInner(ctx);
     });
 }
 
-function registerDifficultyIcons() {
-    for (const rating of IMBA_RATINGS) {
-        for (const freeride of [false, true]) {
-            const id = freeride ? `${rating.id}-fr` : rating.id;
-            if (map.hasImage(id)) continue;
-            const canvas = platedRatingCanvas(rating, freeride);
-            map.addImage(id, {
-                width: canvas.width,
-                height: canvas.height,
-                data: canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data,
-            }, { pixelRatio: GLYPH_PIXEL_RATIO });
-        }
+// An ITRS technical glyph and exposure pictogram side by side in the
+// wide box, each centered on one of the pill's end caps so neither
+// crowds the rounded edge. Technical first, as a rider reads them.
+function drawSymbolPair(ctx, tech, expo) {
+    const inset = FREERIDE_ICON_H / 2 - RATING_ICON_SIZE / 2;
+    const y = (FREERIDE_ICON_H - RATING_ICON_SIZE) / 2;
+    for (const [def, x] of [[tech, inset], [expo, FREERIDE_ICON_W - inset - RATING_ICON_SIZE]]) {
+        ctx.save();
+        ctx.translate(x, y);
+        drawDifficultyShape(ctx, RATING_ICON_SIZE, def);
+        ctx.restore();
     }
+}
+
+// A symbol id's map image (waySymbol): its glyph on the white plate.
+function platedSymbolCanvas(sym) {
+    const { tech, freeride, expo, bikeOnly } = symbolParts(sym);
+    const fill = bikeOnly ? BIKE_ONLY_PLATE_FILL : PLATE_FILL;
+    if (freeride) return platedCanvas(true, (ctx) => drawFreerideOval(ctx, tech));
+    if (tech && expo) return platedCanvas(true, (ctx) => drawSymbolPair(ctx, tech, expo), fill);
+    return platedCanvas(false,
+        (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, tech || expo), fill);
+}
+
+// A symbol id's glyph with no plate, for the key, popup, chip, and
+// lists, which show it on their own sheet.
+function symbolCanvas(sym) {
+    const { tech, freeride, expo } = symbolParts(sym);
+    if (tech && expo) {
+        return glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
+            (ctx) => drawSymbolPair(ctx, tech, expo));
+    }
+    return ratingCanvas(tech || expo, freeride);
+}
+
+// Symbol ids whose map images this map has registered. An IMBA map
+// registers its whole set of twelve at boot; an ITRS map registers
+// only the combinations its ways carry, as the decoration pass meets
+// them (ensureSymbolImage), so the sprite holds a handful of images
+// rather than every technical and exposure pairing.
+const _symbolImages = new Set();
+
+function addSymbolImage(sym) {
+    const id = symbolImageId(sym);
+    if (!id || map.hasImage(id)) return;
+    const canvas = platedSymbolCanvas(sym);
+    map.addImage(id, {
+        width: canvas.width,
+        height: canvas.height,
+        data: canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data,
+    }, { pixelRatio: GLYPH_PIXEL_RATIO });
+}
+
+function ensureSymbolImage(sym) {
+    if (!sym || _symbolImages.has(sym)) return;
+    _symbolImages.add(sym);
+    addSymbolImage(sym);
+}
+
+// The bike-only plate with nothing on it, as a data URL: the key strip's
+// and the popup's mark for "bike-only trail". A hairline edge, which the
+// map's plate does without (its shadow does that job), keeps the yellow
+// from washing out on a light sheet.
+let _bikeOnlySwatchUrl = null;
+function bikeOnlySwatchDataUrl() {
+    if (!_bikeOnlySwatchUrl) {
+        _bikeOnlySwatchUrl = glyphCanvas(RATING_ICON_SIZE, RATING_ICON_SIZE, (ctx) => {
+            ctx.beginPath();
+            ctx.roundRect(2.5, 2.5, RATING_ICON_SIZE - 5, RATING_ICON_SIZE - 5, PLATE_RADIUS);
+            ctx.fillStyle = BIKE_ONLY_PLATE_FILL;
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }).toDataURL();
+    }
+    return _bikeOnlySwatchUrl;
+}
+
+// At boot, and after a style rebuild drops the images.
+function registerDifficultyIcons() {
+    if (SCHEME.freeride) {
+        for (const key of SCHEME_KEYS.keys()) _symbolImages.add(key);
+    }
+    for (const sym of _symbolImages) addSymbolImage(sym);
 }
 
 function difficultyToggleOn() {
@@ -1250,10 +1528,6 @@ function registerChevronPatterns() {
 // <img> sources so the popup symbols are pixel-identical to the
 // on-map decorations. Cached per rating / color scheme so repeated
 // clicks don't re-rasterize.
-// Title case: these are the official IMBA rating names as printed
-// on trailhead signage, so they read as proper names.
-const RATING_NAMES = ["Easiest", "Easy", "More Difficult",
-    "Very Difficult", "Extremely Difficult", "Pro-Only"];
 const _popupIconCache = {};
 
 // The open trail popup, if any. Tracked so visibility changes (season
@@ -1405,17 +1679,14 @@ function refreshTapLift() {
     }).catch((e) => console.error("lanes: tap lift layout failed", e));
 }
 
-// A color key's glyph ("2", or "2f" in the freeride pill) as a data
-// URL, or null for a key with no glyph.
+// A color key's glyph ("2", "2f" in the freeride pill, "x2" the
+// exposure pictogram) as a data URL, or null for a key with no glyph.
 function difficultyIconDataUrl(key) {
     // The map's own test, so the popup never shows a rating glyph for
     // a way the lanes draw as unrated ("2+" parses as 2).
     if (!isRatedKey(key)) return null;
     const id = difficultyImageId(key);
-    if (!_popupIconCache[id]) {
-        _popupIconCache[id] = ratingCanvas(IMBA_RATINGS[Number(keyRating(key))],
-            isFreerideKey(key)).toDataURL();
-    }
+    if (!_popupIconCache[id]) _popupIconCache[id] = symbolCanvas(key).toDataURL();
     return _popupIconCache[id];
 }
 
@@ -1459,11 +1730,20 @@ function buildDifficultyKey() {
     // named "Freeride". A rating isn't listed twice, and the legend is
     // the one place that names the pill; everywhere else the pill
     // stands next to the plain rating name.
-    const freerideRatings = CONFIG.freerideRatings || [];
+    //
+    // On an ITRS map the two lines are the technical levels, then the
+    // exposure levels the map draws a pictogram for, each with its
+    // official name; either line is left out when the map has none.
+    const freerideRatings = SCHEME.freeride ? (CONFIG.freerideRatings || []) : [];
     const keys = sortColorKeys([...new Set(
         [...(CONFIG.difficultyRatings || []), ...freerideRatings].map(String),
     )]).filter((k) => k !== "");
-    if (!keys.length) return;
+    const exposureKeys = EXPOSURE_ASPECT
+        ? sortColorKeys((CONFIG.exposureRatings || [])
+            .filter((n) => Number(n) >= EXPOSURE_SYMBOL_MIN)
+            .map((n) => EXPOSURE_ASPECT.keyPrefix + n))
+        : [];
+    if (!keys.length && !exposureKeys.length) return;
     strip.textContent = "";
     const addItem = (url, name, freeride) => {
         const li = document.createElement("li");
@@ -1481,15 +1761,31 @@ function buildDifficultyKey() {
         li.appendChild(label);
         strip.appendChild(li);
     };
-    for (const key of keys) {
-        const url = difficultyIconDataUrl(key);
-        if (url) addItem(url, keyName(key), false);
-    }
-    if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
+    const addBreak = () => {
         const brk = document.createElement("li");
         brk.className = "opt-key-break";
         brk.setAttribute("aria-hidden", "true");
         strip.appendChild(brk);
+    };
+    for (const key of keys) {
+        const url = difficultyIconDataUrl(key);
+        if (url) addItem(url, keyName(key), false);
+    }
+    const exposureItems = exposureKeys.filter((key) => isRatedKey(key));
+    if (exposureItems.length) {
+        if (strip.children.length) addBreak();
+        for (const key of exposureItems) {
+            addItem(difficultyIconDataUrl(key), keyName(key), false);
+            strip.lastChild.classList.add("is-long");
+        }
+    }
+    // ITRS: what the yellow plate means, once, on its own line.
+    if (strip.children.length && !SCHEME.freeride && CONFIG.hasBikeOnlyTrails) {
+        addBreak();
+        addItem(bikeOnlySwatchDataUrl(), "Yellow plate: bike-only trail", false);
+    }
+    if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
+        addBreak();
         addItem(glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
             (ctx) => drawFreerideOval(ctx, null)).toDataURL(), "Freeride", true);
     }
@@ -1881,6 +2177,11 @@ function collectCanonicalWays() {
             trailName: props.trail_name || "",
             imba: props.imba_difficulty || "",
             freeride: props.freeride === true,
+            itrs: props.itrs_difficulty || "",
+            itrsExposure: props.itrs_exposure || "",
+            bikeOnly: props.bike_only === true,
+            // What the way draws (waySymbol), "" for nothing.
+            symbol: waySymbol(props),
             oneway: props.oneway || "",
             routeId,
             sharedRoutes: shared,
@@ -2152,16 +2453,22 @@ function diamondProps(way) {
     return {
         imba_difficulty: way.imba,
         freeride: way.freeride,
+        itrs_difficulty: way.itrs,
+        itrs_exposure: way.itrsExposure,
+        bike_only: way.bikeOnly,
+        // The map image decor-diamond draws.
+        symbol: symbolImageId(way.symbol),
         trail_name: way.trailName,
         shared_routes: way.sharedRoutes,
         ...(way.colorKey != null && { color_key: way.colorKey }),
     };
 }
 
-// A way's difficulty marker footprint: the freeride pill is wider
-// than the square glyph (DECOR_RADIUS_M.diamond_freeride).
+// A way's difficulty marker footprint: a wide plate (the freeride pill,
+// or an ITRS glyph beside its exposure pictogram) is wider than the
+// square glyph (DECOR_RADIUS_M.diamond_freeride).
 function diamondRadius(way) {
-    return way.freeride ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
+    return isWideSymbol(way.symbol) ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
 }
 
 // Build the full decoration FeatureCollection for the current visible
@@ -2225,6 +2532,11 @@ function computeDecorations() {
     const obstacleArr = gatherObstacles();
     for (let i = 0; i < obstacleArr.length; i++) placed.add(obstacleArr[i]);
     const ways = collectCanonicalWays();
+    // Every symbol a placed diamond can name has its image before the
+    // source takes the features.
+    if (CONFIG.showDifficulty) {
+        for (const way of ways) ensureSymbolImage(way.symbol);
+    }
 
     // Process longer ways first so their labels claim space before
     // shorter ways' labels, short trails are more likely to drop
@@ -2258,6 +2570,8 @@ function computeDecorations() {
                         // bright (ratingIdentityMatch).
                         imba_difficulty: way.imba,
                         freeride: way.freeride,
+                        itrs_difficulty: way.itrs,
+                        itrs_exposure: way.itrsExposure,
                         ...(way.colorKey != null && { color_key: way.colorKey }),
                     },
                 });
@@ -2286,11 +2600,12 @@ function computeDecorations() {
     //      out, without the per-way speckle. Placed before the
     //      per-way passes so they seed the collision index and
     //      coincident detail-tier diamonds get suppressed. ----
-    // Keyed like the lanes (wayKey), so a freeride line inside a blue
-    // loop keeps its own overview pill.
+    // Keyed by the symbol a way draws, so a freeride line inside a blue
+    // loop keeps its own overview pill, and an exposed stretch of an
+    // ITRS trail its own two-mark plate.
     const diamondRuns = computeConnectedRuns(ways,
-        (w) => RATED_KEYS.has(w.imba),
-        (w) => w.imba + (w.freeride ? FREERIDE_KEY_SUFFIX : ""));
+        (w) => w.symbol !== "",
+        (w) => w.symbol);
     placeOverviewRuns(diamondRuns, KIND.DIAMOND, diamondRadius,
         DECOR_MZ_RUN, DECOR_OVERVIEW_SPACING_M, decorations, placed,
         diamondProps);
@@ -2370,6 +2685,8 @@ function computeDecorations() {
                 { kind: KIND.TRAIL_LABEL_PT, trail_name: tname,
                   imba_difficulty: way.imba,
                   freeride: way.freeride,
+                  itrs_difficulty: way.itrs,
+                  itrs_exposure: way.itrsExposure,
                   ...(way.colorKey != null && { color_key: way.colorKey }) });
         }
     }
@@ -2378,7 +2695,7 @@ function computeDecorations() {
     //      even short trails get clear difficulty markings. ----
     for (const way of ways) {
         const L = way.totalLength;
-        const hasDiamond = RATED_KEYS.has(way.imba);
+        const hasDiamond = way.symbol !== "";
 
         if (hasDiamond) {
             // Two anchors: ~quarter and ~three-quarter, each with
@@ -2401,7 +2718,7 @@ function computeDecorations() {
     //      stacking. ----
     for (const rung of DECOR_LADDER) {
         for (const way of ways) {
-            if (!RATED_KEYS.has(way.imba)) continue;
+            if (way.symbol === "") continue;
             for (let arc = rung.cadenceM; arc < way.totalLength;
                  arc += rung.cadenceM) {
                 tryPlaceDecoration(way, [arc], KIND.DIAMOND, rung.minZoom,
@@ -2552,7 +2869,7 @@ function addDecorationLayers() {
             ],
             layout: {
                 "symbol-placement": "point",
-                "icon-image": ratingMatchExpr(difficultyImageId, ""),
+                "icon-image": ["get", "symbol"],
                 "icon-size": ["interpolate", ["linear"], ["zoom"],
                     12, 0.5, 14, 0.7, 18, 1.0],
                 "icon-rotation-alignment": "viewport",
@@ -5404,6 +5721,15 @@ function buildAboutModalContent() {
         "https://www.openstreetmap.org/copyright",
         "OpenStreetMap contributors",
         " (ODbL).");
+    // ITRS's required credit, their wording, with a plain hyphen where
+    // theirs has an en dash (the repo's no-dash rule; pending their
+    // answer, see the ITRS plan). Only maps that draw ITRS ratings.
+    if (SCHEME.id === "itrs") {
+        credit("The ",
+            "https://itrs.bike",
+            "ITRS - International Trail Rating System",
+            " is used with permission from Mischa Crumbach and Edoardo Melchiori.");
+    }
     credit("Basemap tiles \u00a9 ",
         "https://protomaps.com",
         "Protomaps",
@@ -5963,57 +6289,37 @@ function sharedArrowColor() {
     ];
 }
 
-// Whether a raw mtb:scale:imba value is on the IMBA scale ("0".."5").
-function isRatedDifficulty(value) {
-    // Test the value, never compare it: unrated ways carry an empty
-    // string, and "" >= 0 is true, so a range check reads them as rating 0.
-    return !!IMBA_RATINGS[Number(value)] && String(Number(value)) === String(value);
-}
-
-// Whether a color key is a rated one ("0".."5" or "0f".."5f"). Keys,
-// unlike raw tag values, can carry the freeride suffix, so a site
-// holding a key asks this rather than isRatedDifficulty.
+// Whether a color key is a rated one: a level of any aspect of the
+// map's scale ("0".."5", "x1".."x4") or a freeride twin ("0f".."5f").
 function isRatedKey(key) {
-    return typeof key === "string" && RATING_KEYS.includes(key);
+    return typeof key === "string" && SCHEME_KEYS.has(key);
 }
 
 function isFreerideKey(key) {
-    return isRatedKey(key) && key.endsWith(FREERIDE_KEY_SUFFIX);
+    return isRatedKey(key) && SCHEME_KEYS.get(key).freeride;
 }
 
-// A rated key's plain rating ("2f" -> "2"), or "" for any other key.
-function keyRating(key) {
-    if (!isRatedKey(key)) return "";
-    return isFreerideKey(key) ? key.slice(0, -FREERIDE_KEY_SUFFIX.length) : key;
-}
-
-// A color key's IMBA color, for the lane layer's per-key look
+// A color key's color, for the lane layer's per-key look
 // (laneKeyMeta); a freeride key shares its plain rating's color.
 function difficultyColor(key) {
-    return isRatedKey(key)
-        ? IMBA_RATINGS[Number(keyRating(key))].color : CONFIG.defaultTrailColor;
+    return isRatedKey(key) ? SCHEME_KEYS.get(key).def.color : CONFIG.defaultTrailColor;
 }
 
-// A way's rating as the difficulty model keys it: "0".."5", or "" for
-// an unrated way. A value off the IMBA scale counts as unrated, since
-// that is how the map draws it (laneKeyMeta, ratingMatchExpr).
-function wayRating(value) {
-    return isRatedDifficulty(value) ? String(Number(value)) : "";
-}
-
-// A way's color key from its tags: its rating, with the freeride suffix
-// when mtb:type names freeride (the `freeride` flag the fetch writes;
-// custom routes carry none). An unrated freeride way stays "": there is
-// no symbol to put in the pill.
+// A way's color key from its tags on the active aspect: its level with
+// the aspect's prefix ("3", "x2"), with the freeride suffix on an IMBA
+// map when mtb:type names freeride (the `freeride` flag the fetch
+// writes; custom routes carry none), or "" for an unrated way. A value
+// off the scale counts as unrated, since that is how the map draws it
+// (laneKeyMeta, ratingMatchExpr). An unrated freeride way stays "":
+// there is no symbol to put in the pill.
 function wayKey(props) {
-    const rating = wayRating(props.imba_difficulty);
-    return rating && props.freeride === true ? rating + FREERIDE_KEY_SUFFIX : rating;
-}
-
-// The name a rider reads for a rating, as on the trailhead signs and
-// in the Options key strip.
-function ratingName(rating) {
-    return rating === "" ? "Unrated" : RATING_NAMES[Number(rating)];
+    const aspect = activeAspect();
+    const level = aspectLevel(aspect, props[aspect.prop]);
+    if (!level) return "";
+    if (SCHEME.freeride && aspect === TECH_ASPECT && props.freeride === true) {
+        return level + FREERIDE_KEY_SUFFIX;
+    }
+    return aspect.keyPrefix + level;
 }
 
 // The unrated look as a routeSwatchModel-shaped object, so a key row or
@@ -6058,19 +6364,19 @@ function keyLook(key) {
     return unratedSwatchModel();
 }
 
-// The name a rider reads for a rating key: the rating's name, or
-// "Unrated". A freeride key reads as its plain rating; its pill glyph
-// is what says freeride.
+// The name a rider reads for a rating key, as on the trailhead signs
+// and in the Options key strip, or "Unrated". A freeride key reads as
+// its plain rating; its pill glyph is what says freeride.
 function keyName(key) {
-    return isRatedKey(key) ? ratingName(keyRating(key)) : "Unrated";
+    return isRatedKey(key) ? SCHEME_KEYS.get(key).def.name : "Unrated";
 }
 
 // Rating keys in the key's order: easiest first, each freeride key
-// after its plain rating, then unrated last, where a curator reads it
-// as the data still to tag.
+// after its plain rating, exposure keys after the technical ones, then
+// unrated last, where a curator reads it as the data still to tag.
 function sortColorKeys(keys) {
     const list = [...keys];
-    const ratings = RATING_KEYS.filter((r) => list.includes(r));
+    const ratings = [...SCHEME_KEYS.keys()].filter((r) => list.includes(r));
     return ratings.concat(list.includes("") ? [""] : []);
 }
 
@@ -7521,7 +7827,7 @@ function initLaneRenderer() {
         routes: laneRouteMeta(),
         // Way facts the chevron filters read. An edge ends where one of
         // these changes, and every lane feature carries them by name.
-        uniformProperties: ["oneway", "trail_name", "imba_difficulty", "freeride"],
+        uniformProperties: ["oneway", "trail_name", ...SCHEME_WAY_PROPS],
     });
     refreshLaneGraph();
 }
@@ -7641,7 +7947,7 @@ function refreshLaneGraph() {
         next = L.buildLineGraph(difficultyVisibleFeatures, {
             routeProperty: "color_key",
             routes: laneKeyMeta(difficultyVisibleFeatures),
-            uniformProperties: ["oneway", "trail_name", "imba_difficulty", "freeride",
+            uniformProperties: ["oneway", "trail_name", ...SCHEME_WAY_PROPS,
                 "route_id", "reverses_by_day"],
         });
     }
@@ -7944,9 +8250,10 @@ function computeTrailsSourceData() {
 // isTruncatedRoute / isTruncatedTrail below). The build does not write
 // either (clip_endpoints.geojson is shared by both models), but every
 // endpoint is the first or last vertex of one of its routes' clipped
-// trail features, so the nearest such vertex names the way. Rating is
-// stored normalized ("2", or "" for unrated) with the way's freeride
-// flag, so ratingMatchExpr reads its key the way the lanes key it.
+// trail features, so the nearest such vertex names the way. Each aspect's
+// rating is stored normalized ("2", or "" for unrated), with the way's
+// freeride flag on an IMBA map, so ratingMatchExpr reads its key the
+// way the lanes key it whichever aspect colors them.
 function stampClipEndpointWays() {
     for (const ep of clipEndpointsData.features) {
         const [x, y] = ep.geometry.coordinates;
@@ -7961,10 +8268,10 @@ function stampClipEndpointWays() {
                 if (d < bestD) { bestD = d; best = f; }
             }
         }
-        const rating = best ? best.properties.imba_difficulty : "";
-        ep.properties.imba_difficulty =
-            isRatedDifficulty(rating) ? String(Number(rating)) : "";
-        ep.properties.freeride = !!best && best.properties.freeride === true;
+        for (const aspect of SCHEME.aspects) {
+            ep.properties[aspect.prop] = best ? aspectLevel(aspect, best.properties[aspect.prop]) : "";
+        }
+        if (SCHEME.freeride) ep.properties.freeride = !!best && best.properties.freeride === true;
         ep.properties.trail_name = best ? (best.properties.trail_name || "") : "";
     }
     // Rebuild lazily on next use rather than here: callers that only
@@ -8341,16 +8648,22 @@ function parseColorRgb(cssColor) {
 
 // ["match", <the feature's key>, ...] with `pick(key)` as each branch
 // and `unrated` as the fallback, pick("") unless given. The key is
-// wayKey's, read from imba_difficulty and freeride, so an unrated
-// freeride way ("f") and an off-scale value fall to unrated as the
-// lanes draw them. For features that carry a rating but no color key:
-// the clip endpoints, whose layers are per route and so know the
-// relation an unrated endpoint continues, and the diamonds.
+// wayKey's on the active aspect, read from its tag (and freeride on an
+// IMBA map), so an unrated freeride way ("f"), an unrated exposure
+// ("x"), and an off-scale value fall to unrated as the lanes draw
+// them. For features that carry a rating but no color key: the clip
+// endpoints, whose layers are per route and so know the relation an
+// unrated endpoint continues.
 function ratingMatchExpr(pick, unrated) {
-    const key = ["concat", ["get", "imba_difficulty"],
-        ["case", ["==", ["get", "freeride"], true], FREERIDE_KEY_SUFFIX, ""]];
+    const aspect = activeAspect();
+    const key = SCHEME.freeride && aspect === TECH_ASPECT
+        ? ["concat", ["get", aspect.prop],
+            ["case", ["==", ["get", "freeride"], true], FREERIDE_KEY_SUFFIX, ""]]
+        : ["concat", aspect.keyPrefix, ["get", aspect.prop]];
     const expr = ["match", key];
-    for (const k of RATING_KEYS) expr.push(k, pick(k));
+    for (const [k, info] of SCHEME_KEYS) {
+        if (info.aspect === aspect) expr.push(k, pick(k));
+    }
     expr.push(unrated === undefined ? pick("") : unrated);
     return expr;
 }
@@ -10117,10 +10430,20 @@ function refreshTrailRatings() {
         return;
     }
     const byName = new Map();  // trail name -> rating -> meters
+    // ITRS maps: trail name -> exposure keys the map draws a pictogram
+    // for, which the finder's meta line names whatever colors the lanes.
+    const exposuresByName = new Map();
     for (const f of features) {
         const name = f.properties.trail_name;
         const key = f.properties.color_key;
         if (!name || !isRatingKey(key)) continue;
+        if (EXPOSURE_ASPECT) {
+            const x = aspectLevel(EXPOSURE_ASPECT, f.properties[EXPOSURE_ASPECT.prop]);
+            if (x && Number(x) >= EXPOSURE_SYMBOL_MIN) {
+                if (!exposuresByName.has(name)) exposuresByName.set(name, new Set());
+                exposuresByName.get(name).add(EXPOSURE_ASPECT.keyPrefix + x);
+            }
+        }
         const len = lineLengthMeters(f.geometry.coordinates);
         if (!(len > 0)) continue;
         let lengths = byName.get(name);
@@ -10130,6 +10453,7 @@ function refreshTrailRatings() {
     for (const t of trailIndex) {
         const lengths = byName.get(t.name) || new Map();
         t.ratings = sortColorKeys(lengths.keys());
+        t.exposures = sortColorKeys(exposuresByName.get(t.name) || []);
         t.rating = "";
         let best = -1;
         // Unrated first, then easiest to hardest, so `>=` hands a tie
@@ -12898,6 +13222,9 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // trail with plain and freeride stretches of one rating would name
     // it twice.
     const metaParts = [...new Set((t.ratings || []).map(keyName))];
+    if ((t.exposures || []).length) {
+        metaParts.push(`Exposure: ${t.exposures.map(keyName).join(", ")}`);
+    }
     if (parents.length) metaParts.push(routeParentsText(parents));
     if (metaParts.length) {
         const meta = document.createElement("span");
@@ -13209,6 +13536,17 @@ function trailPopupHtml(laneHit, scope = "section") {
     const iconUrl = difficultyIconDataUrl(key);
     const ratingName = iconUrl ? keyName(key) : "";
     const iconW = difficultyGlyphWidth(key, 16);
+    // An ITRS map names both aspects on labeled rows, technical first,
+    // whichever colors the lanes. Exposure 1 gets its row here though
+    // the map draws no pictogram for it: the popup is where a rider
+    // asks, and "Normal injury risk" is an answer.
+    const aspectRows = EXPOSURE_ASPECT
+        ? SCHEME.aspects.map((aspect) => {
+            const level = aspectLevel(aspect, laneProps[aspect.prop]);
+            return { label: aspect === EXPOSURE_ASPECT ? "Exposure:" : "Difficulty:",
+                key: level ? aspect.keyPrefix + level : "" };
+        }).filter((row) => row.key)
+        : null;
     let html = "";
     if (trailName) {
         // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -13273,7 +13611,16 @@ function trailPopupHtml(laneHit, scope = "section") {
         const distanceText = formatDistance(edgeLengthMeters(laneHit.edge));
         html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>Length:</span><span>${escapeHtml(distanceText)}</span></div>`;
     }
-    if (iconUrl) {
+    if (aspectRows) {
+        for (const row of aspectRows) {
+            html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>${row.label}</span><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${difficultyIconDataUrl(row.key)}" alt=""><span>${escapeHtml(keyName(row.key))}</span></div>`;
+        }
+        // Its own row, marked with the plate the map draws behind the
+        // way's symbol, so the rider can tie the yellow to its meaning.
+        if (laneProps.bike_only === true) {
+            html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${bikeOnlySwatchDataUrl()}" alt=""><span>Bike only</span></div>`;
+        }
+    } else if (iconUrl) {
         // Symbol + rating name on their own row, same quiet
         // typography as the one-way row below (with or without
         // a trail name above).
@@ -13621,7 +13968,7 @@ function rebuildBasemapLayers() {
     // rebuild. The decoration layers themselves come back via the
     // serialized style (setStyle preserves overlayLayers); icons
     // need to be re-uploaded if dropped.
-    if (CONFIG.showDifficulty && !map.hasImage("imba-0")) {
+    if (CONFIG.showDifficulty) {
         registerDifficultyIcons();
     }
     if (!map.hasImage(CHEVRON_VARIANTS[0].id)) {
