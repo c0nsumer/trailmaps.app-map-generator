@@ -212,7 +212,8 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_drinking_water` | No | `true` | When false, `amenity=drinking_water` nodes are left out of the map. The Drinking Water toggle auto-hides when none were found. |
 | `show_bicycle_repair_stations` | No | `true` | When false, `amenity=bicycle_repair_station` nodes are left out of the map. The Bicycle Repair toggle auto-hides when none were found. |
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched, and the hillshade and contour-line layers are omitted. Contour lines are computed in the browser from the same terrain tiles as the hillshade. They are labeled in the rider's [units](#units). |
-| `show_difficulty` | No | `true` | When false, no IMBA difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries an `mtb:scale:imba` value. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
+| `show_difficulty` | No | `true` | When false, no difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries a rating for the map's `difficulty_scale`. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
+| `difficulty_scale` | No | `"imba"` | Which difficulty scale the map reads and draws: `"imba"` (`mtb:scale:imba`) or `"itrs"` (`mtb:scale:itrs:technical_difficulty` plus `mtb:scale:itrs:exposure`). Pick the one the trail system's signs use. A map reads one scale and has no fallback: on an ITRS map, ways with only an IMBA rating are Unrated, and the reverse. Flipping the scale re-derives the trails from the cached Overpass data, so it needs no refetch. See [ITRS ratings](#itrs-ratings). |
 | `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `show_current_trail` | No | `true` | If on, the Options **Current Trail** row is shown, and it starts on. While that row and Locate are both on, a chip at the bottom of the map names the trail the rider is on, and that trail gets a blue glow. An unnamed way reads "Unnamed trail". The chip names a trail only when the fix is accurate to 25 m or better. If a coarser fix (up to 100 m) persists and a drawn trail lies inside its accuracy circle, the chip reads "Trail unknown" over "Low GPS accuracy". The rider's choice in the Options row persists per-map. Set `false` to remove the chip, the glow, and the Options row. |
@@ -589,7 +590,9 @@ opens the trail's popup, as on a routes map.
 
 When `show_difficulty: true`, the map displays IMBA trail difficulty rating
 symbols along trail segments. Ratings are read from the `mtb:scale:imba` OSM tag
-on individual ways. Segments without this tag show no symbols.
+on individual ways. Segments without this tag show no symbols. This section
+describes the default IMBA scale. For `difficulty_scale: itrs`, see
+[ITRS ratings](#itrs-ratings).
 
 | Rating | Symbol | Color |
 |--------|--------|-------|
@@ -643,6 +646,59 @@ their length:
 | (none) | `2` | Nothing: segment is unrated; in difficulty mode it falls back to `default_trail_color` |
 | `4` | (none) | Black diamond (4) |
 
+### ITRS ratings
+
+With `difficulty_scale: itrs`, the map reads the International Trail Rating
+System ([itrs.bike](https://itrs.bike)) instead of IMBA. It reads two OSM tags
+on individual ways. `mtb:scale:itrs:technical_difficulty` takes 1 to 5.
+`mtb:scale:itrs:exposure` takes 1 to 4. A way can carry one without the other.
+On an IMBA map, neither tag is read at all.
+
+| Level | Technical difficulty | Symbol | Exposure | Color |
+|---|---|---|---|---|
+| 1 | Beginner | Circle | Normal injury risk | Green `#72bf44` |
+| 2 | Intermediate | Square | High risk of serious injury | Blue `#0080c6` |
+| 3 | Advanced | Triangle | Life threatening consequences | Red `#ee3124` |
+| 4 | Expert | Diamond | Fatal consequences | Black `#000000` |
+| 5 | Extreme | Double diamond | (none) | Orange `#f68b1f` |
+
+The symbols are flat, with no outline, and sit on the same white plate as the
+IMBA symbols. Exposure draws as a cliff-edge pictogram in the level's color.
+It joins the technical symbol on one wider plate when the exposure is 2 or
+higher. A way with exposure but no technical rating shows the pictogram alone.
+Exposure 1 never draws on the map. It shows in the tap popup only.
+
+The tap popup has a **Difficulty** row and an **Exposure** row. The Exposure
+row names every level, including 1. The finder's meta line names a trail's
+exposure levels from 2 up. The Options key strip lists the technical levels,
+then exposure levels 2 to 4.
+
+ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
+A way counts as bike-only when `bicycle` is `yes` or `designated`, `foot=no` is
+tagged, and `horse` is not `yes`, `designated`, or `permissive`. An absent
+`horse` tag counts as not allowed. A way with no access tags keeps the white
+plate. When any way qualifies, the key strip adds "Yellow plate: bike-only
+trail", and the tap popup has a **Bike only** row. IMBA maps never paint a
+plate yellow.
+
+There is no freeride oval on an ITRS map, because ITRS has no freeride
+marker. A way's `mtb:type` changes nothing there.
+
+The rating is a way-level tag on ITRS maps too. Tags on the parent relation
+are ignored, as described under
+[Difficulty is a way-level tag](#difficulty-is-a-way-level-tag).
+
+On an ITRS map with a difficulty-mode relation and exposure data, the Options
+overlay shows a **Color** row with two choices: **Difficulty** and
+**Exposure**. It starts on Difficulty. Exposure colors the trail lines by
+exposure level, and the key card is titled **Exposure** while that choice is
+active. The choice is stored per map (`mtb.colorAspect`). A map without
+exposure data, or without a difficulty-mode relation, does not show the row.
+
+The names, colors, and symbols are ITRS material, used with permission. They
+are not under this project's MIT license. See the
+[README credits](../README.md#credits).
+
 ### Color modes
 
 Each relation, and each custom route, draws in one of two color modes.
@@ -650,8 +706,10 @@ Each relation, and each custom route, draws in one of two color modes.
 - **Route mode** colors the relation's lanes by route. The color is the
   `relation_colors` entry, else the OSM `colour` tag, else
   `default_trail_color`. `dashed_relations` sets the dash.
-- **Difficulty mode** colors ways by their own IMBA rating. An unrated way
-  takes the `default_trail_color` look.
+- **Difficulty mode** colors ways by their own rating on the map's
+  `difficulty_scale`. An unrated way takes the `default_trail_color` look.
+  On an ITRS map, the rider can switch the colors from difficulty to exposure
+  with the Options **Color** row. See [ITRS ratings](#itrs-ratings).
 
 `color_by` sets the default mode for every relation. `color_by_route` and
 `color_by_difficulty` list the exceptions. Both lists take relation IDs,
@@ -1112,7 +1170,8 @@ The framework-supplied rows and sections, always shown:
   (the name links to the engine repo), then one credit line per data source
   and library. OSM, Protomaps, PMTiles (BSD-3-Clause), Material Design Icons, MapLibre GL JS,
   maplibre-gl-lanes, uqr, and SIL Open Font License always appear; Mapterhorn
-  and maplibre-contour when terrain is enabled.
+  and maplibre-contour when terrain is enabled; ITRS when
+  `difficulty_scale: itrs`.
   See the framework-level credit list in [`README.md`](../README.md#credits).
 
 Any curator-supplied row or section whose source data is absent is omitted
@@ -1245,7 +1304,8 @@ maps:
 | `mtb.emergencyOn` | Boolean: Emergency overlay on or off |
 | `mtb.poi.<kind>` | Boolean per POI category (`parking`, `trailheads`, `hubs`, `features`, `markers`, `toilets`, `drinking_water`, `bicycle_repair_stations`) |
 | `mtb.labels` | `"routes"`, `"trails"`, or `"none"` |
-| `mtb.difficulty` | Boolean: IMBA difficulty symbols on or off |
+| `mtb.difficulty` | Boolean: difficulty symbols on or off |
+| `mtb.colorAspect` | `"difficulty"` or `"exposure"`: what difficulty-mode lines color by on an ITRS map |
 | `mtb.directionArrows` | Boolean: direction arrows on or off |
 | `mtb.currentTrail` | Boolean: Show Current Trail row on or off |
 | `mtb.colorScheme` | `"light"`, `"dark"`, or `"auto"` |
@@ -1262,6 +1322,10 @@ The saved view expires six hours after the last map move.
 
 While Locate is on, the chip that names the trail under the rider is resolved on
 the device from the position fix the map already has for the Locate dot.
+
+A share link carries the camera plus an optional highlight, eg: `d/3` for a
+rating. On an ITRS map, an exposure highlight uses the same form with an `x`
+prefix on the key, eg: `d/x2` for exposure level 2.
 
 The map never writes its position to the address bar. The **Share this map**
 action builds a position link on demand, and only when the visitor chooses to

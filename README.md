@@ -34,12 +34,13 @@ This is the framework that generates most of the maps at
   - Routes panel: a collapsible key pairing each route's color with its name
     and stats. Tap a row to highlight that route, or use its Search row to find
     routes, trails, and POIs on the map. For difficulty-mode relations (`color_by:
-    difficulty`) the key lists IMBA ratings, and a row highlights
+    difficulty`) the key lists the map's ratings (IMBA or ITRS), and a row highlights
     every trail of that rating.
 - Optional per-route distance.
 - Trail markers, trailheads, trail hubs, parking, features, toilets, drinking water, and
   bicycle repair stations as configurable POI layers; direction arrows on
-  one-way ways; per-route dash patterns; per-trail IMBA difficulty symbols.
+  one-way ways; per-route dash patterns; per-trail difficulty symbols on the
+  IMBA or ITRS scale (ITRS adds exposure and bike-only trails).
 - Compass heading indicator: on devices with a compass, the Locate dot grows
   a small cone showing which way the rider is facing. The app reads the device
   compass, falling back to the direction field each GPS fix already carries.
@@ -240,6 +241,7 @@ components, with their licenses and origins.
 | [uqr](https://github.com/unjs/uqr) (Anthony Fu, from [Project Nayuki's QR Code generator](https://github.com/nayuki/QR-Code-generator)) | QR code for the share link, encoded on the device | MIT |
 | [PMTiles](https://github.com/protomaps/PMTiles) | Single-file tile archive format and JS reader | BSD-3-Clause |
 | [Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers) | UI iconography (inline SVG) | Apache 2.0 |
+| [ITRS, International Trail Rating System](https://itrs.bike) (Mischa Crumbach and Edoardo Melchiori) | Level names, colors, and symbols on maps with `difficulty_scale: itrs` | CC BY-NC-ND 4.0 with a CC+ agreement, used with permission |
 | [SIL Open Font License](https://openfontlicense.org/) | Map label fonts (Noto Sans via Protomaps) and the self-hosted Inter UI webfont | OFL 1.1 |
 | [Pillow](https://python-pillow.org/) | Build-time icon and logo image processing | HPND |
 | [PyYAML](https://pyyaml.org/) | YAML config parsing | MIT |
@@ -249,6 +251,12 @@ components, with their licenses and origins.
 | [mapbox-vector-tile](https://github.com/mapbox/mapbox-vector-tile-py) | Vector tile parsing in build scripts | BSD-3-Clause |
 | [potrace](http://potrace.sourceforge.net/) (optional) | Safari pinned-tab SVG generation | GPL 2.0 |
 | [go-pmtiles](https://github.com/protomaps/go-pmtiles) | PMTiles CLI for tile extraction | BSD-3-Clause |
+
+The ITRS names, colors, and symbols are not under this project's MIT license.
+They carry ITRS's own terms, and this project uses them with permission. The
+MIT license covers the code. If you build a map with `difficulty_scale: itrs`,
+the About modal credit line must stay: "The ITRS - International Trail Rating
+System is used with permission from Mischa Crumbach and Edoardo Melchiori."
 
 If you re-deploy this framework, please preserve the in-app About modal credits
 unchanged: every component above earned its place by either being free

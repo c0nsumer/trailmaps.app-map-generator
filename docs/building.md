@@ -192,7 +192,8 @@ The build writes the full report to
 `cache/osm_diff/<slug>/last-refresh.md`, overwriting it each refresh.
 The report lists routes added, removed, renamed, recolored, or
 reseasoned; trails added, removed, or renamed; per-way `mtb:scale:imba`,
-`mtb:type`, and `oneway` changes with `openstreetmap.org/way/<id>` links;
+`mtb:type`, and `oneway` changes (plus `mtb:scale:itrs:technical_difficulty`,
+`mtb:scale:itrs:exposure`, and bike-only status on ITRS maps) with `openstreetmap.org/way/<id>` links;
 and per-trail length changes. The previous snapshot itself is kept beside
 it as `trails.prev.geojson`.
 
@@ -206,8 +207,14 @@ Two things the diff deliberately does not do:
   resolved oneway, freeride)` signature, so a way that merely gains a rating
   moves between features. Freeride is true when the way's `mtb:type` list
   contains `freeride`, so consecutive ways only fuse when they agree on it. A
-  way that gains or loses `freeride` reports as an `mtb:type` change. The
-  diff keys on OSM way IDs, which survive the merge. A one-tag edit therefore reports as one tag change rather than
+  way that gains or loses `freeride` reports as an `mtb:type` change. On an
+  ITRS map the signature also carries the two ITRS ratings and the bike-only
+  flag; an IMBA map's signature carries none of those three, so tags it does
+  not draw never re-segment it. The diff keys on OSM way IDs, which survive
+  the merge. The ITRS ratings report
+  under their OSM keys. Bike-only reports as "" to "bike-only" under the label
+  `bicycle/foot/horse`. A snapshot from before those fields existed reports no
+  change for them. A one-tag edit therefore reports as one tag change rather than
   wholesale churn.
 - **It never compares vertices.** Contributors nudge geometry constantly.
   Length is the only geometry signal. Per-trail changes under 20 m are
@@ -242,8 +249,11 @@ that rules out:
   coverage.** If nothing on the map is rated, nobody has tagged difficulty
   there. Listing every named trail would be asking for tags purely so this
   renderer has something to draw. (The Difficulty control auto-hides on such
-  maps anyway.) An out-of-range value like `mtb:scale:imba=7` is always
-  reported, because that's wrong on its own terms.
+  maps anyway.) The list reads the map's own scale: `mtb:scale:imba` on an IMBA
+  map, `mtb:scale:itrs:technical_difficulty` on an ITRS map. An out-of-range
+  value like `mtb:scale:imba=7` is always reported, because that's wrong on its
+  own terms. The checks cover every rating key the fetch read, under the
+  section title "Out-of-range rating values".
 - **Parking, trailheads, and hubs are never checked for distance from a
   trail.** They are curator-placed, and being off-trail is the point of a
   parking lot. Only guideposts and emergency-access points, which are
@@ -490,6 +500,17 @@ ls -la cache/
 To update the cached OSM data (for example, after trail edits in
 OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
 [Build options](#build-options) explains each flag.
+
+The trails base (the merged ways before enrichment) carries a format number,
+`TRAILS_BASE_FORMAT`, which is 5 now. Version 4 added the ITRS rating fields.
+Version 5 added `bike_only` and limited all three to ITRS maps. A build that
+finds an older base re-derives it from the cached Overpass data, so a format
+bump needs no refetch.
+
+The map's `difficulty_scale` is part of the trails fingerprint. If you flip it
+between `imba` and `itrs`, the next build re-derives the trails base offline
+from the cached data. No refresh flag is needed, because the ITRS tags come
+down with every fetch.
 
 To refresh trail data without touching tiles:
 
