@@ -126,7 +126,7 @@ into the same folder, and reference them by bare filename in the config.
 |-----|----------|---------|-------------|
 | `relations` | Conditional | : | Non-empty list of OSM relation IDs to render as routes. **Required unless the map supplies geometry via `custom_routes` or `event_mode.routes`**; a route-only or event map can omit it. **Each entry may be a leaf route relation or a super-relation.** A super-relation is auto-expanded into its child routes one level deep at fetch time. The parent itself is dropped since it has no ways. Order doesn't matter. Multi-system maps list every entry-point relation. |
 | `osm_file` | No | : | Path to local `.osm` XML file; when set, uses this instead of the Overpass API. See [Building](building.md#local-osm-file-support). |
-| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (e.g. rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its row "Length shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
+| `clipped_relations` | No | `[]` | OSM relation IDs to include but clip to the core trail bounding box (eg: rail trails). Super-relations are auto-expanded the same way as `relations`. A rider-facing distance for a clipped relation, or for a trail cut at the map edge, carries "shown" after the number. The tap popup instead relabels its row "Length shown:", because the shown distance is the map's window onto the trail, not the trail's full length. |
 | `event_mode` | No | : | Optional event-mode block. Feature one or more routes prominently while every other trail renders as muted context. Also carries `gpx:`, downloadable course files offered via a download FAB. See [Event mode](event-mode.md) for the schema and worked examples ([GPX downloads](event-mode.md#gpx-downloads)). |
 
 ### Route buckets
@@ -159,7 +159,7 @@ schema and rules.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `bbox` | No | auto | Bounding box `[west, south, east, north]` used for the **initial view fit**. If omitted, it is auto-computed from trail geometry with a ~3% proportional buffer. |
-| `pan_bbox` | No | computed | Explicit pan envelope `[west, south, east, north]`; overrides `pan_padding` when set. Usually unnecessary: use `pan_padding` unless the auto-symmetric expansion is wrong for your site (e.g. asymmetric pan room to cover a parking lot north of the trails but nothing south). |
+| `pan_bbox` | No | computed | Explicit pan envelope `[west, south, east, north]`; overrides `pan_padding` when set. Usually unnecessary: use `pan_padding` unless the auto-symmetric expansion is wrong for your site (eg: asymmetric pan room to cover a parking lot north of the trails but nothing south). |
 | `pan_padding` | No | `0.5` | How much looser the pan wall is than `bbox`, as a fraction of the bbox's greater dimension added on each side. `0.5` is about 4x the pannable area; `0` pins the wall to `bbox`. Also widens basemap and terrain tile extraction to match. See the notes below. |
 
 The zoom range is fixed. The camera runs from zoom 10 to 18. Basemap tiles are extracted up to zoom 15, and terrain tiles up to zoom 12.
@@ -214,7 +214,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | `show_terrain` | No | `true` | When false, terrain tiles are not fetched, and the hillshade and contour-line layers are omitted. Contour lines are computed in the browser from the same terrain tiles as the hillshade. They are labeled in the rider's [units](#units). |
 | `show_difficulty` | No | `true` | When false, no difficulty sprite is generated and no symbols appear. The toggle also auto-hides when no way carries a rating for the map's `difficulty_scale`. First-visit state comes from `default_visible` (include `difficulty`, or use `all`); the rider's later choice persists. |
 | `difficulty_scale` | No | `"imba"` | Which difficulty scale the map reads and draws: `"imba"` (`mtb:scale:imba`) or `"itrs"` (`mtb:scale:itrs:technical_difficulty` plus `mtb:scale:itrs:exposure`). Pick the one the trail system's signs use. A map reads one scale and has no fallback: on an ITRS map, ways with only an IMBA rating are Unrated, and the reverse. Flipping the scale re-derives the trails from the cached Overpass data, so it needs no refetch. See [ITRS ratings](#itrs-ratings). |
-| `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (e.g. DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
+| `show_trails` | No | `true` | When false, hides the Finder's Trails section and the Trails label mode. Use where routes and trails overlap so heavily that listing both adds noise (eg: DTE). Routes are always surfaced (a geometry source is required), so the Finder and the Labels control never disappear entirely. |
 | `show_direction_arrows` | No | `true` | When false, no direction arrows are placed and the toggle is hidden. This gate wins even when `direction_arrows` is in `forced_visible`. The OSM oneway data stays on features for the finder; only the arrows are suppressed. Use for maps that should never show directional indicators. |
 | `show_current_trail` | No | `true` | If on, the Options **Current Trail** row is shown, and it starts on. While that row and Locate are both on, a chip at the bottom of the map names the trail the rider is on, and that trail gets a blue glow. An unnamed way reads "Unnamed trail". The chip names a trail only when the fix is accurate to 25 m or better. If a coarser fix (up to 100 m) persists and a drawn trail lies inside its accuracy circle, the chip reads "Trail unknown" over "Low GPS accuracy". The rider's choice in the Options row persists per-map. Set `false` to remove the chip, the glow, and the Options row. |
 | `suppress_basemap_pois` | No | `true` | Hide POI labels and `place=locality` labels (neighborhoods, clearings, hamlets) from the Protomaps basemap. Higher-tier place labels stay visible. Set `false` to show them. |
@@ -227,13 +227,13 @@ concern, handled by `default_visible` in the [Display](#display) section.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `relation_colors` | No | `{}` | Map of relation ID to color (hex or a CSS color name). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
-| `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (e.g. renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
+| `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (eg: renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 | `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
-| `color_by` | No | `"route"` | The default color mode for every relation. `"route"` colors a relation's lanes by its route color, with parallel lanes where routes share a trail. `"difficulty"` colors ways by their own IMBA `mtb:scale:imba` rating, one lane per way. `color_by_route` and `color_by_difficulty` list the exceptions. See [Color modes](#color-modes) for the keys that change meaning, are ignored, or are rejected. |
+| `color_by` | No | `"route"` | The default color mode for every relation. `"route"` colors a relation's lanes by its route color, with parallel lanes where routes share a trail. `"difficulty"` colors ways by their own rating on the map's `difficulty_scale`, one lane per way. `color_by_route` and `color_by_difficulty` list the exceptions. See [Color modes](#color-modes) for the keys that change meaning, are ignored, or are rejected. |
 | `color_by_route` | No | `[]` | Relations drawn in route mode when `color_by` is `"difficulty"`. Takes OSM relation IDs, super-relation IDs, and custom-route IDs. A super-relation ID fans out to its child routes, as it does for `winter_relations`. A relation in both lists is an error. A relation in the list for the default mode gets a "redundant" warning. |
 | `color_by_difficulty` | No | `[]` | Relations drawn in difficulty mode when `color_by` is `"route"`. Same kinds of IDs as `color_by_route`. `event_mode` is rejected while any relation is in difficulty mode. |
 | `route_key` | No | `true` | Whether the bottom-right panel shows the key: one row per visible route-mode relation and one row per rating for difficulty-mode relations, each with its swatch, name and stats. Set `false` for a trail system dense enough that a full key is a wall. Then the panel is a Search button alone, with no key card and no collapsed chip. Search still finds every route (or trail) and place. |
-| `default_trail_color` | No | `"#808080"` | Fallback trail color. For route-mode relations: used when a relation has no OSM `colour` tag. For difficulty-mode relations: used for ways with no `mtb:scale:imba` tag. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
+| `default_trail_color` | No | `"#808080"` | Fallback trail color. For route-mode relations: used when a relation has no OSM `colour` tag. For difficulty-mode relations: used for ways with no rating on the map's `difficulty_scale`. Accepts a CSS color string or an object with `color`, `pattern` (dash array), and `cap` (`"round"`, `"square"`, or `"butt"`) for dashed uncolored trails. |
 
 ### Direction schedules
 
@@ -284,7 +284,7 @@ row).
 | `hub_border_color` | No | `"white"` | Trail-hub outer halo border color. Rendered as a CSS drop-shadow rather than a CSS border so the halo follows the hexagonal silhouette. |
 | `feature_color` | No | `"#8e44ad"` | Feature marker inner dot color. |
 | `feature_ring_color` | No | `"#ffffff"` | Feature marker outer ring color. |
-| `accent_color` | No | `"auto"` | UI accent color: active toggle pill, search input focus ring, link color, FAB pressed state, segmented-control active fill, etc. From one base color the build derives a per-mode palette: a deep light-mode shade and a lightened dark-mode shade. Each shade is paired with its own text color (white or near-black, whichever contrasts more), so the accent stays legible in both schemes. `style.css` selects the active pair by `data-color-scheme`. Three accepted forms. Omitted: the same as `"auto"`. A 6-digit hex (e.g. `"#FF5733"`): used verbatim as the light shade, with the dark shade derived from it, so light mode is unchanged. The literal `"auto"`: derives the base from the logo via Pillow (most common saturated color, cached per source hash), then deepens and saturates it for a vivid light shade and lightens it to clear WCAG AA against the `#1c1c1e` dark sheet. SVG-only logos fall back to the `icon:` raster as the derive source. If neither is raster, `"auto"` falls back to `#1D6FA5`. A map with neither `logo:` nor `icon:` uses the bundled placeholder logo, so its accent derives from the placeholder's green. For a curator-chosen accent (explicit hex or successful `"auto"`), the build warns when the light shade fails AA against the white sheet or the dark shade fails AA against the dark sheet (the links / focus-rings role). The on-accent text color is chosen for contrast automatically and is not part of that check. |
+| `accent_color` | No | `"auto"` | UI accent color: active toggle pill, search input focus ring, link color, FAB pressed state, segmented-control active fill, etc. From one base color the build derives a per-mode palette: a deep light-mode shade and a lightened dark-mode shade. Each shade is paired with its own text color (white or near-black, whichever contrasts more), so the accent stays legible in both schemes. `style.css` selects the active pair by `data-color-scheme`. Three accepted forms. Omitted: the same as `"auto"`. A 6-digit hex (eg: `"#FF5733"`): used verbatim as the light shade, with the dark shade derived from it, so light mode is unchanged. The literal `"auto"`: derives the base from the logo via Pillow (most common saturated color, cached per source hash), then deepens and saturates it for a vivid light shade and lightens it to clear WCAG AA against the `#1c1c1e` dark sheet. SVG-only logos fall back to the `icon:` raster as the derive source. If neither is raster, `"auto"` falls back to `#1D6FA5`. A map with neither `logo:` nor `icon:` uses the bundled placeholder logo, so its accent derives from the placeholder's green. For a curator-chosen accent (explicit hex or successful `"auto"`), the build warns when the light shade fails AA against the white sheet or the dark shade fails AA against the dark sheet (the links / focus-rings role). The on-accent text color is chosen for contrast automatically and is not part of that check. |
 
 ### Branding
 
@@ -831,7 +831,7 @@ and no config key controls it.
 ### Direction schedules (day-of-week / date-parity reversal)
 
 Some trail systems are signed as one-way with the direction alternating by day
-of week (e.g. clockwise Mon/Wed/Fri, counter-clockwise Tue/Thu/Sat) or by
+of week (eg: clockwise Mon/Wed/Fri, counter-clockwise Tue/Thu/Sat) or by
 calendar-date parity (one direction on even days, the other on odd). OSM has no
 canonical schema for the schedule itself. The framework supplies it via the
 single `direction_schedule:` key. The key has two optional parts: a top-level
@@ -1041,7 +1041,7 @@ supports:
 **Tip:** If a trailhead has parking, use a single trailhead entry with a
 `directions_url` rather than adding both a trailhead and a parking entry at the
 same location. Use separate parking entries only for lots that aren't at a
-trailhead (e.g. overflow parking down the road).
+trailhead (eg: overflow parking down the road).
 
 ### Trail Hubs
 
@@ -1151,7 +1151,7 @@ The framework-supplied rows and sections, always shown:
 - **App** row: `v<N> (<date>)`: the engine's commit count as of the last
   commit that touched `templates/`, plus that commit's date. The version
   only advances when the shipped app code changes. The row is omitted when
-  the build can't consult git (e.g. a tarball checkout).
+  the build can't consult git (eg: a tarball checkout).
 - **Map config** row: `<date HH:MM>`: the newest mtime of the config YAML and
   the per-map assets it references (logo, icon, additional logos, custom-route
   geometry). Moves when the map's curation changes, independently of the App
@@ -1205,7 +1205,7 @@ source is copied as `logo.svg` instead, and it gets pixel dimensions from its
 | **About modal render** | Inside a 140x56 px box (all screen sizes) |
 | **Binding axis** | Wide wordmarks (aspect wider than ~4.17:1, the 200:48 box) land at 200 px wide; square or tall logos land at 48 px tall |
 | **Pre-resize target** | Source is resampled to ~2x the render size (max longer side ~400 px on desktop). Never upscaled; smaller sources are preserved. |
-| **Recommended source** | At least 2x the expected render size on its long side (e.g. 400+ px wide for a wordmark); higher is fine, the framework resizes down |
+| **Recommended source** | At least 2x the expected render size on its long side (eg: 400+ px wide for a wordmark); higher is fine, the framework resizes down |
 | **Recommended format** | Any Pillow-readable raster format; output is always WebP |
 | **Transparency** | Supported: the logo floats over the map with a subtle drop shadow |
 
@@ -1216,7 +1216,7 @@ brand-prominent result in the top-left overlay.
 #### Color guidance
 
 The logo is displayed on top of the map. For best legibility across varying
-terrain colors, use dark artwork on a transparent background (e.g. a black or
+terrain colors, use dark artwork on a transparent background (eg: a black or
 near-black wordmark). Multi-color or photographic logos work too. If you need
 to ensure contrast against busy map areas, design them with a built-in outline
 or soft background.
@@ -1318,7 +1318,7 @@ maps:
 | `mtb.savedView` | JSON: the last map view (center and zoom, plus the selected route, rating, point, trail, or tapped spot if any) and a timestamp. A relaunched map opens on it if it is less than six hours old. A share link wins over it |
 | `mtb.fabsLabeled` | Boolean: whether the on-map buttons show text labels |
 | `mtb.welcomed` | Boolean: welcome modal already dismissed |
-| `mtb.routePanelExpanded` | Boolean: the key panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |
+| `mtb.routePanelExpanded` | Boolean: the routes panel's docked state (`true` = expanded key card, `false` = minimized chip). Only set on an explicit rider toggle; the open search overlay is never persisted |
 
 These persist a returning visitor's own choices and are never transmitted. A
 visitor can clear them at any time through their browser.
@@ -1331,6 +1331,16 @@ the device from the position fix the map already has for the Locate dot.
 A share link carries the camera plus an optional highlight, eg: `d/3` for a
 rating. On an ITRS map, an exposure highlight uses the same form with an `x`
 prefix on the key, eg: `d/x2` for exposure level 2.
+
+The highlight, if any, is one token and its value after the camera, as `#share=<zoom>/<lat>/<lon>/<token>/<value>`. A share link carries at most one:
+
+| Token | Highlights | Value |
+|---|---|---|
+| `r/` | A route | The route relation ID. A link to a relation that is not in route mode opens with no highlight |
+| `d/` | A rating key | The rating (`3`), a freeride rating (`3f`), an exposure level (`x2`), or `unrated` for ways with no rating |
+| `t/` | A trail | The trail name |
+| `p/` | A POI, a name group, or a POI category | The finder row's reference |
+| `s/` | A tapped spot | The section and anchor point the rider tapped |
 
 The map never writes its position to the address bar. The **Share this map**
 action builds a position link on demand, and only when the visitor chooses to

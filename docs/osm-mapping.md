@@ -50,7 +50,7 @@ renderer expands it one level deep at fetch time.
 | [`name`](https://wiki.openstreetmap.org/wiki/Key:name) | name | Route's display name, shown in the search/finder, in tap popups, and as a label on the map when labels are set to "routes." Falls back to `Route <id>` if missing. |
 | [`ref`](https://wiki.openstreetmap.org/wiki/Key:ref) | short code | Short reference / number for the route. This renderer does not display it. |
 | [`colour`](https://wiki.openstreetmap.org/wiki/Key:colour) | line color | A CSS-compatible color string (`#RRGGBB`, named colors like `red`, `rgb(...)`, etc.). Falls back to the per-map `default_trail_color` (typically `#808080`) when unset. The hex form is preferred; named colors render but vary slightly between consumers. |
-| [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (e.g. `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere, so set it. |
+| [`network`](https://wiki.openstreetmap.org/wiki/Key:network) | (not consumed) | Standard OSM network tag (eg: `mtb` / `lcn` / `rcn`). Not used by this renderer but useful elsewhere, so set it. |
 | [`seasonal`](https://wiki.openstreetmap.org/wiki/Key:seasonal) | Winter bucket | `seasonal=winter` puts the route in the Winter bucket, as `winter_relations` does. Other values are ignored. |
 
 ### Relation members
@@ -186,7 +186,7 @@ list membership, so `allmountain;freeride` counts. It does not count
 downhill trails both with and without it. The oval only wraps a rated way. A
 freeride way with no `mtb:scale:imba` value shows no symbol. The popup, key,
 and finder show the plain rating name beside the oval symbol. The word
-"Freeride" appears only once, in the Options legend that explains the oval.
+"Freeride" appears only once, in the Options key strip that explains the oval.
 
 The engine reads `mtb:type` from the trail's ways, not from its route
 relation. Many networks tag `mtb:type` only on the relation (Copper Harbor
@@ -210,7 +210,7 @@ scans `trails.geojson` and skips the control when there's nothing to display.
 | Tag | Value | What this renderer does with it |
 |---|---|---|
 | [`oneway`](https://wiki.openstreetmap.org/wiki/Key:oneway) | `yes` / `no` / `-1` / `reversible` | When `yes`, the renderer places direction arrows along the trail, shows a "One-way" line in the tap popup ("One-way (reverses by day)" when a `direction_schedule` covers the way). `-1` draws the arrows in the reverse direction. `reversible` is supported via `direction_schedule:` in the per-map config (alternating direction by day-of-week or parity). |
-| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa). This is the same standard OSM convention used everywhere. |
+| [`oneway:bicycle`](https://wiki.openstreetmap.org/wiki/Key:oneway:bicycle) | `yes` / `no` / `-1` / `reversible` | Wins over `oneway` when both are present. Use this when a trail is one-way for bikes but two-way for hikers (or vice versa). This is the same standard OSM convention used everywhere. |
 
 ### Names on individual ways (optional)
 

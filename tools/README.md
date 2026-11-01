@@ -125,7 +125,7 @@ python tools/clean_config.py configs/foo/foo.yaml -o /tmp/foo-clean.yaml
   catches drift in either direction: a key the template forgot, or a
   key the curator added that the template doesn't model, usually a
   sign the template needs updating too.
-- Comments the placement heuristics can't attach anywhere (e.g. a
+- Comments the placement heuristics can't attach anywhere (eg: a
   commented-out chunk trailing below a set block) are appended under a
   `# --- Unplaced comments carried from the previous file
   (review/relocate) ---` header: misplaced but kept, never lost.

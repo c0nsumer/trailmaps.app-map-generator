@@ -32,7 +32,7 @@ relations:
 # Build from a local .osm XML file instead of Overpass (config-folder-relative).
 # osm_file: osm.osm
 
-# Relations to include but clip to the core trail bounding box (e.g. rail trails).
+# Relations to include but clip to the core trail bounding box (eg: rail trails).
 # Distances for a clipped relation, or a trail cut at the map edge, read "7.5 mi shown".
 # clipped_relations: []
 
@@ -175,7 +175,7 @@ relations:
 
 # Default color mode for every relation. "route" (the default) colors a
 # relation's lanes by route, with parallel lanes where routes share a trail.
-# "difficulty" colors ways by their own IMBA rating, one lane per way.
+# "difficulty" colors ways by their own rating on the map's difficulty_scale, one lane per way.
 # The two lists below give the exceptions. See docs/configuration.md
 # (Color modes).
 # color_by: route
@@ -196,7 +196,7 @@ relations:
 
 # Fallback trail color, or an object with color / pattern / cap for dashed
 # uncolored trails. Used for route-mode relations with no colour= tag,
-# and for difficulty-mode ways with no mtb:scale:imba tag.
+# and for difficulty-mode ways with no rating on the map's scale.
 # default_trail_color: "#808080"
 
 # ============================================================
@@ -325,7 +325,7 @@ relations:
 # placeholder (a bicycle on the brand green, assets/placeholder-logo.png) so the
 # map still gets favicons, an installable PWA icon, and an on-page brand mark.
 
-# Additional logos (config-folder-relative). Secondary brand images - e.g. an
+# Additional logos (config-folder-relative). Secondary brand images - eg: an
 # event logo plus one or more sponsor logos - stacked vertically UNDER the
 # primary logo: in the top-left brand mark. Rendered top-to-bottom in the order
 # listed, a touch smaller than the primary. These are DISPLAY-ONLY: the primary

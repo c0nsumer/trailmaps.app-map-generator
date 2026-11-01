@@ -150,14 +150,14 @@ separate private orchestrator that drives this engine as a CLI tool.
    `build_and_deploy.sh` wrapper expects; the engine itself only requires the
    slug to be `[a-z0-9_-]+`. Copy
    [`configs/reference/reference-minimal.yaml`](configs/reference/reference-minimal.yaml)
-   into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, `title`, and a
-   geometry source. The geometry source is usually `relations:`, a non-empty
+   into it as `configs/<slug>/<slug>.yaml`. Set `name`, `slug`, and a
+   geometry source. Set `title` only if the derived "{name} Map" is wrong. The geometry source is usually `relations:`, a non-empty
    list of OSM relation IDs. Each entry may be a leaf route relation or a
    super-relation. A route-only or event map can use `custom_routes` /
    `event_mode.routes` instead. Uncomment and adjust any other keys you want
    to customize.
 3. Drop your `logo.<ext>` and `icon.<ext>` source files into the same
-   `configs/<slug>/` folder and reference them by bare filename (e.g.
+   `configs/<slug>/` folder and reference them by bare filename (eg:
    `logo: logo.webp`, `icon: icon.png`). Either key alone is fine; the framework
    uses one as a fallback for the other. The exception is SVG logos: they
    can't be rasterized into icons, so in that case set `icon:` to a PNG/WebP.
@@ -181,7 +181,7 @@ is useful to copy to start a new map.
 | [`docs/building.md`](docs/building.md) | Build pipeline: prerequisites, CLI flags, the `build_and_deploy.sh` and `clean_config.py` helpers, the data cache, local `.osm` file support, vendor bundling, font trimming, and the project layout. |
 | [`docs/deployment.md`](docs/deployment.md) | Hosting the output: Caddy config, service worker update cadence, PWA install behavior by platform, PMTiles Range requests, Open Graph share previews. |
 | [`docs/event-mode.md`](docs/event-mode.md) | Event-specific maps (races, group rides). Feature one or more routes prominently while every other trail renders as muted context. POIs unchanged. |
-| [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
+| [`docs/osm-mapping.md`](docs/osm-mapping.md) | Mapping and tagging trail systems in OpenStreetMap: the standard tags this renderer reads (route relation `name` / `colour` / `ref`, way-level `mtb:scale:imba` / `mtb:scale:itrs:*` / `oneway`, POI categories), why "tagging for the renderer" is the wrong frame, and practical advice for trail-system mappers. |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common build and runtime issues, and known cosmetic upstream warnings. |
 
 ## Privacy
@@ -199,16 +199,18 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.poi.<kind>`: one boolean per POI category (parking, trailheads, hubs,
   features, markers, toilets, drinking_water, bicycle_repair_stations)
 - `mtb.labels`: "routes", "trails", or "none"
-- `mtb.difficulty`: boolean (IMBA difficulty symbols)
+- `mtb.difficulty`: boolean (difficulty symbols, IMBA or ITRS)
+- `mtb.colorAspect`: "difficulty" or "exposure" (what difficulty-mode lines
+  color by on an ITRS map)
 - `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.currentTrail`: boolean (current-trail glow and chip while Locate is on)
 - `mtb.colorScheme`: "light", "dark", or "auto"
 - `mtb.fabsLabeled`: boolean (text labels on the on-map buttons)
-- `mtb.routePanelExpanded`: boolean (key panel expanded/collapsed)
+- `mtb.routePanelExpanded`: boolean (routes panel expanded/collapsed)
 - `mtb.welcomed`: boolean (welcome modal dismissal)
 - `mtb.units`: "mi" or "km"
 - `mtb.savedView`: the last map view (center and zoom, plus the selected
-  route, point, or tapped spot if any), kept for six hours so a relaunched
+  route, rating, point, trail, or tapped spot if any), kept for six hours so a relaunched
   map opens where it was left
 
 The app also writes one flag to `sessionStorage`, which is scoped to one tab. It is the "Map updated" toast flag. The app removes it as soon as it reads it.

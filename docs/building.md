@@ -612,7 +612,7 @@ small subset of these.
 The build pipeline trims fonts automatically. It scans the basemap
 tiles, trail data, and POI data for every text character that
 actually appears. It then copies only the PBF glyph ranges containing
-those characters. Script-specific font faces (e.g. Devanagari) are
+those characters. Script-specific font faces (eg: Devanagari) are
 included only when the map data contains characters from that
 script.
 

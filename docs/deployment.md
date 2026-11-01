@@ -257,7 +257,9 @@ that consumes OG tags, the preview card shows:
 - The map title.
 - The map's icon (one of the generated PWA icons).
 - A short description (the `welcome.body` first paragraph, trimmed to a
-  sensible length, or a sober default).
+  sensible length, or the map title when there is no `welcome.body`).
 
 No separate config gate is needed; the meta tags are inert until something
 fetches the URL.
+
+The Share link and QR code use the page's `og:url` tag as their base address when it exists. Without it, they use the address the page was loaded from.

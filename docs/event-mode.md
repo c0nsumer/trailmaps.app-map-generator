@@ -256,7 +256,7 @@ Effect:
   The arrow renderer then skips them. Without this, an event map sitting on top
   of a trail system with OSM oneway flow trails would clutter with arrows on
   every flow segment. Those arrows would drown out the event-route arrows that
-  actually matter. The build log shows e.g.
+  actually matter. The build log shows eg:
   `Event mode: stripped oneway from 32 non-featured feature(s) ...` to make the
   behavior visible.
 
@@ -264,7 +264,7 @@ The arrows follow the order of coordinates in your GeoJSON LineString. If the
 arrows point the wrong way, reverse the coord array. A tool like geojson.io's
 "reverse direction" action works too.
 
-For per-route control (e.g. one inline route is one-way, another is two-way),
+For per-route control (eg: one inline route is one-way, another is two-way),
 set `oneway` directly on each route entry:
 
 ```yaml
@@ -642,7 +642,7 @@ Difficulty row in Options, whatever `show_difficulty` and `default_visible`
 say. The symbols sit on OSM ways, which span every background route, so they
 cannot be limited to the course.
 
-If you want to suppress UI affordances that don't fit your event map (e.g. the
+If you want to suppress UI affordances that don't fit your event map (eg: the
 Season toggle), use the existing per-key knobs:
 
 - Omit `winter_relations` / `summer_relations` / `emergency_access_relations` to
