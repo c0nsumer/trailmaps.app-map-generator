@@ -1666,16 +1666,28 @@ body::after {
  * with light tag icon (mirrors how labels render on a dark
  * basemap - light text on dark halo). The chip doubles as a
  * tiny "label color sample" in either mode. */
-.label-swatch,
-.color-aspect-swatch {
+.label-swatch {
     background: #fff;
     color: #5d6d7e;
 }
 
-[data-color-scheme="dark"] .label-swatch,
-[data-color-scheme="dark"] .color-aspect-swatch {
+[data-color-scheme="dark"] .label-swatch {
     background: var(--input-bg);
     color: var(--sheet-text);
+}
+
+/* The Color trails by swatch is the Difficulty swatch's twin: a white
+ * chip with a black mark in both schemes, a diamond or the exposure
+ * pictogram as app.js swaps them with the active aspect. The SVG's
+ * 96-unit window at 21 px puts the diamond at 19 px tip to tip, the
+ * CSS diamond's size above it. */
+.color-aspect-swatch {
+    background: #fff;
+    color: #111;
+}
+.color-aspect-swatch svg {
+    width: 21px;
+    height: 21px;
 }
 
 /* Toilets - neutral slate to read as "facility" without competing

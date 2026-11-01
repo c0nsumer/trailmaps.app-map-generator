@@ -1024,6 +1024,13 @@ const ITRS_SHAPE_PATHS = {
 // the IMBA diamond's 18 px (at a 24 px glyph) keeps the two scales'
 // symbols one size, so plates, footprints, and key rows fit both.
 const ITRS_DIAMOND_SPAN = 118.52 - 31.48;
+// The exposure pictogram stands 95.6 units tall in that box, taller
+// than the diamond and well above the square's and triangle's 78, so
+// beside a technical glyph it towered (Steve, 2026-Nov-01). It draws
+// scaled to the diamond's height instead, about its own center; the
+// outline is unchanged, only its size.
+const ITRS_EXPOSURE_HEIGHT = 122.85 - 27.21;
+const ITRS_SHAPE_FIT = { exposure: ITRS_DIAMOND_SPAN / ITRS_EXPOSURE_HEIGHT };
 const _itrsPathCache = {};
 
 function itrsShapePath(shape) {
@@ -1044,7 +1051,7 @@ function itrsShapePath(shape) {
 // line color and basemap), then the fill, and no darker inner border,
 // which ITRS's own graphics do not have.
 function drawFlatShape(ctx, size, rating) {
-    const k = (size - 6) / ITRS_DIAMOND_SPAN;
+    const k = (size - 6) / ITRS_DIAMOND_SPAN * (ITRS_SHAPE_FIT[rating.shape] || 1);
     const path = itrsShapePath(rating.shape);
     ctx.save();
     ctx.translate(size / 2, size / 2);
@@ -1291,11 +1298,30 @@ const PLATE_MARGIN = PLATE_SHADOW_BLUR + PLATE_SHADOW_Y;
 // way's plate is that yellow; the glyph and its halo stay as they are.
 const BIKE_ONLY_PLATE_FILL = "#ffeb33";
 
+// The ITRS two-mark plate: a technical glyph and the exposure
+// pictogram in two 24 px cells with a gap between, at the square
+// plate's height and corner radius, so it reads as that plate made
+// wider. It was the freeride pill's shape first, and on the device the
+// pill read as a different marker (2026-Nov-01). The gap keeps the
+// two halos apart: each shape's halo reaches 2 px past its cell's 3 px
+// margin.
+const PAIR_GAP = 4;
+const PAIR_ICON_W = 2 * RATING_ICON_SIZE + PAIR_GAP;
+const PAIR_ICON_H = RATING_ICON_SIZE;
+// The glyph box each plate shape carries.
+const PLATE_BOXES = {
+    square: [RATING_ICON_SIZE, RATING_ICON_SIZE],
+    pill: [FREERIDE_ICON_W, FREERIDE_ICON_H],
+    pair: [PAIR_ICON_W, PAIR_ICON_H],
+};
+
 // `drawInner` paints the symbol in plate coordinates, at the plate's
-// inner corner. A wide plate is the freeride pill's shape and size.
-function platedCanvas(wide, drawInner, fill = PLATE_FILL) {
-    const pw = (wide ? FREERIDE_ICON_W : RATING_ICON_SIZE) + 2 * PLATE_PAD;
-    const ph = (wide ? FREERIDE_ICON_H : RATING_ICON_SIZE) + 2 * PLATE_PAD;
+// inner corner. `shape` is a PLATE_BOXES key: the pill is the freeride
+// marker's own shape, the other two share the square plate's corners.
+function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
+    const [bw, bh] = PLATE_BOXES[shape];
+    const pw = bw + 2 * PLATE_PAD;
+    const ph = bh + 2 * PLATE_PAD;
     const m = PLATE_MARGIN;
     return glyphCanvas(pw + 2 * m, ph + 2 * m, (ctx) => {
         ctx.save();
@@ -1305,7 +1331,7 @@ function platedCanvas(wide, drawInner, fill = PLATE_FILL) {
         ctx.shadowBlur = PLATE_SHADOW_BLUR * GLYPH_PIXEL_RATIO;
         ctx.shadowOffsetY = PLATE_SHADOW_Y * GLYPH_PIXEL_RATIO;
         ctx.beginPath();
-        ctx.roundRect(m, m, pw, ph, wide ? ph / 2 : PLATE_RADIUS);
+        ctx.roundRect(m, m, pw, ph, shape === "pill" ? ph / 2 : PLATE_RADIUS);
         ctx.fillStyle = fill;
         ctx.fill();
         ctx.restore();
@@ -1315,14 +1341,11 @@ function platedCanvas(wide, drawInner, fill = PLATE_FILL) {
 }
 
 // An ITRS technical glyph and exposure pictogram side by side in the
-// wide box, each centered on one of the pill's end caps so neither
-// crowds the rounded edge. Technical first, as a rider reads them.
+// pair box, one per cell. Technical first, as a rider reads them.
 function drawSymbolPair(ctx, tech, expo) {
-    const inset = FREERIDE_ICON_H / 2 - RATING_ICON_SIZE / 2;
-    const y = (FREERIDE_ICON_H - RATING_ICON_SIZE) / 2;
-    for (const [def, x] of [[tech, inset], [expo, FREERIDE_ICON_W - inset - RATING_ICON_SIZE]]) {
+    for (const [def, x] of [[tech, 0], [expo, PAIR_ICON_W - RATING_ICON_SIZE]]) {
         ctx.save();
-        ctx.translate(x, y);
+        ctx.translate(x, 0);
         drawDifficultyShape(ctx, RATING_ICON_SIZE, def);
         ctx.restore();
     }
@@ -1332,9 +1355,9 @@ function drawSymbolPair(ctx, tech, expo) {
 function platedSymbolCanvas(sym) {
     const { tech, freeride, expo, bikeOnly } = symbolParts(sym);
     const fill = bikeOnly ? BIKE_ONLY_PLATE_FILL : PLATE_FILL;
-    if (freeride) return platedCanvas(true, (ctx) => drawFreerideOval(ctx, tech));
-    if (tech && expo) return platedCanvas(true, (ctx) => drawSymbolPair(ctx, tech, expo), fill);
-    return platedCanvas(false,
+    if (freeride) return platedCanvas("pill", (ctx) => drawFreerideOval(ctx, tech));
+    if (tech && expo) return platedCanvas("pair", (ctx) => drawSymbolPair(ctx, tech, expo), fill);
+    return platedCanvas("square",
         (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, tech || expo), fill);
 }
 
@@ -1343,7 +1366,7 @@ function platedSymbolCanvas(sym) {
 function symbolCanvas(sym) {
     const { tech, freeride, expo } = symbolParts(sym);
     if (tech && expo) {
-        return glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
+        return glyphCanvas(PAIR_ICON_W, PAIR_ICON_H,
             (ctx) => drawSymbolPair(ctx, tech, expo));
     }
     return ratingCanvas(tech || expo, freeride);
@@ -1788,11 +1811,13 @@ function buildDifficultyKey() {
             strip.lastChild.classList.add("is-long");
         }
     }
-    // ITRS: what the yellow plate means, once, on its own line.
+    // ITRS: what the yellow plate means, once, on its own line. The
+    // plate is the entry's mark, as the bare pill is the Freeride
+    // entry's, so the name does not call it yellow: the tap lift is
+    // yellow too, and naming the color invited reading one as the other.
     if (strip.children.length && !SCHEME.freeride && CONFIG.hasBikeOnlyTrails) {
         addBreak();
-        addItem(bikeOnlySwatchDataUrl(), "Yellow plate: bike-only trail", false);
-        strip.lastChild.classList.add("is-long");
+        addItem(bikeOnlySwatchDataUrl(), "Bike-only trail", false);
     }
     if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
         addBreak();
@@ -1992,6 +2017,8 @@ const DECOR_RADIUS_M = {
     // short skills line that leaves one pill where the per-way pass
     // would place two, which reads better than two overlapping ones.
     diamond_freeride: Math.round(35 * FREERIDE_ICON_W / RATING_ICON_SIZE),
+    // The ITRS two-mark plate (PAIR_ICON_W), by the same rule.
+    diamond_pair: Math.round(35 * PAIR_ICON_W / RATING_ICON_SIZE),
     obstacle: 30,  // POI / parking / trailhead / feature markers
     // Cap on an overview label's clear disc, which scales with the
     // name's length (emitOverviewLabel). The largest radius placed, so
@@ -2478,11 +2505,12 @@ function diamondProps(way) {
     };
 }
 
-// A way's difficulty marker footprint: a wide plate (the freeride pill,
-// or an ITRS glyph beside its exposure pictogram) is wider than the
-// square glyph (DECOR_RADIUS_M.diamond_freeride).
+// A way's difficulty marker footprint: a wide plate (the freeride pill
+// on an IMBA map, the two-mark plate on an ITRS map) is wider than the
+// square glyph.
 function diamondRadius(way) {
-    return way.wide ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
+    if (!way.wide) return DECOR_RADIUS_M.diamond;
+    return SCHEME.freeride ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond_pair;
 }
 
 // Build the full decoration FeatureCollection for the current visible
@@ -6487,12 +6515,34 @@ function edgeLengthMeters(edge) {
     return lineLengthMeters(coords);
 }
 
-// The edges of one name's connected run through `graph` that holds
-// edgeId, stepping through nodes onto edges with the same trail_name.
-// The graph splits a way wherever its lanes or uniform facts change, so
-// one named stretch is often several edges; a shared way is one edge
-// whatever its lanes, so a sum over the set counts each way once.
-function sameNameEdges(graph, edgeId, name) {
+// The way facts a tap popup reads off its edge besides the name: the
+// one-way flag and the rating facts, each kept uniform along a graph
+// edge. A tap's section (trailSection) ends where one of them changes,
+// so the lit stretch is exactly what the popup describes. Before this
+// the section was the whole connected name: Early Riser at Copper
+// Harbor lit end to end while the popup named the tapped stretch's
+// rating, which changes every few hundred meters along it, so the
+// rating read as the whole glow's (2026-Nov-01; Zueg's at NTN
+// Marquette the same under IMBA).
+const SECTION_FACT_PROPS = ["oneway", ...SCHEME_WAY_PROPS];
+
+function sectionFacts(props) {
+    return JSON.stringify(SECTION_FACT_PROPS.map((f) => {
+        const v = props[f];
+        return v === undefined || v === null ? "" : v;
+    }));
+}
+
+// The edges of one connected run through `graph` that holds edgeId,
+// stepping through nodes onto edges with the same trail_name and, with
+// `facts`, the same SECTION_FACT_PROPS. The graph splits a way wherever
+// its lanes or uniform facts change, so one named stretch is often
+// several edges; a shared way is one edge whatever its lanes, so a sum
+// over the set counts each way once.
+function sectionEdges(graph, edgeId, facts) {
+    const startProps = graph.edges[edgeId].properties || {};
+    const name = startProps.trail_name || "";
+    const startFacts = facts ? sectionFacts(startProps) : null;
     const edges = new Set([edgeId]);
     const stack = [edgeId];
     while (stack.length) {
@@ -6502,6 +6552,7 @@ function sameNameEdges(graph, edgeId, name) {
                 if (edges.has(p.edge)) continue;
                 const props = graph.edges[p.edge].properties || {};
                 if ((props.trail_name || "") !== name) continue;
+                if (facts && sectionFacts(props) !== startFacts) continue;
                 edges.add(p.edge);
                 stack.push(p.edge);
             }
@@ -6512,13 +6563,17 @@ function sameNameEdges(graph, edgeId, name) {
 
 // The contiguous section of the named trail under a tap: what the tap
 // popup measures and its lift lights. A name can run in stretches that
-// never meet (DRvG's Casey Road), and the rider touched one of them.
-// Null for an unnamed edge or a missing graph.
-function trailSection(edgeId, graph = laneGraph) {
+// never meet (DRvG's Casey Road), and the rider touched one of them;
+// and a rating or the one-way flag can change mid-name, which the
+// popup reports for the tapped edge alone, so the section stops there
+// too (SECTION_FACT_PROPS). `facts: false` walks the whole connected
+// name instead, for the on-trail glow, whose chip names the trail and
+// nothing else. Null for an unnamed edge or a missing graph.
+function trailSection(edgeId, graph = laneGraph, { facts = true } = {}) {
     const start = graph && graph.edges[edgeId];
     const name = start ? ((start.properties || {}).trail_name || "") : "";
     if (!name) return null;
-    const edges = sameNameEdges(graph, edgeId, name);
+    const edges = sectionEdges(graph, edgeId, facts);
     let lengthM = 0;
     for (const id of edges) lengthM += edgeLengthMeters(graph.edges[id]);
     return { name, edges, lengthM };
@@ -10028,7 +10083,7 @@ function syncHereLift(relayout = false) {
             return;
         }
         if (edge >= 0) {
-            const section = trailSection(edge);
+            const section = trailSection(edge, laneGraph, { facts: false });
             next = {
                 name: _onTrail.name,
                 ids: section ? section.edges : new Set([edge]),
@@ -12579,10 +12634,27 @@ function setupFloatingChrome() {
     if (aspectField && aspectGroup && colorAspectOffered()) {
         aspectField.classList.remove("hidden");
         const buttons = Array.from(aspectGroup.querySelectorAll(".opt-segmented-btn"));
+        // The swatch shows the active aspect's mark, as the Season
+        // swatch shows a sun or a snowflake: the Difficulty row's black
+        // diamond, or the exposure pictogram in the same black. Both
+        // are the ITRS outlines in a 96-unit window on their 150 box,
+        // which puts the diamond at the CSS diamond's 19 px tip to tip
+        // at the 21 px the stylesheet gives the SVG.
+        const aspectSwatch = aspectField.querySelector(".color-aspect-swatch");
+        const swatchSvg = (shape) => {
+            // The same height fit the map glyph uses (ITRS_SHAPE_FIT):
+            // a wider window shows the pictogram smaller.
+            const w = 96 / (ITRS_SHAPE_FIT[shape] || 1);
+            const o = 75 - w / 2;
+            return `<svg viewBox="${o} ${o} ${w} ${w}" fill="currentColor" aria-hidden="true"><path d="${ITRS_SHAPE_PATHS[shape]}"/></svg>`;
+        };
         const syncPressed = () => {
             for (const b of buttons) {
                 b.setAttribute("aria-checked",
                     b.dataset.value === colorAspect ? "true" : "false");
+            }
+            if (aspectSwatch) {
+                aspectSwatch.innerHTML = swatchSvg(colorAspect === "exposure" ? "exposure" : "diamond");
             }
         };
         syncPressed();
@@ -13721,6 +13793,26 @@ function trailPopupHtml(laneHit, scope = "section") {
         const distanceText = formatDistance(section.lengthM);
         const lengthLabel = isTruncatedSection(section) ? "Length shown:" : "Length:";
         html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
+        // The name's whole visible length under its own row when the
+        // lit section is only part of it: a section ends at every
+        // rating change (SECTION_FACT_PROPS), so a tap on Early Riser
+        // measures one stretch, and "how long is Early Riser" is the
+        // commoner question at a tap. The number is the finder row's
+        // (trailEntry, every stretch of the name, deduped by way), so
+        // the two agree. The Length row keeps its name and its number:
+        // the glow is what it covers. The row is left out when the
+        // two measure the same stretch; the section is measured along
+        // the graph's centerlines and the trail along its features,
+        // so "the same" allows a few meters of rounding between them
+        // and also asks that the two texts differ.
+        const whole = trailEntry(trailName);
+        if (whole && whole.lengthM - section.lengthM > Math.max(5, whole.lengthM * 0.01)) {
+            const wholeText = formatDistance(whole.lengthM);
+            if (wholeText !== distanceText) {
+                const wholeLabel = isTruncatedTrail(trailName) ? "Whole trail shown:" : "Whole trail:";
+                html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${wholeLabel}</span><span>${escapeHtml(wholeText)}</span></div>`;
+            }
+        }
     } else if (trailName && CONFIG.showDistance) {
         // A finder pick or a /t/ link (scope "trail"), or a hit with
         // no edge to walk from: the trail's whole visible length,

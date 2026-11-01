@@ -568,7 +568,11 @@ This example is a routes map. Difficulty-mode relations differ as described in
   lifts the trail off the map. The finder lists each name once, so a finder
   pick lifts and measures every stretch of that name. A tap on the map is
   narrower: it lifts and measures only the contiguous section of the named
-  road or trail under the tap. The glow shows what the popup's length covers.
+  road or trail under the tap. A section also ends where the rating or the
+  one-way flag changes, so the glow covers exactly what the popup's rows
+  describe. The glow shows what the popup's length covers. If the name runs
+  on past the lit section, a second row, "Whole trail:", gives the name's
+  whole visible length, the finder row's number.
   The row reads "Length shown:" if the map edge cuts that section. The popup closes on the
   next tap elsewhere. A trail pick clears any highlighted route or place first.
 - **One thing at a time.** Picking a new route, trail or place replaces the
@@ -677,9 +681,9 @@ ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
 A way counts as bike-only when `bicycle` is `yes`, `designated`, or
 `permissive`, `foot=no` is tagged, and `horse` is none of those three values.
 An absent `horse` tag counts as not allowed. A way with no access tags keeps the white
-plate. When any way qualifies, the key strip adds "Yellow plate: bike-only
-trail", and the tap popup has an **Access: Bike only** row. IMBA maps never
-paint a plate yellow.
+plate. When any way qualifies, the key strip adds a "Bike-only trail" entry
+marked with the yellow plate, and the tap popup has an **Access: Bike only**
+row. IMBA maps never paint a plate yellow.
 
 There is no freeride oval on an ITRS map, because ITRS has no freeride
 marker. A way's `mtb:type` changes nothing there.
@@ -689,9 +693,10 @@ are ignored, as described under
 [Difficulty is a way-level tag](#difficulty-is-a-way-level-tag).
 
 On an ITRS map with a difficulty-mode relation and exposure data, the Options
-overlay shows a **Color** row with two choices: **Difficulty** and
+overlay shows a **Color trails by** row with two choices: **Difficulty** and
 **Exposure**. It starts on Difficulty. Exposure colors the trail lines by
-exposure level, and the key card is titled **Exposure** while that choice is
+exposure level, the row's swatch changes from the diamond to the exposure
+pictogram, and the key card is titled **Exposure** while that choice is
 active. The choice is stored per map (`mtb.colorAspect`). A map without
 exposure data, or without a difficulty-mode relation, does not show the row.
 
@@ -709,7 +714,7 @@ Each relation, and each custom route, draws in one of two color modes.
 - **Difficulty mode** colors ways by their own rating on the map's
   `difficulty_scale`. An unrated way takes the `default_trail_color` look.
   On an ITRS map, the rider can switch the colors from difficulty to exposure
-  with the Options **Color** row. See [ITRS ratings](#itrs-ratings).
+  with the Options **Color trails by** row. See [ITRS ratings](#itrs-ratings).
 
 `color_by` sets the default mode for every relation. `color_by_route` and
 `color_by_difficulty` list the exceptions. Both lists take relation IDs,
