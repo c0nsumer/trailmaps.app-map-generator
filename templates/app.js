@@ -2217,11 +2217,12 @@ function clipCoordsAroundObstacles(coords, obstaclesIndex, radius) {
 // read.
 let _canonicalWays = null;  // { key, ways }
 
-// The relations a trails feature belongs to, its own route_id when it
-// carries no shared_routes list. One spelling for every reader, so the
-// fallback cannot drift between them.
+// The relations a trails feature belongs to. Every feature carries the
+// list: the fetch writes it for every way (fetch_trails.py, the feature
+// writer) and enrichment writes [id] for a custom route's ways, so no
+// fallback to route_id is needed. One name for every reader.
 function wayParents(props) {
-    return props.shared_routes || [props.route_id];
+    return props.shared_routes;
 }
 
 function collectCanonicalWays() {
@@ -4983,38 +4984,45 @@ async function init() {
             // panel's discovery label only mounts when the panel booted
             // collapsed, so the collapsed class must be settled first.
             initRoutePanel();
+            setupInteractions();
+            // The map is usable from here. What follows is finish: a
+            // throw in it is logged, not fatal, so a cosmetic step or a
+            // stale share link cannot replace a working map with the
+            // unavailable card.
+            const finish = (what, fn) => {
+                try {
+                    fn();
+                } catch (e) {
+                    console.error(`boot: ${what} failed`, e);
+                }
+            };
             // First-visit-per-map FAB-label discoverability cue. Mounts
             // labels under each FAB, dismisses on tap or 15 s timeout.
             // Self-suppresses on subsequent visits via LS flag. Must
             // run after setupFloatingChrome so the FABs' main click
             // handlers are wired (our dismiss listener piggybacks).
-            setupFabLabels();
-            setupInteractions();
-            promoteBasemapLabels();
-            suppressBasemapPois();
-            suppressBasemapOnewayArrows();
-            applyBasemapDrawnPathFilter();
+            finish("FAB labels", setupFabLabels);
+            finish("basemap label order", promoteBasemapLabels);
+            finish("basemap POI suppression", suppressBasemapPois);
+            finish("basemap arrow suppression", suppressBasemapOnewayArrows);
+            finish("basemap drawn-path filter", applyBasemapDrawnPathFilter);
             // Apply share-link highlight, if any. Done here (after both
             // trails and route/trail indexes are built) so we can resolve
             // route IDs / trail names against real data. Best-effort,
             // silently skip if the referenced route or trail no longer
             // exists (e.g. the map has been rebuilt since the link was
             // shared and the relation changed).
-            if (_pendingShareHighlight) {
-                applyPendingShareHighlight();
-            }
-            // A shared view opens without a camera move, so no moveend
-            // stores it, and a reload that fires no hide event first
-            // (see the saved-view notes above saveView) would drop the
-            // rider at the default fit, without the highlight they were
-            // sent. Store it once now. A /t/ link's popup waits for the
-            // camera (showTrail), with no trail to store until it opens,
-            // so that case stores again on an arrival armed after the
-            // popup's, which therefore runs after it.
-            if (shareState) {
-                saveView();
-                if (_trailPopupCancel) onCameraArrival(saveView);
-            }
+            finish("share link", () => {
+                if (_pendingShareHighlight) applyPendingShareHighlight();
+                // A shared view opens without a camera move, so no
+                // moveend stores it, and a reload that fires no hide
+                // event first (see the saved-view notes above saveView)
+                // would drop the rider at the default fit, without the
+                // highlight they were sent. Store it once now. A /t/
+                // link's popup waits for the camera (showTrail), which
+                // stores again once it opens.
+                if (shareState) saveView();
+            });
 
             // Hide the initial-load progress bar once the opening viewport is
             // painted. When this map has terrain we can't use the first global
@@ -5964,9 +5972,10 @@ function vectorBasemapSource() {
 // by contour ink. Contour LABELS are symbols and stay up with the
 // other labels. Should a flavor ever ship without a water layer,
 // terrain falls back to sitting under the first symbol layer.
+// The layer order by id, without serializing the whole style the way
+// getStyle() does on every call.
 function firstSymbolLayerId() {
-    const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol");
-    return firstSymbol ? firstSymbol.id : undefined;
+    return map.getLayersOrder().find((id) => map.getLayer(id).type === "symbol");
 }
 
 function terrainBeforeLayer() {
@@ -8982,6 +8991,9 @@ function showTrail(trailName) {
     _trailPopupCancel = onCameraArrival(() => {
         cancelPendingTrailPopup();
         openTrailPopupOnRun(trailName, run);
+        // The fit's moveend stored the view before the popup existed,
+        // with no trail in it; store again now that there is one.
+        saveView();
     });
 }
 
@@ -12033,7 +12045,9 @@ function setupFloatingChrome() {
         // highlight: the first Escape closes the popup (and its lift)
         // and leaves any highlight/wash alone; a second Escape then
         // falls through to clear that highlight as before.
-        if (_trailPopup) {
+        // A finder pick's popup still waiting for the camera counts:
+        // Escape during the fly cancels it rather than letting it land.
+        if (_trailPopup || _trailPopupCancel) {
             closeTrailPopup();
             return;
         }
@@ -13597,6 +13611,12 @@ function setupInteractions() {
     let userMotion = false;
     let pressStoppedGlide = false;
     map.on("movestart", (e) => { userMotion = !!e.originalEvent; });
+    // A gesture that begins while a code ease is already moving the map
+    // (a Locate follow, a finder fit) fires no new movestart, so the
+    // gesture's own start events claim the motion for the rider.
+    for (const ev of ["dragstart", "zoomstart", "rotatestart", "pitchstart"]) {
+        map.on(ev, (e) => { if (e.originalEvent) userMotion = true; });
+    }
     map.getContainer().addEventListener("pointerdown", () => {
         pressStoppedGlide = userMotion && map.isMoving();
     }, { capture: true });
@@ -13961,10 +13981,13 @@ function promoteBasemapLabels() {
 // labels up from there.
 function placeContourLabels(basemapSymbolIds) {
     if (!map.getLayer("contour-labels")) return;
-    const ids = basemapSymbolIds || map.getStyle().layers
-        .filter((l) => l.source === "basemap" && l.type === "symbol")
-        .map((l) => l.id);
-    if (ids.length) map.moveLayer("contour-labels", ids[0]);
+    const first = basemapSymbolIds
+        ? basemapSymbolIds[0]
+        : map.getLayersOrder().find((id) => {
+            const l = map.getLayer(id);
+            return l.source === "basemap" && l.type === "symbol";
+        });
+    if (first) map.moveLayer("contour-labels", first);
 }
 
 // The continuation arrows sit above the lanes and the wash, under the

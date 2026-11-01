@@ -47,6 +47,13 @@ def logo_output_filename(source_path):
 _PIL_READABLE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif"}
 
 
+def is_pil_readable(path):
+    """Whether Pillow can open this file, by extension. One answer for the
+    icon fallback and the accent pick, so neither hands Pillow an SVG or
+    a PDF the other would have refused."""
+    return os.path.splitext(path)[1].lower() in _PIL_READABLE_EXTS
+
+
 def resolve_icon_source(config):
     """Return the resolved icon source path, or "" if none exists.
 
@@ -72,8 +79,7 @@ def resolve_icon_source(config):
         return icon_path
     logo_path = config.get("logo", "")
     if logo_path:
-        ext = os.path.splitext(logo_path)[1].lower()
-        if ext in _PIL_READABLE_EXTS and os.path.isfile(logo_path):
+        if is_pil_readable(logo_path) and os.path.isfile(logo_path):
             return logo_path
     return ""
 

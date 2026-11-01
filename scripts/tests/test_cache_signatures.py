@@ -74,7 +74,7 @@ def test_unchanged_config_and_file_reuse_the_cache(built):
 def test_changed_relations_trigger_a_refetch(built):
     needs, reason = _trails_needs_refetch(built, dict(CONFIG, relations=[1, 2, 3, 4]))
     assert needs
-    assert "fetch inputs or base format changed" in reason
+    assert "fetch inputs changed" in reason
 
 
 def test_styling_edit_does_not_trigger_a_refetch(built):
@@ -118,10 +118,13 @@ def test_missing_sidecar_triggers_a_refetch(tmp_path):
 
 
 def test_sidecar_without_a_content_line_is_trusted(tmp_path):
+    import cache_signatures
+
     path = str(tmp_path / "trails.src.geojson")
     with open(path, "w", encoding="utf-8") as f:
         f.write("{}")
-    _save_signature(path, _trails_fetch_fingerprint(CONFIG))
+    _save_signature(path, _trails_fetch_fingerprint(CONFIG)
+                    + f"\ntrails-format={cache_signatures.TRAILS_BASE_FORMAT}")
     assert _trails_needs_refetch(path, CONFIG) == (False, None)
 
 

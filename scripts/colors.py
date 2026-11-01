@@ -13,7 +13,7 @@ import os
 
 import cache_manifest
 import console
-from logo import resolve_logo_source
+from logo import is_pil_readable, resolve_logo_source
 
 
 def _relative_luminance(rgb):
@@ -292,13 +292,12 @@ def _derive_accent_cached(config, cache_dir):
     # "auto" earns a warning when it cannot derive a color.
     explicit = config.get("accent_color") == "auto"
     source = resolve_logo_source(config)
-    if source.lower().endswith(".svg"):
-        # Pillow can't read SVG, so an SVG brand mark hands the pick to
-        # a raster icon: the accent derives from pixels, not the mark.
+    if source and not is_pil_readable(source):
+        # Pillow can't read an SVG or PDF brand mark, so it hands the
+        # pick to a raster icon: the accent derives from pixels, not
+        # the mark.
         icon_p = config.get("icon") or ""
-        raster_icon = (
-            icon_p and os.path.isfile(icon_p) and not icon_p.lower().endswith(".svg")
-        )
+        raster_icon = icon_p and os.path.isfile(icon_p) and is_pil_readable(icon_p)
         source = icon_p if raster_icon else ""
     if not source:
         if not explicit:

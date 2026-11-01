@@ -503,12 +503,14 @@ OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
 [Build options](#build-options) explains each flag.
 
 The trails base (the merged ways before enrichment) carries a format number,
-`TRAILS_BASE_FORMAT`, which is 6 now. Version 4 added the ITRS rating fields.
+`TRAILS_BASE_FORMAT`, which is 7 now. Version 4 added the ITRS rating fields.
 Version 5 added `bike_only` and limited all three to ITRS maps. Version 6
 took `direction_schedule` out of the trails fingerprint, since the fetch never
-reads it. A build that finds an older base re-derives it from the cached
-Overpass data, so a format bump needs no refetch. That re-derive leaves the
-OSM diff report alone, so the report still describes the last real refresh.
+reads it. Version 7 moved the format number out of the fingerprint and onto
+its own line of the `trails.src.geojson.sig` sidecar. A build that finds an
+older base re-derives it from the cached Overpass data, so a format bump needs
+no refetch. That re-derive leaves the OSM diff report alone, so the report
+still describes the last real refresh.
 
 The map's `difficulty_scale` is part of the trails fingerprint. If you flip it
 between `imba` and `itrs`, the next build re-derives the trails base offline
