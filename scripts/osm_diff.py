@@ -65,11 +65,13 @@ _MAX_INLINE_NAMES = 6
 _ROUTE_FIELDS = ("name", "colour", "ref", "seasonal")
 # Way-level tag fields, mapped to the label used in output.
 # "freeride" tracks only whether mtb:type names freeride (the one value the
-# map draws), so a change reports as "" <-> "freeride".
+# map draws), so a change reports as "" <-> "freeride". "bike_only" likewise
+# tracks the one access combination an ITRS map paints yellow, "" <-> "bike-only".
 _WAY_TAG_FIELDS = (("imba", "mtb:scale:imba"),
                    ("itrs_difficulty", "mtb:scale:itrs:technical_difficulty"),
                    ("itrs_exposure", "mtb:scale:itrs:exposure"),
-                   ("freeride", "mtb:type"), ("oneway", "oneway"))
+                   ("freeride", "mtb:type"), ("bike_only", "bicycle/foot/horse"),
+                   ("oneway", "oneway"))
 
 
 def _feature_length_m(feature):
@@ -203,11 +205,13 @@ def _index_snapshot(snap):
                          else "freeride" if props["freeride"] is True else ""),
             "oneway": str(props.get("oneway") or "").strip(),
         }
-        # Same rule for the ITRS ratings (TRAILS_BASE_FORMAT 4).
+        # Same rule for the ITRS ratings and bike-only (TRAILS_BASE_FORMAT 4).
         for field, prop in (("itrs_difficulty", "itrs_difficulty"),
                             ("itrs_exposure", "itrs_exposure")):
             tags[field] = (None if prop not in props
                            else str(props[prop] or "").strip())
+        tags["bike_only"] = (None if "bike_only" not in props
+                             else "bike-only" if props["bike_only"] is True else "")
 
         direction = _direction(f) if tags["oneway"] else None
         for wid in way_ids:

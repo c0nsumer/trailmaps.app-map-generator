@@ -665,7 +665,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #   - on `difficulty_scale: itrs` the scan reads the ITRS keys instead:
     #     difficultyRatings from itrs_difficulty, exposureRatings from
     #     itrs_exposure, freerideRatings empty (no freeride pill on ITRS
-    #     maps). An IMBA-only way contributes nothing there.
+    #     maps). An IMBA-only way contributes nothing there. hasBikeOnlyTrails
+    #     says whether any way gets the ITRS yellow (bike-only) plate, so the
+    #     key strip explains it only when one exists; always false on IMBA
+    #     maps, which have no such convention.
     # See setupFloatingChrome() in app.js where these are read.
     #
     # No early exit: the rating set needs every feature, and one pass
@@ -681,6 +684,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     ratings = set()
     exposure_ratings = set()
     freeride_ratings = set()
+    has_bike_only = False
 
     def _in_range(raw, prop):
         """The int value of a rating property when it is a drawable one."""
@@ -706,6 +710,8 @@ def inject_config_into_template(template_content, config, trails_geojson):
                 exposure_ratings.add(x)
             if n is not None or x is not None:
                 has_difficulty = True
+            if props.get("bike_only") is True:
+                has_bike_only = True
             continue
         imba = props.get("imba_difficulty")
         if imba is not None and str(imba).strip():
@@ -718,6 +724,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["difficultyRatings"] = sorted(ratings)
     config_obj["freerideRatings"] = sorted(freeride_ratings)
     config_obj["exposureRatings"] = sorted(exposure_ratings)
+    config_obj["hasBikeOnlyTrails"] = has_bike_only
     config_obj["about"] = config.get("about") or None
     # Welcome/Help modal config. Three forms accepted: omitted (None →
     # framework default), false (first-visit auto-open suppressed), or

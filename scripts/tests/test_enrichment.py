@@ -224,3 +224,4 @@ def test_custom_route_itrs_properties_are_empty(tmp_path):
         "geometry": str(geom)}]}, trails)
     props = trails["features"][0]["properties"]
     assert props["itrs_difficulty"] == "" and props["itrs_exposure"] == ""
+    assert props["bike_only"] is False

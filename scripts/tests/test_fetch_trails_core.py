@@ -7,6 +7,7 @@ one-way arrow points.
 
 from fetch_trails import (
     _expand_through_supers,
+    _is_bike_only,
     _is_freeride,
     _resolve_oneway,
     build_geojson,
@@ -103,6 +104,22 @@ def test_a_name_change_splits_the_segment():
     assert [s["trail_name"] for s in segs] == ["A", "B"]
 
 
+def test_bike_only_needs_bikes_allowed_foot_no_and_no_horse():
+    assert _is_bike_only({"bicycle": "designated", "foot": "no", "horse": "no"})
+    assert _is_bike_only({"bicycle": "yes", "foot": "no"})
+    assert not _is_bike_only({"bicycle": "designated", "foot": "yes", "horse": "no"})
+    assert not _is_bike_only({"bicycle": "designated", "foot": "no", "horse": "yes"})
+    assert not _is_bike_only({"foot": "no"})
+    assert not _is_bike_only({})
+
+
+def test_a_bike_only_change_splits_the_segment():
+    ways = {1: _way((0, 0), (1, 0), name="A", bicycle="designated", foot="yes"),
+            2: _way((1, 0), (2, 0), name="A", bicycle="designated", foot="no")}
+    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    assert sorted(s["bike_only"] for s in segs) == [False, True]
+
+
 def test_a_freeride_change_splits_the_segment():
     ways = {1: _way((0, 0), (1, 0), name="A"),
             2: _way((1, 0), (2, 0), name="A", **{"mtb:type": "freeride"})}
@@ -192,6 +209,7 @@ def test_features_carry_the_route_and_segment_properties():
         "freeride": False,
         "itrs_difficulty": "",
         "itrs_exposure": "",
+        "bike_only": False,
         "oneway": "",
         "way_ids": [1],
     }

@@ -180,9 +180,17 @@ MIXED_TRAILS = {
         _rated(imba_difficulty="2", itrs_difficulty="3", itrs_exposure="2"),
         _rated(imba_difficulty="0", freeride=True, itrs_difficulty="", itrs_exposure="4"),
         _rated(imba_difficulty="9", itrs_difficulty="7", itrs_exposure="0"),
-        _rated(imba_difficulty="", itrs_difficulty="1", itrs_exposure=""),
+        _rated(imba_difficulty="", itrs_difficulty="1", itrs_exposure="", bike_only=True),
     ],
 }
+
+
+def test_bike_only_reaches_config_on_itrs_maps_only():
+    trails = copy.deepcopy(MIXED_TRAILS)
+    assert inject_config(dict(MINIMAL_CONFIG), trails)["hasBikeOnlyTrails"] is False
+    trails = copy.deepcopy(MIXED_TRAILS)
+    itrs = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
+    assert itrs["hasBikeOnlyTrails"] is True
 
 
 def test_difficulty_scale_defaults_to_imba():

@@ -109,6 +109,25 @@ def test_a_snapshot_from_before_freeride_reports_no_change():
     assert diff_snapshots(_snap([old]), after)["tag_changes"] == []
 
 
+def test_gaining_bike_only_is_a_tag_change():
+    before = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3")])
+    before["features"][0]["properties"]["bike_only"] = False
+    after = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3")])
+    after["features"][0]["properties"]["bike_only"] = True
+    assert diff_snapshots(before, after)["tag_changes"] == [{
+        "way_id": "11", "trail": "Bootjack",
+        "tag": "bicycle/foot/horse", "old": "", "new": "bike-only",
+    }]
+
+
+def test_a_snapshot_from_before_bike_only_reports_no_change():
+    before = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3")])
+    after = _snap([_feature([11], _LEG_B, trail="Bootjack", imba="3")])
+    after["features"][0]["properties"]["bike_only"] = True
+    assert "bike_only" not in before["features"][0]["properties"]
+    assert diff_snapshots(before, after)["tag_changes"] == []
+
+
 def test_vertex_noise_is_not_a_length_change():
     """A sub-metre vertex nudge must not surface as an edit."""
     nudged = [[-87.60, 46.50], [-87.59, 46.500002]]

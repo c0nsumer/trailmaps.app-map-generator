@@ -229,6 +229,25 @@ def _is_freeride(tags):
     return "freeride" in (v.strip().lower() for v in values)
 
 
+# Access values that let a mode onto the way for the bike-only test.
+_ALLOWS = {"yes", "designated", "permissive"}
+
+
+def _is_bike_only(tags):
+    """Whether a way is open to bikes and closed to walkers and horses.
+
+    ITRS marks bike-only trails with a yellow background behind the symbol,
+    so an ITRS map paints the plate yellow for these ways. The test is
+    deliberately narrow: bicycle allowed, ``foot=no`` tagged explicitly, and
+    horse not allowed (an absent horse tag counts as not allowed, which is
+    how Copper Harbor tags its bike-only trails). A way with no access tags
+    stays white, the safe failure.
+    """
+    return (tags.get("bicycle", "").strip().lower() in ("yes", "designated")
+            and tags.get("foot", "").strip().lower() == "no"
+            and tags.get("horse", "").strip().lower() not in _ALLOWS)
+
+
 def merge_consecutive_ways(ways_dict, way_relation_ids):
     """Merge consecutive ways that share relations, name, difficulty, oneway, freeride.
 
@@ -243,6 +262,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
     - trail_name: name of the trail segment (from the way's name tag)
     - imba_difficulty: IMBA difficulty rating (0-5) or empty string
     - itrs_difficulty / itrs_exposure: ITRS ratings as tagged, or empty string
+    - bike_only: True when bikes are allowed and foot and horse are not
     - freeride: True when the way's mtb:type list names freeride
     - oneway: the resolved oneway value (see _resolve_oneway)
     - way_ids: the source OSM way IDs fused into the segment
@@ -287,11 +307,14 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         tags = way.get("tags", {})
         itrs_difficulty = tags.get("mtb:scale:itrs:technical_difficulty", "")
         itrs_exposure = tags.get("mtb:scale:itrs:exposure", "")
+        # Bike-only joins too, so the yellow plate stops where walkers are
+        # let back on.
+        bike_only = _is_bike_only(tags)
         way_signatures[way_id] = (
-            sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure)
+            sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure, bike_only)
 
     # Merge consecutive ways with the same signature
-    # (relations + name + difficulty + oneway + freeride + ITRS ratings)
+    # (relations + name + difficulty + oneway + freeride + ITRS ratings + bike-only)
     visited = set()
     merged_segments = []
 
@@ -301,7 +324,8 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         visited.add(start_way_id)
 
         full_sig = way_signatures[start_way_id]
-        sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure = full_sig
+        (sig, name, imba, oneway, freeride,
+         itrs_difficulty, itrs_exposure, bike_only) = full_sig
         # `reversible` ways have a direction-of-travel (just one that flips by
         # schedule), so they must not be glued to a neighbor in reversed
         # orientation any more than `yes`/`-1` ways can.
@@ -377,6 +401,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
                 "freeride": freeride,
                 "itrs_difficulty": itrs_difficulty,
                 "itrs_exposure": itrs_exposure,
+                "bike_only": bike_only,
                 "oneway": oneway,
                 "way_ids": member_way_ids,
             }
@@ -548,6 +573,7 @@ def build_geojson(relations, all_ways, way_relations):
                     "freeride": segment.get("freeride", False),
                     "itrs_difficulty": segment.get("itrs_difficulty", ""),
                     "itrs_exposure": segment.get("itrs_exposure", ""),
+                    "bike_only": segment.get("bike_only", False),
                     "oneway": oneway,
                     # Source OSM way IDs fused into this segment. Used by
                     # template_inject's reversible-without-schedule check so
