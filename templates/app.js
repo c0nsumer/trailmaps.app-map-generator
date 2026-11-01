@@ -745,7 +745,7 @@ function watchSystemColorScheme() {
 // no consent banner required. Keys (each stored with the slug
 // prefix): mtb.seasonMode, mtb.emergencyOn, mtb.labels,
 // mtb.difficulty, mtb.directionArrows, mtb.colorScheme,
-// mtb.poi.markers (merged guidepost + emergency trail-marker
+// mtb.colorAspect, mtb.poi.markers (merged guidepost + emergency trail-marker
 // layer), mtb.poi.parking, mtb.poi.trailheads, mtb.poi.hubs,
 // mtb.poi.features, mtb.poi.toilets, mtb.poi.drinking_water,
 // mtb.poi.bicycle_repair_stations, mtb.routePanelExpanded,
@@ -1424,7 +1424,7 @@ function registerDifficultyIcons() {
 
 function difficultyToggleOn() {
     // Event mode forces difficulty off: the rider's attention belongs
-    // on the featured course, and IMBA diamonds are placed on the
+    // on the featured course, and difficulty symbols are placed on the
     // underlying OSM ways (which span every background route too).
     // There's no clean way to limit them to "the course" because the
     // course is a custom polyline whose synthesized geometry doesn't
@@ -1443,7 +1443,7 @@ function difficultyToggleOn() {
 const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday",
                       "thursday", "friday", "saturday"];
 
-// Solid notched arrowhead, drawn in canvas like the IMBA difficulty
+// Solid notched arrowhead, drawn in canvas like the difficulty
 // icons so we control color, weight, and halo. This is the one-way
 // chevron glyph (see registerChevronPatterns below); it points RIGHT
 // (positive-X), which `symbol-placement: line` +
@@ -1554,7 +1554,7 @@ function registerChevronPatterns() {
 
 // ---- Popup glyph data-URLs ----
 // The trail popup embeds the same canvas-drawn glyphs the map uses
-// (IMBA difficulty symbol, one-way chevron), rendered to data-URL
+// (difficulty symbol, one-way chevron), rendered to data-URL
 // <img> sources so the popup symbols are pixel-identical to the
 // on-map decorations. Cached per rating / color scheme so repeated
 // clicks don't re-rasterize.
@@ -1747,12 +1747,12 @@ function difficultyGlyphWidth(key, height) {
 }
 
 // Fill in the difficulty rating key under the Options Difficulty row:
-// one glyph + official IMBA name per rating THIS map actually carries
-// (CONFIG.difficultyRatings and CONFIG.freerideRatings together,
-// build-time scans of mtb:scale:imba values on plain and freeride ways; see the
-// trail-property scan in template_inject.py). Reuses
-// difficultyIconDataUrl so the key and the on-map diamonds are the same
-// canvas render and can't drift apart.
+// one glyph + the scheme's official name per rating THIS map actually
+// carries (CONFIG.difficultyRatings and CONFIG.freerideRatings together,
+// build-time scans of the scheme's rating tags, on plain and freeride
+// ways for IMBA; see the trail-property scan in template_inject.py).
+// Reuses difficultyIconDataUrl so the key and the on-map symbols are the
+// same canvas render and can't drift apart.
 //
 // Called once from setupFloatingChrome, only on the path where the
 // Difficulty row is actually shown. The strip starts hidden in the
@@ -1882,14 +1882,16 @@ function todaysReverseRoutes() {
 let reverseRoutesToday = todaysReverseRoutes();
 
 // ============================================================
-// Decoration system, pre-deconflicted Point features. MapLibre
-// places line symbols PER TILE: the same feature gets re-anchored
-// inside each tile bucket independently, so cross-layer alignment
-// (diamonds over labels) breaks at tile seams regardless of
-// `symbol-spacing` math. Pre-computing the decoration positions in
-// JS, then rendering them as point features with `icon-allow-overlap:
-// true`, sidesteps the entire collision pipeline, the layout we
-// compute is exactly what the user sees. (One-way direction is the
+// Decoration system, placed in JS. MapLibre places line symbols PER
+// TILE: the same feature gets re-anchored inside each tile bucket
+// independently, so cross-layer alignment (difficulty symbols over
+// labels) breaks at tile seams regardless of `symbol-spacing` math.
+// Pre-computing the difficulty symbols' positions in JS, then
+// rendering them as point features with `icon-allow-overlap: true`,
+// sidesteps the entire collision pipeline, the layout we compute is
+// exactly what the user sees. Trail and route names are pre-clipped
+// line features instead, so the text follows the trail curve, with
+// per-tile label-vs-label collision. (One-way direction is the
 // exception: the decor-chevron-* layers render it as line-placed,
 // collision-inert symbols where per-tile anchoring is fine, a lone
 // glyph row has nothing to align WITH.)
@@ -2030,7 +2032,7 @@ function pointAtArcLength(segments, totalLength, arc) {
 // works across the visible range.
 const DECOR_RADIUS_M = {
     // Sized for the bare 24px glyph. The map's plate (PLATE_PAD) adds
-    // 2px a side, within this margin; scaling the radii up to match
+    // 1px a side, within this margin; scaling the radii up to match
     // cost Maybury's Central Skills Line its only pill.
     diamond:  35,
     // A freeride way's symbol is the 2:1 pill (FREERIDE_ICON_W), which
@@ -2718,9 +2720,8 @@ function computeDecorations() {
         });
         placed.add({ lngLat: [pt.lng, pt.lat], radiusM: r });
     };
-    // Route name labels, gated per-route by routeLabelAllowed (which
-    // reflects the current label mode); the muted event-mode network
-    // stays unlabeled there.
+    // Route name labels, gated per-route by routeLabelAllowed; the
+    // muted event-mode network stays unlabeled there.
     {
         const routeAgg = new Map();   // routeId -> { longest }
         for (const way of ways) {
@@ -3185,7 +3186,7 @@ let currentSearchFilter = "all";
 // pressed a navigation key yet, or has typed since (which resets it).
 // Drives the .is-active class + aria-activedescendant on the input.
 let _finderActiveIndex = -1;
-// closeSearchOverlay, published by the overlay's setup so the finder
+// The search sheet's close, published by the overlay's setup so the finder
 // row clicks, defined outside its scope, can dismiss search after a
 // selection commits. Null until the overlay is wired.
 let _closeSearchOverlay = null;
@@ -5002,6 +5003,18 @@ async function init() {
             if (_pendingShareHighlight) {
                 applyPendingShareHighlight();
             }
+            // A shared view opens without a camera move, so no moveend
+            // stores it, and a reload that fires no hide event first
+            // (see the saved-view notes above saveView) would drop the
+            // rider at the default fit, without the highlight they were
+            // sent. Store it once now. A /t/ link's popup waits for the
+            // camera (showTrail), with no trail to store until it opens,
+            // so that case stores again on an arrival armed after the
+            // popup's, which therefore runs after it.
+            if (shareState) {
+                saveView();
+                if (_trailPopupCancel) onCameraArrival(saveView);
+            }
 
             // Hide the initial-load progress bar once the opening viewport is
             // painted. When this map has terrain we can't use the first global
@@ -5320,63 +5333,55 @@ function _joinHumanList(items) {
     return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
-// Build the Search row description from what's actually present on
-// this map. Trails are gated by CONFIG.showTrails; every map has
-// routes (a geometry source is required). POI types come from
-// CONFIG.poiCounts (populated at build time from pois.geojson).
-// Avoids the previous claim that every map has "(parking, water,
-// toilets, trailheads)" regardless of reality.
-function _welcomeSearchDescription() {
-    // With no route-mode relation there are no routes to look up, only
-    // trails (which the validator keeps on there).
-    const targets = hasRouteLanes() ? ["routes"] : [];
-    if (CONFIG.showTrails !== false) targets.push("trails");
+// The place types search finds, as [CONFIG.poiCounts key, welcome
+// word], in the order the welcome names them, which roughly follows
+// the rhythm of a ride: where you start (parking, trailheads), what you
+// may encounter on-trail (features), amenities along the way (water,
+// toilets). A type counts once the build's pois.geojson (or a
+// curator-supplied YAML entry for parking/trailheads, both folded
+// together at build time) has at least one. Markers are searchable by
+// their ref ("12") and looking one up is a real rider task (meeting
+// point, emergency reference), so they count as places like the
+// amenities do.
+const _SEARCH_PLACE_WORDS = [
+    ["parking", "parking"],
+    ["trailhead", "trailheads"],
+    ["hub", "hubs"],
+    ["feature", "features"],
+    ["trail_marker", "trail markers"],
+    ["drinking_water", "water"],
+    ["toilet", "toilets"],
+    ["bicycle_repair_station", "bike repair"],
+];
 
-    // Specific POI types, order roughly follows the rhythm of a
-    // ride: where you start (parking, trailheads), what you may
-    // encounter on-trail (features), amenities along the way
-    // (water, toilets). Only include types that have at least one
-    // feature in the build's pois.geojson (or a curator-supplied
-    // YAML entry for parking/trailheads, both folded together at
-    // build time).
+function _searchPlaceWords() {
     const counts = CONFIG.poiCounts || {};
-    const poiNames = [];
-    if (counts.parking)        poiNames.push("parking");
-    if (counts.trailhead)      poiNames.push("trailheads");
-    if (counts.hub)            poiNames.push("hubs");
-    if (counts.feature)        poiNames.push("features");
-    // Markers are searchable by their ref ("12") and looking
-    // one up is a real rider task (meeting point, emergency
-    // reference), so they earn a mention like the amenities do.
-    if (counts.trail_marker)   poiNames.push("trail markers");
-    if (counts.drinking_water) poiNames.push("water");
-    if (counts.toilet)         poiNames.push("toilets");
-    if (counts.bicycle_repair_station) poiNames.push("bike repair");
-
-    if (poiNames.length) {
-        targets.push(`places (${poiNames.join(", ")})`);
-    }
-
-    if (!targets.length) return "Find anything on the map.";
-    return `Find ${_joinHumanList(targets)}.`;
+    return _SEARCH_PLACE_WORDS.filter(([key]) => counts[key]).map(([, word]) => word);
 }
 
 // Build the list of categories the search box actually returns,
 // based on the same gates rebuildFinderList() uses (CONFIG.showTrails,
 // CONFIG.poiCounts; routes are listed whenever a relation is in route
-// mode). Returns an array of
-// human labels (e.g. ["routes", "trails", "places"]) so callers can
-// compose either the comma-form used by the placeholder or the
-// human-list form used by aria-labels.
+// mode; with none there are only trails, which the validator keeps on
+// there). Returns an array of human labels (e.g. ["routes", "trails",
+// "places"]) so callers can compose either the comma-form used by the
+// placeholder or the human-list form used by aria-labels.
 function _searchTargets() {
     const targets = hasRouteLanes() ? ["routes"] : [];
     if (CONFIG.showTrails !== false) targets.push("trails");
-    const counts = CONFIG.poiCounts || {};
-    const hasPois = !!(counts.parking || counts.trailhead || counts.hub
-                       || counts.feature || counts.drinking_water
-                       || counts.toilet || counts.bicycle_repair_station);
-    if (hasPois) targets.push("places");
+    if (_searchPlaceWords().length) targets.push("places");
     return targets;
+}
+
+// The welcome's Search row description: the search box's own targets,
+// with "places" spelled out, so the copy and the placeholder cannot
+// disagree about what search finds.
+function _welcomeSearchDescription() {
+    const places = _searchPlaceWords();
+    const targets = _searchTargets().map(
+        (t) => (t === "places" ? `places (${places.join(", ")})` : t));
+    if (!targets.length) return "Find anything on the map.";
+    return `Find ${_joinHumanList(targets)}.`;
 }
 
 // CONFIG.routes is an object keyed by route id, custom routes included.
@@ -6467,8 +6472,8 @@ function isRatingKey(key) {
 
 // The look of a rating's ways as a routeSwatchModel-shaped object, so
 // the key row, the chip, the finder mark and the popup all draw a
-// rating the way laneKeyMeta draws its lanes: the IMBA palette, or the
-// unrated look.
+// rating the way laneKeyMeta draws its lanes: the scheme's palette, or
+// the unrated look.
 function keyLook(key) {
     if (isRatedKey(key)) {
         return { color: difficultyColor(key), dashed: null, dashCap: null, dashColors: null };
@@ -7270,12 +7275,13 @@ async function loadTrails() {
     map.on("zoomend", refreshTapLift);
     map.on("zoomend", refreshHereGlow);
 
-    // Decoration source, pre-deconflicted Point features (trail
-    // names, route names, IMBA diamonds; direction chevrons live on
-    // their own line-symbol layers). All placement decisions happen
-    // in JS at compute time, so the decor layers can render with
-    // `*-allow-overlap: true` and skip MapLibre's per-tile collision
-    // pipeline. See computeDecorations() for the placement algorithm.
+    // Decoration source: difficulty symbols as pre-placed points,
+    // trail and route names as pre-clipped line features (direction
+    // chevrons live on their own line-symbol layers). Placement
+    // decisions happen in JS at compute time, so the symbol layers can
+    // render with `icon-allow-overlap: true` and skip MapLibre's
+    // per-tile collision pipeline. See computeDecorations() for the
+    // placement algorithm.
     //
     // Initial data is empty; the first computeDecorations() pass is
     // deferred to map.once('idle', …) below so the basemap + trail
@@ -7602,8 +7608,8 @@ async function loadTrails() {
         });
     }
 
-    // Decoration layers: IMBA diamonds are
-    // pre-deconflicted Point features (rendered with icon-allow-overlap
+    // Decoration layers: difficulty symbols are
+    // pre-placed Point features (rendered with icon-allow-overlap
     // so placements computed in JS are exactly what's drawn). Trail and
     // route name labels are LineString features with symbol-placement:
     // line so text follows the trail curve; their per-tile collision
@@ -7616,16 +7622,16 @@ async function loadTrails() {
     // Label layers are born with the scheme's tokens; this pass adds
     // what creation does not set: the chevron icon-image, the lane
     // casing, and updateLabels' highlight-aware dim split.
+    //
+    // It also syncs the clip-arrow layers' visibility to the current
+    // bucket-model state (updateClipArrowsDim) before we return.
+    // Without that, every route's layers default to "visible" and any
+    // route hidden by the bucket model (e.g., emergency-access while
+    // emergencyOn is false) would briefly paint during the await
+    // loadPOIs() yield in init() before setupFloatingChrome →
+    // applyVisibilityChange runs. On a fast connection that's
+    // imperceptible; on 4G it's a visible flicker.
     applyMapPaintForScheme(currentColorScheme());
-
-    // Sync the clip-arrow layers' visibility to the current
-    // bucket-model state before we return. Without this, every route's
-    // layers default to "visible" and any route hidden by the bucket
-    // model (e.g., emergency-access while emergencyOn is false) would
-    // briefly paint during the await loadPOIs() yield in init() before
-    // setupFloatingChrome → applyVisibilityChange runs. On a fast
-    // connection that's imperceptible; on 4G it's a visible flicker.
-    updateClipArrowsDim();
 }
 
 // Blend a scheme paint color toward black by the highlight wash's own
@@ -7949,7 +7955,7 @@ function laneCasingColor() {
 // by the relation that owns the way, so that the plugin can lift a
 // whole rating the way it lifts a route (syncLaneHighlight) and so that
 // connectors join same-colored lanes through a junction. Rated keys
-// draw solid in the IMBA palette, unrated in default_trail_color with
+// draw solid in the scheme's palette, unrated in default_trail_color with
 // its own dash and cap. Only the first dash/gap pair carries over, as
 // for routes.
 function laneKeyMeta(features) {
@@ -8419,6 +8425,7 @@ function computeTrailsSourceData() {
     if (!routesData) return { type: "FeatureCollection", features: [] };
 
     const globalRank = routeRank();
+    const ratingLanes = hasRatingLanes();
     const features = routesData.features.map((f) => {
         const props = f.properties;
         const routeId = props.route_id;
@@ -8457,7 +8464,7 @@ function computeTrailsSourceData() {
                 // for a rating highlight's chevron filter
                 // (ratingIdentityMatch); false when the way has no
                 // rating lane, as for the labels.
-                ...(hasRatingLanes() && { color_key: featureColorKey(props) ?? false }),
+                ...(ratingLanes && { color_key: featureColorKey(props) ?? false }),
             },
         };
     });
@@ -8707,8 +8714,9 @@ function updateTrailDisplay() {
     // Re-order the lanes for the new visible set (async, seeded).
     refreshLaneGraph();
 
-    // Decorations (diamonds, trail/route name labels) are
-    // pre-deconflicted Point features. Recompute on every visibility
+    // Decorations (difficulty symbols as pre-placed points, trail and
+    // route names as pre-clipped lines) are placed in JS. Recompute on
+    // every visibility
     // change so ways whose only visible route just toggled off drop
     // out, and so the obstacle / way-length set the placer sees
     // matches the new state.
@@ -8944,26 +8952,19 @@ function highlightRoute(routeId) {
 // once and then ridden by eye, like a place, so it gets no chip,
 // lift or wash.
 //
-// The popup waits for the camera: lane positions are laid out per
-// zoom, so the anchor is snapped to the lane only once the fit has
-// settled. Arrival is moveend or a fallback timer (a fit that does not
-// move the camera fires no reliable moveend), whichever comes first,
-// the pattern highlightPoi uses. The pending state is separate from
-// the POI one, and everything that opens or closes a trail popup or
-// replaces the view cancels it (openTrailPopup, closeTrailPopup,
-// clearHighlight), so a late popup never lands over a newer choice.
-let _trailPopupTimer = null;
-let _trailPopupMoveHandler = null;
+// The popup waits for the camera (onCameraArrival): lane positions are
+// laid out per zoom, so the anchor is snapped to the lane only once the
+// fit has settled. The pending state is separate from the POI one, and
+// everything that opens or closes a trail popup or replaces the view
+// cancels it (openTrailPopup, closeTrailPopup, clearHighlight), so a
+// late popup never lands over a newer choice.
+let _trailPopupCancel = null;
 
 function cancelPendingTrailPopup() {
     _pendingSpot = null;
-    if (_trailPopupTimer !== null) {
-        clearTimeout(_trailPopupTimer);
-        _trailPopupTimer = null;
-    }
-    if (_trailPopupMoveHandler) {
-        map.off("moveend", _trailPopupMoveHandler);
-        _trailPopupMoveHandler = null;
+    if (_trailPopupCancel) {
+        _trailPopupCancel();
+        _trailPopupCancel = null;
     }
 }
 
@@ -8978,13 +8979,10 @@ function showTrail(trailName) {
     fitToRouteOrTrail({ trailName });
     const run = longestVisibleTrailRun(trailName);
     if (!run) return;
-    const onArrival = () => {
+    _trailPopupCancel = onCameraArrival(() => {
         cancelPendingTrailPopup();
         openTrailPopupOnRun(trailName, run);
-    };
-    _trailPopupMoveHandler = onArrival;
-    map.on("moveend", onArrival);
-    _trailPopupTimer = setTimeout(onArrival, POI_ARRIVAL_FALLBACK_MS);
+    });
 }
 
 // The popup anchor for a trail: the middle, by length, of its longest
@@ -9122,25 +9120,18 @@ function refreshRatingChipStats() {
     if (statsEl && CONFIG.showDistance) statsEl.textContent = ratingStatsText(highlight.key);
 }
 
-// Pending deferred-popup state for the single-POI highlight path.
-// highlightPoi arms BOTH a moveend listener and a
-// POI_ARRIVAL_FALLBACK_MS safety timeout to open the popup after the
-// fly-to (then holds it for the pulse); whichever fires first
-// must disarm the other, and REPLACING the highlight must disarm
-// both. Without this, tapping POI A then POI B within ~2 s let A's
-// still-armed timer (or its moveend listener catching B's fly-to)
-// reopen A's popup beside B's highlight.
-let _poiPopupTimer = null;
-let _poiPopupMoveHandler = null;
+// Pending deferred-popup state for the single-POI highlight path:
+// the cancel for highlightPoi's camera arrival, then for its pulse
+// hold. REPLACING the highlight must cancel it. Without this, tapping
+// POI A then POI B within ~2 s let A's still-armed arrival (its timer,
+// or its moveend listener catching B's fly-to) reopen A's popup beside
+// B's highlight.
+let _poiPopupCancel = null;
 
 function _cancelPendingPoiPopup() {
-    if (_poiPopupTimer !== null) {
-        clearTimeout(_poiPopupTimer);
-        _poiPopupTimer = null;
-    }
-    if (_poiPopupMoveHandler) {
-        map.off("moveend", _poiPopupMoveHandler);
-        _poiPopupMoveHandler = null;
+    if (_poiPopupCancel) {
+        _poiPopupCancel();
+        _poiPopupCancel = null;
     }
 }
 
@@ -9163,9 +9154,8 @@ function highlightPoi(p) {
     // correctly relative to its new screen position, then hold it for
     // one pulse cycle: opened at the same moment, the card pulled the
     // eye away from the ripple and covered its upper half. Reduced
-    // motion has no pulse to wait for. Arrival is moveend or the same
-    // fallback timer the pulse uses; either path disarms the other, and
-    // the hold timer shares _poiPopupTimer so a new highlight or a clear
+    // motion has no pulse to wait for. The hold timer takes over the
+    // same cancel slot as the arrival, so a new highlight or a clear
     // cancels it (see _cancelPendingPoiPopup).
     const marker = findPoiMarker(p);
     if (marker && typeof marker.getPopup === "function") {
@@ -9173,16 +9163,13 @@ function highlightPoi(p) {
         if (popup) {
             const holdMs = window.matchMedia(
                 "(prefers-reduced-motion: reduce)").matches ? 0 : POI_PULSE_MS;
-            const onArrival = () => {
-                _cancelPendingPoiPopup();
-                _poiPopupTimer = setTimeout(() => {
-                    _poiPopupTimer = null;
+            _poiPopupCancel = onCameraArrival(() => {
+                const hold = setTimeout(() => {
+                    _poiPopupCancel = null;
                     if (!popup.isOpen()) marker.togglePopup();
                 }, holdMs);
-            };
-            _poiPopupMoveHandler = onArrival;
-            map.on("moveend", onArrival);
-            _poiPopupTimer = setTimeout(onArrival, POI_ARRIVAL_FALLBACK_MS);
+                _poiPopupCancel = () => clearTimeout(hold);
+            });
         }
     }
 }
@@ -9343,14 +9330,38 @@ let _poiHighlightRef = null;
 // the arrival pulse). Tracked so a new highlight or a clear strips
 // exactly these instead of scanning every marker.
 let _poiHighlightEls = [];
-let _poiPulseTimer = null;
-let _poiPulseMoveHandler = null;
+let _poiPulseCancel = null;
 // One arrival-pulse cycle; must match the poi-pulse animation duration
 // in style.css. highlightPoi holds the info card this long.
 const POI_PULSE_MS = 1100;
 // Arrival fallback when moveend doesn't come: just past the 700ms
 // highlight fly-to.
 const POI_ARRIVAL_FALLBACK_MS = 900;
+
+// Run `fn` once the camera arrives: on the next moveend, or after `ms`
+// if none comes, whichever is first. The fallback is there because a
+// fit or fly that ends where it began fires no reliable moveend.
+// Returns a cancel that disarms both; the first to fire disarms the
+// other. Callers keep the cancel in one slot per use and call it
+// whenever a newer choice replaces theirs, so a late arrival never
+// lands over it.
+function onCameraArrival(fn, ms = POI_ARRIVAL_FALLBACK_MS) {
+    let timer = null;
+    const cancel = () => {
+        if (timer !== null) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        map.off("moveend", arrive);
+    };
+    const arrive = () => {
+        cancel();
+        fn();
+    };
+    map.on("moveend", arrive);
+    timer = setTimeout(arrive, ms);
+    return cancel;
+}
 
 // Hybrid search-scope policy:
 //   - Proximity filter (automatic, per-type radius) → POI dropped
@@ -9534,13 +9545,9 @@ function pruneInvisibleHighlights() {
 }
 
 function _cancelPoiPulse() {
-    if (_poiPulseTimer !== null) {
-        clearTimeout(_poiPulseTimer);
-        _poiPulseTimer = null;
-    }
-    if (_poiPulseMoveHandler) {
-        map.off("moveend", _poiPulseMoveHandler);
-        _poiPulseMoveHandler = null;
+    if (_poiPulseCancel) {
+        _poiPulseCancel();
+        _poiPulseCancel = null;
     }
 }
 
@@ -9564,14 +9571,11 @@ function syncPoiHighlightMarkers(pois) {
 
 // Start the arrival pulse once the camera settles on the highlight: a
 // pulse played during the fly-to happens while the marker is still
-// sliding into place, where the eye isn't yet. moveend is the normal
-// trigger; the timer covers a fly-to that ends where it began (no
-// moveend guaranteed) and runs just past the 700ms camera duration.
-// Same one-shot moveend-plus-timer shape as highlightPoi's popup.
+// sliding into place, where the eye isn't yet (onCameraArrival).
 function pulsePoiHighlightOnArrival() {
     _cancelPoiPulse();
-    const start = () => {
-        _cancelPoiPulse();
+    _poiPulseCancel = onCameraArrival(() => {
+        _poiPulseCancel = null;
         for (const el of _poiHighlightEls) {
             // Re-adding the class alone won't restart a finished CSS
             // animation on a repeat highlight of the same marker; the
@@ -9581,10 +9585,7 @@ function pulsePoiHighlightOnArrival() {
             el.offsetWidth;
             el.classList.add("is-poi-pulsing");
         }
-    };
-    _poiPulseMoveHandler = start;
-    map.on("moveend", start);
-    _poiPulseTimer = setTimeout(start, POI_ARRIVAL_FALLBACK_MS);
+    });
 }
 
 // Set the persistent POI highlight to a list of POIs. Pans/zooms to
@@ -10126,10 +10127,12 @@ function foldAttributionForTrailChip(chip) {
 
 // The trail the chip names also glows on the map, in the rider's own
 // blue: the chip says which trail, the glow shows where it runs from
-// here. It lights what a tap on that trail lifts, the contiguous section
-// of the name under the rider (trailSection), as {name, ids, graph},
-// or the one graph edge of an unnamed way, the unit its popup lifts,
-// and shows exactly while the chip does. Yellow is what the rider
+// here. It lights the connected stretch of the name under the rider
+// (trailSection with facts: false), as {name, ids, graph}, or the one
+// graph edge of an unnamed way, and shows exactly while the chip does.
+// The stretch can run past what a tap there lifts, since a tap's
+// section also stops where the rating or one-way flag changes: the
+// chip names the trail and nothing else. Yellow is what the rider
 // picked and blue where they are, and yellow wins: a stretch the open
 // popup lifts, or one a highlighted route or key runs on, draws yellow
 // alone. The two fringes stacked mix to a muddy green, and a blue rim
@@ -10340,52 +10343,59 @@ function rebuildRoutePanel() {
     syncRoutePanelActiveRow();
 }
 
+// A row's stats span, omitted entirely rather than rendered empty:
+// the *StatsText helpers return "" when distance is off or
+// unavailable.
+function appendStats(row, className, text) {
+    if (!text) return;
+    const statsEl = document.createElement("span");
+    statsEl.className = className;
+    statsEl.textContent = text;
+    row.appendChild(statsEl);
+}
+
+// One key row: its mark, name and stats, keyed by `dataset`
+// (data-route-id or data-rating, which syncRoutePanelActiveRow reads).
+// Tap toggles: `activate` this row's highlight, or clear it when
+// `isActive` says it is already the highlighted one, so the key row
+// behaves like the control it looks like, rather than requiring the
+// rider to find the chip's × to undo what the key did.
+function appendKeyRow(list, { mark, name, stats, dataset, isActive, activate }) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "route-panel-row";
+    Object.assign(btn.dataset, dataset);
+    btn.appendChild(mark);
+    const nameEl = document.createElement("span");
+    nameEl.className = "route-panel-row-name";
+    nameEl.textContent = name;
+    btn.appendChild(nameEl);
+    appendStats(btn, "route-panel-row-stats", stats);
+    btn.addEventListener("click", () => {
+        if (isActive()) clearHighlight();
+        else activate();
+    });
+    li.appendChild(btn);
+    list.appendChild(li);
+}
+
 // One key row per route: its swatch, name and stats. Tapping a row
 // toggles that route's highlight.
 function appendRouteRows(list, rows) {
     for (const r of rows) {
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "route-panel-row";
-        btn.dataset.routeId = r.id;
-
-        // Dash-aware swatch (shared with finder rows) so a dotted or
-        // two-color route reads as dashed in the key, not as a solid
-        // bar.
-        btn.appendChild(routeSwatchEl(r, "route-panel-swatch"));
-
-        const name = document.createElement("span");
-        name.className = "route-panel-row-name";
-        name.textContent = r.name;
-        btn.appendChild(name);
-
-        // Same gating as finder rows: routeStatsText returns "" when
-        // distance is off or unavailable, and we omit the span
-        // entirely rather than render an empty one.
-        const stats = routeStatsText(r);
-        if (stats) {
-            const statsEl = document.createElement("span");
-            statsEl.className = "route-panel-row-stats";
-            statsEl.textContent = stats;
-            btn.appendChild(statsEl);
-        }
-
-        // Tap toggles: highlight this route, or clear if it's already
-        // the highlighted one, so the key row behaves like the
-        // control it looks like, rather than requiring the rider to
-        // find the chip's × to undo what the key did.
-        btn.addEventListener("click", () => {
-            if (highlight && highlight.kind === "route"
-                && String(highlight.key) === String(r.id)) {
-                clearHighlight();
-            } else {
-                highlightRoute(r.id);
-            }
+        appendKeyRow(list, {
+            // Dash-aware swatch (shared with finder rows) so a dotted
+            // or two-color route reads as dashed in the key, not as a
+            // solid bar.
+            mark: routeSwatchEl(r, "route-panel-swatch"),
+            name: r.name,
+            stats: routeStatsText(r),
+            dataset: { routeId: r.id },
+            isActive: () => highlight && highlight.kind === "route"
+                && String(highlight.key) === String(r.id),
+            activate: () => highlightRoute(r.id),
         });
-
-        li.appendChild(btn);
-        list.appendChild(li);
     }
 }
 
@@ -10399,37 +10409,14 @@ function appendRouteRows(list, rows) {
 // route row toggles its route.
 function appendRatingRows(list, ratings) {
     for (const rating of ratings) {
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "route-panel-row";
-        btn.dataset.rating = rating;
-
-        btn.appendChild(ratingMarkEl(rating, "route-panel-glyph", "route-panel-swatch"));
-
-        const name = document.createElement("span");
-        name.className = "route-panel-row-name";
-        name.textContent = keyName(rating);
-        btn.appendChild(name);
-
-        const stats = ratingStatsText(rating);
-        if (stats) {
-            const statsEl = document.createElement("span");
-            statsEl.className = "route-panel-row-stats";
-            statsEl.textContent = stats;
-            btn.appendChild(statsEl);
-        }
-
-        btn.addEventListener("click", () => {
-            if (highlight && highlight.kind === "rating" && highlight.key === rating) {
-                clearHighlight();
-            } else {
-                highlightRating(rating);
-            }
+        appendKeyRow(list, {
+            mark: ratingMarkEl(rating, "route-panel-glyph", "route-panel-swatch"),
+            name: keyName(rating),
+            stats: ratingStatsText(rating),
+            dataset: { rating },
+            isActive: () => highlight && highlight.kind === "rating" && highlight.key === rating,
+            activate: () => highlightRating(rating),
         });
-
-        li.appendChild(btn);
-        list.appendChild(li);
     }
 }
 
@@ -11111,11 +11098,37 @@ function addTrailMarkers(addToMap) {
     });
 }
 
+// Every POI type's glyph, read by its on-map marker and by its finder
+// and chip swatch (poiSwatchContent), so the two cannot drift: a letter
+// (`text`) or an mdi icon path (`path`, Apache 2.0, Pictogrammers).
+// Hubs and trail markers draw their own shapes (HUB_SVG,
+// trailMarkerDiamondSvg) and features a CSS dot, so they have none.
+const POI_GLYPHS = {
+    [POI.PARKING]: { text: "P" },
+    [POI.TRAILHEAD]: { text: "TH" },
+    // mdi:human-male-female
+    [POI.TOILET]: { path: "M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z" },
+    // mdi:water
+    [POI.DRINKING_WATER]: { path: "M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z" },
+    // mdi:tools
+    [POI.BICYCLE_REPAIR_STATION]: { path: "M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z" },
+    // mdi:flag
+    [POI.EVENT]: { path: "M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z" },
+};
+
+// A POI type's icon glyph as inline SVG. `attrs` carries what differs
+// by surface: a marker sizes through CSS (.poi-marker svg,
+// --poi-marker-svg-size) and paints white on its chip, a swatch passes
+// its 14 px size and paints currentColor.
+function poiGlyphSvg(type, attrs) {
+    return `<svg viewBox="0 0 24 24" ${attrs} aria-hidden="true"><path d="${POI_GLYPHS[type].path}"/></svg>`;
+}
+
 function addParkingMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.PARKING,
         className: "poi-marker parking-marker",
-        labelFn: () => "P",
+        labelFn: () => POI_GLYPHS[POI.PARKING].text,
         popupHtmlFn: (p, coords) => {
             let h = `<div class="popup-title">${escapeHtml(p.name || "Parking")}</div>`;
             h += directionsLink(coords, p.directions_url);
@@ -11132,7 +11145,7 @@ function addTrailheadMarkers(addToMap) {
     createPoiMarkers({
         poiType: POI.TRAILHEAD,
         className: "poi-marker trailhead-marker",
-        labelFn: () => "TH",
+        labelFn: () => POI_GLYPHS[POI.TRAILHEAD].text,
         popupHtmlFn: (p, coords) => {
             let h = `<div class="popup-title">${escapeHtml(p.name || "Trailhead")}</div>`;
             h += directionsLink(coords, p.directions_url);
@@ -11217,11 +11230,7 @@ function addToiletMarkers(addToMap) {
         poiType: POI.TOILET,
         className: "poi-marker toilet-marker",
         contentFn: (el) => {
-            // mdi:human-male-female (Apache 2.0, Pictogrammers).
-            // SVG width/height come from .poi-marker svg in CSS, so
-            // omit width/height attributes, the CSS rule provides
-            // a single source of truth (--poi-marker-svg-size).
-            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.TOILET, 'fill="#fff"');
         },
         addToMap,
         targetArray: toiletMarkers,
@@ -11237,9 +11246,7 @@ function addDrinkingWaterMarkers(addToMap) {
         poiType: POI.DRINKING_WATER,
         className: "poi-marker drinking-water-marker",
         contentFn: (el) => {
-            // mdi:water (Apache 2.0, Pictogrammers). SVG width/height
-            // from .poi-marker svg in CSS, see toilet note above.
-            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.DRINKING_WATER, 'fill="#fff"');
         },
         addToMap,
         targetArray: drinkingWaterMarkers,
@@ -11255,9 +11262,7 @@ function addBicycleRepairStationMarkers(addToMap) {
         poiType: POI.BICYCLE_REPAIR_STATION,
         className: "poi-marker bicycle-repair-station-marker",
         contentFn: (el) => {
-            // mdi:tools (Apache 2.0, Pictogrammers). SVG width/height
-            // from .poi-marker svg in CSS, see toilet note above.
-            el.innerHTML = '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.BICYCLE_REPAIR_STATION, 'fill="#fff"');
         },
         addToMap,
         targetArray: bicycleRepairStationMarkers,
@@ -11276,17 +11281,12 @@ function addEventPoiMarkers(addToMap) {
         poiType: POI.EVENT,
         className: "poi-marker event-poi-marker",
         contentFn: (el, props) => {
-            // mdi:flag (Apache 2.0, Pictogrammers). White on the
-            // event-poi colored chip; SVG sizing comes from
-            // .poi-marker svg in CSS like every other POI.
-            // The name label hangs below the chip via position:
+            // White on the event-poi colored chip, like every other
+            // POI. The name label hangs below the chip via position:
             // absolute (see .event-poi-marker-label in style.css)
             // so it doesn't affect the chip's bounding box (the
             // marker still anchors at the coordinates correctly).
-            el.innerHTML =
-                '<svg viewBox="0 0 24 24" fill="#fff" aria-hidden="true">'
-                + '<path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z"/>'
-                + '</svg>'
+            el.innerHTML = poiGlyphSvg(POI.EVENT, 'fill="#fff"')
                 + `<span class="event-poi-marker-label">${escapeHtml(props.name)}</span>`;
         },
         popupHtmlFn: (p, coords) => {
@@ -11655,14 +11655,10 @@ function setupFloatingChrome() {
     // hidden, and focus() on a hidden element drops focus on <body>.
     // The Share sheet opens from a row inside Options, so its fallback
     // is the Options FAB.
+    const sheets = [];
     function closeOtherOverlays(keep) {
         let returnTo = null;
-        for (const [overlay, btn, fallback] of [
-            [searchOverlay, searchBtn, searchBtn],
-            [optionsOverlay, optionsBtn, optionsBtn],
-            [gpxOverlay, gpxBtn, gpxBtn],
-            [qrOverlay, null, optionsBtn],
-        ]) {
+        for (const { overlay, btn, fallback } of sheets) {
             if (!overlay || overlay === keep || !overlay.classList.contains("is-open")) continue;
             setOverlayOpen(overlay, btn, false);
             returnTo = overlay._returnFocus || fallback;
@@ -11674,14 +11670,88 @@ function setupFloatingChrome() {
         if (overlay && returnTo) overlay._returnFocus = returnTo;
     }
 
-    function openSearchOverlay() {
-        const returnTo = closeOtherOverlays(searchOverlay);
-        refreshStaleFinderList();
-        setOverlayOpen(searchOverlay, searchBtn, true);
-        // Remember the opener and trap Tab; initial focus stays with
-        // the input logic below.
-        dialogFocusIn(searchOverlay);
-        inheritReturnFocus(searchOverlay, returnTo);
+    // One sheet's open, close and toggle, plus its opener, close button
+    // and backdrop, shared by the search, Options, GPX and Share sheets
+    // so their focus handoff cannot drift apart. The overlay element IS
+    // the backdrop (full viewport, dimmed when open), so a click whose
+    // target is the overlay itself landed outside the panel. `fallback`
+    // is where focus returns when another sheet replaces this one
+    // before it remembered anything; it defaults to the opener. The
+    // hooks run in order: beforeShow before the sheet shows, afterShow
+    // once Tab is trapped, afterHide before focus returns.
+    function wireSheet({ overlay, btn = null, fallback = btn, panelSel, closeBtnId,
+        beforeShow, afterShow, afterHide }) {
+        const isOpen = () => !!overlay && overlay.classList.contains("is-open");
+        const open = () => {
+            if (!overlay) return;
+            const returnTo = closeOtherOverlays(overlay);
+            if (beforeShow) beforeShow();
+            setOverlayOpen(overlay, btn, true);
+            dialogFocusIn(overlay, panelSel);
+            inheritReturnFocus(overlay, returnTo);
+            if (afterShow) afterShow();
+        };
+        const close = () => {
+            setOverlayOpen(overlay, btn, false);
+            if (afterHide) afterHide();
+            dialogFocusOut(overlay);
+        };
+        const toggle = () => {
+            if (!overlay) return;
+            if (isOpen()) close();
+            else open();
+        };
+        if (btn) {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                toggle();
+            });
+        }
+        const closeBtn = closeBtnId && document.getElementById(closeBtnId);
+        if (closeBtn) {
+            closeBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                close();
+            });
+        }
+        if (overlay) {
+            overlay.addEventListener("click", (e) => {
+                if (e.target === overlay) close();
+            });
+        }
+        const sheet = { overlay, btn, fallback, isOpen, open, close };
+        sheets.push(sheet);
+        return sheet;
+    }
+
+    // The launcher is the panel's Search row. (It can only ever OPEN in
+    // practice: while the overlay is up the whole panel is faded out
+    // and pointer-inert, see the hide-under-overlay rule in style.css,
+    // which also keeps the routes panel out of the backdrop's way.
+    // toggle keeps the pairing symmetric and costs nothing.) No
+    // panelSel: initial focus stays with the input logic in afterShow.
+    const searchSheet = wireSheet({
+        overlay: searchOverlay,
+        btn: searchBtn,
+        closeBtnId: "search-cancel",
+        beforeShow: refreshStaleFinderList,
+        afterShow: focusFinderInputOnPointerDevices,
+        // Drop focus from the input so iOS can dismiss the keyboard.
+        // A keyboard close (Escape, Enter on a result) then returns
+        // focus to the Search row instead of dropping it to <body>.
+        afterHide: () => {
+            const finderInput = document.getElementById("finder-input");
+            if (finderInput) finderInput.blur();
+        },
+    });
+    const optionsSheet = wireSheet({
+        overlay: optionsOverlay,
+        btn: optionsBtn,
+        panelSel: ".options-overlay-panel",
+        closeBtnId: "options-close",
+    });
+
+    function focusFinderInputOnPointerDevices() {
         // Auto-focus the input ONLY on devices whose primary input is
         // a real pointer (desktop / laptop with mouse or trackpad).
         // On touch-primary devices (phones, tablets, PWAs running
@@ -11700,74 +11770,6 @@ function setupFloatingChrome() {
             const finderInput = document.getElementById("finder-input");
             if (finderInput) setTimeout(() => finderInput.focus(), 50);
         }
-    }
-    function closeSearchOverlay() {
-        setOverlayOpen(searchOverlay, searchBtn, false);
-        // Drop focus from the input so iOS can dismiss the keyboard.
-        const finderInput = document.getElementById("finder-input");
-        if (finderInput) finderInput.blur();
-        // Keyboard close (Escape, Enter on a result) returns focus to
-        // the Search row instead of dropping it to <body>.
-        dialogFocusOut(searchOverlay);
-    }
-    function toggleSearchOverlay() {
-        if (!searchOverlay) return;
-        if (searchOverlay.classList.contains("is-open")) closeSearchOverlay();
-        else openSearchOverlay();
-    }
-
-    function openOptionsOverlay() {
-        const returnTo = closeOtherOverlays(optionsOverlay);
-        setOverlayOpen(optionsOverlay, optionsBtn, true);
-        dialogFocusIn(optionsOverlay, ".options-overlay-panel");
-        inheritReturnFocus(optionsOverlay, returnTo);
-    }
-    function closeOptionsOverlay() {
-        setOverlayOpen(optionsOverlay, optionsBtn, false);
-        dialogFocusOut(optionsOverlay);
-    }
-    function toggleOptionsOverlay() {
-        if (!optionsOverlay) return;
-        if (optionsOverlay.classList.contains("is-open")) closeOptionsOverlay();
-        else openOptionsOverlay();
-    }
-
-    // Launcher click handlers, the panel's Search row and the
-    // Options FAB. (The Search row can only ever OPEN in practice:
-    // while the overlay is up the whole panel is faded out and
-    // pointer-inert. toggle keeps the pairing symmetric and costs
-    // nothing.)
-    if (searchBtn) {
-        searchBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            toggleSearchOverlay();
-        });
-    }
-    if (optionsBtn) {
-        optionsBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            toggleOptionsOverlay();
-        });
-    }
-
-    // Search overlay's Cancel button + tap-on-backdrop dismissal.
-    // The overlay element IS the backdrop (full viewport, dimmed
-    // when open). Clicks land on either the overlay element itself
-    // (backdrop area) or on a descendant (the sheet panel). We close
-    // on the former, ignore the latter. The routes panel can't
-    // interfere: while the overlay is open it's faded out and
-    // pointer-inert (see the hide-under-overlay rule in style.css).
-    const searchCancel = document.getElementById("search-cancel");
-    if (searchCancel) {
-        searchCancel.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeSearchOverlay();
-        });
-    }
-    if (searchOverlay) {
-        searchOverlay.addEventListener("click", (e) => {
-            if (e.target === searchOverlay) closeSearchOverlay();
-        });
     }
 
     // Search filter chips (All / Routes / Trails / Places). Single-
@@ -11839,21 +11841,6 @@ function setupFloatingChrome() {
         syncFilterTabStops();
     }
 
-    // Options overlay's Close button + tap-on-backdrop dismissal.
-    // Same pattern as search.
-    const optionsClose = document.getElementById("options-close");
-    if (optionsClose) {
-        optionsClose.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeOptionsOverlay();
-        });
-    }
-    if (optionsOverlay) {
-        optionsOverlay.addEventListener("click", (e) => {
-            if (e.target === optionsOverlay) closeOptionsOverlay();
-        });
-    }
-
     // ----- GPX download sheet (event maps with event_mode.gpx only)
     //
     // The FAB ALWAYS opens the sheet, even with a single configured
@@ -11897,33 +11884,17 @@ function setupFloatingChrome() {
         if (gpxTitle) gpxTitle.textContent = w.action;
         if (gpxBtn) gpxBtn.setAttribute("aria-label", w.action);
     }
-    function closeGpxOverlay() {
-        setOverlayOpen(gpxOverlay, gpxBtn, false);
-        dialogFocusOut(gpxOverlay);
-    }
     // Share sheet: opened from the Options Share row, so Options
-    // closes first (single-overlay invariant). Rendered on every open
-    // so the code always matches the current view and highlight.
-    const qrOverlay = document.getElementById("qr-overlay");
-    function closeQrOverlay() {
-        setOverlayOpen(qrOverlay, null, false);
-        dialogFocusOut(qrOverlay);
-    }
-    function openQrOverlay() {
-        if (!qrOverlay) return;
-        const returnTo = closeOtherOverlays(qrOverlay);
-        renderQrSheet();
-        setOverlayOpen(qrOverlay, null, true);
-        dialogFocusIn(qrOverlay, ".qr-overlay-panel");
-        inheritReturnFocus(qrOverlay, returnTo);
-    }
-    if (qrOverlay) {
-        const qrClose = document.getElementById("qr-close");
-        if (qrClose) qrClose.addEventListener("click", closeQrOverlay);
-        qrOverlay.addEventListener("click", (e) => {
-            if (e.target === qrOverlay) closeQrOverlay();
-        });
-    }
+    // closes first (single-overlay invariant), and its focus-return
+    // fallback is the Options FAB. Rendered on every open so the code
+    // always matches the current view and highlight.
+    const qrSheet = wireSheet({
+        overlay: document.getElementById("qr-overlay"),
+        fallback: optionsBtn,
+        panelSel: ".qr-overlay-panel",
+        closeBtnId: "qr-close",
+        beforeShow: renderQrSheet,
+    });
     // url -> File once fetched and shareable, "pending" while the
     // fetch runs, absent or null otherwise (null retries on the next
     // open). Files are fetched when the sheet opens, not on the tap:
@@ -11977,13 +11948,13 @@ function setupFloatingChrome() {
         a.remove();
         showToast(`Downloading ${entry.name}.`);
     }
-    function openGpxOverlay() {
-        prefetchGpxShareFiles();
-        const returnTo = closeOtherOverlays(gpxOverlay);
-        setOverlayOpen(gpxOverlay, gpxBtn, true);
-        dialogFocusIn(gpxOverlay, ".gpx-overlay-panel");
-        inheritReturnFocus(gpxOverlay, returnTo);
-    }
+    const gpxSheet = wireSheet({
+        overlay: gpxOverlay,
+        btn: gpxBtn,
+        panelSel: ".gpx-overlay-panel",
+        closeBtnId: "gpx-close",
+        beforeShow: prefetchGpxShareFiles,
+    });
     const gpxList = document.getElementById("gpx-list");
     if (gpxOverlay && gpxBtn && gpxList) {
         for (const entry of CONFIG.gpxDownloads || []) {
@@ -12027,21 +11998,6 @@ function setupFloatingChrome() {
             });
             gpxList.appendChild(row);
         }
-        gpxBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (gpxOverlay.classList.contains("is-open")) closeGpxOverlay();
-            else openGpxOverlay();
-        });
-        const gpxClose = document.getElementById("gpx-close");
-        if (gpxClose) {
-            gpxClose.addEventListener("click", (e) => {
-                e.stopPropagation();
-                closeGpxOverlay();
-            });
-        }
-        gpxOverlay.addEventListener("click", (e) => {
-            if (e.target === gpxOverlay) closeGpxOverlay();
-        });
     }
 
     // When the About or Welcome/Help modal is up, the overlay Escape
@@ -12066,21 +12022,11 @@ function setupFloatingChrome() {
             closeAboutModal();
             return;
         }
-        if (optionsOverlay && optionsOverlay.classList.contains("is-open")) {
-            closeOptionsOverlay();
-            return;
-        }
-        if (gpxOverlay && gpxOverlay.classList.contains("is-open")) {
-            closeGpxOverlay();
-            return;
-        }
-        if (qrOverlay && qrOverlay.classList.contains("is-open")) {
-            closeQrOverlay();
-            return;
-        }
-        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
-            closeSearchOverlay();
-            return;
+        for (const sheet of [optionsSheet, gpxSheet, qrSheet, searchSheet]) {
+            if (sheet.isOpen()) {
+                sheet.close();
+                return;
+            }
         }
         // A trail popup is a look at one trail, the most recent thing
         // the rider asked for, so it outranks a still-standing
@@ -12119,18 +12065,16 @@ function setupFloatingChrome() {
         // opening search under them would be invisible. Same guards
         // the Escape handler uses.
         if (isAboutOpen() || isWelcomeOpen()) return;
-        if (searchOverlay && searchOverlay.classList.contains("is-open")) {
-            return;
-        }
+        if (searchSheet.isOpen()) return;
         // preventDefault stops Firefox's built-in Quick Find bar
         // (bound to "/" by default) and keeps the "/" character out
-        // of the finder input that openSearchOverlay is about to
+        // of the finder input that the search sheet is about to
         // focus on desktop.
         e.preventDefault();
-        openSearchOverlay();
+        searchSheet.open();
     });
 
-    _closeSearchOverlay = closeSearchOverlay;
+    _closeSearchOverlay = searchSheet.close;
 
     // ----- Season toggle ---------------------------------------------
     //
@@ -12649,7 +12593,7 @@ function setupFloatingChrome() {
     setupFinder();
 
     // ----- Share button -----
-    setupShareButton(openQrOverlay);
+    setupShareButton(qrSheet.open);
 
     // ----- Highlight chip -----
     const chip = document.getElementById("highlight-chip");
@@ -12847,7 +12791,7 @@ function foldSearchText(s) {
 // every visibility, Color, or units change asked for a rebuild with
 // the sheet closed (on NTN at 4x CPU, ~80 ms a season flip, most of it
 // the POI scope walk). Closed, the ask only marks the list stale and
-// openSearchOverlay builds it before the sheet shows. Nothing reads the
+// the search sheet's open builds it before the sheet shows. Nothing reads the
 // rows while the sheet is hidden: the keyboard handlers sit on the
 // sheet's own input and chips, and a share link or saved view restores
 // through trailEntry and the indexes, not the rows.
@@ -13315,14 +13259,7 @@ function makeRouteRow(r) {
 
     row.appendChild(swatch);
     row.appendChild(name);
-
-    const stats = routeStatsText(r);
-    if (stats) {
-        const statsEl = document.createElement("span");
-        statsEl.className = "finder-row-stats";
-        statsEl.textContent = stats;
-        row.appendChild(statsEl);
-    }
+    appendStats(row, "finder-row-stats", routeStatsText(r));
 
     row.addEventListener("click", () => {
         highlightRoute(r.id);
@@ -13354,40 +13291,29 @@ function makeTrailRow(t, visibleRouteIds) {
     // no rating.
     if (hasRatingLanes() && ((t.ratings || []).length || !parents.length)) {
         appendDifficultyTrailRowContent(row, t, parents);
-        row.addEventListener("click", () => {
-            showTrail(t.name);
-            if (_closeSearchOverlay) _closeSearchOverlay();
-        });
-        return row;
-    }
+    } else {
+        const mark = document.createElement("span");
+        mark.className = "finder-row-trail-mark";
+        mark.setAttribute("aria-hidden", "true");
+        row.appendChild(mark);
 
-    const mark = document.createElement("span");
-    mark.className = "finder-row-trail-mark";
-    mark.setAttribute("aria-hidden", "true");
-    row.appendChild(mark);
+        const name = document.createElement("span");
+        name.className = "finder-row-name";
+        name.textContent = t.name;
+        row.appendChild(name);
 
-    const name = document.createElement("span");
-    name.className = "finder-row-name";
-    name.textContent = t.name;
-    row.appendChild(name);
+        if (parents.length > 0) {
+            const meta = document.createElement("span");
+            meta.className = "finder-row-meta";
+            meta.textContent = routeParentsText(parents);
+            row.appendChild(meta);
+        }
 
-    if (parents.length > 0) {
-        const meta = document.createElement("span");
-        meta.className = "finder-row-meta";
-        meta.textContent = routeParentsText(parents);
-        row.appendChild(meta);
-    }
-
-    // Visible length, same element and number as a difficulty map's
-    // trail row (appendDifficultyTrailRowContent): rebuildFinderList
-    // calls refreshTrailLengths() before building rows, so t.lengthM
-    // is already current.
-    const stats = trailStatsText(t);
-    if (stats) {
-        const statsEl = document.createElement("span");
-        statsEl.className = "finder-row-stats";
-        statsEl.textContent = stats;
-        row.appendChild(statsEl);
+        // Visible length, same element and number as a difficulty
+        // map's trail row (appendDifficultyTrailRowContent):
+        // rebuildFinderList calls refreshTrailLengths() before building
+        // rows, so t.lengthM is already current.
+        appendStats(row, "finder-row-stats", trailStatsText(t));
     }
 
     row.addEventListener("click", () => {
@@ -13442,13 +13368,7 @@ function appendDifficultyTrailRowContent(row, t, parents) {
         row.appendChild(meta);
     }
 
-    const stats = trailStatsText(t);
-    if (stats) {
-        const statsEl = document.createElement("span");
-        statsEl.className = "finder-row-stats";
-        statsEl.textContent = stats;
-        row.appendChild(statsEl);
-    }
+    appendStats(row, "finder-row-stats", trailStatsText(t));
 }
 
 // A color key's mark in a list row: a rating's glyph
@@ -13530,11 +13450,11 @@ function poiSwatchContent(el, type, markerLabel) {
     switch (type) {
         case "parking":
             el.classList.add("parking-swatch");
-            el.textContent = "P";
+            el.textContent = POI_GLYPHS[POI.PARKING].text;
             break;
         case "trailhead":
             el.classList.add("trailhead-swatch");
-            el.textContent = "TH";
+            el.textContent = POI_GLYPHS[POI.TRAILHEAD].text;
             break;
         case "hub":
             el.classList.add("hub-swatch");
@@ -13570,26 +13490,23 @@ function poiSwatchContent(el, type, markerLabel) {
             break;
         case "toilet":
             el.classList.add("toilet-swatch");
-            // mdi:human-male-female (Apache 2.0, Pictogrammers)
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M7.5,2A2,2 0 0,1 9.5,4A2,2 0 0,1 7.5,6A2,2 0 0,1 5.5,4A2,2 0 0,1 7.5,2M6,7H9A2,2 0 0,1 11,9V14.5H9.5V22H5.5V14.5H4V9A2,2 0 0,1 6,7M16.5,2A2,2 0 0,1 18.5,4A2,2 0 0,1 16.5,6A2,2 0 0,1 14.5,4A2,2 0 0,1 16.5,2M15,22V16H12L14.59,8.41C14.84,7.59 15.6,7 16.5,7C17.4,7 18.16,7.59 18.41,8.41L21,16H18V22H15Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.TOILET, 'width="14" height="14" fill="currentColor"');
             break;
         case "drinking_water":
             el.classList.add("drinking-water-swatch");
-            // mdi:water (Apache 2.0, Pictogrammers)
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.DRINKING_WATER, 'width="14" height="14" fill="currentColor"');
             break;
         case "bicycle_repair_station":
             el.classList.add("bicycle-repair-station-swatch");
-            // mdi:tools (Apache 2.0, Pictogrammers)
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M21.71 20.29L20.29 21.71A1 1 0 0 1 18.88 21.71L7 9.85A3.81 3.81 0 0 1 6 10A4 4 0 0 1 2.22 4.7L4.76 7.24L5.29 6.71L6.71 5.29L7.24 4.76L4.7 2.22A4 4 0 0 1 10 6A3.81 3.81 0 0 1 9.85 7L21.71 18.88A1 1 0 0 1 21.71 20.29M2.29 18.88A1 1 0 0 0 2.29 20.29L3.71 21.71A1 1 0 0 0 5.12 21.71L10.59 16.25L7.76 13.42M20 2L16 4V6L13.83 8.17L15.83 10.17L18 8H20L22 4Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.BICYCLE_REPAIR_STATION, 'width="14" height="14" fill="currentColor"');
             break;
         case "event":
             // Same flag glyph as the on-map event-POI marker, so the
             // rider's mental model is consistent: "the red flag I
             // tap in the search results is the red flag I see on the
-            // map." mdi:flag (Apache 2.0, Pictogrammers).
+            // map."
             el.classList.add("event-swatch");
-            el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6H14.4Z"/></svg>';
+            el.innerHTML = poiGlyphSvg(POI.EVENT, 'width="14" height="14" fill="currentColor"');
             break;
     }
 }
