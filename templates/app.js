@@ -1701,6 +1701,21 @@ function tapLiftEdgeIds() {
     return ids;
 }
 
+// Ids of the lift sources (tap lift, on-trail glow) holding features.
+// Both re-lay out on every zoomend, which with nothing lifted (nearly
+// always) sent an empty collection to an already-empty source: a
+// worker round trip and a source reload per zoom for nothing. Style
+// rebuilds and a context restore carry a source's data over, so what
+// was last set is what the source holds.
+const _liftSourcesHolding = new Set();
+
+function setLiftSourceFeatures(src, features) {
+    if (!features.length && !_liftSourcesHolding.has(src.id)) return;
+    src.setData({ type: "FeatureCollection", features });
+    if (features.length) _liftSourcesHolding.add(src.id);
+    else _liftSourcesHolding.delete(src.id);
+}
+
 function refreshTapLift() {
     const src = map.getSource(TAP_LIFT_SOURCE);
     if (!src) return;
@@ -1713,7 +1728,7 @@ function refreshTapLift() {
     const edgeIds = tapLiftEdges ? tapLiftEdges.ids : null;
     if ((!name && !edgeIds) || !laneLayer
         || (tapLiftEdges && tapLiftEdges.graph !== laneGraph)) {
-        src.setData({ type: "FeatureCollection", features: [] });
+        setLiftSourceFeatures(src, []);
         return;
     }
     const keep = edgeIds
@@ -1721,10 +1736,7 @@ function refreshTapLift() {
         : (f) => f.properties.trail_name === name;
     laneFeatureCollectionAsync({ extent: "full" }).then((all) => {
         if (token !== tapLiftToken) return;
-        src.setData({
-            type: "FeatureCollection",
-            features: all.features.filter(keep),
-        });
+        setLiftSourceFeatures(src, all.features.filter(keep));
     }).catch((e) => console.error("lanes: tap lift layout failed", e));
 }
 
@@ -1979,7 +1991,14 @@ function bearingDeg(lng1, lat1, lng2, lat2) {
 // length. Returns { segments: [{lng1,lat1,lng2,lat2,lengthM,bearing,
 // arcStart}], totalLength: number }. Zero-length segments are
 // dropped; the resulting `arcStart` reflects only the kept segments.
+// Pure in the coordinate array, which routesData never changes, so
+// each way's result is kept against its array and every decorations
+// pass after the first reuses it. The placer only reads it.
+const _waySegmentsCache = new WeakMap();
+
 function computeWaySegments(coords) {
+    const cached = _waySegmentsCache.get(coords);
+    if (cached) return cached;
     const segments = [];
     let arcStart = 0;
     for (let i = 0; i < coords.length - 1; i++) {
@@ -1994,7 +2013,9 @@ function computeWaySegments(coords) {
         });
         arcStart += lengthM;
     }
-    return { segments, totalLength: arcStart };
+    const result = { segments, totalLength: arcStart };
+    _waySegmentsCache.set(coords, result);
+    return result;
 }
 
 // Linear interpolation along the polyline at arc distance `arc`.
@@ -2198,8 +2219,19 @@ function clipCoordsAroundObstacles(coords, obstaclesIndex, radius) {
 // The geometry is kept as a segment array (with bearings + cumulative
 // arc lengths) so the placer can drop decorations at exact arc
 // distances along the way.
+//
+// A function of laneInputsKey() alone (the visible set, and the Color
+// aspect through featureColorKey), so the list is kept against it: a
+// POI toggle or a marker proximity change re-runs the placer with the
+// same ways. The caller gets its own copy of the list, since
+// computeDecorations sorts it; the way objects are shared and only
+// read.
+let _canonicalWays = null;  // { key, ways }
+
 function collectCanonicalWays() {
     if (!routesData) return [];
+    const inputs = laneInputsKey();
+    if (_canonicalWays && _canonicalWays.key === inputs) return _canonicalWays.ways.slice();
 
     const globalRank = routeRank();
 
@@ -2252,7 +2284,8 @@ function collectCanonicalWays() {
             colorKey: hasRatingLanes() ? (featureColorKey(props) ?? false) : null,
         });
     }
-    return ways;
+    _canonicalWays = { key: inputs, ways };
+    return ways.slice();
 }
 
 // Try to place a decoration of `kind` at the first candidate arc
@@ -6684,14 +6717,15 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
     return Math.sqrt(projX * projX + projY * projY) * 111320;
 }
 
-// The one segment walk behind every "how near is the trail" question:
-// the nearest segment of every routesData feature `predicate(props)`
-// accepts. Returns {feature, distM, a, b} with the segment's endpoints,
-// or null when no segment was walked. MultiLineString parts are walked
-// in place rather than flattened, and the winner is only recorded, not
-// boxed, until the walk ends, since this runs per POI on every
-// visibility and highlight change. It stops at an exact hit, the one
-// distance nothing can beat.
+// The segment walk behind nearestTrail, for a point that moves (a GPS
+// fix) and so cannot use the per-point table minDistanceToFeatures
+// reads: the nearest segment of every routesData feature
+// `predicate(props)` accepts. Returns {feature, distM, a, b} with the
+// segment's endpoints, or null when no segment was walked.
+// MultiLineString parts are walked in place rather than flattened, and
+// the winner is only recorded, not boxed, until the walk ends, since
+// this runs on every fix. It stops at an exact hit, the one distance
+// nothing can beat.
 function nearestFeatureSegment(lng, lat, predicate) {
     let minDist = Infinity;
     let bestF = null, bestCoords = null, bestI = -1;
@@ -6720,11 +6754,64 @@ function nearestFeatureSegment(lng, lat, predicate) {
     return { feature: bestF, distM: minDist, a: bestCoords[bestI], b: bestCoords[bestI + 1] };
 }
 
+// The widest proximity question any caller of minDistanceToFeatures
+// asks: every caller compares the answer against one of these
+// thresholds, never uses the distance itself, so a feature farther
+// than this can never change an answer.
+const NEAR_FEATURES_CAP_M = Math.max(POI_PROXIMITY_METERS,
+    POI_AMENITY_PROXIMITY_METERS, HIGHLIGHT_POI_PROXIMITY_METERS);
+
+// Per point ("lng,lat", as markers, poisData and poiIndex hand it in):
+// every routesData feature within NEAR_FEATURES_CAP_M, with its
+// distance. The POIs never move and routesData is fixed once loaded,
+// yet every visibility change and highlight asked each POI the same
+// question two or three times, each a walk of every segment on the
+// map (about 40% of a season flip on NTN). One walk per point, on its
+// first question, leaves a handful of features to filter by the
+// predicate of the moment. Keyed by routesData too, so a reload of the
+// data can never answer from the old one.
+let _nearFeatures = new Map();
+let _nearFeaturesData = null;
+
+function nearFeatures(lng, lat) {
+    if (_nearFeaturesData !== routesData) {
+        _nearFeatures = new Map();
+        _nearFeaturesData = routesData;
+    }
+    const k = lng + "," + lat;
+    let near = _nearFeatures.get(k);
+    if (near) return near;
+    near = [];
+    for (const f of routesData.features) {
+        const parts = f.geometry.type === "LineString"
+            ? [f.geometry.coordinates]
+            : f.geometry.coordinates;
+        let best = Infinity;
+        for (const coords of parts) {
+            for (let i = 0; i < coords.length - 1; i++) {
+                const d = pointToSegmentDistance(lng, lat,
+                    coords[i][0], coords[i][1],
+                    coords[i + 1][0], coords[i + 1][1]);
+                if (d < best) best = d;
+            }
+        }
+        if (best <= NEAR_FEATURES_CAP_M) near.push({ feature: f, distM: best });
+    }
+    _nearFeatures.set(k, near);
+    return near;
+}
+
 // Min distance (meters) from (lng, lat) to the line geometry of every
-// routesData feature `predicate(props)` accepts.
+// routesData feature `predicate(props)` accepts, exact up to
+// NEAR_FEATURES_CAP_M and Infinity beyond it (see nearFeatures). A
+// caller that needs a distance past the cap, or the nearest point,
+// walks with nearestFeatureSegment instead, as nearestTrail does.
 function minDistanceToFeatures(lng, lat, predicate) {
-    const best = nearestFeatureSegment(lng, lat, predicate);
-    return best ? best.distM : Infinity;
+    let min = Infinity;
+    for (const n of nearFeatures(lng, lat)) {
+        if (n.distM < min && predicate(n.feature.properties)) min = n.distM;
+    }
+    return min;
 }
 
 function isVisibleTrail(props) {
@@ -7167,6 +7254,7 @@ async function loadTrails() {
 
     // Initial visibility from bucket model + persisted state
     rebuildVisibleRoutesSet();
+    trailsSourceKey = laneInputsKey();
 
     // The ways themselves, one feature per route per way. The lanes are
     // not drawn from this source (the lane layer has its own graph); the
@@ -7755,6 +7843,12 @@ let laneLayer = null;        // LaneLayer, once the first ordering resolves
 let laneGraphFull = null;    // graph over every route in trails.geojson
 let laneGraph = null;        // laneGraphFull filtered to visibleRoutes
 let laneOrderToken = 0;      // drops re-orders overtaken by a newer toggle
+// laneInputsKey() of the ordering in flight or built, null when none
+// has started or the last one failed. Boot asks twice with the same
+// inputs (loadTrails, then the first visibility pass), and a pass whose
+// inputs did not move would only re-run the plugin's graph build and
+// a worker ordering that lands on the same lanes.
+let laneGraphKey = null;
 // Maps with rating lanes: the plugin input for the current visibility
 // pass, per visible way run one rating feature and one copy per
 // route-mode parent (see laneFeaturesByMode). Null on a map with no
@@ -8039,6 +8133,16 @@ function laneFeaturesByMode() {
     return out;
 }
 
+// Everything the lane graph and the "trails" source data are a function
+// of that can change after load: the visible set, and the Color aspect
+// (wayKey, so rating lane keys and colors). routesData, CONFIG and the
+// scheme's rating table are fixed for the page's life. A new mutable
+// input to either belongs here, or a change to it alone would not
+// rebuild.
+function laneInputsKey() {
+    return [...visibleRoutes].sort().join(",") + "|" + colorAspect;
+}
+
 // (Re)order the lanes for the current visibleRoutes: filter the full
 // graph, seed the ordering with the lane orders in force so routes
 // that stay visible hold their lanes, and swap the result in. The
@@ -8049,6 +8153,9 @@ function laneFeaturesByMode() {
 // restacks the lifts and the wash beneath it.
 function refreshLaneGraph() {
     if (!laneGraphFull && !difficultyVisibleFeatures) return;
+    const inputs = laneInputsKey();
+    if (inputs === laneGraphKey) return;
+    laneGraphKey = inputs;
     const L = window.maplibreLanes;
     const seed = laneGraph ? L.snapshotLaneOrders(laneGraph) : undefined;
     let next;
@@ -8077,7 +8184,11 @@ function refreshLaneGraph() {
         // With the context lost there is no style to add to; the
         // restore adds the layer with this graph (watchLaneContextLoss).
         else if (!laneContextLost) addLaneLayer();
-    }).catch((e) => console.error("lanes: ordering failed", e));
+    }).catch((e) => {
+        // Let the next pass with these inputs try again.
+        if (token === laneOrderToken) laneGraphKey = null;
+        console.error("lanes: ordering failed", e);
+    });
 }
 
 // Adds a fresh lane layer for laneGraph and restacks around it. Runs
@@ -8301,10 +8412,15 @@ function refreshLaneFeatures() {
 // (collectCanonicalWays). It is deliberately not the lane order: the
 // chevrons run down the center of the bundle, so nothing can see the
 // difference, and a fixed order keeps ownership deterministic.
+// CONFIG.routes is fixed for the page's life, so the rank is built
+// once; callers only read it.
+let _routeRank = null;
 function routeRank() {
+    if (_routeRank) return _routeRank;
     const rank = new Map();
     Object.keys(CONFIG.routes).slice().sort(ROUTE_ID_COMPARE)
         .forEach((id, i) => rank.set(id, i));
+    _routeRank = rank;
     return rank;
 }
 
@@ -8597,10 +8713,18 @@ function _applyPerRouteLayerVisibility() {
     updateClipArrowsDim();
 }
 
+// laneInputsKey() of the data the "trails" source holds. The boot
+// visibility pass would otherwise recompute and re-send the data
+// loadTrails just added, one redundant worker re-tile.
+let trailsSourceKey = null;
+
 function updateTrailDisplay() {
-    const updated = computeTrailsSourceData();
     const source = map.getSource("trails");
-    if (source) source.setData(updated);
+    const inputs = laneInputsKey();
+    if (source && inputs !== trailsSourceKey) {
+        trailsSourceKey = inputs;
+        source.setData(computeTrailsSourceData());
+    }
 
     // Re-order the lanes for the new visible set (async, seeded).
     refreshLaneGraph();
@@ -10129,15 +10253,12 @@ function refreshHereGlow() {
         }
     }
     if (!ids.size || !laneLayer) {
-        src.setData({ type: "FeatureCollection", features: [] });
+        setLiftSourceFeatures(src, []);
         return;
     }
     laneFeatureCollectionAsync({ extent: "full" }).then((all) => {
         if (token !== hereLiftToken) return;
-        src.setData({
-            type: "FeatureCollection",
-            features: all.features.filter((f) => ids.has(f.properties.edge)),
-        });
+        setLiftSourceFeatures(src, all.features.filter((f) => ids.has(f.properties.edge)));
     }).catch((e) => console.error("lanes: on-trail glow layout failed", e));
 }
 
@@ -11655,6 +11776,7 @@ function setupFloatingChrome() {
 
     function openSearchOverlay() {
         const returnTo = closeOtherOverlays(searchOverlay);
+        refreshStaleFinderList();
         setOverlayOpen(searchOverlay, searchBtn, true);
         // Remember the opener and trap Tab; initial focus stays with
         // the input logic below.
@@ -12852,7 +12974,33 @@ function foldSearchText(s) {
     return String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+// The list only matters while the search sheet is up, but boot and
+// every visibility, Color, or units change asked for a rebuild with
+// the sheet closed (on NTN at 4x CPU, ~80 ms a season flip, most of it
+// the POI scope walk). Closed, the ask only marks the list stale and
+// openSearchOverlay builds it before the sheet shows. Nothing reads the
+// rows while the sheet is hidden: the keyboard handlers sit on the
+// sheet's own input and chips, and a share link or saved view restores
+// through trailEntry and the indexes, not the rows.
+let _finderListStale = false;
+
 function rebuildFinderList() {
+    const overlay = document.getElementById("search-overlay");
+    if (overlay && overlay.hidden) {
+        _finderListStale = true;
+        return;
+    }
+    buildFinderList();
+}
+
+// Before the search sheet shows: build the list if an ask arrived while
+// it was closed.
+function refreshStaleFinderList() {
+    if (_finderListStale) buildFinderList();
+}
+
+function buildFinderList() {
+    _finderListStale = false;
     const list = document.getElementById("finder-list");
     const empty = document.getElementById("finder-empty");
     if (!list) return;
