@@ -689,15 +689,19 @@ const SCRIM_OPACITY = 0.40;
 //      then re-apply the per-scheme map paint tokens once the new
 //      style finishes loading.
 //
-// Used by:
-//   - The Options Appearance segmented control (rider toggle)
-//   - The OS prefers-color-scheme listener when the rider's stored
-//     preference is "auto"
+// Used by the Options Appearance segmented control (rider toggle). The
+// OS prefers-color-scheme listener calls showColorScheme, steps 2 and
+// 3 alone: an OS flip is not the rider choosing anything, and storing
+// "auto" there would pin a curator's auto default for this rider.
 function applyColorScheme(rawScheme) {
     // rawScheme is the *intent*: "light", "dark", or "auto". Persist
     // intent (so "auto" stays "auto"), but resolve to a concrete
     // scheme for the data-color-scheme attribute.
     LS.set("mtb.colorScheme", rawScheme);
+    showColorScheme(rawScheme);
+}
+
+function showColorScheme(rawScheme) {
     let resolved = rawScheme;
     if (resolved === "auto") {
         resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -748,7 +752,7 @@ function watchSystemColorScheme() {
     const handler = () => {
         const stored = LS.get("mtb.colorScheme",
             CONFIG.defaultColorScheme || "light");
-        if (stored === "auto") applyColorScheme("auto");
+        if (stored === "auto") showColorScheme("auto");
     };
     mql.addEventListener("change", handler);
 }
@@ -1315,6 +1319,19 @@ const PLATE_BOXES = {
     pair: [PAIR_ICON_W, PAIR_ICON_H],
 };
 
+// A rounded-rectangle subpath. ctx.roundRect would do, but it arrived in
+// Safari 16 and the plates draw during boot, so on iOS 15 it would
+// throw and stop the map loading. A pill is r = h / 2. Chromium draws
+// the two to identical pixels (probed 2026-Nov-01).
+function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
 // `drawInner` paints the symbol in plate coordinates, at the plate's
 // inner corner. `shape` is a PLATE_BOXES key: the pill is the freeride
 // marker's own shape, the other two share the square plate's corners.
@@ -1331,7 +1348,7 @@ function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
         ctx.shadowBlur = PLATE_SHADOW_BLUR * GLYPH_PIXEL_RATIO;
         ctx.shadowOffsetY = PLATE_SHADOW_Y * GLYPH_PIXEL_RATIO;
         ctx.beginPath();
-        ctx.roundRect(m, m, pw, ph, shape === "pill" ? ph / 2 : PLATE_RADIUS);
+        roundRectPath(ctx, m, m, pw, ph, shape === "pill" ? ph / 2 : PLATE_RADIUS);
         ctx.fillStyle = fill;
         ctx.fill();
         ctx.restore();
@@ -1405,7 +1422,7 @@ function bikeOnlySwatchDataUrl() {
     if (!_bikeOnlySwatchUrl) {
         _bikeOnlySwatchUrl = glyphCanvas(RATING_ICON_SIZE, RATING_ICON_SIZE, (ctx) => {
             ctx.beginPath();
-            ctx.roundRect(2.5, 2.5, RATING_ICON_SIZE - 5, RATING_ICON_SIZE - 5, PLATE_RADIUS);
+            roundRectPath(ctx, 2.5, 2.5, RATING_ICON_SIZE - 5, RATING_ICON_SIZE - 5, PLATE_RADIUS);
             ctx.fillStyle = BIKE_ONLY_PLATE_FILL;
             ctx.fill();
             ctx.strokeStyle = "rgba(0,0,0,0.3)";
@@ -3528,41 +3545,6 @@ document.addEventListener("visibilitychange", () => {
 // ============================================================
 // Initialization
 // ============================================================
-// Required CONFIG fields, checked at boot. If the build produces a
-// CONFIG missing any of these (e.g. the template substitution broke,
-// or a required YAML key was removed without updating CONFIG_SPEC),
-// the app refuses to start with a clear error in the console + a
-// visible message on the map div, instead of failing later with an
-// opaque `Cannot read property of undefined` somewhere downstream.
-const REQUIRED_CONFIG_KEYS = [
-    "name", "slug", "title",
-    "bbox", "panBbox",
-    "routes",
-];
-
-function validateConfigShape() {
-    if (typeof CONFIG !== "object" || CONFIG === null) {
-        throw new Error("CONFIG is missing or not an object, check that the build's template substitution succeeded.");
-    }
-    const missing = REQUIRED_CONFIG_KEYS.filter((k) =>
-        CONFIG[k] === undefined || CONFIG[k] === null);
-    if (missing.length > 0) {
-        throw new Error(
-            `CONFIG missing required key(s): ${missing.join(", ")}. ` +
-            `Re-run the build (scripts/build.py) to regenerate.`);
-    }
-    // Bbox arrays must have 4 numbers; an off-by-one here breaks
-    // maxBounds and fitBoundsOptions in opaque ways downstream.
-    for (const k of ["bbox", "panBbox"]) {
-        if (!Array.isArray(CONFIG[k]) || CONFIG[k].length !== 4
-            || !CONFIG[k].every((n) => typeof n === "number")) {
-            throw new Error(
-                `CONFIG.${k} must be a 4-number array [w, s, e, n]; ` +
-                `got ${JSON.stringify(CONFIG[k])}.`);
-        }
-    }
-}
-
 // Module-scope holding pen for a parsed share-link state. Set in
 // init() from the share link or the saved view before map
 // construction; consumed by the post-trails-load handler to apply the
@@ -4187,11 +4169,13 @@ async function checkPMTilesRangeSupport() {
     }
 }
 
-// The page when no map can be made: a broken config, a missing lanes
-// plugin, no WebGL2, or any later throw out of init(). Plain DOM and the
-// sheet tokens, so it follows the color scheme and depends on nothing
-// that might also have failed. A throw late in boot can land here after
-// an earlier failure already did, so the card is shown once.
+// The page when no map can be made: a missing lanes plugin, no WebGL2,
+// or any later throw out of init() or the boot's style.load handler.
+// (A broken CONFIG throws while this file evaluates, before any of
+// that; validate_config.py at build time is the gate for it.) Plain
+// DOM and the sheet tokens, so it follows the color scheme and depends
+// on nothing that might also have failed. A throw late in boot can land
+// here after an earlier failure already did, so the card is shown once.
 function showMapUnavailable(err) {
     console.error("Map could not start:", err);
     if (window.__hideMapLoading) window.__hideMapLoading();
@@ -4224,14 +4208,6 @@ async function init() {
     // open menu. Both read from the same SCRIM_OPACITY.
     document.documentElement.style.setProperty(
         "--scrim-opacity", String(SCRIM_OPACITY));
-    try {
-        validateConfigShape();
-    } catch (e) {
-        // The message names the bad key; it is for the operator, so it
-        // goes to the console and the rider gets the generic card.
-        showMapUnavailable(e);
-        return;
-    }
 
     // Bound concurrent .pmtiles range-request fetches.
     //
@@ -4960,63 +4936,71 @@ async function init() {
 
     // Load data and add layers once map is ready.
     map.once("style.load", async () => {
-        await loadTrails();
-        await loadPOIs();
-        buildRouteIndex();
-        buildTrailIndex();
-        buildPoiIndex();
-        setupFloatingChrome();
-        // Routes panel docked-state wiring + boot form. After
-        // setupFloatingChrome: its initial applyVisibilityChange()
-        // populated visibleRoutes (which decides the panel's default
-        // docked state) and already ran the first
-        // rebuildRoutePanel() row build. Before setupFabLabels: the
-        // panel's discovery label only mounts when the panel booted
-        // collapsed, so the collapsed class must be settled first.
-        initRoutePanel();
-        // First-visit-per-map FAB-label discoverability cue. Mounts
-        // labels under each FAB, dismisses on tap or 15 s timeout.
-        // Self-suppresses on subsequent visits via LS flag. Must
-        // run after setupFloatingChrome so the FABs' main click
-        // handlers are wired (our dismiss listener piggybacks).
-        setupFabLabels();
-        setupInteractions();
-        promoteBasemapLabels();
-        suppressBasemapPois();
-        suppressBasemapOnewayArrows();
-        applyBasemapDrawnPathFilter();
-        // Apply share-link highlight, if any. Done here (after both
-        // trails and route/trail indexes are built) so we can resolve
-        // route IDs / trail names against real data. Best-effort,
-        // silently skip if the referenced route or trail no longer
-        // exists (e.g. the map has been rebuilt since the link was
-        // shared and the relation changed).
-        if (_pendingShareHighlight) {
-            applyPendingShareHighlight();
-        }
+        // A throw anywhere here would otherwise leave a basemap with no
+        // controls and the loading bar up, so it gets the same card as
+        // init(). loadTrails toasts its own failure first, then
+        // rethrows into this too.
+        try {
+            await loadTrails();
+            await loadPOIs();
+            buildRouteIndex();
+            buildTrailIndex();
+            buildPoiIndex();
+            setupFloatingChrome();
+            // Routes panel docked-state wiring + boot form. After
+            // setupFloatingChrome: its initial applyVisibilityChange()
+            // populated visibleRoutes (which decides the panel's default
+            // docked state) and already ran the first
+            // rebuildRoutePanel() row build. Before setupFabLabels: the
+            // panel's discovery label only mounts when the panel booted
+            // collapsed, so the collapsed class must be settled first.
+            initRoutePanel();
+            // First-visit-per-map FAB-label discoverability cue. Mounts
+            // labels under each FAB, dismisses on tap or 15 s timeout.
+            // Self-suppresses on subsequent visits via LS flag. Must
+            // run after setupFloatingChrome so the FABs' main click
+            // handlers are wired (our dismiss listener piggybacks).
+            setupFabLabels();
+            setupInteractions();
+            promoteBasemapLabels();
+            suppressBasemapPois();
+            suppressBasemapOnewayArrows();
+            applyBasemapDrawnPathFilter();
+            // Apply share-link highlight, if any. Done here (after both
+            // trails and route/trail indexes are built) so we can resolve
+            // route IDs / trail names against real data. Best-effort,
+            // silently skip if the referenced route or trail no longer
+            // exists (e.g. the map has been rebuilt since the link was
+            // shared and the relation changed).
+            if (_pendingShareHighlight) {
+                applyPendingShareHighlight();
+            }
 
-        // Hide the initial-load progress bar once the opening viewport is
-        // painted. When this map has terrain we can't use the first global
-        // map 'idle', the terrain raster-dem pmtiles source loads its
-        // header asynchronously, and an 'idle' can fire after basemap +
-        // trails settle but before the hillshade tiles paint, hiding the
-        // bar too early (most visible on a hard reload). Instead we wait on
-        // _terrainTilesLoaded (armed in addTerrainLayers), which resolves
-        // at an idle, once terrain has SETTLED for the view: tiles
-        // loaded, or none needed (config gate / out of coverage). It
-        // resolves AT an idle, so we hide directly here; registering a
-        // fresh once('idle') could wait for a busy→idle transition that
-        // never comes. __hideMapLoading is idempotent; the 30s inline
-        // safety net covers a stalled terrain header (rare - the
-        // archive existed at build time, or its HEAD probe passed).
-        const _hideBar = () => {
-            if (window.__hideMapLoading) window.__hideMapLoading();
-            _signalMapSettled();
-        };
-        if (CONFIG.showTerrain && map.getSource("terrain") && _terrainTilesLoaded) {
-            _terrainTilesLoaded.then(_hideBar);
-        } else {
-            map.once("idle", _hideBar);
+            // Hide the initial-load progress bar once the opening viewport is
+            // painted. When this map has terrain we can't use the first global
+            // map 'idle', the terrain raster-dem pmtiles source loads its
+            // header asynchronously, and an 'idle' can fire after basemap +
+            // trails settle but before the hillshade tiles paint, hiding the
+            // bar too early (most visible on a hard reload). Instead we wait on
+            // _terrainTilesLoaded (armed in addTerrainLayers), which resolves
+            // at an idle, once terrain has SETTLED for the view: tiles
+            // loaded, or none needed (config gate / out of coverage). It
+            // resolves AT an idle, so we hide directly here; registering a
+            // fresh once('idle') could wait for a busy→idle transition that
+            // never comes. __hideMapLoading is idempotent; the 30s inline
+            // safety net covers a stalled terrain header (rare - the
+            // archive existed at build time, or its HEAD probe passed).
+            const _hideBar = () => {
+                if (window.__hideMapLoading) window.__hideMapLoading();
+                _signalMapSettled();
+            };
+            if (CONFIG.showTerrain && map.getSource("terrain") && _terrainTilesLoaded) {
+                _terrainTilesLoaded.then(_hideBar);
+            } else {
+                map.once("idle", _hideBar);
+            }
+        } catch (e) {
+            showMapUnavailable(e);
         }
     });
 
@@ -5443,9 +5427,11 @@ function _welcomeKeyRow() {
                 + " or collapse the panel." };
     }
     if (name === "Key") {
+        // The rating rows follow the Color choice, as the key's do.
+        const rated = activeAspect() === EXPOSURE_ASPECT ? "exposure" : "difficulty";
         return { icon: _WELCOME_ICON_ROUTES, name,
             desc: "Each route's color and name, and each trail's"
-                + " difficulty. Tap a row to highlight it on the map"
+                + ` ${rated}. Tap a row to highlight it on the map`
                 + " or collapse the panel." };
     }
     return { icon: _WELCOME_ICON_ROUTES, name,
@@ -6228,9 +6214,9 @@ function applyContourUnits() {
 // Called from addTerrainLayers once the terrain source exists (so the
 // showTerrain gate and the HEAD-probe fallback are already settled).
 // beforeLayer is terrainBeforeLayer(): the lines sit under water,
-// above the hillshade, and the labels go under the first symbol
-// layer; trail layers are appended later and therefore draw over
-// them. The layers survive scheme rebuilds
+// above the hillshade, and the labels sit with the basemap labels
+// (placeContourLabels); trail layers are appended later and therefore
+// draw over them. The layers survive scheme rebuilds
 // like every non-basemap layer, and applyMapPaintForScheme re-tones
 // them afterward.
 async function addContourLayers(beforeLayer) {
@@ -6298,8 +6284,11 @@ async function addContourLayers(beforeLayer) {
                 "text-halo-width": 1.2,
             },
         // Labels are symbols: under the water and road fills they would
-        // simply be painted over. They go with the other labels.
+        // simply be painted over. The first symbol is only a starting
+        // point; placeContourLabels pins them under the promoted
+        // basemap labels whichever way the header raced the promote.
         }, firstSymbolLayerId());
+        placeContourLabels();
     } catch (e) {
         // Contours are enhancement, never load-bearing; a failure
         // here must not take the map down with it.
@@ -9335,17 +9324,6 @@ function _markerArrayForType(type) {
     return POI_MARKER_ARRAYS[type] || null;
 }
 
-function _lsKeyForType(type) {
-    return POI_TYPES[type]?.lsKey ?? null;
-}
-
-// POI type → name used in `default_visible` config list. Lets us
-// resolve "what's the per-map default for this category?" from a
-// runtime POI type.
-function _defaultVisibleNameForType(type) {
-    return POI_TYPES[type]?.defaultVisibleName ?? null;
-}
-
 // Force-show machinery: when a highlight lands on POIs of a type
 // whose Options toggle is OFF, mount that type's markers
 // temporarily so the outlined markers are on the map. Toggle state
@@ -9359,23 +9337,18 @@ let _forcedPoiTypes = new Set();
 
 function _forcePoiType(type) {
     if (_forcedPoiTypes.has(type)) return;
-    const lsKey = _lsKeyForType(type);
-    if (!lsKey) return;
+    const rowId = POI_TYPES[type]?.toggleRowId;
+    if (!rowId) return;
     // Toggle ON → markers already mounted (modulo proximity, which
     // the search-scope filter has already enforced before we got
     // here). No force-mount needed.
     //
-    // The fallback for LS.get must match what loadPOIs decided at
-    // boot, otherwise we mis-classify "rider hasn't toggled yet"
-    // states. Specifically: when default_visible omits this type,
-    // loadPOIs called addXxxMarkers(false), markers exist in the
-    // array but aren't on the map. If we used `true` as the
-    // fallback here, we'd think "toggle is on" and skip force-mount,
-    // leaving the search highlight ringing empty space. Using
-    // isDefaultVisible(name) keeps both code paths in agreement.
-    const dvName = _defaultVisibleNameForType(type);
-    const fallbackOn = dvName ? isDefaultVisible(dvName) : true;
-    if (LS.get(lsKey, fallbackOn)) return;
+    // The row's data-on is the toggle's truth, the same one
+    // updateMarkerProximity reads. Stored value plus default_visible
+    // is not: a curator's forced_visible turns the row on without
+    // storing anything, and a type wrongly taken as off here gets
+    // its whole mounted layer unmounted when the highlight clears.
+    if (document.getElementById(rowId)?.getAttribute("data-on") === "true") return;
     const arr = _markerArrayForType(type);
     if (!arr) return;
     // For proximity-filtered types, mount only the proximity-IN
@@ -9688,7 +9661,12 @@ function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
             const shared = props.shared_routes || [props.route_id];
             match = shared.includes(routeId);
         } else if (trailName !== undefined) {
-            match = props.trail_name === trailName;
+            // Visible stretches only, as longestVisibleTrailRun and the
+            // finder's length count them: a name that also runs on a
+            // hidden (winter-only, emergency) relation would otherwise
+            // frame a stretch the map is not drawing.
+            match = props.trail_name === trailName
+                && (props.shared_routes || [props.route_id]).some((id) => visibleRoutes.has(id));
         } else if (colorKey !== undefined) {
             match = featureColorKey(props) === colorKey;
         }
@@ -11953,7 +11931,7 @@ function setupFloatingChrome() {
             const state = gpxShareFiles.get(entry.url);
             if (state instanceof File || state === "pending") continue;
             gpxShareFiles.set(entry.url, "pending");
-            fetch(entry.url)
+            fetchWithTimeout(entry.url)
                 .then((r) => {
                     if (!r.ok) throw new Error("HTTP " + r.status);
                     return r.blob();
@@ -12491,8 +12469,9 @@ function setupFloatingChrome() {
     // <html data-color-scheme>, rebuilds the basemap with the matching
     // Protomaps flavor, and re-applies map paint tokens (label colors,
     // arrow icon variant). The OS prefers-color-scheme listener
-    // re-fires applyColorScheme("auto") when the rider's stored
-    // intent is "auto", handles e.g. iOS sunset shift mid-session.
+    // re-fires showColorScheme("auto") when the intent (the rider's,
+    // else the map's default) is "auto", handles e.g. iOS sunset shift
+    // mid-session.
     const schemeGroup = document.getElementById("color-scheme-segmented");
     if (schemeGroup) {
         const schemeButtons = Array.from(
@@ -13203,6 +13182,7 @@ function groupPoisForFinder(matchedPois, query) {
 // before its full length, so the number is the map's window, not the
 // route's.
 function routeStatsText(r) {
+    if (!CONFIG.showDistance) return "";
     if (typeof r.distanceM !== "number") return "";
     const text = formatDistance(r.distanceM);
     return isTruncatedRoute(r.id) ? `${text} shown` : text;
@@ -13972,6 +13952,7 @@ function promoteBasemapLabels() {
     for (const id of basemapSymbolIds) {
         map.moveLayer(id, beforeId);
     }
+    placeContourLabels(basemapSymbolIds);
     // The wash goes under the lanes but OVER the basemap labels, road
     // shields, contour labels and the restricted-path marks, so they
     // recede with the basemap they belong to: a highlight is the
@@ -13986,6 +13967,22 @@ function promoteBasemapLabels() {
     moveTapLiftUnderLanes();
     placeWashUnderLift(basemapSymbolIds);
     placeClipArrowsAboveLanes();
+}
+
+// Contour labels go directly under the first promoted basemap label:
+// above every road fill, under the wash and the lanes, with the other
+// labels. One fixed spot, so a boot that met the contour header before
+// the promote, one that met it after, and a scheme rebuild (which
+// re-appends overlays above the basemap) all end the same way. Before
+// the promote the first basemap symbol sits among the roads
+// (roads_other_restricted), and the promote's own call moves the
+// labels up from there.
+function placeContourLabels(basemapSymbolIds) {
+    if (!map.getLayer("contour-labels")) return;
+    const ids = basemapSymbolIds || map.getStyle().layers
+        .filter((l) => l.source === "basemap" && l.type === "symbol")
+        .map((l) => l.id);
+    if (ids.length) map.moveLayer("contour-labels", ids[0]);
 }
 
 // The continuation arrows sit above the lanes and the wash, under the
@@ -15348,8 +15345,8 @@ function showToast(message, opts) {
     const persistent = !!opts.persistent;
     const actions = Array.isArray(opts.actions) ? opts.actions : [];
 
-    // Ships in index.html, not created here: a live region announces
-    // changes to its content, so it has to exist before the first one.
+    // Ships in index.html, not created here; what its live region
+    // does and does not announce is in the comment there.
     const el = document.getElementById("map-toast");
     if (!el) return;
     // Displacement bookkeeping, see _displacedPersistentToast above.

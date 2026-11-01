@@ -341,8 +341,12 @@
     </div>
 
     <!-- Toasts (showToast in app.js). In the markup, not created on
-         first use: a live region announces changes to its content, so
-         it has to exist before the first message. -->
+         first use, so the live region is one element for the page's
+         life. Its idle state is .hidden (display: none), which takes it
+         out of the accessibility tree, and showToast sets the text and
+         unhides it in the same tick: a message that replaces a visible
+         toast is announced, but a screen reader may miss the first one
+         after the toast was hidden. -->
     <div id="map-toast" class="map-toast hidden" role="status" aria-live="polite"></div>
 
     <!-- Floating button stack, top-right, 12 px corner inset like the
