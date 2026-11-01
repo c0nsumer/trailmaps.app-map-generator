@@ -823,7 +823,8 @@ function hasRatingLanes() {
 // mode, "Key" when route rows and rating rows share the panel.
 function keyTitle() {
     if (!hasRatingLanes()) return "Routes";
-    return hasRouteLanes() ? "Key" : "Difficulty";
+    if (hasRouteLanes()) return "Key";
+    return activeAspect() === EXPOSURE_ASPECT ? "Exposure" : "Difficulty";
 }
 
 // Curator-forced visibility: when a layer name appears in
@@ -984,11 +985,19 @@ const SCHEME_WAY_PROPS = SCHEME.freeride
     ? [TECH_ASPECT.prop, "freeride"]
     : [...SCHEME.aspects.map((a) => a.prop), "bike_only"];
 
+// Whether the map offers the Options Color row: an ITRS map whose
+// difficulty-mode relations have exposure values to color by. Anywhere
+// else exposure is never the lanes' aspect, whatever storage says.
+function colorAspectOffered() {
+    return !!EXPOSURE_ASPECT && hasRatingLanes()
+        && (CONFIG.exposureRatings || []).length > 0;
+}
+
 // The aspect the lanes are colored by and color keys follow (wayKey,
-// featureColorKey, ratingMatchExpr). Technical difficulty for now; the
-// runtime color aspect (P3 of the ITRS plan) wires its state in here.
+// featureColorKey, ratingMatchExpr): the rider's Color choice
+// (colorAspect), which is only ever "exposure" where it is offered.
 function activeAspect() {
-    return TECH_ASPECT;
+    return colorAspect === "exposure" ? EXPOSURE_ASPECT : TECH_ASPECT;
 }
 
 // A way's level on `aspect` from its raw tag value ("2"), or "" for a
@@ -3088,6 +3097,12 @@ if (!eventTrailLabelsAvailable() && labelMode === "trails") labelMode = "routes"
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
 let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
+// "difficulty" | "exposure": what the rating lanes are colored by on an
+// ITRS map (activeAspect). A share link or saved view naming a key of
+// one aspect switches to it before the highlight applies
+// (adoptHighlightAspect).
+let colorAspect = colorAspectOffered()
+    && LS.get("mtb.colorAspect", "difficulty") === "exposure" ? "exposure" : "difficulty";
 
 // Single-highlight invariant: at most one route OR rating highlighted.
 // A rating key is "0".."5", "0f".."5f" for freeride, or "" for unrated
@@ -3561,7 +3576,8 @@ function applyPendingShareHighlight() {
                 showTrail(h.key);
             }
         } else if (h.kind === "rating") {
-            // h.key is a rating key ("2", "2f", or "" for unrated). Applied only
+            // h.key is a rating key ("2", "2f", "x2", or "" for unrated),
+            // its aspect already adopted (adoptHighlightAspect). Applied only
             // while the key lists it, so a link to a rating this map no
             // longer shows (or a map with no rating lanes) opens plain.
             if (keyRatings().includes(h.key)) {
@@ -3670,6 +3686,28 @@ function retryPendingSpot() {
     }
 }
 
+// A share link or saved view lighting a rating opens in that rating's
+// aspect: an exposure key ("x3") switches the Color choice to exposure
+// before anything draws, a plain rating key to difficulty, and the
+// choice is kept as if the rider had made it. Unrated ("") belongs to
+// both aspects and leaves the choice alone. A key this map's scale does
+// not know (an IMBA link on a map now read as ITRS) drops the
+// highlight, as an unknown route id does. Returns the highlight to
+// apply, or null.
+function adoptHighlightAspect(h) {
+    if (!h || h.kind !== "rating" || h.key === "") return h;
+    const info = SCHEME_KEYS.get(h.key);
+    if (!info) return null;
+    if (info.aspect === EXPOSURE_ASPECT) {
+        if (!colorAspectOffered()) return null;
+        colorAspect = "exposure";
+    } else {
+        colorAspect = "difficulty";
+    }
+    if (colorAspectOffered()) LS.set("mtb.colorAspect", colorAspect);
+    return h;
+}
+
 // Whether a highlight descriptor names something. Only a rating key may
 // be empty: "" stands for unrated.
 function highlightHasKey(h) {
@@ -3693,8 +3731,9 @@ function buildShareUrl() {
         // Unrated ("") travels as a word: an empty last segment would
         // be lost to any client that trims a trailing slash, and
         // consumeShareHash would then see too few parts and drop the
-        // highlight. The other keys are ratings "0".."5" or freeride
-        // "0f".."5f", so the word cannot collide with one.
+        // highlight. The other keys are ratings "0".."5", freeride
+        // "0f".."5f" or exposure "x1".."x4", so the word cannot collide
+        // with one. The key alone names its aspect (adoptHighlightAspect).
         path += `/d/${highlight.key === "" ? "unrated" : encodeURIComponent(highlight.key)}`;
     } else if (_poiHighlightRef) {
         // POI highlight (single, name-group, or category). The ref is the
@@ -4264,7 +4303,7 @@ async function init() {
     // fresh: a share link is an explicit request and beats it.
     const viewState = shareState || readSavedView();
     if (viewState && viewState.highlight) {
-        _pendingShareHighlight = viewState.highlight;
+        _pendingShareHighlight = adoptHighlightAspect(viewState.highlight);
     }
 
     // Create map
@@ -5350,9 +5389,19 @@ function _welcomeOptionsDescription() {
 // A map that mixes route rows with rating rows says both, briefly.
 function _welcomeKeyRow() {
     const name = keyTitle();
-    if (name === "Difficulty") {
+    if (name === "Difficulty" || name === "Exposure") {
+        // An ITRS map names its scale, since its signs do, and points
+        // at the one control that changes what the colors mean.
+        let lead = "Each trail's color is its difficulty.";
+        if (SCHEME.id === "itrs") {
+            lead = `Each trail's color is its ITRS ${name.toLowerCase()}.`;
+            if (colorAspectOffered()) {
+                lead += ` Color in Options switches it to ${
+                    name === "Exposure" ? "difficulty" : "exposure"}.`;
+            }
+        }
         return { icon: _WELCOME_ICON_ROUTES, name,
-            desc: "Each trail's color is its difficulty."
+            desc: lead
                 + " Tap a level to highlight those trails"
                 + " or collapse the panel." };
     }
@@ -6289,6 +6338,28 @@ function sharedArrowColor() {
     ];
 }
 
+// A clip arrow's fill (the comment at its layer in loadTrails says
+// why). A difficulty-mode relation's arrow reads the active aspect, so
+// a Color flip re-sets it (recolorClipArrows).
+function clipArrowIconColor(routeId, routeInfo) {
+    return [
+        "case",
+        [">=", ["get", "visible_count"], 2],
+        sharedArrowColor(),
+        isRouteMode(routeId)
+            ? effectiveRouteColor(routeInfo)
+            : ratingMatchExpr(difficultyColor),
+    ];
+}
+
+function recolorClipArrows() {
+    for (const [routeId, routeInfo] of Object.entries(CONFIG.routes)) {
+        const layerId = `clip-arrow-${routeId}`;
+        if (isRouteMode(routeId) || !map.getLayer(layerId)) continue;
+        map.setPaintProperty(layerId, "icon-color", clipArrowIconColor(routeId, routeInfo));
+    }
+}
+
 // Whether a color key is a rated one: a level of any aspect of the
 // map's scale ("0".."5", "x1".."x4") or a freeride twin ("0f".."5f").
 function isRatedKey(key) {
@@ -7182,14 +7253,7 @@ async function loadTrails() {
             //     the way it continues (stamped by
             //     stampClipEndpointWays), in the unrated look for an
             //     unrated way.
-            const iconCol = [
-                "case",
-                [">=", ["get", "visible_count"], 2],
-                sharedArrowColor(),
-                isRouteMode(routeId)
-                    ? effectiveRouteColor(routeInfo)
-                    : ratingMatchExpr(difficultyColor),
-            ];
+            const iconCol = clipArrowIconColor(routeId, routeInfo);
             const haloCol = clipArrowHaloExpr();
             // A single-color dashed route draws its lanes bare, no
             // casing (laneRouteMeta: a solid casing would show through
@@ -10311,10 +10375,10 @@ function initRoutePanel() {
 }
 
 // index.html names the panel for route rows, so a map with rating rows
-// renames its key once at boot (keyTitle).
+// renames its key at boot (keyTitle), and again on a Color flip.
 function labelRatingKey(chip, collapseBtn) {
     const name = keyTitle();
-    const noun = name === "Difficulty" ? "difficulty key" : "key";
+    const noun = name === "Key" ? "key" : `${name.toLowerCase()} key`;
     const card = document.getElementById("route-panel-card");
     const title = card && card.querySelector(".route-panel-title");
     if (title) title.textContent = name;
@@ -10431,13 +10495,18 @@ function refreshTrailRatings() {
     }
     const byName = new Map();  // trail name -> rating -> meters
     // ITRS maps: trail name -> exposure keys the map draws a pictogram
-    // for, which the finder's meta line names whatever colors the lanes.
+    // for, and -> technical keys, which the finder's meta line names
+    // whatever aspect colors the lanes.
     const exposuresByName = new Map();
+    const techByName = new Map();
     for (const f of features) {
         const name = f.properties.trail_name;
         const key = f.properties.color_key;
         if (!name || !isRatingKey(key)) continue;
         if (EXPOSURE_ASPECT) {
+            const lv = aspectLevel(TECH_ASPECT, f.properties[TECH_ASPECT.prop]);
+            if (!techByName.has(name)) techByName.set(name, new Set());
+            techByName.get(name).add(lv ? TECH_ASPECT.keyPrefix + lv : "");
             const x = aspectLevel(EXPOSURE_ASPECT, f.properties[EXPOSURE_ASPECT.prop]);
             if (x && Number(x) >= EXPOSURE_SYMBOL_MIN) {
                 if (!exposuresByName.has(name)) exposuresByName.set(name, new Set());
@@ -10454,6 +10523,7 @@ function refreshTrailRatings() {
         const lengths = byName.get(t.name) || new Map();
         t.ratings = sortColorKeys(lengths.keys());
         t.exposures = sortColorKeys(exposuresByName.get(t.name) || []);
+        if (EXPOSURE_ASPECT) t.techRatings = sortColorKeys(techByName.get(t.name) || []);
         t.rating = "";
         let best = -1;
         // Unrated first, then easiest to hardest, so `>=` hands a tie
@@ -11270,7 +11340,7 @@ function setupFabLabels() {
         const title = keyTitle();
         label.textContent = noKey ? "Search"
             : title === "Routes" ? "Route key"
-            : title === "Difficulty" ? "Difficulty key" : "Key";
+            : title === "Key" ? "Key" : `${title} key`;
         label.setAttribute("aria-hidden", "true");
         (noKey ? document.getElementById("route-panel-search") : panelChip).appendChild(label);
         mounted.push({ btn: panel, label });
@@ -12471,6 +12541,48 @@ function setupFloatingChrome() {
         wireRadiogroupKeys(labelGroup);
     }
 
+    // Color: Difficulty / Exposure, what the rating lanes are colored
+    // by on an ITRS map (colorAspect). Offered only where both aspects
+    // have something to draw (colorAspectOffered). A flip takes the
+    // season toggle's path (applyVisibilityChange), which rebuilds the
+    // lanes, decorations, key rows and finder from the new color keys;
+    // the clip arrows and the key's name are set here because nothing
+    // on that path re-reads them.
+    const aspectField = document.getElementById("color-aspect-field");
+    const aspectGroup = document.getElementById("color-aspect-segmented");
+    if (aspectField && aspectGroup && colorAspectOffered()) {
+        aspectField.classList.remove("hidden");
+        const buttons = Array.from(aspectGroup.querySelectorAll(".opt-segmented-btn"));
+        const syncPressed = () => {
+            for (const b of buttons) {
+                b.setAttribute("aria-checked",
+                    b.dataset.value === colorAspect ? "true" : "false");
+            }
+        };
+        syncPressed();
+        for (const b of buttons) {
+            b.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const next = b.dataset.value;
+                if (next === colorAspect) return;
+                colorAspect = next;
+                LS.set("mtb.colorAspect", colorAspect);
+                syncPressed();
+                // A lit rating names a key of the old aspect; even
+                // Unrated covers different ways in the new one.
+                if (highlight && highlight.kind === "rating") clearHighlight();
+                recolorClipArrows();
+                const panelChip = document.getElementById("route-panel-chip");
+                const collapseBtn = document.getElementById("route-panel-collapse");
+                if (CONFIG.routeKey !== false && panelChip && collapseBtn) {
+                    labelRatingKey(panelChip, collapseBtn);
+                }
+                applyVisibilityChange();
+            });
+        }
+        wireRadiogroupKeys(aspectGroup);
+    }
+
     // ----- Finder -----
     setupFinder();
 
@@ -13221,15 +13333,22 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // Deduped: a freeride key reads as its plain rating's name, so a
     // trail with plain and freeride stretches of one rating would name
     // it twice.
-    const metaParts = [...new Set((t.ratings || []).map(keyName))];
-    if ((t.exposures || []).length) {
-        metaParts.push(`Exposure: ${t.exposures.map(keyName).join(", ")}`);
-    }
-    if (parents.length) metaParts.push(routeParentsText(parents));
-    if (metaParts.length) {
+    // The levels named are always the technical ones (techRatings on
+    // an ITRS map), so the line reads the same in either Color aspect.
+    const levels = [...new Set((t.techRatings || t.ratings || []).map(keyName))].join(", ");
+    const parentText = parents.length ? routeParentsText(parents) : "";
+    // Exposure names its levels in a list of its own, so the groups are
+    // set off by a middle dot: joined with the same commas, "Advanced,
+    // Exposure: High risk of serious injury, Parent" would not say where
+    // the exposure list ends.
+    const metaText = (t.exposures || []).length
+        ? [levels, `Exposure: ${t.exposures.map(keyName).join(", ")}`, parentText]
+            .filter(Boolean).join(" \u00b7 ")
+        : [levels, parentText].filter(Boolean).join(", ");
+    if (metaText) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";
-        meta.textContent = metaParts.join(", ");
+        meta.textContent = metaText;
         row.appendChild(meta);
     }
 
