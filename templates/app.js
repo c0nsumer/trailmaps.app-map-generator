@@ -13772,31 +13772,30 @@ function trailPopupHtml(laneHit, section) {
         // edge (isTruncatedSection): a stretch well inside the map is
         // whole even when another stretch of the name leaves it.
         const distanceText = formatDistance(section.lengthM);
-        // The name's whole visible length gets its own row when the lit
-        // section is only part of it: a section ends at every rating
-        // change (SECTION_FACT_PROPS), so a tap on Early Riser measures
-        // one stretch, and "how long is Early Riser" is the commoner
-        // question at a tap. The number is the finder row's (trailEntry,
-        // every stretch of the name, deduped by way), so the two agree.
-        // The row is left out when the two measure the same stretch; the
-        // section is measured along the graph's centerlines and the
-        // trail along its features, so "the same" allows a few meters
-        // of rounding between them and also asks that the two texts
-        // differ. With both rows up the first is "Highlighted:", naming
-        // the glow it measures, so the two numbers cannot be read as one
-        // length stated twice (Steve, 2026-Nov-01); alone it stays
-        // "Length:", the glow being the whole trail.
+        // When the lit section is only part of the name, the row reads
+        // as a part of a whole, "0.4 of 2.1 mi": a section ends at every
+        // rating change (SECTION_FACT_PROPS), so a tap on Early Riser
+        // measures one stretch, and "how long is Early Riser" is the
+        // commoner question at a tap. The whole is the finder row's
+        // number (trailEntry, every stretch of the name, deduped by
+        // way), so the two agree. The label stays "Length:" and the
+        // first number is always what glows, as it is on a finder pick;
+        // the idiom says which is the part without a second label
+        // (Steve, 2026-Nov-01, over a "Highlighted:" + "Whole trail:"
+        // pair). The whole is left out when the two measure the same
+        // stretch; the section is measured along the graph's
+        // centerlines and the trail along its features, so "the same"
+        // allows a few meters of rounding between them and also asks
+        // that the two texts differ. Both numbers are on-map lengths,
+        // so one " shown" covers a trail cut at the map's edge.
         const whole = trailEntry(trailName);
         const wholeText = whole && whole.lengthM - section.lengthM > Math.max(5, whole.lengthM * 0.01)
             ? formatDistance(whole.lengthM) : "";
         const showWhole = !!wholeText && wholeText !== distanceText;
-        const lengthLabel = showWhole ? "Highlighted:"
-            : (isTruncatedSection(section) ? "Length shown:" : "Length:");
-        html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
-        if (showWhole) {
-            const wholeLabel = isTruncatedTrail(trailName) ? "Whole trail shown:" : "Whole trail:";
-            html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${wholeLabel}</span><span>${escapeHtml(wholeText)}</span></div>`;
-        }
+        const truncated = isTruncatedSection(section) || (showWhole && isTruncatedTrail(trailName));
+        const lengthLabel = truncated ? "Length shown:" : "Length:";
+        const lengthText = showWhole ? partOfWhole(distanceText, wholeText) : distanceText;
+        html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${lengthLabel}</span><span>${escapeHtml(lengthText)}</span></div>`;
     } else if (trailName && CONFIG.showDistance) {
         // A finder pick or a /t/ link (scope "trail"), or a hit with
         // no edge to walk from: the trail's whole visible length,
@@ -14958,6 +14957,15 @@ function formatDistance(meters) {
         return `${Math.round(meters * 3.28084)} ft`;
     }
     return mi < 10 ? `${mi.toFixed(1)} mi` : `${formatCount(Math.round(mi))} mi`;
+}
+
+// "0.4 of 2.1 mi" for a part and its whole: the unit is said once when
+// the two share it, and each keeps its own when formatDistance picked
+// different ones ("800 ft of 2.1 mi").
+function partOfWhole(partText, wholeText) {
+    const unit = wholeText.slice(wholeText.lastIndexOf(" "));
+    const part = partText.endsWith(unit) ? partText.slice(0, -unit.length) : partText;
+    return `${part} of ${wholeText}`;
 }
 
 // English number style for everything the app displays, whatever the
