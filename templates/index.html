@@ -89,9 +89,9 @@
          body) carries `defer` so it doesn't block HTML parsing or
          first paint. Deferred scripts run in document order, so
          app.js still sees maplibregl / pmtiles / basemaps on the
-         global by the time it runs. The SW cache list is built by a
-         filesystem walk in build.py, not by parsing this template,
-         so the attribute does not affect offline behavior. -->
+         global by the time it runs. The SW cache list comes from the
+         outputs the build records with ship(), not from parsing this
+         template, so the attribute does not affect offline behavior. -->
     <link rel="stylesheet" href="vendor/maplibre-gl.css">
     <!-- MapLibre GL JS 6 is ESM only. This module script puts it on
          window.maplibregl for the classic scripts below, which still
@@ -165,7 +165,7 @@
 
     <!-- Initial-load progress bar. A thin indeterminate strip shown while
          the opening map view streams in (notably terrain.pmtiles on large
-         maps like bigm/ramba) and hidden by app.js once the viewport has
+         maps with large terrain archives) and hidden by app.js once the viewport has
          painted (map 'idle'). The inline script below owns the REVEAL: it
          waits ~400ms so a fast/cached load never flashes the bar, and stays
          suppressed while a modal (the first-visit welcome) is covering the
@@ -524,7 +524,7 @@
         <div class="qr-overlay-panel" tabindex="-1">
             <div class="qr-overlay-header">
                 <h2 id="qr-overlay-title" class="qr-overlay-title">Share this map</h2>
-                <button id="qr-close" class="overlay-close-btn" type="button" aria-label="Close QR code">
+                <button id="qr-close" class="overlay-close-btn" type="button" aria-label="Close share sheet">
                     <!-- mdi:close (Apache 2.0, Pictogrammers) -->
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
                         <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>

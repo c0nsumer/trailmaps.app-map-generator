@@ -14,6 +14,14 @@
 // namespace in app.js).
 const CACHE_PREFIX = `trail-map-${SW_CONFIG.CACHE_SCOPE}-`;
 const CACHE_NAME = `${CACHE_PREFIX}${SW_CONFIG.CACHE_VERSION}`;
+// This map's own cache names, exactly: the prefix plus a 12-hex-char
+// version. A prefix test alone also matched any map whose slug extends
+// this one (slugs allow hyphens, so `example` matched `example-on`),
+// and cleanup then threw away that other map's whole offline cache
+// every time this one finished precaching.
+const OWN_CACHE_RE = new RegExp(
+    "^" + CACHE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[0-9a-f]{12}$"
+);
 
 // Pre-slug cache names were `trail-map-<12 hex chars>` with no map
 // identity, so they can't be attributed to a map. Cleanup deletes them
@@ -187,7 +195,7 @@ async function cleanupOldCaches() {
         keys
             .filter(
                 (k) =>
-                    (k.startsWith(CACHE_PREFIX) && k !== CACHE_NAME) ||
+                    (OWN_CACHE_RE.test(k) && k !== CACHE_NAME) ||
                     LEGACY_CACHE_RE.test(k)
             )
             .map((k) => caches.delete(k))

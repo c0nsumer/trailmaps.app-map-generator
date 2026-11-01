@@ -49,6 +49,11 @@
 }
 
 :root {
+    /* The app picks its own scheme (the Appearance row, not only the
+       OS), so the browser's own chrome follows the same attribute:
+       scrollbars on the sheets, the search caret, selection, autofill.
+       Without this they stay light on the dark sheets. */
+    color-scheme: light;
     /* Shared "recede the background" scrim. Used by BOTH the in-map
        highlight wash (the dim-tint layer, via app.js) and the Search /
        Options / About+Welcome overlay backdrops below, so moving between
@@ -307,6 +312,7 @@
  * schemes - see the :root accent block.
  */
 [data-color-scheme="dark"] {
+    color-scheme: dark;
     --locate-active: var(--user-dot);
     --locate-error: #e58978;
     --sheet-bg: rgba(28, 28, 30, 0.98);
@@ -1971,7 +1977,7 @@ body::after {
     box-shadow: var(--elev-sheet);
     max-width: 480px;
     width: calc(100vw - 32px);
-    max-height: 80vh;
+    max-height: 80dvh;
     overflow-y: auto;
     padding: 20px 24px 24px 24px;
     font-size: 13px;
@@ -3238,7 +3244,7 @@ body::after {
 @media (max-width: 480px) {
     .about-modal-content {
         padding: 16px 18px 20px 18px;
-        max-height: 85vh;
+        max-height: 85dvh;
     }
 
     .about-modal-content h2 {
@@ -3751,7 +3757,7 @@ body.fabs-labeled .fab-label {
 }
 
 #toggle-locate.locate-state-background-error {
-    color: #e54e33;
+    color: var(--locate-error);
 }
 #toggle-locate.locate-state-background-error .locate-dot {
     display: none;
@@ -4449,7 +4455,7 @@ body.modal-open .qr-overlay.is-open {
     padding: 0;
     /* Many-route maps scroll inside the card rather than growing
      * past the brand mark at top-left. */
-    max-height: 40vh;
+    max-height: 40dvh;
     overflow-y: auto;
 }
 
