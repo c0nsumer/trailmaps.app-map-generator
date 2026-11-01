@@ -13791,27 +13791,30 @@ function trailPopupHtml(laneHit, scope = "section") {
         // edge (isTruncatedSection): a stretch well inside the map is
         // whole even when another stretch of the name leaves it.
         const distanceText = formatDistance(section.lengthM);
-        const lengthLabel = isTruncatedSection(section) ? "Length shown:" : "Length:";
-        html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
-        // The name's whole visible length under its own row when the
-        // lit section is only part of it: a section ends at every
-        // rating change (SECTION_FACT_PROPS), so a tap on Early Riser
-        // measures one stretch, and "how long is Early Riser" is the
-        // commoner question at a tap. The number is the finder row's
-        // (trailEntry, every stretch of the name, deduped by way), so
-        // the two agree. The Length row keeps its name and its number:
-        // the glow is what it covers. The row is left out when the
-        // two measure the same stretch; the section is measured along
-        // the graph's centerlines and the trail along its features,
-        // so "the same" allows a few meters of rounding between them
-        // and also asks that the two texts differ.
+        // The name's whole visible length gets its own row when the lit
+        // section is only part of it: a section ends at every rating
+        // change (SECTION_FACT_PROPS), so a tap on Early Riser measures
+        // one stretch, and "how long is Early Riser" is the commoner
+        // question at a tap. The number is the finder row's (trailEntry,
+        // every stretch of the name, deduped by way), so the two agree.
+        // The row is left out when the two measure the same stretch; the
+        // section is measured along the graph's centerlines and the
+        // trail along its features, so "the same" allows a few meters
+        // of rounding between them and also asks that the two texts
+        // differ. With both rows up the first is "Highlighted:", naming
+        // the glow it measures, so the two numbers cannot be read as one
+        // length stated twice (Steve, 2026-Nov-01); alone it stays
+        // "Length:", the glow being the whole trail.
         const whole = trailEntry(trailName);
-        if (whole && whole.lengthM - section.lengthM > Math.max(5, whole.lengthM * 0.01)) {
-            const wholeText = formatDistance(whole.lengthM);
-            if (wholeText !== distanceText) {
-                const wholeLabel = isTruncatedTrail(trailName) ? "Whole trail shown:" : "Whole trail:";
-                html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${wholeLabel}</span><span>${escapeHtml(wholeText)}</span></div>`;
-            }
+        const wholeText = whole && whole.lengthM - section.lengthM > Math.max(5, whole.lengthM * 0.01)
+            ? formatDistance(whole.lengthM) : "";
+        const showWhole = !!wholeText && wholeText !== distanceText;
+        const lengthLabel = showWhole ? "Highlighted:"
+            : (isTruncatedSection(section) ? "Length shown:" : "Length:");
+        html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${lengthLabel}</span><span>${escapeHtml(distanceText)}</span></div>`;
+        if (showWhole) {
+            const wholeLabel = isTruncatedTrail(trailName) ? "Whole trail shown:" : "Whole trail:";
+            html += `<div class="popup-distance" style="${POPUP_ROW_STYLE}"><span>${wholeLabel}</span><span>${escapeHtml(wholeText)}</span></div>`;
         }
     } else if (trailName && CONFIG.showDistance) {
         // A finder pick or a /t/ link (scope "trail"), or a hit with

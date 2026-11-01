@@ -571,8 +571,9 @@ This example is a routes map. Difficulty-mode relations differ as described in
   road or trail under the tap. A section also ends where the rating or the
   one-way flag changes, so the glow covers exactly what the popup's rows
   describe. The glow shows what the popup's length covers. If the name runs
-  on past the lit section, a second row, "Whole trail:", gives the name's
-  whole visible length, the finder row's number.
+  on past the lit section, the row is labeled "Highlighted:" and a second
+  row, "Whole trail:", gives the name's whole visible length, the finder
+  row's number.
   The row reads "Length shown:" if the map edge cuts that section. The popup closes on the
   next tap elsewhere. A trail pick clears any highlighted route or place first.
 - **One thing at a time.** Picking a new route, trail or place replaces the
