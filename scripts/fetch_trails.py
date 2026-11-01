@@ -238,12 +238,13 @@ def _is_bike_only(tags):
 
     ITRS marks bike-only trails with a yellow background behind the symbol,
     so an ITRS map paints the plate yellow for these ways. The test is
-    deliberately narrow: bicycle allowed, ``foot=no`` tagged explicitly, and
-    horse not allowed (an absent horse tag counts as not allowed, which is
-    how Copper Harbor tags its bike-only trails). A way with no access tags
-    stays white, the safe failure.
+    deliberately narrow: bicycle allowed (yes, designated, or permissive),
+    ``foot=no`` tagged explicitly, and horse not allowed by the same set (an
+    absent horse tag counts as not allowed, which is how Copper Harbor tags
+    its bike-only trails). A way with no access tags stays white, the safe
+    failure.
     """
-    return (tags.get("bicycle", "").strip().lower() in ("yes", "designated")
+    return (tags.get("bicycle", "").strip().lower() in _ALLOWS
             and tags.get("foot", "").strip().lower() == "no"
             and tags.get("horse", "").strip().lower() not in _ALLOWS)
 

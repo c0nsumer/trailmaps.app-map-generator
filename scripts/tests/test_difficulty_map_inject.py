@@ -222,6 +222,15 @@ def test_itrs_map_with_only_imba_tags_has_no_difficulty_trails():
     assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == []
 
 
+def test_itrs_out_of_range_value_keeps_the_toggle_like_imba():
+    """Any non-empty value keeps the toggle on either scale; only the key
+    strip loses the glyph it has no shape for."""
+    trails = {"metadata": {"routes": {}}, "features": [_rated(itrs_difficulty="7")]}
+    obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
+    assert obj["hasDifficultyTrails"] is True
+    assert obj["difficultyRatings"] == []
+
+
 def test_itrs_exposure_alone_turns_the_toggle_on():
     trails = {"metadata": {"routes": {}}, "features": [_rated(itrs_exposure="2")]}
     obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)

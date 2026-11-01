@@ -42,6 +42,7 @@ import os
 
 import console
 from geodesy import haversine_m, natural_key
+from validate_config import RATING_OSM_KEYS
 
 # Per-trail length changes smaller than this are dropped as vertex noise
 # rather than reported as edits. A contributor nudging a vertex a couple of
@@ -67,9 +68,9 @@ _ROUTE_FIELDS = ("name", "colour", "ref", "seasonal")
 # "freeride" tracks only whether mtb:type names freeride (the one value the
 # map draws), so a change reports as "" <-> "freeride". "bike_only" likewise
 # tracks the one access combination an ITRS map paints yellow, "" <-> "bike-only".
-_WAY_TAG_FIELDS = (("imba", "mtb:scale:imba"),
-                   ("itrs_difficulty", "mtb:scale:itrs:technical_difficulty"),
-                   ("itrs_exposure", "mtb:scale:itrs:exposure"),
+_WAY_TAG_FIELDS = (("imba", RATING_OSM_KEYS["imba_difficulty"]),
+                   ("itrs_difficulty", RATING_OSM_KEYS["itrs_difficulty"]),
+                   ("itrs_exposure", RATING_OSM_KEYS["itrs_exposure"]),
                    ("freeride", "mtb:type"), ("bike_only", "bicycle/foot/horse"),
                    ("oneway", "oneway"))
 
@@ -205,7 +206,8 @@ def _index_snapshot(snap):
                          else "freeride" if props["freeride"] is True else ""),
             "oneway": str(props.get("oneway") or "").strip(),
         }
-        # Same rule for the ITRS ratings and bike-only (TRAILS_BASE_FORMAT 4).
+        # Same rule for the ITRS ratings (TRAILS_BASE_FORMAT 4) and bike-only
+        # (format 5).
         for field, prop in (("itrs_difficulty", "itrs_difficulty"),
                             ("itrs_exposure", "itrs_exposure")):
             tags[field] = (None if prop not in props

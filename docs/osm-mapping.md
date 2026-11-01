@@ -157,7 +157,7 @@ than on the relation itself.
 | [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (in difficulty mode), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
 | `mtb:scale:itrs:technical_difficulty` | `1` / `2` / `3` / `4` / `5` | Read only when the map sets `difficulty_scale: itrs`. Drives the ITRS technical symbol, the line color in difficulty mode, and the popup's Difficulty row. |
 | `mtb:scale:itrs:exposure` | `1` / `2` / `3` / `4` | Read only on ITRS maps. Drives the exposure pictogram (level 2 and up), the line color while the Options Color row is set to Exposure, and the popup's Exposure row. |
-| `bicycle` + `foot` + `horse` | `bicycle=yes` or `designated`, `foot=no`, and `horse` absent or anything but `yes`, `designated`, or `permissive` | Read only on ITRS maps. A way with this combination gets the ITRS yellow bike-only plate behind its symbol. |
+| `bicycle` + `foot` + `horse` | `bicycle=yes`, `designated`, or `permissive`; `foot=no`; and `horse` absent or anything but those three values | Read only on ITRS maps. A way with this combination gets the ITRS yellow bike-only plate behind its symbol. |
 | [`mtb:type`](https://wiki.openstreetmap.org/wiki/Key:mtb:type) | semicolon list, eg: `allmountain;freeride` | If the list contains `freeride`, the way's difficulty symbol draws inside an orange oval. Other values, including `downhill`, change nothing. |
 
 A map reads one scale, set by `difficulty_scale` in its config. On an ITRS map,

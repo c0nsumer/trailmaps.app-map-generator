@@ -1006,7 +1006,7 @@ function activeAspect() {
 function aspectLevel(aspect, value) {
     if (value === undefined || value === null) return "";
     const s = String(value);
-    return Object.hasOwn(aspect.levels, s) ? s : "";
+    return Object.prototype.hasOwnProperty.call(aspect.levels, s) ? s : "";
 }
 
 // ITRS symbol outlines in their 150 by 150 design box (ITRS Graphic
@@ -1792,6 +1792,7 @@ function buildDifficultyKey() {
     if (strip.children.length && !SCHEME.freeride && CONFIG.hasBikeOnlyTrails) {
         addBreak();
         addItem(bikeOnlySwatchDataUrl(), "Yellow plate: bike-only trail", false);
+        strip.lastChild.classList.add("is-long");
     }
     if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
         addBreak();
@@ -2178,6 +2179,9 @@ function collectCanonicalWays() {
         const soloRouteName = visibleShared.length === 1
             ? (props.route_name || "") : "";
         const soloRouteId = visibleShared.length === 1 ? routeId : "";
+        // What the way draws (waySymbol), "" for nothing, parsed once
+        // here rather than per placement attempt in computeDecorations.
+        const symbol = waySymbol(props);
 
         ways.push({
             segments,
@@ -2189,8 +2193,9 @@ function collectCanonicalWays() {
             itrs: props.itrs_difficulty || "",
             itrsExposure: props.itrs_exposure || "",
             bikeOnly: props.bike_only === true,
-            // What the way draws (waySymbol), "" for nothing.
-            symbol: waySymbol(props),
+            symbol,
+            wide: isWideSymbol(symbol),
+            symbolImage: symbolImageId(symbol),
             oneway: props.oneway || "",
             routeId,
             sharedRoutes: shared,
@@ -2466,7 +2471,7 @@ function diamondProps(way) {
         itrs_exposure: way.itrsExposure,
         bike_only: way.bikeOnly,
         // The map image decor-diamond draws.
-        symbol: symbolImageId(way.symbol),
+        symbol: way.symbolImage,
         trail_name: way.trailName,
         shared_routes: way.sharedRoutes,
         ...(way.colorKey != null && { color_key: way.colorKey }),
@@ -2477,7 +2482,7 @@ function diamondProps(way) {
 // or an ITRS glyph beside its exposure pictogram) is wider than the
 // square glyph (DECOR_RADIUS_M.diamond_freeride).
 function diamondRadius(way) {
-    return isWideSymbol(way.symbol) ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
+    return way.wide ? DECOR_RADIUS_M.diamond_freeride : DECOR_RADIUS_M.diamond;
 }
 
 // Build the full decoration FeatureCollection for the current visible
@@ -3103,6 +3108,10 @@ let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 // (adoptHighlightAspect).
 let colorAspect = colorAspectOffered()
     && LS.get("mtb.colorAspect", "difficulty") === "exposure" ? "exposure" : "difficulty";
+// The aspect the clip arrows and the key's title were last set for
+// (_refreshVisibilityDependents), so every way of changing colorAspect
+// updates them through the one visibility path.
+let _appliedColorAspect = null;
 
 // Single-highlight invariant: at most one route OR rating highlighted.
 // A rating key is "0".."5", "0f".."5f" for freeride, or "" for unrated
@@ -8489,6 +8498,19 @@ function applyVisibilityChange(immediate = false) {
 // builds (routePanelDefaultCollapsed), so the rows must exist before
 // applyVisibilityChange returns, not a frame later.
 function _refreshVisibilityDependents() {
+    // The clip arrows' fill and the key's title read the Color aspect
+    // and nothing below re-derives them, so they follow it here, once
+    // per change, whichever path changed it (the Options row, a share
+    // link, a saved view).
+    if (colorAspectOffered() && _appliedColorAspect !== colorAspect) {
+        _appliedColorAspect = colorAspect;
+        recolorClipArrows();
+        const panelChip = document.getElementById("route-panel-chip");
+        const collapseBtn = document.getElementById("route-panel-collapse");
+        if (CONFIG.routeKey !== false && panelChip && collapseBtn) {
+            labelRatingKey(panelChip, collapseBtn);
+        }
+    }
     updateTrailDisplay();
     applyBasemapDrawnPathFilter();
     updateMarkerProximity();
@@ -10508,7 +10530,7 @@ function refreshTrailRatings() {
             if (!techByName.has(name)) techByName.set(name, new Set());
             techByName.get(name).add(lv ? TECH_ASPECT.keyPrefix + lv : "");
             const x = aspectLevel(EXPOSURE_ASPECT, f.properties[EXPOSURE_ASPECT.prop]);
-            if (x && Number(x) >= EXPOSURE_SYMBOL_MIN) {
+            if (x) {
                 if (!exposuresByName.has(name)) exposuresByName.set(name, new Set());
                 exposuresByName.get(name).add(EXPOSURE_ASPECT.keyPrefix + x);
             }
@@ -10522,7 +10544,12 @@ function refreshTrailRatings() {
     for (const t of trailIndex) {
         const lengths = byName.get(t.name) || new Map();
         t.ratings = sortColorKeys(lengths.keys());
-        t.exposures = sortColorKeys(exposuresByName.get(t.name) || []);
+        // Every exposure level the trail carries, and the ones the map
+        // draws a pictogram for; the finder meta names the first set
+        // while exposure colors the lanes (a level 1 swatch needs its
+        // name then) and the second otherwise.
+        t.exposuresAll = sortColorKeys(exposuresByName.get(t.name) || []);
+        t.exposures = t.exposuresAll.filter((k) => Number(k.slice(1)) >= EXPOSURE_SYMBOL_MIN);
         if (EXPOSURE_ASPECT) t.techRatings = sortColorKeys(techByName.get(t.name) || []);
         t.rating = "";
         let best = -1;
@@ -12545,9 +12572,8 @@ function setupFloatingChrome() {
     // by on an ITRS map (colorAspect). Offered only where both aspects
     // have something to draw (colorAspectOffered). A flip takes the
     // season toggle's path (applyVisibilityChange), which rebuilds the
-    // lanes, decorations, key rows and finder from the new color keys;
-    // the clip arrows and the key's name are set here because nothing
-    // on that path re-reads them.
+    // lanes, decorations, key rows, finder, clip arrows, and the key's
+    // name from the new aspect.
     const aspectField = document.getElementById("color-aspect-field");
     const aspectGroup = document.getElementById("color-aspect-segmented");
     if (aspectField && aspectGroup && colorAspectOffered()) {
@@ -12571,12 +12597,6 @@ function setupFloatingChrome() {
                 // A lit rating names a key of the old aspect; even
                 // Unrated covers different ways in the new one.
                 if (highlight && highlight.kind === "rating") clearHighlight();
-                recolorClipArrows();
-                const panelChip = document.getElementById("route-panel-chip");
-                const collapseBtn = document.getElementById("route-panel-collapse");
-                if (CONFIG.routeKey !== false && panelChip && collapseBtn) {
-                    labelRatingKey(panelChip, collapseBtn);
-                }
                 applyVisibilityChange();
             });
         }
@@ -13341,8 +13361,9 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // set off by a middle dot: joined with the same commas, "Advanced,
     // Exposure: High risk of serious injury, Parent" would not say where
     // the exposure list ends.
-    const metaText = (t.exposures || []).length
-        ? [levels, `Exposure: ${t.exposures.map(keyName).join(", ")}`, parentText]
+    const exposures = (activeAspect() === EXPOSURE_ASPECT ? t.exposuresAll : t.exposures) || [];
+    const metaText = exposures.length
+        ? [levels, `Exposure: ${exposures.map(keyName).join(", ")}`, parentText]
             .filter(Boolean).join(" \u00b7 ")
         : [levels, parentText].filter(Boolean).join(", ");
     if (metaText) {
@@ -13737,7 +13758,7 @@ function trailPopupHtml(laneHit, scope = "section") {
         // Its own row, marked with the plate the map draws behind the
         // way's symbol, so the rider can tie the yellow to its meaning.
         if (laneProps.bike_only === true) {
-            html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${bikeOnlySwatchDataUrl()}" alt=""><span>Bike only</span></div>`;
+            html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>Access:</span><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${bikeOnlySwatchDataUrl()}" alt=""><span>Bike only</span></div>`;
         }
     } else if (iconUrl) {
         // Symbol + rating name on their own row, same quiet

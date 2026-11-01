@@ -674,12 +674,12 @@ exposure levels from 2 up. The Options key strip lists the technical levels,
 then exposure levels 2 to 4.
 
 ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
-A way counts as bike-only when `bicycle` is `yes` or `designated`, `foot=no` is
-tagged, and `horse` is not `yes`, `designated`, or `permissive`. An absent
-`horse` tag counts as not allowed. A way with no access tags keeps the white
+A way counts as bike-only when `bicycle` is `yes`, `designated`, or
+`permissive`, `foot=no` is tagged, and `horse` is none of those three values.
+An absent `horse` tag counts as not allowed. A way with no access tags keeps the white
 plate. When any way qualifies, the key strip adds "Yellow plate: bike-only
-trail", and the tap popup has a **Bike only** row. IMBA maps never paint a
-plate yellow.
+trail", and the tap popup has an **Access: Bike only** row. IMBA maps never
+paint a plate yellow.
 
 There is no freeride oval on an ITRS map, because ITRS has no freeride
 marker. A way's `mtb:type` changes nothing there.

@@ -702,14 +702,18 @@ def inject_config_into_template(template_content, config, trails_geojson):
             if ow in ("yes", True, "-1", "reversible"):
                 has_oneway = True
         if scale == "itrs":
-            n = _in_range(props.get("itrs_difficulty"), "itrs_difficulty")
-            x = _in_range(props.get("itrs_exposure"), "itrs_exposure")
+            raw_n = props.get("itrs_difficulty")
+            raw_x = props.get("itrs_exposure")
+            # Same rule as IMBA below: any non-empty value keeps the toggle.
+            if (raw_n is not None and str(raw_n).strip()) or (
+                    raw_x is not None and str(raw_x).strip()):
+                has_difficulty = True
+            n = _in_range(raw_n, "itrs_difficulty")
+            x = _in_range(raw_x, "itrs_exposure")
             if n is not None:
                 ratings.add(n)
             if x is not None:
                 exposure_ratings.add(x)
-            if n is not None or x is not None:
-                has_difficulty = True
             if props.get("bike_only") is True:
                 has_bike_only = True
             continue

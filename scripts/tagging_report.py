@@ -36,7 +36,12 @@ import console
 from compute_route_stats import _chain_segments, _coords_for_route
 from fetch_trails import gather_relation_ids
 from geodesy import haversine_m, natural_key, point_to_polyline_m
-from validate_config import DIFFICULTY_OSM_KEYS, DIFFICULTY_PROPERTY, RATING_RANGES
+from validate_config import (
+    DIFFICULTY_OSM_KEYS,
+    DIFFICULTY_PROPERTY,
+    RATING_OSM_KEYS,
+    RATING_RANGES,
+)
 
 # A pair of chain endpoints closer than this, but not identical, is very
 # likely two ways that look joined on the map and aren't. Exact node sharing
@@ -67,16 +72,9 @@ _VALID_RATINGS = {
     for prop, (lo, hi) in ranges.items()
 }
 
-# The OSM key behind each rated feature property, for the report text.
-_RATING_OSM_KEYS = {
-    "imba_difficulty": "mtb:scale:imba",
-    "itrs_difficulty": "mtb:scale:itrs:technical_difficulty",
-    "itrs_exposure": "mtb:scale:itrs:exposure",
-}
-
 # "0-5" style range text per OSM key, for the out-of-range lines.
 _RANGE_TEXT = {
-    _RATING_OSM_KEYS[prop]: f"{lo}-{hi}"
+    RATING_OSM_KEYS[prop]: f"{lo}-{hi}"
     for ranges in RATING_RANGES.values()
     for prop, (lo, hi) in ranges.items()
 }
@@ -153,7 +151,7 @@ def _check_ratings(features, show_difficulty, scale="imba"):
     for f in features:
         props = f.get("properties") or {}
         trail = str(props.get("trail_name") or "").strip()
-        for prop, osm_key in _RATING_OSM_KEYS.items():
+        for prop, osm_key in RATING_OSM_KEYS.items():
             bad = str(props.get(prop) or "").strip()
             if bad and bad not in _VALID_RATINGS[prop]:
                 for wid in (props.get("way_ids") or []):

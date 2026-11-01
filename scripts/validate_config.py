@@ -211,10 +211,17 @@ RATING_RANGES = {
 }
 # Feature property holding each scale's technical difficulty.
 DIFFICULTY_PROPERTY = {"imba": "imba_difficulty", "itrs": "itrs_difficulty"}
-# The OSM key(s) behind each scale, for messages.
+# The OSM key behind each rated feature property, the one table the
+# messages, the tagging report, and the diff labels read.
+RATING_OSM_KEYS = {
+    "imba_difficulty": "mtb:scale:imba",
+    "itrs_difficulty": "mtb:scale:itrs:technical_difficulty",
+    "itrs_exposure": "mtb:scale:itrs:exposure",
+}
+# The OSM key(s) behind each scale, technical key first, for messages.
 DIFFICULTY_OSM_KEYS = {
-    "imba": ("mtb:scale:imba",),
-    "itrs": ("mtb:scale:itrs:technical_difficulty", "mtb:scale:itrs:exposure"),
+    scale: tuple(RATING_OSM_KEYS[prop] for prop in ranges)
+    for scale, ranges in RATING_RANGES.items()
 }
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}

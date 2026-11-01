@@ -107,6 +107,8 @@ def test_a_name_change_splits_the_segment():
 def test_bike_only_needs_bikes_allowed_foot_no_and_no_horse():
     assert _is_bike_only({"bicycle": "designated", "foot": "no", "horse": "no"})
     assert _is_bike_only({"bicycle": "yes", "foot": "no"})
+    assert _is_bike_only({"bicycle": "permissive", "foot": "no"})
+    assert not _is_bike_only({"bicycle": "designated", "foot": "no", "horse": "permissive"})
     assert not _is_bike_only({"bicycle": "designated", "foot": "yes", "horse": "no"})
     assert not _is_bike_only({"bicycle": "designated", "foot": "no", "horse": "yes"})
     assert not _is_bike_only({"foot": "no"})
