@@ -4345,6 +4345,15 @@ async function init() {
     // after trails load. The share hash is also stripped from the URL
     // here, it's a one-shot view restoration, not ambient state.
     const shareState = consumeShareHash();
+    // A share link opened in a tab already showing this map (pasted
+    // into the address bar, or a PWA reusing its window) is a
+    // same-document navigation: no boot, so nothing applied it, and
+    // the hash sat in the URL until some later reload threw the rider
+    // back to it. Reloading hands it to the boot path above, which
+    // already orders the camera, highlight and lane builds.
+    window.addEventListener("hashchange", () => {
+        if (window.location.hash.startsWith("#share=")) window.location.reload();
+    });
     // Otherwise the saved view from the last session on this map, if
     // fresh: a share link is an explicit request and beats it.
     const viewState = shareState || readSavedView();
@@ -13799,10 +13808,47 @@ function setupInteractions() {
             laneLayer.queryLane(e.point, 4) ? "pointer" : "";
     });
 
+    // A press that lands while the rider's own gesture still moves the
+    // map (drag inertia, pinch, wheel glide) is there to stop the glide,
+    // the way native map apps read it, so its click opens no popup. Only
+    // user motion counts: MapLibre puts originalEvent on those moves,
+    // while a Locate follow ease or a finder fit carries none and the
+    // map stays tappable under it. Read in the capture phase, before
+    // MapLibre's own touchstart/mousedown stops the camera; pointerdown
+    // because a touch's compatibility mousedown arrives after the map
+    // has stopped and would clear the mark before the click reads it.
+    let userMotion = false;
+    let pressStoppedGlide = false;
+    map.on("movestart", (e) => { userMotion = !!e.originalEvent; });
+    map.getContainer().addEventListener("pointerdown", () => {
+        pressStoppedGlide = userMotion && map.isMoving();
+    }, { capture: true });
+
+    // A double tap or double click aimed at a trail is a zoom, but its
+    // first click already opened that trail's popup and lift (on
+    // desktop the second click opens it again), and MapLibre's zoom
+    // left both behind. When the double-tap or dblclick zoom starts
+    // within MapLibre's double-tap window of the click that opened
+    // the popup, that click was the first half of the zoom, so the
+    // popup closes. MapLibre fires the zoom with the touchend or
+    // dblclick as originalEvent; pinch and wheel zooms carry other
+    // event types and leave the popup alone. On touch no second click
+    // fires at all, so this cannot live in the click handler.
+    const DOUBLE_TAP_MS = 500;  // MapLibre's tap recognizer interval
+    let popupClickAt = -Infinity;
+    map.on("zoomstart", (e) => {
+        const type = e.originalEvent && e.originalEvent.type;
+        if (type !== "touchend" && type !== "dblclick") return;
+        if (performance.now() - popupClickAt > DOUBLE_TAP_MS) return;
+        popupClickAt = -Infinity;
+        closeTrailPopup();
+    });
+
     // Single map-wide click handler, buffered by TRAIL_TAP_BUFFER_PX
     // (iOS 12 / Android 6 / desktop 4, see above).
     map.on("click", (e) => {
         if (poiMarkerTapped) return;
+        if (pressStoppedGlide) return;
         // The layer knows where the lanes really are, so it decides
         // whether the tap hit one, which route it was, and reports the
         // way under it: every route on that edge, the way facts the
@@ -13813,6 +13859,7 @@ function setupInteractions() {
         const laneHit = laneLayer.queryLane(e.point, TRAIL_TAP_BUFFER_PX);
         if (!laneHit) return;
         openTrailPopup(laneHit, laneHit.lngLat || [e.lngLat.lng, e.lngLat.lat]);
+        popupClickAt = performance.now();
     });
 }
 
