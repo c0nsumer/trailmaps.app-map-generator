@@ -568,9 +568,10 @@ This example is a routes map. Difficulty-mode relations differ as described in
   lifts the trail off the map. The finder lists each name once, so a finder
   pick lifts and measures every stretch of that name. A tap on the map is
   narrower: it lifts and measures only the contiguous section of the named
-  road or trail under the tap. A section also ends where the rating or the
-  one-way flag changes, so the glow covers exactly what the popup's rows
-  describe. The glow shows what the popup's length covers. If the name runs
+  road or trail under the tap. A section also ends where the lanes change:
+  where the one-way flag changes, or the rating the lanes are colored by (the
+  Color control's aspect on an ITRS map). A fact the glow does not hold
+  uniform, such as the other ITRS aspect, reads "Varies" in the popup. The glow shows what the popup's length covers. If the name runs
   on past the lit section, the row reads as a part of a whole, "Length: 0.4
   of 2.1 mi". The first number is the lit section. The second is the name's
   whole visible length, the finder row's number.

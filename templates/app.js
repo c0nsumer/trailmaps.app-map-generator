@@ -1016,11 +1016,15 @@ const ITRS_SHAPE_PATHS = {
 const ITRS_DIAMOND_SPAN = 118.52 - 31.48;
 // The exposure pictogram stands 95.6 units tall in that box, taller
 // than the diamond and well above the square's and triangle's 78, so
-// beside a technical glyph it towered (Steve, 2026-Nov-01). It draws
-// scaled to the diamond's height instead, about its own center; the
-// outline is unchanged, only its size.
+// beside a technical glyph it towered (Steve, 2026-Nov-01). ITRS draws
+// it that tall on purpose (its route pie sets it beside the square at
+// tile scale), but on a plate the two read as one row of marks, so it
+// draws scaled to the square's height, about its own center; the
+// outline is unchanged, only its size. Fit to the diamond's span first,
+// which still stood 12% over a square (Steve, same day).
 const ITRS_EXPOSURE_HEIGHT = 122.85 - 27.21;
-const ITRS_SHAPE_FIT = { exposure: ITRS_DIAMOND_SPAN / ITRS_EXPOSURE_HEIGHT };
+const ITRS_SQUARE_SIDE = 113.95 - 36.04;
+const ITRS_SHAPE_FIT = { exposure: ITRS_SQUARE_SIDE / ITRS_EXPOSURE_HEIGHT };
 const _itrsPathCache = {};
 
 function itrsShapePath(shape) {
@@ -6533,19 +6537,28 @@ function edgeLengthMeters(edge) {
     return lineLengthMeters(coords);
 }
 
-// The way facts a tap popup reads off its edge besides the name: the
-// one-way flag and the rating facts, each kept uniform along a graph
-// edge. A tap's section (trailSection) ends where one of them changes,
-// so the lit stretch is exactly what the popup describes. Before this
-// the section was the whole connected name: Early Riser at Copper
-// Harbor lit end to end while the popup named the tapped stretch's
-// rating, which changes every few hundred meters along it, so the
-// rating read as the whole glow's (2026-Nov-01; Zueg's at NTN
-// Marquette the same under IMBA).
-const SECTION_FACT_PROPS = ["oneway", ...SCHEME_WAY_PROPS];
+// The way facts a tap's section holds uniform: what the lanes draw. A
+// tap's section (trailSection) ends where one of them changes, so the
+// lit stretch is one piece of lane as the eye sees it: the one-way
+// flag (the arrows) and the rating the lanes are colored by (the lane
+// key: the technical level with its freeride pill on an IMBA map, the
+// Color aspect's level on an ITRS map). Before this the section was
+// the whole connected name: Early Riser at Copper Harbor lit end to
+// end while the popup named the tapped stretch's rating, which
+// changes every few hundred meters along it (2026-Nov-01; Zueg's at
+// NTN Marquette the same under IMBA). Then it split on every rating
+// fact at once, and in Exposure mode a glow stopped at a difficulty
+// change the lanes did not show (Steve, same day). A fact the popup
+// states that is not held uniform here, the other aspect or bike-only
+// access, reads "Varies" when the section mixes it (sectionValue).
+function sectionFactProps() {
+    return SCHEME.freeride
+        ? ["oneway", TECH_ASPECT.prop, "freeride"]
+        : ["oneway", activeAspect().prop];
+}
 
 function sectionFacts(props) {
-    return JSON.stringify(SECTION_FACT_PROPS.map((f) => {
+    return JSON.stringify(sectionFactProps().map((f) => {
         const v = props[f];
         return v === undefined || v === null ? "" : v;
     }));
@@ -6553,7 +6566,7 @@ function sectionFacts(props) {
 
 // The edges of one connected run through `graph` that holds edgeId,
 // stepping through nodes onto edges with the same trail_name and, with
-// `facts`, the same SECTION_FACT_PROPS. The graph splits a way wherever
+// `facts`, the same sectionFactProps. The graph splits a way wherever
 // its lanes or uniform facts change, so one named stretch is often
 // several edges; a shared way is one edge whatever its lanes, so a sum
 // over the set counts each way once.
@@ -6584,7 +6597,7 @@ function sectionEdges(graph, edgeId, facts) {
 // never meet (DRvG's Casey Road), and the rider touched one of them;
 // and a rating or the one-way flag can change mid-name, which the
 // popup reports for the tapped edge alone, so the section stops there
-// too (SECTION_FACT_PROPS). `facts: false` walks the whole connected
+// too (sectionFactProps). `facts: false` walks the whole connected
 // name instead, for the on-trail glow, whose chip names the trail and
 // nothing else. Null for an unnamed edge or a missing graph.
 function trailSection(edgeId, graph = laneGraph, { facts = true } = {}) {
@@ -6595,6 +6608,19 @@ function trailSection(edgeId, graph = laneGraph, { facts = true } = {}) {
     let lengthM = 0;
     for (const id of edges) lengthM += edgeLengthMeters(graph.edges[id]);
     return { name, edges, lengthM };
+}
+
+// One value of a way fact across a set of graph edges, or undefined
+// when they disagree, so a popup row can say "Varies" instead of
+// stating the tapped way's value for a glow that spans others. `read`
+// maps a raw property to what the row compares (a rating's level).
+function sectionValue(edges, prop, read = (v) => v, graph = laneGraph) {
+    let first, seen = false;
+    for (const id of edges) {
+        const v = read((graph.edges[id].properties || {})[prop]);
+        if (!seen) { first = v; seen = true; } else if (v !== first) return undefined;
+    }
+    return first;
 }
 
 // Whether the map's edge cut this section short, the per-section twin
@@ -12595,8 +12621,12 @@ function setupFloatingChrome() {
                 LS.set("mtb.colorAspect", colorAspect);
                 syncPressed();
                 // A lit rating names a key of the old aspect; even
-                // Unrated covers different ways in the new one.
+                // Unrated covers different ways in the new one. A tap
+                // popup's section was cut by the old aspect too
+                // (sectionFactProps), so it closes rather than stand
+                // over a glow the new lanes do not segment that way.
                 if (highlight && highlight.kind === "rating") clearHighlight();
+                if (_trailPopup || _trailPopupCancel) closeTrailPopup();
                 applyVisibilityChange();
             });
         }
@@ -13731,17 +13761,33 @@ function trailPopupHtml(laneHit, section) {
     const iconUrl = difficultyIconDataUrl(key);
     const ratingName = iconUrl ? keyName(key) : "";
     const iconW = difficultyGlyphWidth(key, 16);
+    // The edges the glow covers: the tapped section, or every edge of
+    // the name for a finder pick or /t/ link (whose lift marks every
+    // stretch of the name, connected or not). A fact the glow
+    // does not hold uniform (sectionFactProps) is read across them, so
+    // a row says "Varies" rather than the tapped way's value for a
+    // stretch where it changes: the other ITRS aspect, and bike-only
+    // access. The active aspect is uniform over a section by
+    // construction and reads the same way.
+    const glowEdges = section ? section.edges
+        : (laneGraph && trailName
+            ? laneGraph.edges.filter((e) => (e.properties || {}).trail_name === trailName).map((e) => e.id)
+            : null);
+    const glowValue = (prop, read) => glowEdges
+        ? sectionValue(glowEdges, prop, read) : read(laneProps[prop]);
     // An ITRS map names both aspects on labeled rows, technical first,
     // whichever colors the lanes. Exposure 1 gets its row here though
     // the map draws no pictogram for it: the popup is where a rider
     // asks, and "Normal injury risk" is an answer.
     const aspectRows = EXPOSURE_ASPECT
         ? SCHEME.aspects.map((aspect) => {
-            const level = aspectLevel(aspect, laneProps[aspect.prop]);
+            const level = glowValue(aspect.prop, (v) => aspectLevel(aspect, v));
             return { label: aspect === EXPOSURE_ASPECT ? "Exposure:" : "Difficulty:",
-                key: level ? aspect.keyPrefix + level : "" };
-        }).filter((row) => row.key)
+                key: level ? aspect.keyPrefix + level : "",
+                varies: level === undefined };
+        }).filter((row) => row.key || row.varies)
         : null;
+    const bikeOnly = glowValue("bike_only", (v) => v === true);
     let html = "";
     if (trailName) {
         // trailName comes from OSM `name=` tag - UNTRUSTED.
@@ -13828,12 +13874,18 @@ function trailPopupHtml(laneHit, section) {
     }
     if (aspectRows) {
         for (const row of aspectRows) {
+            if (row.varies) {
+                html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>${row.label}</span><span>Varies</span></div>`;
+                continue;
+            }
             html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>${row.label}</span><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${difficultyIconDataUrl(row.key)}" alt=""><span>${escapeHtml(keyName(row.key))}</span></div>`;
         }
         // Its own row, marked with the plate the map draws behind the
         // way's symbol, so the rider can tie the yellow to its meaning.
-        if (laneProps.bike_only === true) {
+        if (bikeOnly === true) {
             html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>Access:</span><img class="popup-difficulty-icon" width="16" height="16" style="flex:none;" src="${bikeOnlySwatchDataUrl()}" alt=""><span>Bike only</span></div>`;
+        } else if (bikeOnly === undefined) {
+            html += `<div class="popup-difficulty" style="${POPUP_ROW_STYLE}"><span>Access:</span><span>Varies</span></div>`;
         }
     } else if (iconUrl) {
         // Symbol + rating name on their own row, same quiet
