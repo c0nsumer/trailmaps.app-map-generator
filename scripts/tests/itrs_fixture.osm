@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<osm version='0.6' generator='JOSM'>
+  <node id='-1' lat='46.500' lon='-87.600' />
+  <node id='-2' lat='46.501' lon='-87.600' />
+  <node id='-3' lat='46.502' lon='-87.600' />
+  <node id='-4' lat='46.503' lon='-87.600' />
+  <way id='-11'>
+    <nd ref='-1' />
+    <nd ref='-2' />
+    <tag k='highway' v='path' />
+    <tag k='name' v='Highlands' />
+    <tag k='mtb:scale:itrs:technical_difficulty' v='2' />
+    <tag k='mtb:scale:itrs:exposure' v='1' />
+  </way>
+  <way id='-12'>
+    <nd ref='-2' />
+    <nd ref='-3' />
+    <tag k='highway' v='path' />
+    <tag k='name' v='Highlands' />
+    <tag k='mtb:scale:itrs:technical_difficulty' v='2' />
+    <tag k='mtb:scale:itrs:exposure' v='3' />
+  </way>
+  <way id='-13'>
+    <nd ref='-3' />
+    <nd ref='-4' />
+    <tag k='highway' v='path' />
+    <tag k='name' v='Highlands' />
+  </way>
+  <relation id='-190'>
+    <member type='way' ref='-11' role='' />
+    <member type='way' ref='-12' role='' />
+    <member type='way' ref='-13' role='' />
+    <tag k='type' v='route' />
+    <tag k='route' v='mtb' />
+    <tag k='name' v='Highlands Loop' />
+  </relation>
+</osm>

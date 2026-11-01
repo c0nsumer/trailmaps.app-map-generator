@@ -35,6 +35,7 @@ from osm_parser import (
 )
 from overpass import describe_outcomes, drain_outcomes
 from overpass import query as overpass_query
+from validate_config import DIFFICULTY_OSM_KEYS, RATING_RANGES
 
 
 def _expand_through_supers(relation_ids, expansions):
@@ -241,6 +242,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
     - shared_routes: sorted list of route (relation) IDs sharing this segment
     - trail_name: name of the trail segment (from the way's name tag)
     - imba_difficulty: IMBA difficulty rating (0-5) or empty string
+    - itrs_difficulty / itrs_exposure: ITRS ratings as tagged, or empty string
     - freeride: True when the way's mtb:type list names freeride
     - oneway: the resolved oneway value (see _resolve_oneway)
     - way_ids: the source OSM way IDs fused into the segment
@@ -280,10 +282,16 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         # Freeride joins the signature so the oval glyph never spreads
         # from a freeride way onto a same-named, same-rated neighbor.
         freeride = _is_freeride(way.get("tags", {}))
-        way_signatures[way_id] = (sig, name, imba, oneway, freeride)
+        # Both ITRS keys join the signature so a rating change along a trail
+        # splits the feature on an ITRS map the way an IMBA change does.
+        tags = way.get("tags", {})
+        itrs_difficulty = tags.get("mtb:scale:itrs:technical_difficulty", "")
+        itrs_exposure = tags.get("mtb:scale:itrs:exposure", "")
+        way_signatures[way_id] = (
+            sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure)
 
     # Merge consecutive ways with the same signature
-    # (relations + name + difficulty + oneway + freeride)
+    # (relations + name + difficulty + oneway + freeride + ITRS ratings)
     visited = set()
     merged_segments = []
 
@@ -293,7 +301,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
         visited.add(start_way_id)
 
         full_sig = way_signatures[start_way_id]
-        sig, name, imba, oneway, freeride = full_sig
+        sig, name, imba, oneway, freeride, itrs_difficulty, itrs_exposure = full_sig
         # `reversible` ways have a direction-of-travel (just one that flips by
         # schedule), so they must not be glued to a neighbor in reversed
         # orientation any more than `yes`/`-1` ways can.
@@ -367,6 +375,8 @@ def merge_consecutive_ways(ways_dict, way_relation_ids):
                 "trail_name": name,
                 "imba_difficulty": imba,
                 "freeride": freeride,
+                "itrs_difficulty": itrs_difficulty,
+                "itrs_exposure": itrs_exposure,
                 "oneway": oneway,
                 "way_ids": member_way_ids,
             }
@@ -536,6 +546,8 @@ def build_geojson(relations, all_ways, way_relations):
                     "shared_routes": segment["shared_routes"],
                     "imba_difficulty": segment.get("imba_difficulty", ""),
                     "freeride": segment.get("freeride", False),
+                    "itrs_difficulty": segment.get("itrs_difficulty", ""),
+                    "itrs_exposure": segment.get("itrs_exposure", ""),
                     "oneway": oneway,
                     # Source OSM way IDs fused into this segment. Used by
                     # template_inject's reversible-without-schedule check so
@@ -978,12 +990,17 @@ def fetch_trails(config_or_path, output_path, cache_dir="cache", refresh=False):
     # but the build-time note tells the curator "the toggle you
     # might expect to see won't appear, and here's why."
     if config.get("show_difficulty", True):
-        imba_tagged = sum(
-            1 for f in geojson["features"] if (f.get("properties") or {}).get("imba_difficulty")
+        scale = config.get("difficulty_scale", "imba")
+        scale_props = RATING_RANGES.get(scale, RATING_RANGES["imba"])
+        tagged = sum(
+            1
+            for f in geojson["features"]
+            if any((f.get("properties") or {}).get(k) for k in scale_props)
         )
-        if imba_tagged == 0:
+        if tagged == 0:
+            keys = " or ".join(DIFFICULTY_OSM_KEYS.get(scale, DIFFICULTY_OSM_KEYS["imba"]))
             console.note(
-                "show_difficulty is enabled but no mtb:scale:imba tags found in data", detail=True
+                f"show_difficulty is enabled but no {keys} tags found in data", detail=True
             )
 
     # Also embed route (relation) metadata for the viewer + the

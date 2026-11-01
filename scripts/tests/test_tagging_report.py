@@ -139,7 +139,7 @@ def test_invalid_rating_reported_even_when_difficulty_hidden():
     snap = _snap([_feature([10], [[-87.60, 46.50], [-87.59, 46.50]],
                            trail="Weird", imba="7")])
     f = audit(snap, None, {"slug": "t", "show_difficulty": False})
-    assert f["invalid_ratings"] == [("10", "Weird", "7")]
+    assert f["invalid_ratings"] == [("10", "Weird", "7", "mtb:scale:imba")]
     assert "valid values are 0-5" in format_report(f, "t")
 
 
@@ -311,3 +311,41 @@ def test_a_map_no_longer_audited_drops_its_stale_report(tmp_path):
     assert not (tmp_path / "osm_diff" / "m" / "data-notes.md").exists()
     # And a map that never had a report is silent about it.
     report_tagging_quality(None, None, {"slug": "never"}, str(tmp_path))
+
+
+def _itrs_feature(way_id, trail, difficulty="", exposure="", imba=""):
+    f = _feature([way_id], [[-87.60, 46.50 + way_id / 1000], [-87.59, 46.50 + way_id / 1000]],
+                 trail=trail, imba=imba)
+    f["properties"]["itrs_difficulty"] = difficulty
+    f["properties"]["itrs_exposure"] = exposure
+    return f
+
+
+def test_out_of_range_itrs_values_are_reported_on_any_scale():
+    snap = _snap([_itrs_feature(10, "Weird", difficulty="6", exposure="5")])
+    for cfg in ({"slug": "t"}, {"slug": "t", "difficulty_scale": "itrs"}):
+        f = audit(snap, None, cfg)
+        assert sorted(f["invalid_ratings"]) == [
+            ("10", "Weird", "5", "mtb:scale:itrs:exposure"),
+            ("10", "Weird", "6", "mtb:scale:itrs:technical_difficulty"),
+        ]
+    assert "valid values are 1-5" in format_report(f, "t")
+    assert "valid values are 1-4" in format_report(f, "t")
+
+
+def test_itrs_zero_is_out_of_range_but_imba_zero_is_not():
+    snap = _snap([_itrs_feature(10, "A", difficulty="0", imba="0")])
+    f = audit(snap, None, {"slug": "t"})
+    assert f["invalid_ratings"] == [
+        ("10", "A", "0", "mtb:scale:itrs:technical_difficulty")]
+
+
+def test_missing_rating_reads_the_active_scale():
+    snap = _snap([
+        _itrs_feature(10, "Rated", difficulty="2", imba="3"),
+        _itrs_feature(11, "ImbaOnly", imba="3"),
+    ])
+    assert audit(snap, None, {"slug": "t"})["named_trails_missing_rating"] == []
+    itrs = audit(snap, None, {"slug": "t", "difficulty_scale": "itrs"})
+    assert itrs["named_trails_missing_rating"] == ["ImbaOnly"]
+    assert "mtb:scale:itrs:technical_difficulty is a genuine gap" in format_report(itrs, "t")

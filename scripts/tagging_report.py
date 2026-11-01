@@ -36,6 +36,7 @@ import console
 from compute_route_stats import _chain_segments, _coords_for_route
 from fetch_trails import gather_relation_ids
 from geodesy import haversine_m, natural_key, point_to_polyline_m
+from validate_config import DIFFICULTY_OSM_KEYS, DIFFICULTY_PROPERTY, RATING_RANGES
 
 # A pair of chain endpoints closer than this, but not identical, is very
 # likely two ways that look joined on the map and aren't. Exact node sharing
@@ -58,9 +59,34 @@ _ORPHAN_POI_M = 250.0
 # runtime already scopes at 500 m).
 _ON_TRAIL_POI_TYPES = ("trail_marker",)
 
-_VALID_RATINGS = {"0", "1", "2", "3", "4", "5"}
+# Valid string values per feature property, from the one range table the
+# CONFIG scan shares.
+_VALID_RATINGS = {
+    prop: {str(n) for n in range(lo, hi + 1)}
+    for ranges in RATING_RANGES.values()
+    for prop, (lo, hi) in ranges.items()
+}
+
+# The OSM key behind each rated feature property, for the report text.
+_RATING_OSM_KEYS = {
+    "imba_difficulty": "mtb:scale:imba",
+    "itrs_difficulty": "mtb:scale:itrs:technical_difficulty",
+    "itrs_exposure": "mtb:scale:itrs:exposure",
+}
+
+# "0-5" style range text per OSM key, for the out-of-range lines.
+_RANGE_TEXT = {
+    _RATING_OSM_KEYS[prop]: f"{lo}-{hi}"
+    for ranges in RATING_RANGES.values()
+    for prop, (lo, hi) in ranges.items()
+}
 
 _MAX_LIST = 40
+
+
+def _technical_key(findings):
+    """The active scale's technical-difficulty OSM key, for the gap note."""
+    return DIFFICULTY_OSM_KEYS[findings.get("difficulty_scale", "imba")][0]
 
 
 def _route_names(trails_geojson):
@@ -101,11 +127,16 @@ def _check_repeated_members(routes):
     return found
 
 
-def _check_ratings(features, show_difficulty):
+def _check_ratings(features, show_difficulty, scale="imba"):
     """Named trails with no rating, and any out-of-range rating value.
 
-    Invalid values are always reported: a rating outside 0-5 is wrong
-    regardless of whether this map draws difficulty.
+    Invalid values are always reported, for all three rating keys (IMBA,
+    ITRS technical difficulty, ITRS exposure): a rating outside its range is
+    wrong regardless of whether this map draws difficulty or which scale it
+    uses. Each entry is (way id, trail name, value, OSM key).
+
+    "No rating" reads the active scale's technical key only; on an ITRS map
+    an IMBA-only way is exactly a named trail with no rating.
 
     The missing-rating check is narrower, and deliberately so. It requires
     both that the map shows difficulty AND that at least one trail is already
@@ -122,15 +153,17 @@ def _check_ratings(features, show_difficulty):
     for f in features:
         props = f.get("properties") or {}
         trail = str(props.get("trail_name") or "").strip()
-        raw = str(props.get("imba_difficulty") or "").strip()
-        if raw and raw not in _VALID_RATINGS:
-            for wid in (props.get("way_ids") or []):
-                invalid.append((str(wid), trail, raw))
+        for prop, osm_key in _RATING_OSM_KEYS.items():
+            bad = str(props.get(prop) or "").strip()
+            if bad and bad not in _VALID_RATINGS[prop]:
+                for wid in (props.get("way_ids") or []):
+                    invalid.append((str(wid), trail, bad, osm_key))
+        raw = str(props.get(DIFFICULTY_PROPERTY[scale]) or "").strip()
         if not trail:
             continue
         named_trails.setdefault(trail, set()).update(
             str(w) for w in (props.get("way_ids") or []))
-        if raw in _VALID_RATINGS:
+        if raw in _VALID_RATINGS[DIFFICULTY_PROPERTY[scale]]:
             rated_trails.add(trail)
 
     unrated = []
@@ -276,7 +309,8 @@ def audit(trails_geojson, pois_geojson, config):
     routes = _route_names(trails_geojson)
     missing_name, missing_colour = _check_routes(routes)
     show_difficulty = config.get("show_difficulty", True)
-    unrated, invalid = _check_ratings(features, show_difficulty)
+    unrated, invalid = _check_ratings(
+        features, show_difficulty, config.get("difficulty_scale", "imba"))
     findings = {
         "routes_missing_name": missing_name,
         "routes_missing_colour": missing_colour,
@@ -287,6 +321,7 @@ def audit(trails_geojson, pois_geojson, config):
         "orphan_pois": _check_orphan_pois(pois_geojson, features),
         "repeated_members": _check_repeated_members(routes),
         "difficulty_checked": bool(show_difficulty),
+        "difficulty_scale": config.get("difficulty_scale", "imba"),
     }
     findings["total"] = sum(len(findings[k]) for k in _LIST_KEYS)
     return findings
@@ -303,7 +338,7 @@ def summarize(findings):
         ("probable_gaps",
          "possible unconnected way pair", "possible unconnected way pairs"),
         ("invalid_ratings",
-         "out-of-range mtb:scale:imba value", "out-of-range mtb:scale:imba values"),
+         "out-of-range rating value", "out-of-range rating values"),
         ("named_trails_missing_rating",
          "named trail with no difficulty rating",
          "named trails with no difficulty rating"),
@@ -389,9 +424,9 @@ def format_report(findings, slug):
              "routing for every data consumer.",
     )
     section(
-        "Out-of-range mtb:scale:imba values", findings["invalid_ratings"],
-        lambda t: f"way `{t[0]}` ({t[1] or 'unnamed'}): `{t[2]}` - "
-                  f"valid values are 0-5",
+        "Out-of-range rating values", findings["invalid_ratings"],
+        lambda t: f"way `{t[0]}` ({t[1] or 'unnamed'}): `{t[3]}={t[2]}` - "
+                  f"valid values are {_RANGE_TEXT.get(t[3], '?')}",
     )
     if findings.get("difficulty_checked"):
         section(
@@ -399,7 +434,7 @@ def format_report(findings, slug):
             findings["named_trails_missing_rating"],
             lambda n: n,
             note="This map displays difficulty, so a named trail with no "
-                 "mtb:scale:imba is a genuine gap rather than a style choice. "
+                 f"{_technical_key(findings)} is a genuine gap rather than a style choice. "
                  "Unnamed connectors are deliberately not listed.",
         )
     section(

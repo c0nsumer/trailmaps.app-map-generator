@@ -324,6 +324,8 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
                         "trail_name": trail_name,
                         "shared_routes": [cid],
                         "imba_difficulty": "",
+                        "itrs_difficulty": "",
+                        "itrs_exposure": "",
                         # Custom routes don't have OSM `oneway=` tags on
                         # individual segments (the GeoJSON has no per-
                         # segment OSM metadata). Curators opt in via

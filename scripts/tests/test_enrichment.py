@@ -208,3 +208,19 @@ def test_custom_route_with_no_lines_exits_naming_the_route(tmp_path):
 
     with pytest.raises(SystemExit, match=r"custom_routes\['course'\].*no line"):
         _enrich_custom(tmp_path, {"type": "FeatureCollection", "features": []})
+
+
+def test_custom_route_itrs_properties_are_empty(tmp_path):
+    line = [[-87.60, 46.50], [-87.59, 46.50]]
+    import json
+
+    geom = tmp_path / "course.geojson"
+    geom.write_text(json.dumps({
+        "type": "Feature", "properties": {},
+        "geometry": {"type": "LineString", "coordinates": line}}))
+    trails = {"type": "FeatureCollection", "features": [], "metadata": {"routes": {}}}
+    _enrich_trails_geojson({"custom_routes": [{
+        "id": "course", "name": "Course", "color": "#ff0000",
+        "geometry": str(geom)}]}, trails)
+    props = trails["features"][0]["properties"]
+    assert props["itrs_difficulty"] == "" and props["itrs_exposure"] == ""

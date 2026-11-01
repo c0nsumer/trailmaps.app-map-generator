@@ -190,6 +190,8 @@ def test_features_carry_the_route_and_segment_properties():
         "shared_routes": [10],
         "imba_difficulty": "2",
         "freeride": False,
+        "itrs_difficulty": "",
+        "itrs_exposure": "",
         "oneway": "",
         "way_ids": [1],
     }
@@ -273,3 +275,41 @@ def test_a_rejected_query_fails_at_once_without_retrying(tmp_path, monkeypatch, 
     assert len(calls) == 1
     out = capsys.readouterr()
     assert "HTTP 400): Error: line 3: parse error: ';' expected" in out.out + out.err
+
+
+def test_an_itrs_change_splits_the_segment():
+    # Exposure changes between ways 1 and 2 with everything else equal.
+    ways = {
+        1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:exposure": "1"}),
+        2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:exposure": "3"}),
+    }
+    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
+    assert sorted(s["itrs_exposure"] for s in segs) == ["1", "3"]
+    ways = {
+        1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "2"}),
+        2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "3"}),
+    }
+    assert len(merge_consecutive_ways(ways, {1: {10}, 2: {10}})) == 2
+
+
+def test_untagged_ways_carry_empty_itrs_properties():
+    ways = {1: _way((0, 0), (1, 0), name="A")}
+    (seg,) = merge_consecutive_ways(ways, {1: {10}})
+    assert seg["itrs_difficulty"] == "" and seg["itrs_exposure"] == ""
+
+
+def test_itrs_tags_reach_the_feature_properties(tmp_path):
+    import json
+    import os
+
+    from fetch_trails import fetch_trails
+
+    osm = os.path.join(os.path.dirname(__file__), "itrs_fixture.osm")
+    config = {"name": "H", "slug": "h", "relations": [-190], "osm_file": osm}
+    out = tmp_path / "trails.geojson"
+    fetch_trails(config, str(out), cache_dir=str(tmp_path / "c"))
+    props = [f["properties"] for f in json.loads(out.read_text())["features"]]
+    # The tagged pair differs in exposure, the untagged third way differs from both.
+    assert sorted((p["itrs_difficulty"], p["itrs_exposure"]) for p in props) == [
+        ("", ""), ("2", "1"), ("2", "3")]
+    assert all(p["imba_difficulty"] == "" for p in props)

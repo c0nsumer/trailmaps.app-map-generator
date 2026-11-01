@@ -166,3 +166,56 @@ def test_default_labels_reads_routes_on_an_event_map():
 def test_explicit_default_labels_survives_on_an_event_map():
     config = dict(MINIMAL_CONFIG, relations=[1, 2], event_mode={"featured": [1]}, default_labels="trails")
     assert _config_obj_with_routes(config, _routes())["defaultLabels"] == "trails"
+
+
+# ----- difficulty_scale: per-scale rating scans -----
+
+def _rated(**props):
+    return {"type": "Feature", "properties": props, "geometry": None}
+
+
+MIXED_TRAILS = {
+    "metadata": {"routes": {}},
+    "features": [
+        _rated(imba_difficulty="2", itrs_difficulty="3", itrs_exposure="2"),
+        _rated(imba_difficulty="0", freeride=True, itrs_difficulty="", itrs_exposure="4"),
+        _rated(imba_difficulty="9", itrs_difficulty="7", itrs_exposure="0"),
+        _rated(imba_difficulty="", itrs_difficulty="1", itrs_exposure=""),
+    ],
+}
+
+
+def test_difficulty_scale_defaults_to_imba():
+    assert inject_config(dict(MINIMAL_CONFIG))["difficultyScale"] == "imba"
+
+
+def test_imba_scan_ignores_the_itrs_keys():
+    obj = inject_config(dict(MINIMAL_CONFIG), copy.deepcopy(MIXED_TRAILS))
+    assert obj["difficultyRatings"] == [2]
+    assert obj["freerideRatings"] == [0]
+    assert obj["exposureRatings"] == []
+    assert obj["hasDifficultyTrails"] is True
+
+
+def test_itrs_scan_reads_both_itrs_keys_in_range():
+    config = dict(MINIMAL_CONFIG, difficulty_scale="itrs")
+    obj = inject_config(config, copy.deepcopy(MIXED_TRAILS))
+    assert obj["difficultyScale"] == "itrs"
+    assert obj["difficultyRatings"] == [1, 3]
+    assert obj["exposureRatings"] == [2, 4]
+    assert obj["freerideRatings"] == []
+    assert obj["hasDifficultyTrails"] is True
+
+
+def test_itrs_map_with_only_imba_tags_has_no_difficulty_trails():
+    trails = {"metadata": {"routes": {}}, "features": [_rated(imba_difficulty="3")]}
+    obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
+    assert obj["hasDifficultyTrails"] is False
+    assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == []
+
+
+def test_itrs_exposure_alone_turns_the_toggle_on():
+    trails = {"metadata": {"routes": {}}, "features": [_rated(itrs_exposure="2")]}
+    obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
+    assert obj["hasDifficultyTrails"] is True
+    assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == [2]

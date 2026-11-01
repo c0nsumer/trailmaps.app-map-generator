@@ -33,6 +33,7 @@ from pmtiles_util import EXTRACT_MINZOOM
 from validate_config import (
     DEFAULT_FIRST_VISIT_LAYERS,
     DEFAULT_VISIBLE_LAYERS,
+    RATING_RANGES,
     VALID_DAYS,
     match_day_token,
 )
@@ -52,12 +53,12 @@ def ship(config, *rel_paths):
     """
     config.setdefault("_shipped", set()).update(rel_paths)
 
-# How many IMBA ratings the runtime can draw a glyph for: mtb:scale:imba
-# 0-5, mirroring IMBA_RATINGS / RATING_NAMES in templates/app.js. Used to
-# reject out-of-range tag values from CONFIG.difficultyRatings so the key
-# strip never asks the runtime for a glyph that doesn't exist. Keep in
-# step with app.js if the rating set ever changes.
-_IMBA_RATING_COUNT = 6
+# The rating ranges the runtime can draw a glyph for live in
+# validate_config.RATING_RANGES (IMBA 0-5, ITRS difficulty 1-5 and exposure
+# 1-4), mirroring the scheme table in templates/app.js. The scan below uses
+# them to reject out-of-range tag values from CONFIG.difficultyRatings so the
+# key strip never asks the runtime for a glyph that doesn't exist. Keep in
+# step with app.js if a rating set ever changes.
 
 # Protomaps ships five basemap sprite flavors, but templates/app.js only ever
 # requests two (see basemapFlavor()). The other three are ~80 KB per map of
@@ -168,6 +169,7 @@ CONFIG_SPEC = [
     ("show_bicycle_repair_stations", "showBicycleRepairStations", True),
     ("show_terrain", "showTerrain", True),
     ("show_difficulty", "showDifficulty", True),
+    ("difficulty_scale", "difficultyScale", "imba"),
     # Meters from the nearest visible trail within which a trail-marker
     # or feature POI renders. 50 surfaces typical `tourism=attraction`
     # features (often 10-50 m off-trail); ~75 m+ risks bbox-incidental
@@ -660,6 +662,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #     difficultyRatings, freeride ways CONFIG.freerideRatings (the
     #     oval glyphs), so a rating whose only ways are freeride never
     #     lists a plain glyph the map doesn't draw.
+    #   - on `difficulty_scale: itrs` the scan reads the ITRS keys instead:
+    #     difficultyRatings from itrs_difficulty, exposureRatings from
+    #     itrs_exposure, freerideRatings empty (no freeride pill on ITRS
+    #     maps). An IMBA-only way contributes nothing there.
     # See setupFloatingChrome() in app.js where these are read.
     #
     # No early exit: the rating set needs every feature, and one pass
@@ -669,29 +675,49 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # (any non-empty value, in range or not). A map tagged
     # mtb:scale:imba=7 keeps its working toggle; only the key strip goes
     # away, because there's no glyph to show for a rating that isn't one.
+    scale = config.get("difficulty_scale", "imba")
     has_oneway = False
     has_difficulty = False
     ratings = set()
+    exposure_ratings = set()
     freeride_ratings = set()
+
+    def _in_range(raw, prop):
+        """The int value of a rating property when it is a drawable one."""
+        try:
+            n = int(str(raw).strip())
+        except (TypeError, ValueError):
+            return None
+        lo, hi = RATING_RANGES[scale][prop]
+        return n if lo <= n <= hi else None
+
     for f in (trails_geojson.get("features") or []) if trails_geojson else []:
         props = f.get("properties") or {}
         if not has_oneway:
             ow = props.get("oneway")
             if ow in ("yes", True, "-1", "reversible"):
                 has_oneway = True
+        if scale == "itrs":
+            n = _in_range(props.get("itrs_difficulty"), "itrs_difficulty")
+            x = _in_range(props.get("itrs_exposure"), "itrs_exposure")
+            if n is not None:
+                ratings.add(n)
+            if x is not None:
+                exposure_ratings.add(x)
+            if n is not None or x is not None:
+                has_difficulty = True
+            continue
         imba = props.get("imba_difficulty")
         if imba is not None and str(imba).strip():
             has_difficulty = True
-            try:
-                n = int(str(imba).strip())
-            except (TypeError, ValueError):
-                n = None
-            if n is not None and 0 <= n < _IMBA_RATING_COUNT:
+            n = _in_range(imba, "imba_difficulty")
+            if n is not None:
                 (freeride_ratings if props.get("freeride") is True else ratings).add(n)
     config_obj["hasOnewayTrails"] = has_oneway
     config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["difficultyRatings"] = sorted(ratings)
     config_obj["freerideRatings"] = sorted(freeride_ratings)
+    config_obj["exposureRatings"] = sorted(exposure_ratings)
     config_obj["about"] = config.get("about") or None
     # Welcome/Help modal config. Three forms accepted: omitted (None →
     # framework default), false (first-visit auto-open suppressed), or

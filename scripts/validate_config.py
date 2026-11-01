@@ -85,6 +85,7 @@ KNOWN_KEYS = {
     "show_bicycle_repair_stations": bool,
     "show_terrain": bool,
     "show_difficulty": bool,
+    "difficulty_scale": str,
     "show_trails": bool,
     "show_direction_arrows": bool,
     "show_current_trail": bool,
@@ -198,6 +199,23 @@ HANDLED_SPECIALLY = {
 
 VALID_LABELS = {"routes", "trails", "none"}
 VALID_COLOR_BY = {"route", "difficulty"}
+VALID_DIFFICULTY_SCALES = {"imba", "itrs"}
+# Inclusive (low, high) range of each rated feature property, per difficulty
+# scale. Lives here because validate_config is the import-graph leaf both
+# template_inject (CONFIG scan) and tagging_report (out-of-range check)
+# already depend on. IMBA includes 0 (still a drawable glyph); ITRS never
+# tags 0.
+RATING_RANGES = {
+    "imba": {"imba_difficulty": (0, 5)},
+    "itrs": {"itrs_difficulty": (1, 5), "itrs_exposure": (1, 4)},
+}
+# Feature property holding each scale's technical difficulty.
+DIFFICULTY_PROPERTY = {"imba": "imba_difficulty", "itrs": "itrs_difficulty"}
+# The OSM key(s) behind each scale, for messages.
+DIFFICULTY_OSM_KEYS = {
+    "imba": ("mtb:scale:imba",),
+    "itrs": ("mtb:scale:itrs:technical_difficulty", "mtb:scale:itrs:exposure"),
+}
 VALID_MARKER_SHAPES = {"box", "pill", "circle", "diamond"}
 VALID_COLOR_SCHEMES = {"light", "dark", "auto"}
 VALID_DAYS = {
@@ -497,6 +515,16 @@ def _validate_enums(report, config):
     if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
+        )
+
+    if (
+        "difficulty_scale" in config
+        and config["difficulty_scale"] not in VALID_DIFFICULTY_SCALES
+    ):
+        report.err(
+            "difficulty_scale",
+            f"must be one of {sorted(VALID_DIFFICULTY_SCALES)}, "
+            f"got {config['difficulty_scale']!r}",
         )
 
     if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:

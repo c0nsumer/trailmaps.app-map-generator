@@ -34,6 +34,7 @@ relations:
 # show_bicycle_repair_stations: true
 # show_terrain: true
 # show_difficulty: true
+# difficulty_scale: imba
 # show_trails: true
 # show_direction_arrows: true
 # show_current_trail: true

@@ -67,7 +67,8 @@ def _clear_signature(output_path):
 # new field until the curator happens to pass --refresh-trails.
 #   2: route metadata carries repeat_m and repeated_ways (2026-10-06)
 #   3: ways carry freeride (mtb:type names freeride) (2026-10-12)
-TRAILS_BASE_FORMAT = 3
+#   4: ways carry itrs_difficulty and itrs_exposure (2026-10-31)
+TRAILS_BASE_FORMAT = 4
 
 
 def _trails_fetch_fingerprint(config):

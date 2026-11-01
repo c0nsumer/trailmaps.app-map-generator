@@ -125,6 +125,11 @@ relations:
 # Generate IMBA difficulty symbols; auto-hidden if no way carries mtb:scale:imba.
 # show_difficulty: true
 
+# Which difficulty scale the map reads and draws: imba (mtb:scale:imba,
+# the default) or itrs (mtb:scale:itrs:technical_difficulty plus
+# mtb:scale:itrs:exposure). Pick the one the trail system's signs use.
+# difficulty_scale: imba
+
 # Show the Finder's Trails section and the Trails label mode.
 # show_trails: true
 

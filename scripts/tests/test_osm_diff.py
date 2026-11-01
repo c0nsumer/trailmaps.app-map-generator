@@ -468,3 +468,26 @@ def test_negative_josm_ids_get_no_osm_link():
     report = format_report(diff_snapshots(before, after), "x")
     assert "openstreetmap.org/way/-" not in report
     assert "way `-4` (not uploaded)" in report
+
+
+def _itrs_feature(difficulty="", exposure=""):
+    f = _feature([11], _LEG_B, trail="Bootjack")
+    f["properties"]["itrs_difficulty"] = difficulty
+    f["properties"]["itrs_exposure"] = exposure
+    return f
+
+
+def test_an_itrs_change_is_a_tag_change():
+    before = _snap([_itrs_feature("2", "1")])
+    after = _snap([_itrs_feature("3", "1")])
+    assert diff_snapshots(before, after)["tag_changes"] == [{
+        "way_id": "11", "trail": "Bootjack",
+        "tag": "mtb:scale:itrs:technical_difficulty", "old": "2", "new": "3",
+    }]
+
+
+def test_a_snapshot_from_before_itrs_reports_no_change():
+    old = _feature([11], _LEG_B, trail="Bootjack")
+    assert "itrs_difficulty" not in old["properties"]
+    after = _snap([_itrs_feature("2", "3")])
+    assert diff_snapshots(_snap([old]), after)["tag_changes"] == []

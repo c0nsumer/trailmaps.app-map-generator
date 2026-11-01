@@ -563,3 +563,17 @@ def test_unquoted_custom_route_oneway_says_quote_it():
             {"id": "loop", "name": "Loop", "color": "#08c", "geometry": geom, "oneway": -1}]}
         errors, _ = validate_config(cfg)
     assert any("quote the value" in e for e in errors), errors
+
+
+# --- difficulty_scale: imba | itrs -------------------------------------------
+
+
+def test_difficulty_scale_accepts_imba_and_itrs():
+    assert _errors(difficulty_scale="imba") == []
+    assert _errors(difficulty_scale="itrs") == []
+
+
+def test_difficulty_scale_rejects_anything_else():
+    for value in ("ITRS", "sac", ""):
+        errors = [e for e in _errors(difficulty_scale=value) if "difficulty_scale" in e]
+        assert len(errors) == 1 and "must be one of" in errors[0], (value, errors)

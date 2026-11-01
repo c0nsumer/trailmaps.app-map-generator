@@ -43,3 +43,16 @@ def test_reference_documents_every_known_key():
 def test_reference_does_not_present_a_retired_key_as_live():
     text = _reference_text()
     assert [k for k in _RETIRED_KEYS if _documented(k, text)] == []
+
+
+def test_commented_difficulty_scale_parses_and_validates():
+    """The documented default, uncommented, is a valid config value."""
+    import yaml
+
+    text = _reference_text()
+    m = re.search(r"^# (difficulty_scale: \w+)$", text, re.M)
+    assert m, "difficulty_scale line missing from reference.yaml"
+    value = yaml.safe_load(m.group(1))["difficulty_scale"]
+    assert value == "imba"
+    assert not [e for e in validate_config({"difficulty_scale": value, "slug": "x"})[0]
+                if "difficulty_scale" in e]
