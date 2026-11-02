@@ -7107,6 +7107,12 @@ function updateMarkerProximity() {
     if (map && map.getSource("trail-decorations")) {
         updateDecorationsSource();
     }
+    // A marker mounted here under an active highlight has not been
+    // washed: washMarkerElement skips elements that are not in the
+    // document yet, and the dim pass ran when the highlight was set.
+    // Turning a row on mid-highlight brought its markers up at full
+    // brightness (chaos review, 2026-Nov-02).
+    if (highlight != null) updateMarkerDimState();
 
     // Re-evaluate the proximity-gated toggle rows (Markers, Features,
     // Toilets, Drinking water, Bicycle repair). If the visible-routes
@@ -12372,16 +12378,20 @@ function setupFloatingChrome() {
                 }
                 invalidateObstaclesCache();
                 updateDecorationsSource();
+                // Same as updateMarkerProximity: markers mounted under
+                // an active highlight still need their wash.
+                if (on && highlight != null) updateMarkerDimState();
             }
             _onPoiToggleChange(type);
         }, t.defaultVisibleName, !!t.proximity);
     }
-    // The legend fills only where the row can show; loadPOIs hid the
-    // row on a map with no points, and a forced row stays hidden.
-    if (CONFIG.showExposurePoints && !document.getElementById("toggle-exposure")
-            ?.classList.contains("hidden")) {
-        buildExposureKey();
-    }
+    // Built whenever the map can show exposure points, whatever the
+    // row's state right now: the row's hidden and Off states hide the
+    // legend with it, and a row hidden at setup can come back (a stale
+    // winter setting hid it until the forced season switch, and it
+    // returned with an empty legend; chaos review, 2026-Nov-02).
+    // buildExposureKey draws nothing when the map has no levels.
+    if (CONFIG.showExposurePoints) buildExposureKey();
 
     // Difficulty, drives the decor-diamond layer. Uses the shared
     // wirePeekToggle so the visual + behavior matches the other
