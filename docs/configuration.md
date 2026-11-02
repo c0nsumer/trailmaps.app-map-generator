@@ -682,7 +682,9 @@ The tap popup has a **Difficulty** row and an **Exposure** row. The Exposure
 row names every level, including 1. The finder's meta line names a trail's
 exposure levels from 2 up. The Options key strip lists the technical levels
 under a "Difficulty" caption, then exposure levels 2 to 4 under "Exposure",
-with short names ("Serious injury risk", "Life threatening", "Fatal").
+with short names ("Serious injury risk", "Life threatening", "Fatal"). The key
+card and its chip use the same short names; the popup and the finder keep the
+full ITRS phrases.
 
 ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
 A way counts as bike-only when `bicycle` is `yes`, `designated`, or

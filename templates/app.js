@@ -927,9 +927,10 @@ const SCHEMES = {
         }, {
             id: "exposure", prop: "itrs_exposure", keyPrefix: "x",
             levels: {
-                // `short` is the Options key strip's form, where the
-                // full ITRS phrase wrapped a two-column legend; the
-                // popup and the key card keep the full name.
+                // `short` is the map chrome's form (keyShortName): the
+                // key card, its chip and the Options key strip, where
+                // the full ITRS phrase wrapped a two-column legend; the
+                // popup and the finder keep the full name.
                 "1": { name: "Normal injury risk", short: "Normal injury risk", shape: "exposure", color: "#72bf44", flat: true, image: "itrs-x1" },
                 "2": { name: "High risk of serious injury", short: "Serious injury risk", shape: "exposure", color: "#0080c6", flat: true, image: "itrs-x2" },
                 "3": { name: "Life threatening consequences", short: "Life threatening", shape: "exposure", color: "#ee3124", flat: true, image: "itrs-x3" },
@@ -1834,8 +1835,7 @@ function buildDifficultyKey() {
     if (exposureItems.length) {
         addCaption("Exposure");
         for (const key of exposureItems) {
-            const def = SCHEME_KEYS.get(key).def;
-            addItem(difficultyIconDataUrl(key), def.short || def.name, false);
+            addItem(difficultyIconDataUrl(key), keyShortName(key), false);
         }
     }
     // ITRS: what the yellow plate means, once, under Access. The
@@ -6507,6 +6507,17 @@ function keyName(key) {
     return isRatedKey(key) ? SCHEME_KEYS.get(key).def.name : "Unrated";
 }
 
+// The name the map's own chrome uses: the key card, its chip and the
+// Options key strip, where a level's `short` form fits a row ("Fatal"
+// for the ITRS exposure phrase "Fatal consequences"). The popup, the
+// finder and a share title keep keyName, the full phrase, where a
+// rider is reading one answer rather than scanning a list.
+function keyShortName(key) {
+    if (!isRatedKey(key)) return "Unrated";
+    const def = SCHEME_KEYS.get(key).def;
+    return def.short || def.name;
+}
+
 // Rating keys in the key's order: easiest first, each freeride key
 // after its plain rating, exposure keys after the technical ones, then
 // unrated last, where a curator reads it as the data still to tag.
@@ -9145,7 +9156,7 @@ function highlightRating(rating) {
     // visible length.
     const rated = isRatedKey(rating);
     showHighlightChip({
-        label: keyName(rating),
+        label: keyShortName(rating),
         glyph: rated ? difficultyIconDataUrl(rating) : null,
         glyphFreeride: isFreerideKey(rating),
         line: rated ? null : keyLook(rating),
@@ -10464,7 +10475,7 @@ function appendRatingRows(list, ratings) {
     for (const rating of ratings) {
         appendKeyRow(list, {
             mark: ratingMarkEl(rating, "route-panel-glyph", "route-panel-swatch"),
-            name: keyName(rating),
+            name: keyShortName(rating),
             stats: ratingStatsText(rating),
             dataset: { rating },
             isActive: () => highlight && highlight.kind === "rating" && highlight.key === rating,
