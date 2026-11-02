@@ -169,15 +169,19 @@ def _trail_vertex_names(trails_path):
     """Map every trail vertex to its feature's name, from trails.geojson.
 
     The trails fetch keeps no node ids, so an exposure node finds its trail by
-    coordinate: it is a vertex of the way it rates. A named feature wins when
-    several share a vertex (junctions). Returns {} when the file is unreadable.
+    coordinate: it is a vertex of the way it rates. itrs-to-osm never tags a
+    junction node, but a hand-tagged one can sit where two named trails
+    meet, so a shared vertex resolves by a fixed rule rather than file
+    order: the trail the vertex is interior to (a trail passing through
+    beats one that ends there), then the first name alphabetically.
+    Returns {} when the file is unreadable.
     """
     try:
         with open(trails_path, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError):
         return {}
-    names = {}
+    best = {}  # vertex key -> (rank, name); a higher rank wins, then a lower name
     for feat in data.get("features", []):
         geom = feat.get("geometry") or {}
         coords = geom.get("coordinates") or []
@@ -189,11 +193,14 @@ def _trail_vertex_names(trails_path):
             continue
         name = str((feat.get("properties") or {}).get("trail_name") or "").strip()
         for line in lines:
-            for pt in line:
+            last = len(line) - 1
+            for i, pt in enumerate(line):
                 key = _vertex_key(pt[0], pt[1])
-                if name or key not in names:
-                    names[key] = name or names.get(key, "")
-    return names
+                rank = (2 if 0 < i < last else 1) if name else 0
+                cur = best.get(key)
+                if cur is None or rank > cur[0] or (rank == cur[0] and name < cur[1]):
+                    best[key] = (rank, name)
+    return {key: name for key, (_rank, name) in best.items()}
 
 
 def _exposure_features(osm_data, trail_vertices):
@@ -241,13 +248,17 @@ def _exposure_features(osm_data, trail_vertices):
             f"{len(bad_values)} exposure point(s) with a value outside {lo}-{hi} "
             f"ignored (node ids {', '.join(str(i) for i in bad_values)})")
     if off_trail:
-        # itrs-to-osm inserts a new vertex for a point that lands between
-        # existing nodes, so a node newer than the cached trail geometry
-        # misses its own way until the trails are refetched.
+        # Two causes, which the note cannot tell apart: a trail outside
+        # the map's relations (a neighboring system in the bbox, a
+        # relation left out on purpose), or a node newer than the cached
+        # trail geometry (itrs-to-osm inserts a vertex for a point that
+        # lands between existing nodes, which the way lacks until the
+        # trails are refetched).
         console.note(
-            f"{len(off_trail)} exposure point(s) off the map's trails "
-            f"(node ids {', '.join(str(i) for i in off_trail)}); if they were "
-            "added since the last trails fetch, --refresh-trails picks them up")
+            f"{len(off_trail)} exposure point(s) on no trail of this map "
+            f"(node ids {', '.join(str(i) for i in off_trail)}): a trail outside "
+            "the map's relations, or nodes newer than the cached trail geometry "
+            "(--refresh-trails)")
     return out
 
 
@@ -481,6 +492,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     osm_file = config.get("osm_file")
     # Exposure points exist only on ITRS maps; the scale is their gate.
     itrs = config.get("difficulty_scale", "imba") == "itrs"
+    # Whether any standard (show_*-gated) category is on at all.
+    standard = any(config.get(k, True) for k in POI_SHOW_FLAGS)
 
     if osm_file:
         console.step(f"Loading POIs for {config['name']} from {osm_file}...", detail=True)
@@ -496,14 +509,13 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         # load_config has already made osm_file absolute against the config dir.
         parsed = parse_osm_file(osm_file)
         osm_data = extract_pois(parsed, bbox, itrs=itrs)
-    elif not any(config.get(k, True) for k in POI_SHOW_FLAGS) and not itrs:
+    elif not standard and not itrs:
         # Reached only for event POIs, which come from the config: with
         # every layer off there is nothing to ask Overpass for.
         osm_data = {"elements": []}
     else:
-        osm_data = fetch_pois_from_osm(
-            bbox, cache_dir, refresh=refresh, itrs=itrs,
-            standard=any(config.get(k, True) for k in POI_SHOW_FLAGS))
+        osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh, itrs=itrs,
+                                       standard=standard)
 
     # Count by type - guideposts + emergency access points are merged
     # into a single "markers" bucket.

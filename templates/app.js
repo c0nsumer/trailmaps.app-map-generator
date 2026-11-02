@@ -1741,51 +1741,55 @@ function buildDifficultyKey() {
     )]).filter((k) => k !== "");
     if (!keys.length) return;
     strip.textContent = "";
-    const addItem = (url, name, freeride) => {
-        const li = document.createElement("li");
-        li.className = "opt-key-item";
-        const img = document.createElement("img");
-        img.className = "opt-key-glyph";
-        if (freeride) img.classList.add("is-freeride");
-        img.src = url;
-        // Decorative: the adjacent name text already carries the meaning.
-        img.alt = "";
-        li.appendChild(img);
-        const label = document.createElement("span");
-        label.className = "opt-key-name";
-        label.textContent = name;
-        li.appendChild(label);
-        strip.appendChild(li);
-    };
     // Captions head each group on an ITRS map, where the row says
     // Rating Symbols and the legend has to say which: Difficulty or
     // Access. An IMBA map's strip is one group under a row already
     // named Difficulty Symbols, so it runs uncaptioned.
-    const addCaption = (text) => {
-        if (SCHEME.freeride) return;
-        const li = document.createElement("li");
-        li.className = "opt-key-caption";
-        li.textContent = text;
-        strip.appendChild(li);
-    };
-    if (keys.length) addCaption("Difficulty");
+    if (!SCHEME.freeride) keyStripCaption(strip, "Difficulty");
     for (const key of keys) {
         const url = difficultyIconDataUrl(key);
-        if (url) addItem(url, keyName(key), false);
+        if (url) keyStripItem(strip, url, keyName(key));
     }
     // ITRS: what the yellow plate means, once, under Access. The
     // plate is the entry's mark, as the bare pill is the Freeride
     // entry's, so the name does not call it yellow: the tap lift is
     // yellow too, and naming the color invited reading one as the other.
     if (strip.children.length && !SCHEME.freeride && CONFIG.hasBikeOnlyTrails) {
-        addCaption("Access");
-        addItem(bikeOnlySwatchDataUrl(), "Bike-only trail", false);
+        keyStripCaption(strip, "Access");
+        keyStripItem(strip, bikeOnlySwatchDataUrl(), "Bike-only trail");
     }
     if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
-        addItem(glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
-            (ctx) => drawFreerideOval(ctx, null)).toDataURL(), "Freeride", true);
+        keyStripItem(strip, glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
+            (ctx) => drawFreerideOval(ctx, null)).toDataURL(), "Freeride", "is-freeride");
     }
     if (strip.children.length) strip.classList.remove("hidden");
+}
+
+// One legend entry: a glyph and its name on one line. `glyphClass` is
+// the glyph's size variant (the freeride pill, a plated callout). Both
+// key strips build their rows here so the markup cannot drift apart.
+function keyStripItem(strip, url, name, glyphClass = "") {
+    const li = document.createElement("li");
+    li.className = "opt-key-item";
+    const img = document.createElement("img");
+    img.className = "opt-key-glyph";
+    if (glyphClass) img.classList.add(glyphClass);
+    img.src = url;
+    // Decorative: the adjacent name text already carries the meaning.
+    img.alt = "";
+    li.appendChild(img);
+    const label = document.createElement("span");
+    label.className = "opt-key-name";
+    label.textContent = name;
+    li.appendChild(label);
+    strip.appendChild(li);
+}
+
+function keyStripCaption(strip, text) {
+    const li = document.createElement("li");
+    li.className = "opt-key-caption";
+    li.textContent = text;
+    strip.appendChild(li);
 }
 
 // Fill in the legend under the Exposure Points row: one entry per level
@@ -1798,23 +1802,9 @@ function buildExposureKey() {
     const levels = (CONFIG.exposureLevels || []).filter((lv) => EXPOSURE_LEVELS[lv]);
     if (!levels.length) return;
     strip.textContent = "";
-    const caption = document.createElement("li");
-    caption.className = "opt-key-caption";
-    caption.textContent = "Exposure";
-    strip.appendChild(caption);
+    keyStripCaption(strip, "Exposure");
     for (const lv of levels) {
-        const li = document.createElement("li");
-        li.className = "opt-key-item";
-        const img = document.createElement("img");
-        img.className = "opt-key-glyph is-plated";
-        img.src = exposureIconDataUrl(lv);
-        img.alt = "";
-        li.appendChild(img);
-        const label = document.createElement("span");
-        label.className = "opt-key-name";
-        label.textContent = EXPOSURE_LEVELS[lv].short;
-        li.appendChild(label);
-        strip.appendChild(li);
+        keyStripItem(strip, exposureIconDataUrl(lv), EXPOSURE_LEVELS[lv].short, "is-plated");
     }
     strip.classList.remove("hidden");
 }
@@ -2889,21 +2879,13 @@ function decorPointLabelLayer(id, kind, mode) {
 }
 
 // The rating plates' icon-size by zoom, as [zoom, scale] pairs flat in
-// MapLibre's interpolate form. Shared with the exposure callout, which
-// sizes its DOM plate to match a rating plate's at z16.
+// MapLibre's interpolate form.
 const DIAMOND_ICON_SIZE_STOPS = [12, 0.5, 14, 0.7, 18, 1.0];
-
-function diamondIconScaleAt(zoom) {
-    const s = DIAMOND_ICON_SIZE_STOPS;
-    if (zoom <= s[0]) return s[1];
-    for (let i = 2; i < s.length; i += 2) {
-        if (zoom <= s[i]) {
-            const t = (zoom - s[i - 2]) / (s[i] - s[i - 2]);
-            return s[i - 1] + t * (s[i + 1] - s[i - 1]);
-        }
-    }
-    return s[s.length - 1];
-}
+// The plates' scale at z16 on those stops (halfway from 0.7 at z14 to
+// 1.0 at z18): the exposure callout's size, which as a DOM marker is
+// one size at every zoom. It matches a plate where a rider reads plates
+// closely and stays legible zoomed out, where the plates shrink.
+const EXPOSURE_MARKER_SCALE = 0.85;
 
 function addDecorationLayers() {
     if (map.getLayer("decor-trail-name")) return;
@@ -3263,13 +3245,17 @@ const POI_TYPES = {
         fallbackName: "Event Markers", metaLabel: "event marker", proximity: null,
         showGate: "hasEventPois", addMarkers: addEventPoiMarkers,
     },
-    // No proximity gate: a point sits on a trail by construction, and
-    // hiding one by distance would hide a warning. Not in the finder:
-    // an exposed spot is a warning on the map, not a place to go to.
+    // Proximity-gated like a guidepost: a point sits on a trail by
+    // construction, so the gate never hides one whose trail is drawn,
+    // and it takes the callout away with its trail when a route is
+    // toggled off or the season hides it, instead of leaving a warning
+    // floating on bare basemap (and carving an obstacle disc there).
+    // Not in the finder: an exposed spot is a warning on the map, not a
+    // place to go to.
     [POI.EXPOSURE]: {
         lsKey: "mtb.poi.exposure", defaultVisibleName: "exposure_points",
         toggleRowId: "toggle-exposure", markers: exposureMarkers,
-        fallbackName: "Exposure", metaLabel: "exposure point", proximity: null,
+        fallbackName: "Exposure", metaLabel: "exposure point", proximity: "trail",
         showGate: "showExposurePoints", addMarkers: addExposureMarkers,
         finder: false,
     },
@@ -10896,9 +10882,7 @@ function poiMarkerAriaLabel(poiType, props) {
         : props.name;
     if (poiType === POI.EVENT) return name || "Event marker";
     if (poiType === POI.EXPOSURE) {
-        return props.trail
-            ? `Exposure point: ${name}, on ${props.trail}`
-            : `Exposure point: ${name}`;
+        return `Exposure point: ${name} if falling off ${props.trail || "the trail"}`;
     }
     const type = POI_TYPE_FALLBACK_NAME[poiType] || "Place";
     return name ? `${type}: ${name}` : type;
@@ -11344,17 +11328,12 @@ function addFeatureMarkers(addToMap) {
     });
 }
 
-// A DOM marker is one size at every zoom, which is what a callout wants:
-// it matches a rating plate where the rider reads plates closely (z16)
-// and stays legible zoomed out, where the plates shrink.
-const EXPOSURE_MARKER_ZOOM = 16;
-
 // ITRS exposure points: the level's pictogram on its plate, centered on
 // the node like a rating plate on its line, so it is unambiguous where
 // the exposed spot is. The plate image is the whole marker, so the type
 // takes none of .poi-marker's chip styling.
 function addExposureMarkers(addToMap) {
-    const px = Math.round(PLATED_IMAGE_SIZE * diamondIconScaleAt(EXPOSURE_MARKER_ZOOM) * 10) / 10;
+    const px = Math.round(PLATED_IMAGE_SIZE * EXPOSURE_MARKER_SCALE * 10) / 10;
     createPoiMarkers({
         poiType: POI.EXPOSURE,
         className: "exposure-marker",
@@ -11376,9 +11355,10 @@ function addExposureMarkers(addToMap) {
             const icon = url
                 ? `<img width="24" height="24" style="flex:none;margin:-3px 0;" src="${url}" alt="">`
                 : "";
-            const meta = p.trail
-                ? `exposure point \u00b7 on ${escapeHtml(p.trail)}`
-                : "exposure point";
+            // Completes the level as a sentence, the way ITRS's own app
+            // phrases it ("... when falling off the trail"), with the
+            // trail named (Steve, 2026-Nov-02).
+            const meta = `if falling off ${p.trail ? escapeHtml(p.trail) : "the trail"}`;
             return `<div class="popup-title" style="display:flex;align-items:center;gap:6px;">${icon}<span>${escapeHtml(name)}</span></div>`
                 + `<div style="font-size:12px;color:var(--sheet-text-muted);">${meta}</div>`;
         },

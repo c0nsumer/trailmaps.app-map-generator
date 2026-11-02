@@ -693,7 +693,9 @@ and says so. Nodes newer than the cached trail geometry need
 maps only, so `--refresh-pois` picks up new ones.
 
 The Options overlay has an **Exposure Points** row in the "Trails" section,
-under Rating Symbols. It is one On/Off pill and starts on. While it is on, a
+under Rating Symbols. It is one On/Off pill. It starts on when
+`default_visible` is unset or `all`. If `default_visible` is a list, add
+`exposure_points` to it, or the row starts off. While it is on, a
 legend lists the levels the map carries, with short names ("Serious injury
 risk", "Life threatening", "Fatal"). The popup and the finder keep the full
 ITRS phrases. The row is hidden on IMBA maps and on a map with no exposure

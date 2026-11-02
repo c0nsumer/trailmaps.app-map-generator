@@ -156,7 +156,32 @@ def test_a_node_off_the_trails_is_dropped_with_a_note(capsys, monkeypatch):
     props = _exposure([_node(1, 2), _node(2, 3, lat=46.9)])
     assert [p["osm_id"] for p in props] == [1]
     out = capsys.readouterr()
-    assert "1 exposure point(s) off the map's trails (node ids 2)" in out.out + out.err
+    assert "1 exposure point(s) on no trail of this map (node ids 2)" in out.out + out.err
+
+
+def test_a_shared_vertex_goes_to_the_trail_passing_through_then_alphabetical():
+    from fetch_pois import _trail_vertex_names
+
+    def line(name, coords):
+        return {"type": "Feature", "properties": {"trail_name": name},
+                "geometry": {"type": "LineString", "coordinates": coords}}
+
+    # Zulu passes through (0, 0); Alpha and Mike end there. Interior wins
+    # over file order; among trails that only end there, the first name.
+    fc = {"type": "FeatureCollection", "features": [
+        line("Mike", [[1, 1], [0, 0]]),
+        line("Zulu", [[-1, 0], [0, 0], [1, 0]]),
+        line("Alpha", [[0, 1], [0, 0]]),
+        line("Mike", [[2, 2], [3, 3]]),
+        line("Alpha", [[3, 3], [4, 4]]),
+    ]}
+    import json
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".geojson", delete=False) as f:
+        json.dump(fc, f)
+    names = _trail_vertex_names(f.name)
+    assert names[(0.0, 0.0)] == "Zulu"
+    assert names[(3.0, 3.0)] == "Alpha"
 
 
 def test_an_imba_map_builds_no_exposure_points():

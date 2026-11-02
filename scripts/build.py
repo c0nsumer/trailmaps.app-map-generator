@@ -1516,23 +1516,29 @@ def _stage_pois(config, args, output_dir, cache_dir):
 
 
 def _count_pois(config, pois_path):
-    """Return (poi_counts, pois_data): features per poi_type, plus the
-    parsed pois.geojson (None when unreadable)."""
+    """Return (poi_counts, pois_data, exposure_levels): features per
+    poi_type, the parsed pois.geojson (None when unreadable), and the
+    sorted distinct levels of its exposure points ([] on every IMBA
+    map), read in the one pass over the file."""
     # The counts let the Welcome modal's Search line name only the POI
     # types that exist. Sources are pois.geojson (OSM-fetched) plus the
     # curator-supplied parking / trailheads YAML lists, which the runtime
     # renders as separate markers.
     poi_counts = {}
     pois_data = None
+    exposure_levels = set()
     if os.path.exists(pois_path):
         try:
             with open(pois_path, encoding="utf-8") as f:
                 pois_data = json.load(f)
             for feat in pois_data.get("features", []):
-                ptype = (feat.get("properties") or {}).get("poi_type")
+                props = feat.get("properties") or {}
+                ptype = props.get("poi_type")
                 if not ptype:
                     continue
                 poi_counts[ptype] = poi_counts.get(ptype, 0) + 1
+                if ptype == "exposure" and isinstance(props.get("level"), int):
+                    exposure_levels.add(props["level"])
         except (OSError, json.JSONDecodeError) as exc:
             console.warn(f"could not count pois.geojson: {exc}")
     # Curator-supplied YAML lists (gated by their show_* flags so
@@ -1549,18 +1555,7 @@ def _count_pois(config, pois_path):
         yaml_hb = config.get("hubs") or []
         if yaml_hb:
             poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
-    return poi_counts, pois_data
-
-
-def _exposure_levels(pois_data):
-    """Sorted distinct levels of the exposure points in the parsed
-    pois.geojson ([] when none, which is every IMBA map)."""
-    levels = set()
-    for feat in (pois_data or {}).get("features", []):
-        props = feat.get("properties") or {}
-        if props.get("poi_type") == "exposure" and isinstance(props.get("level"), int):
-            levels.add(props["level"])
-    return sorted(levels)
+    return poi_counts, pois_data, sorted(exposure_levels)
 
 
 def _do_basemap(config, refresh, extract_stale, refresh_paths, trails_geojson,
@@ -2017,8 +2012,7 @@ def main(argv=None, prog=None):
     overpass_pois_paths = cache_manifest.drain()
     console.blank(detail=True)
     # MUST run below _stage_pois: pois.geojson is read from disk.
-    config["_poi_counts"], pois_data = _count_pois(config, pois_path)
-    config["_exposure_levels"] = _exposure_levels(pois_data)
+    config["_poi_counts"], pois_data, config["_exposure_levels"] = _count_pois(config, pois_path)
 
     # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
     # disk, not the in-memory trails_geojson: by this point enrichment has
