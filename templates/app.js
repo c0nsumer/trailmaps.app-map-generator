@@ -13374,19 +13374,41 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     name.textContent = t.name;
     row.appendChild(name);
 
-    // Deduped: a freeride key reads as its plain rating's name, so a
-    // trail with plain and freeride stretches of one rating would name
-    // it twice.
-    // The levels named are the technical ones (techRatings on an ITRS
-    // map). Exposure is not listed: it belongs to spots, not the trail,
-    // and the callouts on the map say where (Steve, 2026-Nov-02).
-    const levels = [...new Set((t.techRatings || t.ratings || []).map(keyName))].join(", ");
+    // The levels the trail carries, as a run of glyphs easiest first,
+    // only when there is more than one: the row's leading mark is the
+    // dominant level, so a single-level trail would just repeat it,
+    // and on a multi-level one the run is the complete ordered set with
+    // the dominant visible inside it (Steve, 2026-Nov-02; the names it
+    // replaced wrapped on long trails, and the glyph is what the plates
+    // and the legend taught). A freeride stretch folds into its plain
+    // rating. The technical levels only (techRatings on an ITRS map):
+    // exposure belongs to spots, and the callouts say where. The run
+    // carries the names as its accessible label, so a screen reader
+    // hears "Intermediate, Advanced" as it heard the text.
+    const keys = sortColorKeys([...new Set((t.techRatings || t.ratings || [])
+        .map((k) => isFreerideKey(k) ? k.slice(0, -FREERIDE_KEY_SUFFIX.length) : k))])
+        .filter((k) => isRatedKey(k));
     const parentText = parents.length ? routeParentsText(parents) : "";
-    const metaText = [levels, parentText].filter(Boolean).join(", ");
-    if (metaText) {
+    if (keys.length > 1 || parentText) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";
-        meta.textContent = metaText;
+        if (keys.length > 1) {
+            const run = document.createElement("span");
+            run.className = "finder-row-levels";
+            run.setAttribute("role", "img");
+            run.setAttribute("aria-label", keys.map(keyName).join(", "));
+            for (const key of keys) {
+                const img = document.createElement("img");
+                img.className = "finder-row-level-glyph";
+                img.src = difficultyIconDataUrl(key);
+                img.alt = "";
+                run.appendChild(img);
+            }
+            meta.appendChild(run);
+            if (parentText) meta.appendChild(document.createTextNode(" \u00b7 " + parentText));
+        } else {
+            meta.textContent = parentText;
+        }
         row.appendChild(meta);
     }
 

@@ -705,7 +705,7 @@ be shortened. The row is hidden on IMBA maps and on a map with no exposure
 points. The rider's choice is stored per map (`mtb.poi.exposure`). In
 `default_visible` and `forced_visible`, the layer name is `exposure_points`.
 
-The tap popup has a **Difficulty** row. The finder's trail rows name the
+The tap popup has a **Difficulty** row. The finder's trail rows show the
 technical levels only; exposure belongs to spots, and the callouts on the map
 say where. The Options key strip for Rating Symbols lists the technical levels
 under a "Difficulty" caption.
