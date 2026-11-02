@@ -11362,7 +11362,11 @@ function addExposureMarkers(addToMap) {
             return `<div class="popup-title" style="display:flex;align-items:center;gap:6px;">${icon}<span>${escapeHtml(name)}</span></div>`
                 + `<div style="font-size:12px;color:var(--sheet-text-muted);">${meta}</div>`;
         },
-        popupMaxWidth: "240px",
+        // Wide enough for the longest level name ("Life threatening
+        // consequences", 29 characters beside the icon) on one line: a
+        // wrapped title leaves the popup at its full max width with the
+        // slack down the right side (Steve, 2026-Nov-02).
+        popupMaxWidth: "280px",
         popupClass: "popup-exposure",
         addToMap,
         targetArray: exposureMarkers,
