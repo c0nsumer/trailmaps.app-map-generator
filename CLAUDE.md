@@ -33,6 +33,7 @@ ruff check scripts/ tools/ map_generator/
 # and only fails at runtime, killing the app at boot; this catches it
 # statically. One-time setup: `corepack pnpm install` (or npm install).
 # Also runs inside pytest (test_eslint.py; skips if Node/ESLint absent).
+# test_boot_smoke.py boots the example map headless; skips without the tooling.
 corepack pnpm lint
 
 # Single test file / single test

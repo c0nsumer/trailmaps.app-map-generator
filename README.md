@@ -107,8 +107,9 @@ uses the default `build/<slug>/` and `cache/` layout under the repo root.
 The project runs from a checkout as above; it is not meant to be installed
 with `pip install .`. The `pyproject.toml` exists to declare the Python floor,
 not to package a distribution. Likewise, the `package.json` is optional dev
-tooling, not a build dependency: an ESLint check for contributors editing the
-runtime templates. You do not need Node.js or `npm install` to build maps
+tooling, not a build dependency: an ESLint check and a headless boot smoke
+test for contributors editing the runtime templates. You do not need Node.js
+or `npm install` to build maps
 (see [Template lint](docs/building.md#template-lint-contributors-only)).
 
 | Directory | What it is |

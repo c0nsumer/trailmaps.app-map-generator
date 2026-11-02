@@ -418,6 +418,17 @@ The rule set is deliberately minimal (`no-undef` only, configured in
 `SW_CONFIG` are declared there as known globals because the build
 injects them into the templates at build time.
 
+A second test, `scripts/tests/test_boot_smoke.py`, boots the built example
+map in headless Chromium. It fails on any uncaught page error or console
+error, and it checks that the route panel, the Options button, and the
+finder rows appeared. This catches an exception inside the `style.load`
+handler, which lint cannot see and which silently stops the rest of boot.
+The test skips if Node.js, `node_modules/playwright-core`, or a Chromium
+that Playwright already cached under `~/.cache/ms-playwright` is missing.
+It never downloads a browser. Set `TRAILMAPS_CHROMIUM` to use a specific
+executable. The same one-time `corepack pnpm install` installs
+`playwright-core`.
+
 ## Validate a config without building
 
 ```bash
