@@ -927,14 +927,16 @@ const SCHEMES = {
 };
 
 // ITRS exposure levels, which mark points (POI.EXPOSURE), not ways.
-// `name` is the official one the feature carries, `short` the legend's
-// and finder's form. The engine drops points below 2, as ITRS exports
-// them only from 2, so 1 is here only so a level never lacks a color.
+// `name` is ITRS's own, the one the feature carries, and it is shown in
+// full everywhere it appears (the legend, the finder, the aria-label):
+// ITRS asked that the names not be shortened (Mischa, 2026-Nov-02). The
+// engine drops points below 2, as ITRS exports them only from 2, so 1
+// is here only so a level never lacks a color.
 const EXPOSURE_LEVELS = {
-    1: { name: "Normal injury risk", short: "Normal injury risk", color: "#72bf44" },
-    2: { name: "High risk of serious injury", short: "Serious injury risk", color: "#0080c6" },
-    3: { name: "Life threatening consequences", short: "Life threatening", color: "#ee3124" },
-    4: { name: "Fatal consequences", short: "Fatal", color: "#000000" },
+    1: { name: "Normal injury risk", color: "#72bf44" },
+    2: { name: "High risk of serious injury", color: "#0080c6" },
+    3: { name: "Life threatening consequences", color: "#ee3124" },
+    4: { name: "Fatal consequences", color: "#000000" },
 };
 
 // A freeride way's key is its rating plus this suffix ("2f"), so its
@@ -6476,14 +6478,13 @@ function keyName(key) {
 }
 
 // The name the map's own chrome uses: the key card, its chip and the
-// Options key strip, where a level's `short` form, if it has one, fits
-// a row. The popup, the finder and a share title keep keyName, the
-// full phrase, where a rider is reading one answer rather than
-// scanning a list.
+// Options key strip. It is the level's full name: no scheme level has a
+// short form, since ITRS asks that its names not be shortened and the
+// IMBA names fit as they are. Kept apart from keyName so the chrome
+// has one place to shorten should a scale ever need it.
 function keyShortName(key) {
     if (!isRatedKey(key)) return "Unrated";
-    const def = SCHEME_KEYS.get(key).def;
-    return def.short || def.name;
+    return SCHEME_KEYS.get(key).def.name;
 }
 
 // Rating keys in the key's order: easiest first, each freeride key
@@ -13395,7 +13396,7 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // exposure list ends.
     const exposures = [...(exposureLevelsByTrail.get(t.name) || [])].sort((a, b) => a - b);
     const metaText = exposures.length
-        ? [levels, `Exposure: ${exposures.map((lv) => EXPOSURE_LEVELS[lv].short).join(", ")}`,
+        ? [levels, `Exposure: ${exposures.map((lv) => EXPOSURE_LEVELS[lv].name).join(", ")}`,
             parentText].filter(Boolean).join(" \u00b7 ")
         : [levels, parentText].filter(Boolean).join(", ");
     if (metaText) {

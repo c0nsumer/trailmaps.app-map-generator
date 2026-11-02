@@ -700,8 +700,8 @@ under Rating Symbols. It is one On/Off pill. It starts on when
 legend lists the levels the map carries by their full ITRS names ("High risk
 of serious injury", "Life threatening consequences", "Fatal consequences"),
 one per line, closed by the note "(...of a fall off the trail.)". The finder
-meta line uses short forms ("Serious injury risk", "Life threatening",
-"Fatal"). The row is hidden on IMBA maps and on a map with no exposure
+meta line uses the same full names. ITRS asks that the names never be
+shortened. The row is hidden on IMBA maps and on a map with no exposure
 points. The rider's choice is stored per map (`mtb.poi.exposure`). In
 `default_visible` and `forced_visible`, the layer name is `exposure_points`.
 
