@@ -423,7 +423,7 @@
                 <button id="route-panel-collapse" class="route-panel-collapse" type="button" aria-label="Collapse routes panel">
                     <!-- mdi:window-minimize (Apache 2.0, Pictogrammers).
                          A minimize bar, not a chevron: beside a title that
-                         can change (Difficulty, Exposure) a down chevron
+                         can change (Routes, Difficulty, Key) a down chevron
                          read as a dropdown (Steve, 2026-Nov-01). The card
                          docks into the corner FAB, which is what minimize
                          means. -->
@@ -577,23 +577,6 @@
                 <span class="opt-section-title">Trails</span>
                 </h3>
                 <div class="opt-section-body">
-                    <!-- Color trails by - what the rating lanes are colored
-                         by on an ITRS map: technical difficulty or exposure.
-                         Revealed by app.js only on an ITRS map with
-                         difficulty-mode relations and exposure values
-                         (colorAspectOffered). First in the Trails group
-                         because it sets what every lane color means; no
-                         swatch, as a mode row (Season, Appearance, Units):
-                         a swatch is a drawn thing's mark, and this row
-                         draws nothing (Steve, 2026-Nov-01). -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="color-aspect-field">
-                        <span class="opt-toggle-row-label" id="color-aspect-group-label">Color trails by</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="color-aspect-group-label" id="color-aspect-segmented">
-                            <button type="button" class="opt-segmented-btn" data-value="difficulty" role="radio" aria-checked="true">Difficulty</button>
-                            <button type="button" class="opt-segmented-btn" data-value="exposure" role="radio" aria-checked="false">Exposure</button>
-                        </div>
-                    </div>
-
                     <!-- No swatch on this row (Steve, 2026-Nov-01): the key
                          strip under it is the legend, and one representative
                          diamond beside "Ratings" said less than the strip
@@ -603,11 +586,10 @@
                         <span class="opt-toggle-row-label">Difficulty Symbols</span>
                         <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Difficulty Symbols"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                         <!-- Difficulty rating key: names the actual ratings
-                             (IMBA, or ITRS technical and exposure) so a
-                             first-time visitor can read the on-map glyphs.
-                             Filled by app.js's buildDifficultyKey() from
-                             CONFIG.difficultyRatings, CONFIG.freerideRatings and
-                             CONFIG.exposureRatings (build-time scans) so it lists
+                             (IMBA or ITRS) so a first-time visitor can read
+                             the on-map glyphs. Filled by app.js's
+                             buildDifficultyKey() from CONFIG.difficultyRatings
+                             and CONFIG.freerideRatings (build-time scans) so it lists
                              only the ratings and freeride pills this map
                              carries, and revealed only once a glyph lands.
 

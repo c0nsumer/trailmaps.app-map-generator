@@ -731,8 +731,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["difficultyRatings"] = sorted(ratings)
     config_obj["freerideRatings"] = sorted(freeride_ratings)
-    # P2 removes the runtime read of exposureRatings.
-    config_obj["exposureRatings"] = []
     # Exposure points are POIs, so the levels come from the same parsed
     # pois.geojson as poiCounts (build.py stashes them). The scale gates the
     # Options row; the levels only say which legend entries exist.
