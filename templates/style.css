@@ -1935,15 +1935,17 @@ body::after {
     white-space: nowrap;
 }
 
-/* The levels a trail carries, as a run of small glyphs in the meta
- * line (appendDifficultyTrailRowContent), sized to the meta text's
- * x-height band so they read as part of the line. Never a pill:
- * freeride folds into its plain rating there. */
+/* The levels a trail carries, as a run of small glyphs between the
+ * name and the length (appendDifficultyTrailRowContent), sized to the
+ * meta text's x-height band. Its own flex item that never shrinks,
+ * like the length: inside the meta span its overflow clipping cut the
+ * last glyph off beside a long name. Never a pill: freeride folds into
+ * its plain rating there. */
 .finder-row-levels {
     display: inline-flex;
     align-items: center;
     gap: 3px;
-    vertical-align: -2px;
+    flex: 0 0 auto;
 }
 
 .finder-row-level-glyph {

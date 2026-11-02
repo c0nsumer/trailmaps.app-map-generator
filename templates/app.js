@@ -13384,31 +13384,32 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // rating. The technical levels only (techRatings on an ITRS map):
     // exposure belongs to spots, and the callouts say where. The run
     // carries the names as its accessible label, so a screen reader
-    // hears "Intermediate, Advanced" as it heard the text.
+    // hears "Intermediate, Advanced" as it heard the text. It is its own
+    // row item, not part of the meta span: the meta shrinks and clips
+    // for its ellipsis, which cut the last glyph off beside a long name
+    // (Steve's phone, 2026-Nov-02); the run never shrinks, so the name
+    // gives way first, as it does for the length.
     const keys = sortColorKeys([...new Set((t.techRatings || t.ratings || [])
         .map((k) => isFreerideKey(k) ? k.slice(0, -FREERIDE_KEY_SUFFIX.length) : k))])
         .filter((k) => isRatedKey(k));
-    const parentText = parents.length ? routeParentsText(parents) : "";
-    if (keys.length > 1 || parentText) {
+    if (keys.length > 1) {
+        const run = document.createElement("span");
+        run.className = "finder-row-levels";
+        run.setAttribute("role", "img");
+        run.setAttribute("aria-label", keys.map(keyName).join(", "));
+        for (const key of keys) {
+            const img = document.createElement("img");
+            img.className = "finder-row-level-glyph";
+            img.src = difficultyIconDataUrl(key);
+            img.alt = "";
+            run.appendChild(img);
+        }
+        row.appendChild(run);
+    }
+    if (parents.length) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";
-        if (keys.length > 1) {
-            const run = document.createElement("span");
-            run.className = "finder-row-levels";
-            run.setAttribute("role", "img");
-            run.setAttribute("aria-label", keys.map(keyName).join(", "));
-            for (const key of keys) {
-                const img = document.createElement("img");
-                img.className = "finder-row-level-glyph";
-                img.src = difficultyIconDataUrl(key);
-                img.alt = "";
-                run.appendChild(img);
-            }
-            meta.appendChild(run);
-            if (parentText) meta.appendChild(document.createTextNode(" \u00b7 " + parentText));
-        } else {
-            meta.textContent = parentText;
-        }
+        meta.textContent = routeParentsText(parents);
         row.appendChild(meta);
     }
 
