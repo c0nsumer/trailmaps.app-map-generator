@@ -40,7 +40,7 @@ This is the framework that generates most of the maps at
 - Trail markers, trailheads, trail hubs, parking, features, toilets, drinking water, and
   bicycle repair stations as configurable POI layers; direction arrows on
   one-way ways; per-route dash patterns; per-trail difficulty symbols on the
-  IMBA or ITRS scale (ITRS adds exposure and bike-only trails).
+  IMBA or ITRS scale (ITRS adds exposure points and bike-only trails).
 - Compass heading indicator: on devices with a compass, the Locate dot grows
   a small cone showing which way the rider is facing. The app reads the device
   compass, falling back to the direction field each GPS fix already carries.
@@ -197,11 +197,9 @@ example, `<slug>.mtb.colorScheme`):
 - `mtb.seasonMode`: "summer" or "winter"
 - `mtb.emergencyOn`: boolean (Emergency overlay)
 - `mtb.poi.<kind>`: one boolean per POI category (parking, trailheads, hubs,
-  features, markers, toilets, drinking_water, bicycle_repair_stations)
+  features, markers, toilets, drinking_water, bicycle_repair_stations, exposure)
 - `mtb.labels`: "routes", "trails", or "none"
 - `mtb.difficulty`: boolean (difficulty symbols, IMBA or ITRS)
-- `mtb.colorAspect`: "difficulty" or "exposure" (what difficulty-mode lines
-  color by on an ITRS map)
 - `mtb.directionArrows`: boolean (direction arrows)
 - `mtb.currentTrail`: boolean (current-trail glow and chip while Locate is on)
 - `mtb.colorScheme`: "light", "dark", or "auto"

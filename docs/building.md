@@ -104,7 +104,10 @@ changed bbox re-extracts tiles.
   `event_mode.featured`, `event_mode.background_style`) flow
   through every build's enrichment pass automatically.
 - `--refresh-pois` re-fetches OSM POI data (guideposts, toilets,
-  drinking water, bicycle repair stations, attractions) from Overpass. YAML-only changes
+  drinking water, bicycle repair stations, attractions, and on ITRS maps the
+  exposure points) from Overpass. On an ITRS map, an exposure point on no map
+  trail is dropped with a build note. Nodes newer than the cached trail geometry
+  also need `--refresh-trails`. YAML-only changes
   never need it: `parking:`, `trailheads:`, `event_mode.pois`,
   and the related color overrides flow through `fetch_pois.py` on
   every build automatically.
@@ -192,8 +195,8 @@ The build writes the full report to
 `cache/osm_diff/<slug>/last-refresh.md`, overwriting it each refresh.
 The report lists routes added, removed, renamed, recolored, or
 reseasoned; trails added, removed, or renamed; per-way `mtb:scale:imba`,
-`mtb:type`, and `oneway` changes (plus `mtb:scale:itrs:technical_difficulty`,
-`mtb:scale:itrs:exposure`, and bike-only status on ITRS maps) with `openstreetmap.org/way/<id>` links;
+`mtb:type`, and `oneway` changes (plus `mtb:scale:itrs:technical_difficulty`
+and bike-only status on ITRS maps) with `openstreetmap.org/way/<id>` links;
 and per-trail length changes. The previous snapshot itself is kept beside
 it as `trails.prev.geojson`.
 
@@ -208,11 +211,11 @@ Two things the diff deliberately does not do:
   moves between features. Freeride is true when the way's `mtb:type` list
   contains `freeride`, so consecutive ways only fuse when they agree on it. A
   way that gains or loses `freeride` reports as an `mtb:type` change. On an
-  ITRS map the signature also carries the two ITRS ratings and the bike-only
-  flag; an IMBA map's signature carries none of those three, so tags it does
+  ITRS map the signature also carries the ITRS technical rating and the bike-only
+  flag; an IMBA map's signature carries neither, so tags it does
   not draw never re-segment it. The diff keys on OSM way IDs, which survive
-  the merge. The ITRS ratings report
-  under their OSM keys. Bike-only reports as "" to "bike-only" under the label
+  the merge. The ITRS technical rating reports
+  under its OSM key. Bike-only reports as "" to "bike-only" under the label
   `bicycle/foot/horse`. A snapshot from before those fields existed reports no
   change for them. A one-tag edit therefore reports as one tag change rather than
   wholesale churn.
@@ -503,18 +506,19 @@ OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
 [Build options](#build-options) explains each flag.
 
 The trails base (the merged ways before enrichment) carries a format number,
-`TRAILS_BASE_FORMAT`, which is 7 now. Version 4 added the ITRS rating fields.
+`TRAILS_BASE_FORMAT`, which is 8 now. Version 4 added the ITRS rating fields.
 Version 5 added `bike_only` and limited all three to ITRS maps. Version 6
 took `direction_schedule` out of the trails fingerprint, since the fetch never
 reads it. Version 7 moved the format number out of the fingerprint and onto
 its own line of the `trails.src.geojson.sig` sidecar. A build that finds an
 older base re-derives it from the cached Overpass data, so a format bump needs
 no refetch. That re-derive leaves the OSM diff report alone, so the report
-still describes the last real refresh.
+still describes the last real refresh. Version 8 stopped reading the way tag
+`mtb:scale:itrs:exposure`, so exposure no longer splits or merges features.
 
 The map's `difficulty_scale` is part of the trails fingerprint. If you flip it
 between `imba` and `itrs`, the next build re-derives the trails base offline
-from the cached data. No refresh flag is needed, because the ITRS tags come
+from the cached data. No refresh flag is needed, because the ITRS way tags come
 down with every fetch.
 
 To refresh trail data without touching tiles:

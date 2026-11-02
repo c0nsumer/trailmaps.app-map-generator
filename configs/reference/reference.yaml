@@ -126,8 +126,8 @@ relations:
 # show_difficulty: true
 
 # Which difficulty scale the map reads and draws: imba (mtb:scale:imba,
-# the default) or itrs (mtb:scale:itrs:technical_difficulty plus
-# mtb:scale:itrs:exposure). Pick the one the trail system's signs use.
+# the default) or itrs (mtb:scale:itrs:technical_difficulty on ways plus
+# mtb:scale:itrs:exposure on nodes). Pick the one the trail system's signs use.
 # difficulty_scale: imba
 
 # Show the Finder's Trails section and the Trails label mode.
@@ -212,8 +212,8 @@ relations:
 # ============================================================
 
 # First-visit layers ON. Unset = markers, trailheads, hubs, parking, toilets,
-# water, repair stations, direction arrows. [] = all off, "all" = all on, or a
-# list of layer names.
+# water, repair stations, direction arrows (plus exposure points on an ITRS
+# map). [] = all off, "all" = all on, or a list of layer names.
 # default_visible: []  # example, not the default
 
 # Layers forced ON with their toggle hidden. Same forms as default_visible.

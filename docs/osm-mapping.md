@@ -156,7 +156,7 @@ than on the relation itself.
 |---|---|---|
 | [`mtb:scale:imba`](https://wiki.openstreetmap.org/wiki/Key:mtb:scale:imba) | `0` / `1` / `2` / `3` / `4` / `5` | Drives the IMBA difficulty diamond glyphs, the trail's line color (in difficulty mode), and the difficulty symbol beside the trail name in the tap popup (the tapped segment's rating). |
 | `mtb:scale:itrs:technical_difficulty` | `1` / `2` / `3` / `4` / `5` | Read only when the map sets `difficulty_scale: itrs`. Drives the ITRS technical symbol, the line color in difficulty mode, and the popup's Difficulty row. |
-| `mtb:scale:itrs:exposure` | `1` / `2` / `3` / `4` | Read only on ITRS maps. Drives the exposure pictogram (level 2 and up), the line color while the Options "Color trails by" row is set to Exposure, and the popup's Exposure row. |
+| `mtb:scale:itrs:exposure` | `2` / `3` / `4` | Read only on ITRS maps, and only on nodes. A node says where the exposed spot is, and it drives the exposure point callout for levels 2 to 4. Level 1 and out-of-range values are dropped. On ways, this tag is not read. |
 | `bicycle` + `foot` + `horse` | `bicycle=yes`, `designated`, or `permissive`; `foot=no`; and `horse` absent or anything but those three values | Read only on ITRS maps. A way with this combination gets the ITRS yellow bike-only plate behind its symbol. |
 | [`mtb:type`](https://wiki.openstreetmap.org/wiki/Key:mtb:type) | semicolon list, eg: `allmountain;freeride` | If the list contains `freeride`, the way's difficulty symbol draws inside an orange oval. Other values, including `downhill`, change nothing. |
 
@@ -199,7 +199,7 @@ visible, just unflagged).
 
 The rider-facing **Difficulty** toggle in Options surfaces automatically
 whenever at least one way in the map carries a rating for the map's scale
-(`mtb:scale:imba`, or the ITRS technical or exposure tag). Maps
+(`mtb:scale:imba`, or the ITRS technical tag). Maps
 with no tagging for their scale anywhere don't show the toggle at all. The build pipeline
 scans `trails.geojson` and skips the control when there's nothing to display.
 
