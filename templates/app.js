@@ -6551,29 +6551,38 @@ function edgeLengthMeters(edge) {
 // change the lanes did not show (Steve, same day). A fact the popup
 // states that is not held uniform here, the other aspect or bike-only
 // access, reads "Varies" when the section mixes it (sectionValue).
-function sectionFactProps() {
-    return SCHEME.freeride
-        ? ["oneway", TECH_ASPECT.prop, "freeride"]
-        : ["oneway", activeAspect().prop];
+//
+// Each fact is read as the lanes read it, not as tagged: oneway=no and
+// no oneway tag both draw no arrows, and an off-scale rating draws
+// Unrated like a missing one (aspectLevel), so neither pair may end a
+// section. Built once per walk; sectionEdges visits every port of
+// every edge of the name.
+function sectionFactReaders() {
+    const arrows = (v) => v === "yes" || v === "reversible";
+    if (SCHEME.freeride) {
+        return [["oneway", arrows],
+            [TECH_ASPECT.prop, (v) => aspectLevel(TECH_ASPECT, v)],
+            ["freeride", (v) => v === true]];
+    }
+    const aspect = activeAspect();
+    return [["oneway", arrows], [aspect.prop, (v) => aspectLevel(aspect, v)]];
 }
 
-function sectionFacts(props) {
-    return JSON.stringify(sectionFactProps().map((f) => {
-        const v = props[f];
-        return v === undefined || v === null ? "" : v;
-    }));
+function sectionFacts(props, readers = sectionFactReaders()) {
+    return JSON.stringify(readers.map(([prop, read]) => read(props[prop])));
 }
 
 // The edges of one connected run through `graph` that holds edgeId,
 // stepping through nodes onto edges with the same trail_name and, with
-// `facts`, the same sectionFactProps. The graph splits a way wherever
+// `facts`, the same sectionFactReaders. The graph splits a way wherever
 // its lanes or uniform facts change, so one named stretch is often
 // several edges; a shared way is one edge whatever its lanes, so a sum
 // over the set counts each way once.
 function sectionEdges(graph, edgeId, facts) {
     const startProps = graph.edges[edgeId].properties || {};
     const name = startProps.trail_name || "";
-    const startFacts = facts ? sectionFacts(startProps) : null;
+    const readers = facts ? sectionFactReaders() : null;
+    const startFacts = facts ? sectionFacts(startProps, readers) : null;
     const edges = new Set([edgeId]);
     const stack = [edgeId];
     while (stack.length) {
@@ -6583,7 +6592,7 @@ function sectionEdges(graph, edgeId, facts) {
                 if (edges.has(p.edge)) continue;
                 const props = graph.edges[p.edge].properties || {};
                 if ((props.trail_name || "") !== name) continue;
-                if (facts && sectionFacts(props) !== startFacts) continue;
+                if (facts && sectionFacts(props, readers) !== startFacts) continue;
                 edges.add(p.edge);
                 stack.push(p.edge);
             }
@@ -6597,7 +6606,7 @@ function sectionEdges(graph, edgeId, facts) {
 // never meet (DRvG's Casey Road), and the rider touched one of them;
 // and a rating or the one-way flag can change mid-name, which the
 // popup reports for the tapped edge alone, so the section stops there
-// too (sectionFactProps). `facts: false` walks the whole connected
+// too (sectionFactReaders). `facts: false` walks the whole connected
 // name instead, for the on-trail glow, whose chip names the trail and
 // nothing else. Null for an unnamed edge or a missing graph.
 function trailSection(edgeId, graph = laneGraph, { facts = true } = {}) {
@@ -12622,11 +12631,9 @@ function setupFloatingChrome() {
                 syncPressed();
                 // A lit rating names a key of the old aspect; even
                 // Unrated covers different ways in the new one. A tap
-                // popup's section was cut by the old aspect too
-                // (sectionFactProps), so it closes rather than stand
-                // over a glow the new lanes do not segment that way.
+                // popup's section was cut by the old aspect too; the
+                // visibility pass below closes it.
                 if (highlight && highlight.kind === "rating") clearHighlight();
-                if (_trailPopup || _trailPopupCancel) closeTrailPopup();
                 applyVisibilityChange();
             });
         }
@@ -13723,7 +13730,6 @@ function trailPopupHtml(laneHit, section) {
         ...(laneHit.routes || []).filter((id) => id !== laneHit.route)];
     const trailName = laneProps.trail_name || "";
     const key = wayKey(laneProps);
-    const oneway = laneProps.oneway || "";
 
     // List only memberships the rider can currently see, using the
     // same season/emergency-aware visibleRoutes set the panel,
@@ -13763,16 +13769,18 @@ function trailPopupHtml(laneHit, section) {
     const iconW = difficultyGlyphWidth(key, 16);
     // The edges the glow covers: the tapped section, or every edge of
     // the name for a finder pick or /t/ link (whose lift marks every
-    // stretch of the name, connected or not). A fact the glow
-    // does not hold uniform (sectionFactProps) is read across them, so
-    // a row says "Varies" rather than the tapped way's value for a
-    // stretch where it changes: the other ITRS aspect, and bike-only
-    // access. The active aspect is uniform over a section by
-    // construction and reads the same way.
-    const glowEdges = section ? section.edges
+    // stretch of the name, connected or not). A fact the glow does
+    // not hold uniform (sectionFactReaders) is read across them, so a
+    // row says "Varies" rather than the tapped way's value for a
+    // stretch where it changes: the other ITRS aspect, bike-only
+    // access, and one-way. The active aspect is uniform over a section
+    // by construction and reads the same way. An empty set (a name
+    // the graph no longer carries) falls back to the tapped way.
+    let glowEdges = section ? [...section.edges]
         : (laneGraph && trailName
             ? laneGraph.edges.filter((e) => (e.properties || {}).trail_name === trailName).map((e) => e.id)
             : null);
+    if (glowEdges && !glowEdges.length) glowEdges = null;
     const glowValue = (prop, read) => glowEdges
         ? sectionValue(glowEdges, prop, read) : read(laneProps[prop]);
     // An ITRS map names both aspects on labeled rows, technical first,
@@ -13814,15 +13822,15 @@ function trailPopupHtml(laneHit, section) {
         // the lift on the map is what the number covers, and a label
         // that flipped with the count would change with the season
         // toggle for reasons the rider cannot see. The " shown"
-        // qualifier asks whether THIS section was cut at the map's
-        // edge (isTruncatedSection): a stretch well inside the map is
-        // whole even when another stretch of the name leaves it.
+        // qualifier says a number on the row is an on-map length: this
+        // section cut at the map's edge (isTruncatedSection), or, when
+        // the whole trail is on the row too, the name leaving the map.
         const distanceText = formatDistance(section.lengthM);
         // When the lit section is only part of the name, the row reads
-        // as a part of a whole, "0.4 of 2.1 mi": a section ends at every
-        // rating change (SECTION_FACT_PROPS), so a tap on Early Riser
-        // measures one stretch, and "how long is Early Riser" is the
-        // commoner question at a tap. The whole is the finder row's
+        // as a part of a whole, "0.4 of 2.1 mi": a section ends where
+        // the lane-coloring rating changes (sectionFactReaders), so a
+        // tap on Early Riser measures one stretch, and "how long is
+        // Early Riser" is the commoner question at a tap. The whole is the finder row's
         // number (trailEntry, every stretch of the name, deduped by
         // way), so the two agree. The label stays "Length:" and the
         // first number is always what glows, as it is on a finder pick;
@@ -13896,7 +13904,10 @@ function trailPopupHtml(laneHit, section) {
     // An unrated way gets no difficulty row: its lane already reads
     // as Unrated in the key, and a route-mode parent names itself
     // under "Part of" below.
-    if (oneway === "yes" || oneway === "reversible") {
+    // Arrows over the whole glow (true), part of it (undefined, a
+    // finder pick on a name that is one-way for a stretch), or none.
+    const arrows = glowValue("oneway", (v) => v === "yes" || v === "reversible");
+    if (arrows === true || arrows === undefined) {
         // The qualifier follows the config's direction_schedule, the
         // same thing that flips the arrows, not the OSM tag: a
         // reversible way always has a schedule (the build fails
@@ -13912,8 +13923,8 @@ function trailPopupHtml(laneHit, section) {
         const reverses = typeof laneProps.reverses_by_day === "boolean"
             ? laneProps.reverses_by_day
             : routeIds.some((id) => schedules[id]);
-        const text = reverses
-            ? "One-way (reverses by day)" : "One-way";
+        const text = arrows === undefined ? "One-way in part"
+            : reverses ? "One-way (reverses by day)" : "One-way";
         html += `<div class="popup-oneway" style="${POPUP_ONEWAY_ROW_STYLE}"><img class="popup-oneway-icon" width="15" height="12" style="flex:none;" src="${chevronIconDataUrl()}" alt="">${text}</div>`;
     }
     if (routeItems) {
