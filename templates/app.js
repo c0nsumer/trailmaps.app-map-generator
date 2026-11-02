@@ -12640,26 +12640,7 @@ function setupFloatingChrome() {
     if (aspectField && aspectGroup && colorAspectOffered()) {
         aspectField.classList.remove("hidden");
         const buttons = Array.from(aspectGroup.querySelectorAll(".opt-segmented-btn"));
-        // The swatch shows the active aspect's mark, as the Season
-        // swatch shows a sun or a snowflake: the Difficulty row's black
-        // diamond, or the exposure pictogram in the same black. Both
-        // are the ITRS outlines in a 96-unit window on their 150 box,
-        // which puts the diamond at the CSS diamond's 19 px tip to tip
-        // at the 21 px the stylesheet gives the SVG.
-        const aspectSwatch = aspectField.querySelector(".color-aspect-swatch");
-        const swatchSvg = (shape) => {
-            // The same height fit the map glyph uses (ITRS_SHAPE_FIT):
-            // a wider window shows the pictogram smaller.
-            const w = 96 / (ITRS_SHAPE_FIT[shape] || 1);
-            const o = 75 - w / 2;
-            return `<svg viewBox="${o} ${o} ${w} ${w}" fill="currentColor" aria-hidden="true"><path d="${ITRS_SHAPE_PATHS[shape]}"/></svg>`;
-        };
-        const syncPressed = () => {
-            setSegmentedChecked(buttons, colorAspect);
-            if (aspectSwatch) {
-                aspectSwatch.innerHTML = swatchSvg(colorAspect === "exposure" ? "exposure" : "diamond");
-            }
-        };
+        const syncPressed = () => setSegmentedChecked(buttons, colorAspect);
         syncPressed();
         for (const b of buttons) {
             b.addEventListener("click", (e) => {

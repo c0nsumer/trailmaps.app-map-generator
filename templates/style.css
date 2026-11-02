@@ -965,12 +965,16 @@ body::after {
      * grid (Steve, 2026-Nov-01, from mocked samples). Two columns fit
      * the longest IMBA name ("Extremely Difficult") at phone width. */
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* Content-width columns a fixed gap apart, so the legend is a
+     * compact block under its row rather than two half-panel columns;
+     * tight to its row above and with air below, so it hangs from the
+     * row it explains rather than floating toward the next one. */
+    grid-template-columns: max-content max-content;
     justify-items: start;
     align-items: center;
-    gap: 3px 12px;
-    margin: 6px 0 0;
-    padding: 0 0 0 8px;
+    gap: 3px 28px;
+    margin: 2px 0 0;
+    padding: 0 0 10px 8px;
     list-style: none;
 }
 
@@ -1058,10 +1062,13 @@ body::after {
     color: var(--sheet-text-muted);
 }
 
-/* Follow the row's off state: when Difficulty is toggled off the glyphs
- * aren't on the map, so the key recedes with the row it belongs to. */
+/* Follow the row's off state: with the plates off the glyphs are not
+ * on the map, so their legend is not shown either; it appears as the
+ * row turns on, with the glyphs it explains. (It used to dim to 0.45;
+ * shown only when on keeps the panel short where plates are off, the
+ * boot state on most maps.) */
 .opt-toggle-row[data-on="false"] .opt-key-strip {
-    opacity: 0.45;
+    display: none;
 }
 
 /* (The binary rows' right-hand control is .opt-toggle-pill, defined
@@ -1684,20 +1691,6 @@ body::after {
 [data-color-scheme="dark"] .label-swatch {
     background: var(--input-bg);
     color: var(--sheet-text);
-}
-
-/* The Color trails by swatch is the Difficulty swatch's twin: a white
- * chip with a black mark in both schemes, a diamond or the exposure
- * pictogram as app.js swaps them with the active aspect. The SVG's
- * 96-unit window at 21 px puts the diamond at 19 px tip to tip, the
- * CSS diamond's size above it. */
-.color-aspect-swatch {
-    background: #fff;
-    color: #111;
-}
-.color-aspect-swatch svg {
-    width: 21px;
-    height: 21px;
 }
 
 /* Toilets - neutral slate to read as "facility" without competing

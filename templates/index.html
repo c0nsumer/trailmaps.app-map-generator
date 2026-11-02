@@ -568,30 +568,29 @@
                 </button>
             </div>
             <div class="options-overlay-body">
-            <!-- What to show. Holds every layer-visibility toggle, the
+            <!-- Trails, then Places. Between them every layer-visibility toggle, the
                  Labels segmented control, Season cycle, Emergency Access
                  toggle, Toilets and Drinking Water - one unified group of
                  "what's painted on the map." -->
             <section class="opt-section">
                 <h3 class="opt-section-header">
-                    <span class="opt-section-title">What to show</span>
+                <span class="opt-section-title">Trails</span>
                 </h3>
                 <div class="opt-section-body">
-                    <!-- Labels - segmented control on the right (Routes
-                         / Trails / None). mdi:label icon for visual
-                         identity matching neighboring rows. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="label-field">
-                        <span class="layer-swatch label-swatch" aria-hidden="true">
-                            <!-- mdi:label (Apache 2.0, Pictogrammers) -->
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                                <path d="M17.63,5.84C17.27,5.33 16.67,5 16,5H5A2,2 0 0,0 3,7V17A2,2 0 0,0 5,19H16C16.67,19 17.27,18.66 17.63,18.15L22,12L17.63,5.84Z"/>
-                            </svg>
-                        </span>
-                        <span class="opt-toggle-row-label" id="label-group-label">Labels</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
-                            <button type="button" class="opt-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
-                            <button type="button" class="opt-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
-                            <button type="button" class="opt-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
+                    <!-- Color trails by - what the rating lanes are colored
+                         by on an ITRS map: technical difficulty or exposure.
+                         Revealed by app.js only on an ITRS map with
+                         difficulty-mode relations and exposure values
+                         (colorAspectOffered). First in the Trails group
+                         because it sets what every lane color means; no
+                         swatch, as a mode row (Season, Appearance, Units):
+                         a swatch is a drawn thing's mark, and this row
+                         draws nothing (Steve, 2026-Nov-01). -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="color-aspect-field">
+                        <span class="opt-toggle-row-label" id="color-aspect-group-label">Color trails by</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="color-aspect-group-label" id="color-aspect-segmented">
+                            <button type="button" class="opt-segmented-btn" data-value="difficulty" role="radio" aria-checked="true">Difficulty</button>
+                            <button type="button" class="opt-segmented-btn" data-value="exposure" role="radio" aria-checked="false">Exposure</button>
                         </div>
                     </div>
 
@@ -619,24 +618,21 @@
                         <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty ratings"></ul>
                     </div>
 
-                    <!-- Color trails by - what the rating lanes are colored
-                         by on an ITRS map: technical difficulty or exposure.
-                         Revealed by app.js only on an ITRS map with
-                         difficulty-mode relations and exposure values
-                         (colorAspectOffered). The swatch shows the active
-                         aspect's mark; app.js swaps it (the diamond here is
-                         ITRS_SHAPE_PATHS.diamond, the exposure pictogram
-                         replaces it while Exposure is chosen). -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented hidden" id="color-aspect-field">
-                        <span class="layer-swatch color-aspect-swatch" aria-hidden="true">
-                            <svg viewBox="27 27 96 96" fill="currentColor" aria-hidden="true">
-                                <path d="M75,31.48L119.4,75L75,118.52L30.59,75Z"/>
+                    <!-- Labels - segmented control on the right (Routes
+                         / Trails / None). mdi:label icon for visual
+                         identity matching neighboring rows. -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented" id="label-field">
+                        <span class="layer-swatch label-swatch" aria-hidden="true">
+                            <!-- mdi:label (Apache 2.0, Pictogrammers) -->
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                <path d="M17.63,5.84C17.27,5.33 16.67,5 16,5H5A2,2 0 0,0 3,7V17A2,2 0 0,0 5,19H16C16.67,19 17.27,18.66 17.63,18.15L22,12L17.63,5.84Z"/>
                             </svg>
                         </span>
-                        <span class="opt-toggle-row-label" id="color-aspect-group-label">Color trails by</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="color-aspect-group-label" id="color-aspect-segmented">
-                            <button type="button" class="opt-segmented-btn" data-value="difficulty" role="radio" aria-checked="true">Difficulty</button>
-                            <button type="button" class="opt-segmented-btn" data-value="exposure" role="radio" aria-checked="false">Exposure</button>
+                        <span class="opt-toggle-row-label" id="label-group-label">Labels</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="label-group-label" id="label-segmented">
+                            <button type="button" class="opt-segmented-btn" data-value="routes" role="radio" aria-checked="false">Routes</button>
+                            <button type="button" class="opt-segmented-btn" data-value="trails" role="radio" aria-checked="false">Trails</button>
+                            <button type="button" class="opt-segmented-btn" data-value="none" role="radio" aria-checked="false">None</button>
                         </div>
                     </div>
 
@@ -677,6 +673,43 @@
                         <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Direction Arrows" aria-describedby="direction-arrows-help"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
+                    <!-- Season - segmented control with both options
+                         visible (Summer / Winter), matching the Labels
+                         row's pattern. Sun/snow swatch on the left
+                         updates dynamically to reflect the current
+                         selection. The whole row is a div (not a
+                         button) - only the inner segmented buttons are
+                         interactive. Last in the Trails group: a
+                         "trail-conditions" mode rather than a "what's
+                         painted on the map" toggle. -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented season-toggle-row" id="season-field">
+                        <span class="layer-swatch season-swatch" aria-hidden="true">
+                            <!-- mdi:weather-sunny (Apache 2.0, Pictogrammers). Replaced at
+                                 runtime by app.js's reflectSeason() with mdi:snowflake when
+                                 season switches to winter. -->
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/>
+                            </svg>
+                        </span>
+                        <span class="opt-toggle-row-label" id="season-group-label">Season</span>
+                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="season-group-label">
+                            <button type="button" class="opt-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
+                            <button type="button" class="opt-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Places: the point layers, apart from the Trails group
+                 above, which holds the lenses on the trails themselves
+                 (what colors them, their plates, labels, arrows and the
+                 season). One list read as two (Steve, 2026-Nov-01). -->
+            <section class="opt-section">
+                <h3 class="opt-section-header">
+                    <span class="opt-section-title">Places</span>
+                </h3>
+                <div class="opt-section-body">
                     <div class="opt-row opt-toggle-row" id="toggle-markers" data-poi="markers" data-on="true">
                         <span class="layer-swatch marker-swatch" aria-hidden="true">#</span>
                         <span class="opt-toggle-row-label">Trail Markers</span>
@@ -779,37 +812,11 @@
                         <button type="button" class="opt-toggle-pill" role="switch" aria-checked="false" aria-label="Emergency Access Routes"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
-                    <!-- Season - segmented control with both options
-                         visible (Summer / Winter), matching the Labels
-                         row's pattern. Sun/snow swatch on the left
-                         updates dynamically to reflect the current
-                         selection. The whole row is a div (not a
-                         button) - only the inner segmented buttons are
-                         interactive. Sits at the bottom of the section
-                         because it's a "trail-conditions" mode rather
-                         than a "what's painted on the map" toggle -
-                         visually grouped apart from the on/off rows. -->
-                    <div class="opt-row opt-toggle-row opt-toggle-row-segmented season-toggle-row" id="season-field">
-                        <span class="layer-swatch season-swatch" aria-hidden="true">
-                            <!-- mdi:weather-sunny (Apache 2.0, Pictogrammers). Replaced at
-                                 runtime by app.js's reflectSeason() with mdi:snowflake when
-                                 season switches to winter. -->
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
-                                <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z"/>
-                            </svg>
-                        </span>
-                        <span class="opt-toggle-row-label" id="season-group-label">Season</span>
-                        <div class="opt-segmented opt-segmented-pill" role="radiogroup" aria-labelledby="season-group-label">
-                            <button type="button" class="opt-segmented-btn" data-value="summer" role="radio" aria-checked="true">Summer</button>
-                            <button type="button" class="opt-segmented-btn" data-value="winter" role="radio" aria-checked="false">Winter</button>
-                        </div>
-                    </div>
-
                 </div>
             </section>
 
             <!-- Preferences: how the app behaves, as opposed to what the
-                 map draws. No swatches: a swatch in "What to show" is the
+                 map draws. No swatches: a swatch in Trails or Places is the
                  symbol the row puts on the map, and these rows have none,
                  so their labels start at the section's own left edge. -->
             <section class="opt-section">
@@ -839,7 +846,7 @@
                          blue glow under the trail the rider is on, both
                          of which ride Locate. A noun like its neighbors
                          (Appearance, Units): "Show ..." read as a row
-                         of "What to show". The help line says why the
+                         of Trails and Places. The help line says why the
                          row does nothing while Locate is off. Hidden by
                          app.js under show_current_trail: false. -->
                     <div class="opt-row opt-toggle-row" id="toggle-current-trail" data-on="true">
