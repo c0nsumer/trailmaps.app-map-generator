@@ -11677,6 +11677,7 @@ function setupFloatingChrome() {
         if (!overlay) return;
         if (open) {
             overlay.hidden = false;
+            overlay.inert = false;
             // Force a reflow before adding .is-open so the slide-up
             // transition fires (otherwise the element jumps from
             // hidden directly to translateY(0)).
@@ -11686,6 +11687,13 @@ function setupFloatingChrome() {
             if (btn) btn.setAttribute("aria-pressed", "true");
         } else {
             overlay.classList.remove("is-open");
+            // Inert for the slide-out, before `hidden` lands below: a
+            // touch tap on the close button delivers its focus some
+            // 200 ms after the tap, onto a button that is already
+            // closing, and the chaos driver caught focus sitting inside
+            // a closed sheet (2026-Nov-01). Inert refuses that focus
+            // and any second tap on the departing sheet.
+            overlay.inert = true;
             if (btn) {
                 btn.setAttribute("aria-pressed", "false");
                 // Drop focus from the trigger. Chrome (unlike
