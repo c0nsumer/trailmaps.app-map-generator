@@ -1499,7 +1499,11 @@ def _stage_pois(config, args, output_dir, cache_dir):
     pois_path = os.path.join(output_dir, "pois.geojson")
     # Event POIs are always on, so they keep the fetch stage alive.
     has_event_pois = bool((config.get("event_mode") or {}).get("pois"))
-    if not has_event_pois and not any(config.get(k, True) for k in POI_SHOW_FLAGS):
+    # The scale is the gate for exposure points (no show_* flag), so an ITRS
+    # map keeps the fetch alive even with every other layer off.
+    has_exposure = config.get("difficulty_scale", "imba") == "itrs"
+    all_flags_off = not any(config.get(k, True) for k in POI_SHOW_FLAGS)
+    if not has_event_pois and not has_exposure and all_flags_off:
         console.step("POIs: Skipped (all POI layers disabled)", detail=True)
         console.summary("POIs: skipped (all POI layers disabled)")
         # Write empty GeoJSON so the viewer doesn't 404
@@ -1546,6 +1550,17 @@ def _count_pois(config, pois_path):
         if yaml_hb:
             poi_counts["hub"] = poi_counts.get("hub", 0) + len(yaml_hb)
     return poi_counts, pois_data
+
+
+def _exposure_levels(pois_data):
+    """Sorted distinct levels of the exposure points in the parsed
+    pois.geojson ([] when none, which is every IMBA map)."""
+    levels = set()
+    for feat in (pois_data or {}).get("features", []):
+        props = feat.get("properties") or {}
+        if props.get("poi_type") == "exposure" and isinstance(props.get("level"), int):
+            levels.add(props["level"])
+    return sorted(levels)
 
 
 def _do_basemap(config, refresh, extract_stale, refresh_paths, trails_geojson,
@@ -2003,6 +2018,7 @@ def main(argv=None, prog=None):
     console.blank(detail=True)
     # MUST run below _stage_pois: pois.geojson is read from disk.
     config["_poi_counts"], pois_data = _count_pois(config, pois_path)
+    config["_exposure_levels"] = _exposure_levels(pois_data)
 
     # OSM data-quality notes. Audits the PRE-enrichment snapshot re-read from
     # disk, not the in-memory trails_geojson: by this point enrichment has

@@ -489,10 +489,12 @@ def test_negative_josm_ids_get_no_osm_link():
     assert "way `-4` (not uploaded)" in report
 
 
-def _itrs_feature(difficulty="", exposure=""):
+def _itrs_feature(difficulty="", exposure=None):
     f = _feature([11], _LEG_B, trail="Bootjack")
     f["properties"]["itrs_difficulty"] = difficulty
-    f["properties"]["itrs_exposure"] = exposure
+    if exposure is not None:
+        # Only a format 4 to 7 snapshot carries this; nothing reads it now.
+        f["properties"]["itrs_exposure"] = exposure
     return f
 
 
@@ -503,6 +505,13 @@ def test_an_itrs_change_is_a_tag_change():
         "way_id": "11", "trail": "Bootjack",
         "tag": "mtb:scale:itrs:technical_difficulty", "old": "2", "new": "3",
     }]
+
+
+def test_a_leftover_itrs_exposure_field_is_ignored():
+    before = _snap([_itrs_feature("2", exposure="1")])
+    after = _snap([_itrs_feature("2")])
+    assert diff_snapshots(before, after)["tag_changes"] == []
+    assert diff_snapshots(after, _snap([_itrs_feature("2", exposure="4")]))["tag_changes"] == []
 
 
 def test_a_snapshot_from_before_itrs_reports_no_change():

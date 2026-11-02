@@ -32,6 +32,11 @@ POI_TAG_FILTERS = (
     ((("amenity", "bicycle_repair_station"),), True),
 )
 
+# ITRS exposure points are tagged nodes, fetched on ITRS maps only. They sit
+# outside POI_TAG_FILTERS so an IMBA map's Overpass query text, which is its
+# cache key, stays byte-identical.
+EXPOSURE_TAG = "mtb:scale:itrs:exposure"
+
 
 def _poi_match(tags, ways_only=False):
     """True when ``tags`` matches a POI_TAG_FILTERS entry (only the
@@ -345,7 +350,7 @@ def _way_centroid(way, nodes):
     return (sum(c[0] for c in coords) / n, sum(c[1] for c in coords) / n)
 
 
-def extract_pois(parsed, bbox):
+def extract_pois(parsed, bbox, itrs=False):
     """Extract the POI_TAG_FILTERS categories within a bounding box.
 
     Yields the node form of every category and the way (building
@@ -364,6 +369,9 @@ def extract_pois(parsed, bbox):
             ...
         ]}
 
+    With ``itrs``, nodes carrying EXPOSURE_TAG are yielded too, as the
+    Overpass query does on an ITRS map.
+
     bbox is [west, south, east, north].
     """
     nodes, ways, _relations = parsed
@@ -374,7 +382,7 @@ def extract_pois(parsed, bbox):
         if not (west <= lon <= east and south <= lat <= north):
             continue
 
-        if _poi_match(tags):
+        if _poi_match(tags) or (itrs and EXPOSURE_TAG in tags):
             elements.append(
                 {
                     "type": "node",

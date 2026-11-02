@@ -178,10 +178,10 @@ def _rated(**props):
 MIXED_TRAILS = {
     "metadata": {"routes": {}},
     "features": [
-        _rated(imba_difficulty="2", itrs_difficulty="3", itrs_exposure="2"),
-        _rated(imba_difficulty="0", freeride=True, itrs_difficulty="", itrs_exposure="4"),
-        _rated(imba_difficulty="9", itrs_difficulty="7", itrs_exposure="0"),
-        _rated(imba_difficulty="", itrs_difficulty="1", itrs_exposure="", bike_only=True),
+        _rated(imba_difficulty="2", itrs_difficulty="3"),
+        _rated(imba_difficulty="0", freeride=True, itrs_difficulty=""),
+        _rated(imba_difficulty="9", itrs_difficulty="7"),
+        _rated(imba_difficulty="", itrs_difficulty="1", bike_only=True),
     ],
 }
 
@@ -202,16 +202,15 @@ def test_imba_scan_ignores_the_itrs_keys():
     obj = inject_config(dict(MINIMAL_CONFIG), copy.deepcopy(MIXED_TRAILS))
     assert obj["difficultyRatings"] == [2]
     assert obj["freerideRatings"] == [0]
-    assert obj["exposureRatings"] == []
+    assert obj["exposureLevels"] == []
     assert obj["hasDifficultyTrails"] is True
 
 
-def test_itrs_scan_reads_both_itrs_keys_in_range():
+def test_itrs_scan_reads_the_itrs_key_in_range():
     config = dict(MINIMAL_CONFIG, difficulty_scale="itrs")
     obj = inject_config(config, copy.deepcopy(MIXED_TRAILS))
     assert obj["difficultyScale"] == "itrs"
     assert obj["difficultyRatings"] == [1, 3]
-    assert obj["exposureRatings"] == [2, 4]
     assert obj["freerideRatings"] == []
     assert obj["hasDifficultyTrails"] is True
 
@@ -220,7 +219,7 @@ def test_itrs_map_with_only_imba_tags_has_no_difficulty_trails():
     trails = {"metadata": {"routes": {}}, "features": [_rated(imba_difficulty="3")]}
     obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
     assert obj["hasDifficultyTrails"] is False
-    assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == []
+    assert obj["difficultyRatings"] == []
 
 
 def test_itrs_out_of_range_value_keeps_the_toggle_like_imba():
@@ -232,18 +231,33 @@ def test_itrs_out_of_range_value_keeps_the_toggle_like_imba():
     assert obj["difficultyRatings"] == []
 
 
-def test_itrs_exposure_alone_turns_the_toggle_on():
+def test_itrs_exposure_alone_does_not_turn_the_toggle_on():
+    # A leftover way field is not read; exposure has its own toggle.
     trails = {"metadata": {"routes": {}}, "features": [_rated(itrs_exposure="2")]}
     obj = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"), trails)
-    assert obj["hasDifficultyTrails"] is True
-    assert obj["difficultyRatings"] == [] and obj["exposureRatings"] == [2]
+    assert obj["hasDifficultyTrails"] is False
+    assert obj["difficultyRatings"] == []
 
 
-def test_an_imba_map_carries_the_three_itrs_keys_at_their_defaults():
+def test_exposure_levels_come_from_the_poi_data_on_itrs_maps():
+    config = dict(MINIMAL_CONFIG, difficulty_scale="itrs", _exposure_levels=[4, 2])
+    obj = inject_config(config, copy.deepcopy(MIXED_TRAILS))
+    assert obj["exposureLevels"] == [2, 4]
+    assert obj["showExposurePoints"] is True
+
+
+def test_show_exposure_points_follows_the_scale():
+    assert inject_config(dict(MINIMAL_CONFIG))["showExposurePoints"] is False
+    itrs = inject_config(dict(MINIMAL_CONFIG, difficulty_scale="itrs"))
+    assert itrs["showExposurePoints"] is True and itrs["exposureLevels"] == []
+
+
+def test_an_imba_map_carries_the_itrs_keys_at_their_defaults():
     """An unconfigured (IMBA) map emits the ITRS-era keys with values that
-    leave the runtime on the IMBA scale: no exposure ratings, no bike-only
+    leave the runtime on the IMBA scale: no exposure levels, no bike-only
     trails."""
     obj = inject_config(dict(MINIMAL_CONFIG))
     assert obj["difficultyScale"] == "imba"
-    assert obj["exposureRatings"] == []
+    assert obj["exposureLevels"] == []
+    assert obj["showExposurePoints"] is False
     assert obj["hasBikeOnlyTrails"] is False

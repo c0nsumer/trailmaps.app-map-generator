@@ -61,3 +61,8 @@ def test_explicit_list_default_visible_passes_through():
     config = dict(MINIMAL_CONFIG, default_visible=["parking", "difficulty"])
     obj = inject_config(config)
     assert obj["defaultVisible"] == ["parking", "difficulty"]
+
+
+def test_exposure_points_is_a_default_layer_and_on_at_first_visit():
+    assert "exposure_points" in DEFAULT_VISIBLE_LAYERS
+    assert "exposure_points" in DEFAULT_FIRST_VISIT_LAYERS

@@ -313,24 +313,20 @@ def test_a_map_no_longer_audited_drops_its_stale_report(tmp_path):
     report_tagging_quality(None, None, {"slug": "never"}, str(tmp_path))
 
 
-def _itrs_feature(way_id, trail, difficulty="", exposure="", imba=""):
+def _itrs_feature(way_id, trail, difficulty="", imba=""):
     f = _feature([way_id], [[-87.60, 46.50 + way_id / 1000], [-87.59, 46.50 + way_id / 1000]],
                  trail=trail, imba=imba)
     f["properties"]["itrs_difficulty"] = difficulty
-    f["properties"]["itrs_exposure"] = exposure
     return f
 
 
 def test_out_of_range_itrs_values_are_reported_on_any_scale():
-    snap = _snap([_itrs_feature(10, "Weird", difficulty="6", exposure="5")])
+    snap = _snap([_itrs_feature(10, "Weird", difficulty="6")])
     for cfg in ({"slug": "t"}, {"slug": "t", "difficulty_scale": "itrs"}):
         f = audit(snap, None, cfg)
-        assert sorted(f["invalid_ratings"]) == [
-            ("10", "Weird", "5", "mtb:scale:itrs:exposure"),
-            ("10", "Weird", "6", "mtb:scale:itrs:technical_difficulty"),
-        ]
+        assert f["invalid_ratings"] == [
+            ("10", "Weird", "6", "mtb:scale:itrs:technical_difficulty")]
     assert "valid values are 1-5" in format_report(f, "t")
-    assert "valid values are 1-4" in format_report(f, "t")
 
 
 def test_itrs_zero_is_out_of_range_but_imba_zero_is_not():

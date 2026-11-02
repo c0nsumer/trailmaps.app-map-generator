@@ -73,7 +73,9 @@ def _clear_signature(output_path):
 #      format so a format-only re-derive is told apart (2026-11-01)
 #   7: the fingerprint hashes the fetch inputs alone and the format rides
 #      its own sidecar line, so the two compare directly (2026-11-01)
-TRAILS_BASE_FORMAT = 7
+#   8: itrs_exposure leaves the features and the merge signature, so
+#      exposure-only splits merge back (2026-Nov-02)
+TRAILS_BASE_FORMAT = 8
 
 
 def _trails_fetch_fingerprint(config):

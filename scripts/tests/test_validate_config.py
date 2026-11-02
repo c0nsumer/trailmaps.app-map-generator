@@ -598,3 +598,8 @@ def test_validate_config_file_reads_the_shape_build_reads(tmp_path):
     with pytest.raises(ConfigReadError) as exc:
         parse_config_yaml(str(as_list))
     assert errors == [f"  [error] root: {exc.value}"]
+
+
+def test_default_visible_accepts_exposure_points():
+    errors = _errors(default_visible=["exposure_points"], forced_visible=["exposure_points"])
+    assert [e for e in errors if "exposure_points" in e] == []

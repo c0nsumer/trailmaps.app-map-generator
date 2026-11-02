@@ -70,7 +70,6 @@ _ROUTE_FIELDS = ("name", "colour", "ref", "seasonal")
 # tracks the one access combination an ITRS map paints yellow, "" <-> "bike-only".
 _WAY_TAG_FIELDS = (("imba", RATING_OSM_KEYS["imba_difficulty"]),
                    ("itrs_difficulty", RATING_OSM_KEYS["itrs_difficulty"]),
-                   ("itrs_exposure", RATING_OSM_KEYS["itrs_exposure"]),
                    ("freeride", "mtb:type"), ("bike_only", "bicycle/foot/horse"),
                    ("oneway", "oneway"))
 
@@ -206,12 +205,11 @@ def _index_snapshot(snap):
                          else "freeride" if props["freeride"] is True else ""),
             "oneway": str(props.get("oneway") or "").strip(),
         }
-        # Same rule for the ITRS ratings (TRAILS_BASE_FORMAT 4) and bike-only
-        # (format 5).
-        for field, prop in (("itrs_difficulty", "itrs_difficulty"),
-                            ("itrs_exposure", "itrs_exposure")):
-            tags[field] = (None if prop not in props
-                           else str(props[prop] or "").strip())
+        # Same rule for the ITRS rating (TRAILS_BASE_FORMAT 4) and bike-only
+        # (format 5). A snapshot from before format 8 still carries
+        # itrs_exposure; nothing reads it, so it produces no diff lines.
+        tags["itrs_difficulty"] = (None if "itrs_difficulty" not in props
+                                   else str(props["itrs_difficulty"] or "").strip())
         tags["bike_only"] = (None if "bike_only" not in props
                              else "bike-only" if props["bike_only"] is True else "")
 

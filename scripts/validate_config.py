@@ -207,8 +207,15 @@ VALID_DIFFICULTY_SCALES = {"imba", "itrs"}
 # tags 0.
 RATING_RANGES = {
     "imba": {"imba_difficulty": (0, 5)},
-    "itrs": {"itrs_difficulty": (1, 5), "itrs_exposure": (1, 4)},
+    "itrs": {"itrs_difficulty": (1, 5)},
 }
+# Exposure is a point rating (OSM nodes), not a way property, so it lives
+# outside RATING_RANGES. ITRS exports exposure points from level 2 (blue) up
+# and its QGIS style draws 2 to 4 only, so 2 is the threshold and no YAML key
+# exists for it. Values in EXPOSURE_POINT_RANGE but below the minimum are
+# dropped silently; values outside the range are bad data and get a note.
+EXPOSURE_POINT_MIN = 2
+EXPOSURE_POINT_RANGE = (1, 4)
 # Feature property holding each scale's technical difficulty.
 DIFFICULTY_PROPERTY = {"imba": "imba_difficulty", "itrs": "itrs_difficulty"}
 # The OSM key behind each rated feature property, the one table the
@@ -216,7 +223,6 @@ DIFFICULTY_PROPERTY = {"imba": "imba_difficulty", "itrs": "itrs_difficulty"}
 RATING_OSM_KEYS = {
     "imba_difficulty": "mtb:scale:imba",
     "itrs_difficulty": "mtb:scale:itrs:technical_difficulty",
-    "itrs_exposure": "mtb:scale:itrs:exposure",
 }
 # The OSM key(s) behind each scale, technical key first, for messages.
 DIFFICULTY_OSM_KEYS = {
@@ -1184,6 +1190,7 @@ DEFAULT_VISIBLE_LAYERS = {
     "difficulty",
     "emergency",
     "direction_arrows",
+    "exposure_points",
 }
 
 # The first-visit ON set when `default_visible` is left unset. A layer
@@ -1203,6 +1210,7 @@ DEFAULT_FIRST_VISIT_LAYERS = frozenset(
         "drinking_water",
         "bicycle_repair_stations",
         "direction_arrows",
+        "exposure_points",
     }
 )
 assert DEFAULT_FIRST_VISIT_LAYERS <= DEFAULT_VISIBLE_LAYERS, (

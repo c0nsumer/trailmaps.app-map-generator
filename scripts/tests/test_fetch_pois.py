@@ -2,6 +2,7 @@
 show_* flag drops each one. Pure and offline: the Overpass response is a
 hand-built `elements` list."""
 
+import console
 import pytest
 from fetch_pois import POI_SHOW_FLAGS, build_pois_geojson
 
@@ -85,3 +86,106 @@ def test_event_poi_directions_defaults_off_in_the_poi_data():
     fc = build_pois_geojson({"elements": []}, [], [], config_event_pois=pois)
     got = {f["properties"]["name"]: f["properties"]["directions"] for f in fc["features"]}
     assert got == {"Start / Finish": False, "Event Parking": True, "Aid 1": False}
+
+
+# --- ITRS exposure points -----------------------------------------------------
+
+_BBOX = [-87.7, 46.4, -87.5, 46.6]
+_ITRS = {"difficulty_scale": "itrs"}
+_VERTICES = {(-87.6, 46.5): "Highlands", (-87.6, 46.501): "", (-87.6, 46.502): "Highlands"}
+
+
+def _node(node_id, level, lat=46.5, lon=-87.6):
+    return {"type": "node", "id": node_id, "lat": lat, "lon": lon,
+            "tags": {"mtb:scale:itrs:exposure": str(level)}}
+
+
+def _exposure(elements, config=None, vertices=None):
+    fc = build_pois_geojson({"elements": elements}, [], [], config=_ITRS if config is None else config,
+                            trail_vertices=_VERTICES if vertices is None else vertices)
+    return [f["properties"] for f in fc["features"] if f["properties"]["poi_type"] == "exposure"]
+
+
+def _query_text(monkeypatch, **kwargs):
+    import fetch_pois
+
+    seen = []
+    monkeypatch.setattr(fetch_pois, "overpass_query", lambda q, *a, **k: seen.append(q) or {})
+    fetch_pois.fetch_pois_from_osm(_BBOX, **kwargs)
+    return seen[0]
+
+
+def test_the_exposure_statement_is_added_on_itrs_maps_only(monkeypatch):
+    imba = _query_text(monkeypatch)
+    itrs = _query_text(monkeypatch, itrs=True)
+    assert "mtb:scale:itrs:exposure" not in imba
+    stmt = '  node["mtb:scale:itrs:exposure"](46.4,-87.7,46.6,-87.5);\n'
+    # After every existing statement, so an IMBA map's query text (its cache
+    # key) is untouched and an ITRS map's other categories keep their order.
+    assert itrs == imba.replace(");\nout center;", stmt + ");\nout center;")
+    assert 'amenity"="toilets"' not in _query_text(monkeypatch, itrs=True, standard=False)
+
+
+def test_levels_two_to_four_are_kept_with_the_official_name():
+    props = _exposure([_node(1, 2), _node(2, 3, lat=46.501), _node(3, 4, lat=46.502)])
+    assert [(p["level"], p["name"]) for p in props] == [
+        (2, "High risk of serious injury"),
+        (3, "Life threatening consequences"),
+        (4, "Fatal consequences"),
+    ]
+    assert props[0]["osm_id"] == 1
+
+
+def test_level_one_is_dropped_silently_and_out_of_range_with_a_note(capsys, monkeypatch):
+    monkeypatch.setattr(console, "_verbosity", console.NORMAL)
+    props = _exposure([_node(1, 1), _node(2, 5), _node(3, "blue"), _node(4, 3)])
+    assert [p["osm_id"] for p in props] == [4]
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "2 exposure point(s) with a value outside 1-4 ignored (node ids 2, 3)" in text
+    assert "node ids 1" not in text
+
+
+def test_a_vertex_match_attaches_the_trail_name():
+    props = _exposure([_node(1, 2), _node(2, 3, lat=46.501)])
+    assert [p["trail"] for p in props] == ["Highlands", ""]
+
+
+def test_a_node_off_the_trails_is_dropped_with_a_note(capsys, monkeypatch):
+    monkeypatch.setattr(console, "_verbosity", console.NORMAL)
+    props = _exposure([_node(1, 2), _node(2, 3, lat=46.9)])
+    assert [p["osm_id"] for p in props] == [1]
+    out = capsys.readouterr()
+    assert "1 exposure point(s) off the map's trails (node ids 2)" in out.out + out.err
+
+
+def test_an_imba_map_builds_no_exposure_points():
+    assert _exposure([_node(1, 3)], config={}) == []
+
+
+def test_exposure_points_are_never_merged_by_the_duplicate_collapse():
+    props = _exposure([_node(1, 2), _node(2, 2)])
+    assert len(props) == 2
+
+
+def test_the_local_osm_path_yields_the_fixture_nodes(tmp_path):
+    import json
+    import os
+
+    from fetch_pois import fetch_pois
+    from fetch_trails import fetch_trails
+
+    osm = os.path.join(os.path.dirname(__file__), "itrs_fixture.osm")
+    config = {"name": "H", "slug": "h", "relations": [-190], "osm_file": osm,
+              "bbox": _BBOX, "difficulty_scale": "itrs"}
+    fetch_trails(config, str(tmp_path / "trails.geojson"), cache_dir=str(tmp_path / "c"))
+    fc = fetch_pois(config, str(tmp_path / "pois.geojson"), cache_dir=str(tmp_path / "c"))
+    exposure = [f["properties"] for f in fc["features"] if f["properties"]["poi_type"] == "exposure"]
+    # Node -5 (level 1) is below the threshold; node -6 (level 3) sits on Highlands.
+    assert [(p["level"], p["trail"], p["osm_id"]) for p in exposure] == [(3, "Highlands", -6)]
+    on_disk = json.loads((tmp_path / "pois.geojson").read_text())
+    assert on_disk["features"] == fc["features"]
+    # The same file on an IMBA map yields none.
+    config.pop("difficulty_scale")
+    fc = fetch_pois(config, str(tmp_path / "pois2.geojson"), cache_dir=str(tmp_path / "c"))
+    assert not [f for f in fc["features"] if f["properties"]["poi_type"] == "exposure"]

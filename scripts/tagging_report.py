@@ -190,7 +190,7 @@ def _check_ratings(features, show_difficulty, scale="imba"):
     """Named trails with no rating, and any out-of-range rating value.
 
     Invalid values are always reported for every rating key the fetch read
-    (IMBA on every map, the two ITRS keys on an ITRS map): a rating outside
+    (IMBA on every map, the ITRS technical key on an ITRS map): a rating outside
     its range is wrong regardless of whether this map draws difficulty. Each
     entry is (way id, trail name, value, OSM key).
 

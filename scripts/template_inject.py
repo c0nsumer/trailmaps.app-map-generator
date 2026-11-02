@@ -60,11 +60,12 @@ def ship(config, *rel_paths):
     config.setdefault("_shipped", set()).update(rel_paths)
 
 # The rating ranges the runtime can draw a glyph for live in
-# validate_config.RATING_RANGES (IMBA 0-5, ITRS difficulty 1-5 and exposure
-# 1-4), mirroring the scheme table in templates/app.js. The scan below uses
-# them to reject out-of-range tag values from CONFIG.difficultyRatings so the
-# key strip never asks the runtime for a glyph that doesn't exist. Keep in
-# step with app.js if a rating set ever changes.
+# validate_config.RATING_RANGES (IMBA 0-5, ITRS difficulty 1-5), mirroring the
+# scheme table in templates/app.js. ITRS exposure is not a way rating: it
+# arrives as POI nodes and is summarized in CONFIG.exposureLevels below. The
+# scan below uses the ranges to reject out-of-range tag values from
+# CONFIG.difficultyRatings so the key strip never asks the runtime for a glyph
+# that doesn't exist. Keep in step with app.js if a rating set ever changes.
 
 # Protomaps ships five basemap sprite flavors, but templates/app.js only ever
 # requests two (see basemapFlavor()). The other three are ~80 KB per map of
@@ -671,9 +672,9 @@ def inject_config_into_template(template_content, config, trails_geojson):
     #     oval glyphs), so a rating whose only ways are freeride never
     #     lists a plain glyph the map doesn't draw.
     #   - on `difficulty_scale: itrs` the scan reads the ITRS keys instead:
-    #     difficultyRatings from itrs_difficulty, exposureRatings from
-    #     itrs_exposure, freerideRatings empty (no freeride pill on ITRS
-    #     maps). An IMBA-only way contributes nothing there. hasBikeOnlyTrails
+    #     difficultyRatings from itrs_difficulty, freerideRatings empty (no
+    #     freeride pill on ITRS maps). An IMBA-only way contributes nothing
+    #     there. hasBikeOnlyTrails
     #     says whether any way gets the ITRS yellow (bike-only) plate, so the
     #     key strip explains it only when one exists; always false on IMBA
     #     maps, which have no such convention.
@@ -690,7 +691,6 @@ def inject_config_into_template(template_content, config, trails_geojson):
     has_oneway = False
     has_difficulty = False
     ratings = set()
-    exposure_ratings = set()
     freeride_ratings = set()
     has_bike_only = False
 
@@ -711,17 +711,13 @@ def inject_config_into_template(template_content, config, trails_geojson):
                 has_oneway = True
         if scale == "itrs":
             raw_n = props.get("itrs_difficulty")
-            raw_x = props.get("itrs_exposure")
             # Same rule as IMBA below: any non-empty value keeps the toggle.
-            if (raw_n is not None and str(raw_n).strip()) or (
-                    raw_x is not None and str(raw_x).strip()):
+            # Exposure alone never does; it has its own toggle.
+            if raw_n is not None and str(raw_n).strip():
                 has_difficulty = True
             n = _in_range(raw_n, "itrs_difficulty")
-            x = _in_range(raw_x, "itrs_exposure")
             if n is not None:
                 ratings.add(n)
-            if x is not None:
-                exposure_ratings.add(x)
             if props.get("bike_only") is True:
                 has_bike_only = True
             continue
@@ -735,7 +731,13 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["hasDifficultyTrails"] = has_difficulty
     config_obj["difficultyRatings"] = sorted(ratings)
     config_obj["freerideRatings"] = sorted(freeride_ratings)
-    config_obj["exposureRatings"] = sorted(exposure_ratings)
+    # P2 removes the runtime read of exposureRatings.
+    config_obj["exposureRatings"] = []
+    # Exposure points are POIs, so the levels come from the same parsed
+    # pois.geojson as poiCounts (build.py stashes them). The scale gates the
+    # Options row; the levels only say which legend entries exist.
+    config_obj["exposureLevels"] = sorted(config.get("_exposure_levels") or [])
+    config_obj["showExposurePoints"] = scale == "itrs"
     config_obj["hasBikeOnlyTrails"] = has_bike_only
     config_obj["about"] = config.get("about") or None
     # Welcome/Help modal config. Three forms accepted: omitted (None →

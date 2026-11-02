@@ -21,9 +21,10 @@ import cli
 import console
 from config_io import load_config_for_fetch
 from geodesy import haversine_m
-from osm_parser import POI_TAG_FILTERS
+from osm_parser import EXPOSURE_TAG, POI_TAG_FILTERS
 from overpass import describe_outcomes, drain_outcomes
 from overpass import query as overpass_query
+from validate_config import EXPOSURE_POINT_MIN, EXPOSURE_POINT_RANGE
 
 # Every show_* flag that gates a POI category in build_pois_geojson.
 # build.py iterates this same tuple for its skip-the-fetch gate and the
@@ -40,7 +41,7 @@ POI_SHOW_FLAGS = (
 )
 
 
-def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
+def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False, itrs=False, standard=True):
     """Fetch trail-relevant POI nodes and ways from Overpass API.
 
     Categories collected:
@@ -60,14 +61,21 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False):
     bbox matches, open or closed. ``out center;`` asks Overpass for
     the center of each way's bounding box so the rest of the
     pipeline can treat them as point POIs.
+
+    With ``itrs``, one more node statement collects ITRS exposure points
+    (EXPOSURE_TAG). It goes after the others so an IMBA map's query text,
+    which is its cache key, is unchanged. ``standard=False`` leaves out the
+    categories above, for an ITRS map that hides every other POI layer.
     """
     south, west, north, east = bbox[1], bbox[0], bbox[3], bbox[2]
     # The query text is the cache key: keep the line order stable.
     statements = []
-    for pairs, as_way in POI_TAG_FILTERS:
+    for pairs, as_way in POI_TAG_FILTERS if standard else ():
         tag_filter = "".join(f'["{k}"="{v}"]' for k, v in pairs)
         for element_type in ("node", "way") if as_way else ("node",):
             statements.append(f"  {element_type}{tag_filter}({south},{west},{north},{east});\n")
+    if itrs:
+        statements.append(f'  node["{EXPOSURE_TAG}"]({south},{west},{north},{east});\n')
     q = f"""
 [out:json][timeout:60];
 (
@@ -138,6 +146,111 @@ def _dedup_osm_pois(features):
     return out
 
 
+# Official ITRS exposure level names, shown as the marker's name.
+EXPOSURE_LEVEL_NAMES = {
+    1: "Normal injury risk",
+    2: "High risk of serious injury",
+    3: "Life threatening consequences",
+    4: "Fatal consequences",
+}
+
+# Trail vertices are matched at this many decimals. trails.geojson is written
+# at COORD_PRECISION (6) in build.py while Overpass nodes carry 7, so exact
+# float equality never holds on the render output; rounding both sides to 6
+# (~0.1 m) matches the node to its own vertex, and only that one.
+_VERTEX_KEY_DECIMALS = 6
+
+
+def _vertex_key(lon, lat):
+    return (round(lon, _VERTEX_KEY_DECIMALS), round(lat, _VERTEX_KEY_DECIMALS))
+
+
+def _trail_vertex_names(trails_path):
+    """Map every trail vertex to its feature's name, from trails.geojson.
+
+    The trails fetch keeps no node ids, so an exposure node finds its trail by
+    coordinate: it is a vertex of the way it rates. A named feature wins when
+    several share a vertex (junctions). Returns {} when the file is unreadable.
+    """
+    try:
+        with open(trails_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    names = {}
+    for feat in data.get("features", []):
+        geom = feat.get("geometry") or {}
+        coords = geom.get("coordinates") or []
+        if geom.get("type") == "LineString":
+            lines = [coords]
+        elif geom.get("type") == "MultiLineString":
+            lines = coords
+        else:
+            continue
+        name = str((feat.get("properties") or {}).get("trail_name") or "").strip()
+        for line in lines:
+            for pt in line:
+                key = _vertex_key(pt[0], pt[1])
+                if name or key not in names:
+                    names[key] = name or names.get(key, "")
+    return names
+
+
+def _exposure_features(osm_data, trail_vertices):
+    """Point features for the ITRS exposure nodes in osm_data.
+
+    Values below EXPOSURE_POINT_MIN are dropped silently (the design). Values
+    that are not an integer in EXPOSURE_POINT_RANGE, and nodes on no map
+    trail, are dropped with one note each naming the node ids.
+    """
+    lo, hi = EXPOSURE_POINT_RANGE
+    bad_values = []
+    off_trail = []
+    out = []
+    for element in osm_data.get("elements", []):
+        raw = (element.get("tags") or {}).get(EXPOSURE_TAG)
+        if raw is None or element.get("type") != "node":
+            continue
+        try:
+            level = int(str(raw).strip())
+        except ValueError:
+            level = None
+        if level is None or not lo <= level <= hi:
+            bad_values.append(element["id"])
+            continue
+        if level < EXPOSURE_POINT_MIN:
+            continue
+        lon, lat = element["lon"], element["lat"]
+        key = _vertex_key(lon, lat)
+        if key not in trail_vertices:
+            off_trail.append(element["id"])
+            continue
+        out.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {
+                "poi_type": "exposure",
+                "level": level,
+                "name": EXPOSURE_LEVEL_NAMES[level],
+                "trail": trail_vertices[key],
+                "osm_id": element["id"],
+            },
+        })
+    if bad_values:
+        console.note(
+            f"{len(bad_values)} exposure point(s) with a value outside {lo}-{hi} "
+            f"ignored (node ids {', '.join(str(i) for i in bad_values)})")
+    if off_trail:
+        # itrs-to-osm inserts a new vertex for a point that lands between
+        # existing nodes, so a node newer than the cached trail geometry
+        # misses its own way until the trails are refetched.
+        console.note(
+            f"{len(off_trail)} exposure point(s) off the map's trails "
+            f"(node ids {', '.join(str(i) for i in off_trail)}); if they were "
+            "added since the last trails fetch, --refresh-trails picks them up")
+    return out
+
+
 def build_pois_geojson(
     osm_data,
     config_parking,
@@ -145,6 +258,7 @@ def build_pois_geojson(
     config_hubs=None,
     config_event_pois=None,
     config=None,
+    trail_vertices=None,
 ):
     """Build the POI GeoJSON from the OSM categories and the config-defined POIs.
 
@@ -166,7 +280,12 @@ def build_pois_geojson(
     - a type with show_X: false is excluded from the output entirely,
     so it doesn't appear in counts, search index, or anywhere else
     downstream (not just suppressed from rendering). None means "show
-    everything"."""
+    everything".
+
+    trail_vertices: ``{(lon, lat): trail name}`` from trails.geojson (see
+    _trail_vertex_names). ITRS exposure points are built only when the
+    config's difficulty_scale is itrs, and only for nodes that sit on a
+    vertex of it; None means no trails, so every point is off-trail."""
     cfg = config or {}
     show_markers = cfg.get("show_markers", True)
     show_features = cfg.get("show_features", True)
@@ -260,6 +379,9 @@ def build_pois_geojson(
                     },
                 }
             )
+
+    if cfg.get("difficulty_scale", "imba") == "itrs":
+        features.extend(_exposure_features(osm_data, trail_vertices or {}))
 
     # See _dedup_osm_pois. Curator-supplied POIs are added below this
     # pass; they're hand-entered and don't need it.
@@ -357,6 +479,8 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
     config_event_pois = (config.get("event_mode") or {}).get("pois") or []
 
     osm_file = config.get("osm_file")
+    # Exposure points exist only on ITRS maps; the scale is their gate.
+    itrs = config.get("difficulty_scale", "imba") == "itrs"
 
     if osm_file:
         console.step(f"Loading POIs for {config['name']} from {osm_file}...", detail=True)
@@ -371,13 +495,15 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
 
         # load_config has already made osm_file absolute against the config dir.
         parsed = parse_osm_file(osm_file)
-        osm_data = extract_pois(parsed, bbox)
-    elif not any(config.get(k, True) for k in POI_SHOW_FLAGS):
+        osm_data = extract_pois(parsed, bbox, itrs=itrs)
+    elif not any(config.get(k, True) for k in POI_SHOW_FLAGS) and not itrs:
         # Reached only for event POIs, which come from the config: with
         # every layer off there is nothing to ask Overpass for.
         osm_data = {"elements": []}
     else:
-        osm_data = fetch_pois_from_osm(bbox, cache_dir, refresh=refresh)
+        osm_data = fetch_pois_from_osm(
+            bbox, cache_dir, refresh=refresh, itrs=itrs,
+            standard=any(config.get(k, True) for k in POI_SHOW_FLAGS))
 
     # Count by type - guideposts + emergency access points are merged
     # into a single "markers" bucket.
@@ -463,6 +589,11 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         config_hubs=config_hubs,
         config_event_pois=config_event_pois,
         config=config,
+        # build.py writes trails.geojson before this stage; nothing to match
+        # against only when this runs standalone ahead of a trails build.
+        trail_vertices=(
+            _trail_vertex_names(os.path.join(os.path.dirname(output_path), "trails.geojson"))
+            if itrs else None),
     )
     console.detail(f"Generated {len(geojson['features'])} POI features")
 

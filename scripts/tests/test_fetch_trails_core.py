@@ -213,7 +213,6 @@ def test_features_carry_the_route_and_segment_properties():
         "imba_difficulty": "2",
         "freeride": False,
         "itrs_difficulty": "",
-        "itrs_exposure": "",
         "bike_only": False,
         "oneway": "",
         "way_ids": [1],
@@ -300,14 +299,17 @@ def test_a_rejected_query_fails_at_once_without_retrying(tmp_path, monkeypatch, 
     assert "HTTP 400): Error: line 3: parse error: ';' expected" in out.out + out.err
 
 
-def test_an_itrs_change_splits_the_segment():
-    # Exposure changes between ways 1 and 2 with everything else equal.
+def test_an_exposure_change_does_not_split_the_segment():
+    # Exposure rates spots (nodes), so the way tag, a max, is not read.
     ways = {
         1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:exposure": "1"}),
         2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:exposure": "3"}),
     }
-    segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}}, itrs=True)
-    assert sorted(s["itrs_exposure"] for s in segs) == ["1", "3"]
+    (seg,) = merge_consecutive_ways(ways, {1: {10}, 2: {10}}, itrs=True)
+    assert "itrs_exposure" not in seg
+
+
+def test_an_itrs_change_splits_the_segment():
     ways = {
         1: _way((0, 0), (1, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "2"}),
         2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "3"}),
@@ -321,13 +323,13 @@ def test_an_imba_map_neither_reads_nor_splits_on_itrs_tags():
         2: _way((1, 0), (2, 0), name="A", **{"mtb:scale:itrs:technical_difficulty": "3"}),
     }
     (seg,) = merge_consecutive_ways(ways, {1: {10}, 2: {10}})
-    assert seg["itrs_difficulty"] == "" and seg["itrs_exposure"] == ""
+    assert seg["itrs_difficulty"] == ""
 
 
 def test_untagged_ways_carry_empty_itrs_properties():
     ways = {1: _way((0, 0), (1, 0), name="A")}
     (seg,) = merge_consecutive_ways(ways, {1: {10}})
-    assert seg["itrs_difficulty"] == "" and seg["itrs_exposure"] == ""
+    assert seg["itrs_difficulty"] == ""
 
 
 def test_itrs_tags_reach_the_feature_properties(tmp_path):
@@ -342,7 +344,8 @@ def test_itrs_tags_reach_the_feature_properties(tmp_path):
     out = tmp_path / "trails.geojson"
     fetch_trails(config, str(out), cache_dir=str(tmp_path / "c"))
     props = [f["properties"] for f in json.loads(out.read_text())["features"]]
-    # The tagged pair differs in exposure, the untagged third way differs from both.
-    assert sorted((p["itrs_difficulty"], p["itrs_exposure"]) for p in props) == [
-        ("", ""), ("2", "1"), ("2", "3")]
+    # The tagged pair differs only in exposure, which no longer splits, so it
+    # is one feature; the untagged third way differs from it.
+    assert sorted(p["itrs_difficulty"] for p in props) == ["", "2"]
+    assert all("itrs_exposure" not in p for p in props)
     assert all(p["imba_difficulty"] == "" for p in props)

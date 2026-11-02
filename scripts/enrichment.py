@@ -328,7 +328,6 @@ def _enrich_trails_geojson(config, trails_geojson, cache_dir=None):
                         "shared_routes": [cid],
                         "imba_difficulty": "",
                         "itrs_difficulty": "",
-                        "itrs_exposure": "",
                         "bike_only": False,
                         # Custom routes don't have OSM `oneway=` tags on
                         # individual segments (the GeoJSON has no per-
