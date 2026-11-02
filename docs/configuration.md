@@ -625,9 +625,10 @@ vertically (not rotated to follow the trail line). On the map, each symbol
 sits on a white plate with a soft shadow, like a POI marker's chip. The plate
 keeps it readable on a line of its own color, eg: a blue square on a
 difficulty-colored blue line. The freeride oval's plate follows the oval's
-shape. The Difficulty toggle appears under "Trails" in the Options overlay. On
-an ITRS map the row reads "Ratings", since its plates carry both ratings and
-the bike-only ground. The key strip under the row shows while the toggle is on. First-visit visibility is controlled by
+shape. The toggle appears under "Trails" in the Options overlay as "Difficulty
+Symbols". On an ITRS map the row reads "Rating Symbols", since its plates carry
+both ratings and the bike-only ground. The key strip under the row shows while
+the toggle is on. First-visit visibility is controlled by
 `default_visible` (include `difficulty` to default on; otherwise off). The
 rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the
 map carries an `mtb:scale:imba` value, the toggle is hidden entirely, since

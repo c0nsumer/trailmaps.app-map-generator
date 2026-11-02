@@ -638,7 +638,7 @@ does on a normal map:
 - **Basemap, terrain, fonts, and the rest of the framework.**
 
 One thing is always off. An event map draws no difficulty symbols and has no
-Difficulty row in Options, whatever `show_difficulty` and `default_visible`
+Difficulty Symbols row in Options, whatever `show_difficulty` and `default_visible`
 say. The symbols sit on OSM ways, which span every background route, so they
 cannot be limited to the course.
 

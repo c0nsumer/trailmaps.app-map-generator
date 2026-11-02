@@ -12422,20 +12422,20 @@ function setupFloatingChrome() {
     // arrow gate on CONFIG.hasOnewayTrails), keeps the rider from
     // seeing a dead control on maps without IMBA tags.
     const difficultyBtn = document.getElementById("toggle-difficulty");
+    // The row names the plates, not the concept: the lines stay
+    // difficulty-colored when it is off, so a bare "Difficulty" left
+    // riders guessing what the switch removed (Steve, 2026-Nov-01).
     // An ITRS map's plates carry two ratings and the bike-only ground,
     // and its Color row offers a "Difficulty" choice that means
-    // something else, so the row that shows the plates says Ratings
-    // there (Steve, 2026-Nov-01). The swatch stays: the black diamond
-    // is ITRS's Expert glyph too, and the row names the plates, not
-    // their contents. Id and stored key keep their names so no saved
-    // choice resets.
+    // something else, so the row says Rating Symbols there. Id and
+    // stored key keep their names so no saved choice resets.
     if (difficultyBtn && EXPOSURE_ASPECT) {
         const label = difficultyBtn.querySelector(".opt-toggle-row-label");
-        if (label) label.textContent = "Ratings";
+        if (label) label.textContent = "Rating Symbols";
         const pill = difficultyBtn.querySelector(".opt-toggle-pill");
-        if (pill) pill.setAttribute("aria-label", "Ratings");
+        if (pill) pill.setAttribute("aria-label", "Rating Symbols");
         const strip = document.getElementById("difficulty-key");
-        if (strip) strip.setAttribute("aria-label", "Ratings");
+        if (strip) strip.setAttribute("aria-label", "Rating Symbols");
     }
     if (CONFIG.eventModeActive && difficultyBtn) {
         // Event mode hides the difficulty toggle entirely, see the
