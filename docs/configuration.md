@@ -680,9 +680,10 @@ symbol. Exposure never colors a line and never sits on those plates.
 ITRS rates exposure for single spots along a trail, typically 5 to 30 m long.
 So the map shows exposure where the spot is: an OSM node tagged
 `mtb:scale:itrs:exposure`. The node draws as a cliff-edge pictogram in the
-level's color on its own white plate (the bike-only yellow backs the
-difficulty plates only). Tapping it opens a popup with the level name and the
-trail.
+level's color on a white card with a tip. The tip touches the node, so the
+card says "right here" where a rating plate on the line says "this stretch".
+The bike-only yellow backs the difficulty plates only. There is no popup,
+as with trail markers.
 
 Levels 2 to 4 draw. Level 1 is dropped, since ITRS draws nothing for it. A
 value outside 1 to 4 is dropped with a build note that names the node. The

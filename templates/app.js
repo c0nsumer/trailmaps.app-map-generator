@@ -1245,11 +1245,18 @@ const PLATE_MARGIN = PLATE_SHADOW_BLUR + PLATE_SHADOW_Y;
 // way's plate is that yellow; the glyph and its halo stay as they are.
 const BIKE_ONLY_PLATE_FILL = "#ffeb33";
 
-// The glyph box each plate shape carries.
+// The glyph box each plate shape carries. The callout is the square
+// plate with a tip below it, the exposure point's: a plate on the line
+// says "this stretch", a card with its tip on the node says "right
+// here" (Steve, 2026-Nov-02).
 const PLATE_BOXES = {
     square: [RATING_ICON_SIZE, RATING_ICON_SIZE],
     pill: [FREERIDE_ICON_W, FREERIDE_ICON_H],
+    callout: [RATING_ICON_SIZE, RATING_ICON_SIZE],
 };
+// The callout's tip: its height below the plate and its base width.
+const PLATE_TIP_H = 6;
+const PLATE_TIP_W = 10;
 
 // A rounded-rectangle subpath. ctx.roundRect would do, but it arrived in
 // Safari 16 and the plates draw during boot, so on iOS 15 it would
@@ -1264,15 +1271,33 @@ function roundRectPath(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
+// The rounded rect with a tip centered under its bottom edge, one path
+// so the plate's shadow wraps the tip too.
+function calloutPath(ctx, x, y, w, h, r) {
+    const cx = x + w / 2;
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.lineTo(cx + PLATE_TIP_W / 2, y + h);
+    ctx.lineTo(cx, y + h + PLATE_TIP_H);
+    ctx.lineTo(cx - PLATE_TIP_W / 2, y + h);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+
 // `drawInner` paints the symbol in plate coordinates, at the plate's
 // inner corner. `shape` is a PLATE_BOXES key: the pill is the freeride
-// marker's own shape.
+// marker's own shape, the callout the square with a tip below it (the
+// canvas grows by the tip; the tip's point sits PLATE_MARGIN above the
+// canvas bottom).
 function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
     const [bw, bh] = PLATE_BOXES[shape];
     const pw = bw + 2 * PLATE_PAD;
     const ph = bh + 2 * PLATE_PAD;
     const m = PLATE_MARGIN;
-    return glyphCanvas(pw + 2 * m, ph + 2 * m, (ctx) => {
+    const tip = shape === "callout" ? PLATE_TIP_H : 0;
+    return glyphCanvas(pw + 2 * m, ph + 2 * m + tip, (ctx) => {
         ctx.save();
         // Shadow sizes ignore the canvas transform, so scale them by
         // hand to stay in CSS px.
@@ -1280,7 +1305,8 @@ function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
         ctx.shadowBlur = PLATE_SHADOW_BLUR * GLYPH_PIXEL_RATIO;
         ctx.shadowOffsetY = PLATE_SHADOW_Y * GLYPH_PIXEL_RATIO;
         ctx.beginPath();
-        roundRectPath(ctx, m, m, pw, ph, shape === "pill" ? ph / 2 : PLATE_RADIUS);
+        if (tip) calloutPath(ctx, m, m, pw, ph, PLATE_RADIUS);
+        else roundRectPath(ctx, m, m, pw, ph, shape === "pill" ? ph / 2 : PLATE_RADIUS);
         ctx.fillStyle = fill;
         ctx.fill();
         ctx.restore();
@@ -1672,24 +1698,24 @@ function difficultyIconDataUrl(key) {
     return _popupIconCache[id];
 }
 
-// An exposure level's callout: the ITRS pictogram on the white plate.
-// Always white, even on a bike-only trail: the yellow backs the
-// difficulty plates only (Steve, 2026-Nov-02). The marker, its popup
-// and the legend share this one render.
+// An exposure level's callout: the ITRS pictogram on the white plate
+// with the tip below it. Always white, even on a bike-only trail: the
+// yellow backs the difficulty plates only (Steve, 2026-Nov-02). The
+// marker and the legend share this one render.
 function exposureIconDataUrl(level) {
     const def = EXPOSURE_LEVELS[level];
     if (!def) return null;
     const id = `exposure-${level}`;
     if (!_popupIconCache[id]) {
         const shape = { shape: "exposure", color: def.color, flat: true };
-        _popupIconCache[id] = platedCanvas("square",
+        _popupIconCache[id] = platedCanvas("callout",
             (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, shape)).toDataURL();
     }
     return _popupIconCache[id];
 }
 
 // The plated canvas's CSS size: the plate plus the margin its shadow
-// falls into (platedCanvas).
+// falls into (platedCanvas). A callout is PLATE_TIP_H taller.
 const PLATED_IMAGE_SIZE = RATING_ICON_SIZE + 2 * PLATE_PAD + 2 * PLATE_MARGIN;
 
 // An <img> of a key's glyph at `height` CSS px: the freeride pill is
@@ -10890,6 +10916,7 @@ function poiMarkerAriaLabel(poiType, props) {
 
 function createPoiMarkers({ poiType, className, labelFn, contentFn,
                             popupHtmlFn, popupMaxWidth, popupClass,
+                            anchor = "center", offset = [0, 0],
                             addToMap, targetArray }) {
     const features = poisData.features.filter((f) => f.properties.poi_type === poiType);
     for (const feature of features) {
@@ -10909,7 +10936,7 @@ function createPoiMarkers({ poiType, className, labelFn, contentFn,
         // stops, so name them for what they are.
         el.setAttribute("aria-label", poiMarkerAriaLabel(poiType, props));
 
-        const marker = new maplibregl.Marker({ element: el }).setLngLat(coords);
+        const marker = new maplibregl.Marker({ element: el, anchor, offset }).setLngLat(coords);
 
         if (popupHtmlFn) {
             // focusAfterOpen: false. MapLibre's default moves focus into
@@ -11328,12 +11355,16 @@ function addFeatureMarkers(addToMap) {
     });
 }
 
-// ITRS exposure points: the level's pictogram on its plate, centered on
-// the node like a rating plate on its line, so it is unambiguous where
-// the exposed spot is. The plate image is the whole marker, so the type
-// takes none of .poi-marker's chip styling.
+// ITRS exposure points: the level's pictogram on a card whose tip
+// touches the node, so the trail under the spot stays visible and the
+// shape itself says "right here" against the rating plates' "this
+// stretch". No popup, like the guideposts: the card is the whole
+// message, and the aria-label carries it in words. The image is the
+// whole marker, so the type takes none of .poi-marker's chip styling.
 function addExposureMarkers(addToMap) {
-    const px = Math.round(PLATED_IMAGE_SIZE * EXPOSURE_MARKER_SCALE * 10) / 10;
+    const k = EXPOSURE_MARKER_SCALE;
+    const w = Math.round(PLATED_IMAGE_SIZE * k * 10) / 10;
+    const h = Math.round((PLATED_IMAGE_SIZE + PLATE_TIP_H) * k * 10) / 10;
     createPoiMarkers({
         poiType: POI.EXPOSURE,
         className: "exposure-marker",
@@ -11344,30 +11375,14 @@ function addExposureMarkers(addToMap) {
             img.src = url;
             img.alt = "";
             img.draggable = false;
-            img.style.width = `${px}px`;
-            img.style.height = `${px}px`;
+            img.style.width = `${w}px`;
+            img.style.height = `${h}px`;
             el.appendChild(img);
         },
-        popupHtmlFn: (p) => {
-            const def = EXPOSURE_LEVELS[p.level];
-            const name = p.name || (def && def.name) || "Exposure";
-            const url = exposureIconDataUrl(p.level);
-            const icon = url
-                ? `<img width="24" height="24" style="flex:none;margin:-3px 0;" src="${url}" alt="">`
-                : "";
-            // Completes the level as a sentence, the way ITRS's own app
-            // phrases it ("... when falling off the trail"), with the
-            // trail named (Steve, 2026-Nov-02).
-            const meta = `if falling off ${p.trail ? escapeHtml(p.trail) : "the trail"}`;
-            return `<div class="popup-title" style="display:flex;align-items:center;gap:6px;">${icon}<span>${escapeHtml(name)}</span></div>`
-                + `<div style="font-size:12px;color:var(--sheet-text-muted);">${meta}</div>`;
-        },
-        // Wide enough for the longest level name ("Life threatening
-        // consequences", 29 characters beside the icon) on one line: a
-        // wrapped title leaves the popup at its full max width with the
-        // slack down the right side (Steve, 2026-Nov-02).
-        popupMaxWidth: "280px",
-        popupClass: "popup-exposure",
+        // Hung from its bottom edge, then dropped by the shadow margin
+        // under the tip, so the tip's point is on the node.
+        anchor: "bottom",
+        offset: [0, Math.round(PLATE_MARGIN * k * 10) / 10],
         addToMap,
         targetArray: exposureMarkers,
     });

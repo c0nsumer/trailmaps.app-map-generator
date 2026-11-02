@@ -1033,11 +1033,12 @@ body::after {
  * margin, so at the glyph's 15px its pictogram would read at two thirds
  * the size of its neighbors. Drawn larger, its 24px glyph box lands at
  * the 15px the others take, and the negative margin keeps the item to
- * the same footprint: 15 * PLATED_IMAGE_SIZE (36) / 24 = 22.5. */
+ * the same footprint: 15 * PLATED_IMAGE_SIZE (36) / 24 = 22.5. The
+ * callout's tip (6 of 42 px tall) hangs into the row gap below. */
 .opt-key-glyph.is-plated {
     width: 22.5px;
-    height: 22.5px;
-    margin: -3.75px;
+    height: auto;
+    margin: -3.75px -3.75px -7.5px;
 }
 
 /* The freeride pill is twice as wide as tall: at the plain glyph's
@@ -2360,10 +2361,9 @@ body::after {
 
 /* ITRS exposure callout: the plated pictogram image is the whole
  * marker, so it takes no chip background or border of its own (the
- * plate and its shadow are drawn into the image). */
+ * plate, its tip, and its shadow are drawn into the image). */
 .exposure-marker {
     line-height: 0;
-    cursor: pointer;
 }
 
 .exposure-marker img {
