@@ -697,9 +697,11 @@ The Options overlay has an **Exposure Points** row in the "Trails" section,
 under Rating Symbols. It is one On/Off pill. It starts on when
 `default_visible` is unset or `all`. If `default_visible` is a list, add
 `exposure_points` to it, or the row starts off. While it is on, a
-legend lists the levels the map carries, with short names ("Serious injury
-risk", "Life threatening", "Fatal"). The popup and the finder keep the full
-ITRS phrases. The row is hidden on IMBA maps and on a map with no exposure
+legend lists the levels the map carries by their full ITRS names ("High risk
+of serious injury", "Life threatening consequences", "Fatal consequences"),
+one per line, closed by the note "(...of a fall off the trail.)". The finder
+meta line uses short forms ("Serious injury risk", "Life threatening",
+"Fatal"). The row is hidden on IMBA maps and on a map with no exposure
 points. The rider's choice is stored per map (`mtb.poi.exposure`). In
 `default_visible` and `forced_visible`, the layer name is `exposure_points`.
 

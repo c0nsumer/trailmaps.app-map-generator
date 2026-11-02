@@ -1000,6 +1000,22 @@ body::after {
     margin-top: 0;
 }
 
+/* The exposure legend runs one column: its entries are the full ITRS
+ * names ("Life threatening consequences"), which do not fit two abreast
+ * at phone width. */
+.opt-key-strip-single {
+    grid-template-columns: max-content;
+}
+
+/* A plain line closing a legend, the clause every ITRS exposure name
+ * shares ("...of a fall off the trail"). */
+.opt-key-note {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--sheet-text-muted);
+}
+
 /* Rows carrying a key strip wrap so the strip lands on its own line.
  * Scoped to a modifier rather than added to .opt-toggle-row, which ~13
  * other rows share and where wrapping could drop a segmented pill onto a

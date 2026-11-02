@@ -1820,8 +1820,11 @@ function keyStripCaption(strip, text) {
 
 // Fill in the legend under the Exposure Points row: one entry per level
 // the map's points carry (CONFIG.exposureLevels), the callout as drawn
-// on the map and its short name, under one caption in the ITRS captioned
-// style. Shown only while the row is on, as the Rating Symbols legend is.
+// on the map and the level's full ITRS name, under one caption in the
+// ITRS captioned style, then one note that completes every name as ITRS
+// phrases it, "... of a fall off the trail" (Steve, 2026-Nov-02). One
+// column, since the full names do not fit two abreast on a phone. Shown
+// only while the row is on, as the Rating Symbols legend is.
 function buildExposureKey() {
     const strip = document.getElementById("exposure-key");
     if (!strip) return;
@@ -1830,8 +1833,12 @@ function buildExposureKey() {
     strip.textContent = "";
     keyStripCaption(strip, "Exposure");
     for (const lv of levels) {
-        keyStripItem(strip, exposureIconDataUrl(lv), EXPOSURE_LEVELS[lv].short, "is-plated");
+        keyStripItem(strip, exposureIconDataUrl(lv), EXPOSURE_LEVELS[lv].name, "is-plated");
     }
+    const note = document.createElement("li");
+    note.className = "opt-key-note";
+    note.textContent = "(...of a fall off the trail.)";
+    strip.appendChild(note);
     strip.classList.remove("hidden");
 }
 
