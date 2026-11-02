@@ -957,19 +957,18 @@ body::after {
  * wash and the whole-row tap target (.opt-toggle-row-clickable), and a
  * key sitting outside it looked and behaved like a dead region.
  *
- * Populated by app.js (buildDifficultyKey); ships hidden and is
- * revealed only once at least one glyph is in place. */
+ * Populated by app.js (buildDifficultyKey, buildExposureKey); ships
+ * hidden and is revealed only once at least one glyph is in place. */
 .opt-key-strip {
     /* Forces its own line inside the wrapping row. */
     flex: 0 0 100%;
     /* A two-column legend one indent step in from the row's label
      * (the 8px no-swatch indent plus 20px), so it reads as the row's
      * contents and not as its sibling; a caption per group on an ITRS
-     * map. It
-     * was a centered wrap of glyph-and-name pairs; the ITRS exposure
-     * names made ragged lines of it, and a legend reads better as a
-     * grid (Steve, 2026-Nov-01, from mocked samples). Two columns fit
-     * the longest IMBA name ("Extremely Difficult") at phone width. */
+     * map. It was a centered wrap of glyph-and-name pairs, which made
+     * ragged lines, and a legend reads better as a grid (Steve,
+     * 2026-Nov-01, from mocked samples). Two columns fit the longest
+     * IMBA name ("Extremely Difficult") at phone width. */
     display: grid;
     /* Content-width columns a fixed gap apart, so the legend is a
      * compact block under its row rather than two half-panel columns;

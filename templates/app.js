@@ -899,7 +899,7 @@ const SCHEMES = {
         id: "imba",
         freeride: true,
         aspects: [{
-            id: "difficulty", prop: "imba_difficulty",
+            prop: "imba_difficulty",
             levels: {
                 "0": { name: "Easiest", shape: "circle", color: "#ffffff", border: "#888888", image: "imba-0" },
                 "1": { name: "Easy", shape: "circle", color: "#2ecc40", border: "#27ae60", image: "imba-1" },
@@ -914,7 +914,7 @@ const SCHEMES = {
         id: "itrs",
         freeride: false,
         aspects: [{
-            id: "difficulty", prop: "itrs_difficulty",
+            prop: "itrs_difficulty",
             levels: {
                 "1": { name: "Beginner", shape: "circle", color: "#72bf44", flat: true, image: "itrs-1" },
                 "2": { name: "Intermediate", shape: "square", color: "#0080c6", flat: true, image: "itrs-2" },
@@ -946,15 +946,15 @@ const FREERIDE_KEY_SUFFIX = "f";
 
 // Every rated color key of a scheme in the key's order: easiest first,
 // each freeride key right after its plain rating. Maps each key to its
-// aspect, level, and freeride flag.
+// level's entry (def) and freeride flag.
 function schemeKeys(scheme) {
     const keys = new Map();
     const aspect = scheme.aspects[0];
     for (const level of Object.keys(aspect.levels)) {
         const def = aspect.levels[level];
-        keys.set(level, { aspect, level, def, freeride: false });
+        keys.set(level, { def, freeride: false });
         if (scheme.freeride) {
-            keys.set(level + FREERIDE_KEY_SUFFIX, { aspect, level, def, freeride: true });
+            keys.set(level + FREERIDE_KEY_SUFFIX, { def, freeride: true });
         }
     }
     return keys;
@@ -999,10 +999,11 @@ const ITRS_DIAMOND_SPAN = 118.52 - 31.48;
 // than the diamond and well above the square's and triangle's 78, so
 // beside a technical glyph it towered (Steve, 2026-Nov-01). ITRS draws
 // it that tall on purpose (its route pie sets it beside the square at
-// tile scale), but on a plate the two read as one row of marks, so it
-// draws scaled to the square's height, about its own center; the
-// outline is unchanged, only its size. Fit to the diamond's span first,
-// which still stood 12% over a square (Steve, same day).
+// tile scale), but here it shares the rating glyphs' 24 px box (the
+// callout is a rating plate with a tip), so it draws scaled to the
+// square's height, about its own center; the outline is unchanged,
+// only its size. Fit to the diamond's span first, which still stood
+// 12% over a square (Steve, same day).
 const ITRS_EXPOSURE_HEIGHT = 122.85 - 27.21;
 const ITRS_SQUARE_SIDE = 113.95 - 36.04;
 const ITRS_SHAPE_FIT = { exposure: ITRS_SQUARE_SIDE / ITRS_EXPOSURE_HEIGHT };
@@ -1199,18 +1200,10 @@ function waySymbol(props) {
 // plate. Rated color keys parse too ("2f"): a key's glyph is the
 // symbol of a way that carries only that key.
 function symbolParts(sym) {
-    let tech = null, freeride = false, bikeOnly = false;
-    for (const part of String(sym).split("-")) {
-        if (!SCHEME.freeride && "-" + part === BIKE_ONLY_SUFFIX) {
-            bikeOnly = true;
-            continue;
-        }
-        const info = SCHEME_KEYS.get(part);
-        if (!info) continue;
-        tech = info.def;
-        freeride = info.freeride;
-    }
-    return { tech, freeride, bikeOnly };
+    const s = String(sym);
+    const bikeOnly = !SCHEME.freeride && s.endsWith(BIKE_ONLY_SUFFIX);
+    const info = SCHEME_KEYS.get(bikeOnly ? s.slice(0, -BIKE_ONLY_SUFFIX.length) : s);
+    return { tech: info ? info.def : null, freeride: !!info && info.freeride, bikeOnly };
 }
 
 // The map image a symbol id draws: "imba-2", "imba-2-fr" for the
@@ -1514,13 +1507,14 @@ function registerChevronPatterns() {
     }
 }
 
-// ---- Popup glyph data-URLs ----
-// The trail popup embeds the same canvas-drawn glyphs the map uses
-// (difficulty symbol, one-way chevron), rendered to data-URL
-// <img> sources so the popup symbols are pixel-identical to the
-// on-map decorations. Cached per rating / color scheme so repeated
-// clicks don't re-rasterize.
-const _popupIconCache = {};
+// ---- Glyph data-URLs ----
+// The trail popup, the key strips, the lists, and the exposure markers
+// embed the same canvas-drawn glyphs the map uses (difficulty symbol,
+// one-way chevron, exposure callout), rendered to data-URL <img>
+// sources so they are pixel-identical to the on-map decorations.
+// Cached per symbol / color scheme so repeated renders don't
+// re-rasterize.
+const _iconUrlCache = {};
 
 // The open trail popup, if any. Tracked so visibility changes (season
 // / emergency via applyVisibilityChange) can close it: its "Part of
@@ -1696,8 +1690,8 @@ function difficultyIconDataUrl(key) {
     // a way the lanes draw as unrated ("2+" parses as 2).
     if (!isRatedKey(key)) return null;
     const id = symbolImageId(key);
-    if (!_popupIconCache[id]) _popupIconCache[id] = symbolCanvas(key).toDataURL();
-    return _popupIconCache[id];
+    if (!_iconUrlCache[id]) _iconUrlCache[id] = symbolCanvas(key).toDataURL();
+    return _iconUrlCache[id];
 }
 
 // An exposure level's callout: the ITRS pictogram on the white plate
@@ -1710,12 +1704,12 @@ function exposureIconDataUrl(level, plate = "callout") {
     const def = EXPOSURE_LEVELS[level];
     if (!def) return null;
     const id = `exposure-${level}-${plate}`;
-    if (!_popupIconCache[id]) {
+    if (!_iconUrlCache[id]) {
         const shape = { shape: "exposure", color: def.color, flat: true };
-        _popupIconCache[id] = platedCanvas(plate,
+        _iconUrlCache[id] = platedCanvas(plate,
             (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, shape)).toDataURL();
     }
-    return _popupIconCache[id];
+    return _iconUrlCache[id];
 }
 
 // The plated canvas's CSS size: the plate plus the margin its shadow
@@ -1852,12 +1846,12 @@ function chevronIconDataUrl() {
     // Fill/halo are the on-map forward chevron's for this scheme.
     const scheme = currentColorScheme();
     const key = `chevron-${scheme}`;
-    if (!_popupIconCache[key]) {
+    if (!_iconUrlCache[key]) {
         const id = mapPaintTokens(scheme).chevronFwd;
         const v = CHEVRON_VARIANTS.find((c) => c.id === id);
-        _popupIconCache[key] = chevronCanvas(v.fill, v.halo, false).toDataURL();
+        _iconUrlCache[key] = chevronCanvas(v.fill, v.halo, false).toDataURL();
     }
-    return _popupIconCache[key];
+    return _iconUrlCache[key];
 }
 
 function todaysReverseRoutes() {
@@ -2676,8 +2670,8 @@ function computeDecorations() {
     //      per-way passes so they seed the collision index and
     //      coincident detail-tier diamonds get suppressed. ----
     // Keyed by the symbol a way draws, so a freeride line inside a blue
-    // loop keeps its own overview pill, and an exposed stretch of an
-    // ITRS trail its own two-mark plate.
+    // loop keeps its own overview pill, and a bike-only stretch of an
+    // ITRS trail its own yellow plate.
     const diamondRuns = computeConnectedRuns(ways,
         (w) => w.symbol !== "",
         (w) => w.symbol);
@@ -6472,21 +6466,14 @@ function keyLook(key) {
     return unratedSwatchModel();
 }
 
-// The name a rider reads for a rating key, as on the trailhead signs
-// and in the Options key strip, or "Unrated". A freeride key reads as
-// its plain rating; its pill glyph is what says freeride.
+// The name a rider reads for a rating key, as on the trailhead signs,
+// or "Unrated". A freeride key reads as its plain rating; its pill
+// glyph is what says freeride. One name serves everywhere (the popup,
+// the finder, the key card, its chip, and the Options key strip): no
+// scheme level has a short form, since ITRS asks that its names not be
+// shortened and the IMBA names fit as they are.
 function keyName(key) {
     return isRatedKey(key) ? SCHEME_KEYS.get(key).def.name : "Unrated";
-}
-
-// The name the map's own chrome uses: the key card, its chip and the
-// Options key strip. It is the level's full name: no scheme level has a
-// short form, since ITRS asks that its names not be shortened and the
-// IMBA names fit as they are. Kept apart from keyName so the chrome
-// has one place to shorten should a scale ever need it.
-function keyShortName(key) {
-    if (!isRatedKey(key)) return "Unrated";
-    return SCHEME_KEYS.get(key).def.name;
 }
 
 // Rating keys in the key's order: easiest first, each freeride key
@@ -9115,7 +9102,7 @@ function highlightRating(rating) {
     // visible length.
     const rated = isRatedKey(rating);
     showHighlightChip({
-        label: keyShortName(rating),
+        label: keyName(rating),
         glyph: rated ? difficultyIconDataUrl(rating) : null,
         glyphFreeride: isFreerideKey(rating),
         line: rated ? null : keyLook(rating),
@@ -10434,7 +10421,7 @@ function appendRatingRows(list, ratings) {
     for (const rating of ratings) {
         appendKeyRow(list, {
             mark: ratingMarkEl(rating, "route-panel-glyph", "route-panel-swatch"),
-            name: keyShortName(rating),
+            name: keyName(rating),
             stats: ratingStatsText(rating),
             dataset: { rating },
             isActive: () => highlight && highlight.kind === "rating" && highlight.key === rating,
@@ -10649,18 +10636,10 @@ function refreshTrailRatings() {
         return;
     }
     const byName = new Map();  // trail name -> rating -> meters
-    // ITRS maps: trail name -> technical keys, which the finder's meta
-    // line names.
-    const techByName = new Map();
     for (const f of features) {
         const name = f.properties.trail_name;
         const key = f.properties.color_key;
         if (!name || !isRatingKey(key)) continue;
-        if (!SCHEME.freeride) {
-            const lv = aspectLevel(TECH_ASPECT, f.properties[TECH_ASPECT.prop]);
-            if (!techByName.has(name)) techByName.set(name, new Set());
-            techByName.get(name).add(lv);
-        }
         const len = lineLengthMeters(f.geometry.coordinates);
         if (!(len > 0)) continue;
         let lengths = byName.get(name);
@@ -10670,7 +10649,6 @@ function refreshTrailRatings() {
     for (const t of trailIndex) {
         const lengths = byName.get(t.name) || new Map();
         t.ratings = sortColorKeys(lengths.keys());
-        if (!SCHEME.freeride) t.techRatings = sortColorKeys(techByName.get(t.name) || []);
         t.rating = "";
         let best = -1;
         // Unrated first, then easiest to hardest, so `>=` hands a tie
@@ -13381,15 +13359,15 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // the dominant visible inside it (Steve, 2026-Nov-02; the names it
     // replaced wrapped on long trails, and the glyph is what the plates
     // and the legend taught). A freeride stretch folds into its plain
-    // rating. The technical levels only (techRatings on an ITRS map):
-    // exposure belongs to spots, and the callouts say where. The run
+    // rating. The technical levels only: exposure belongs to spots, and
+    // the callouts say where. The run
     // carries the names as its accessible label, so a screen reader
     // hears "Intermediate, Advanced" as it heard the text. It is its own
     // row item, not part of the meta span: the meta shrinks and clips
     // for its ellipsis, which cut the last glyph off beside a long name
     // (Steve's phone, 2026-Nov-02); the run never shrinks, so the name
     // gives way first, as it does for the length.
-    const keys = sortColorKeys([...new Set((t.techRatings || t.ratings || [])
+    const keys = sortColorKeys([...new Set((t.ratings || [])
         .map((k) => isFreerideKey(k) ? k.slice(0, -FREERIDE_KEY_SUFFIX.length) : k))])
         .filter((k) => isRatedKey(k));
     if (keys.length > 1) {
