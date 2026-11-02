@@ -926,6 +926,17 @@ const SCHEMES = {
     },
 };
 
+// ITRS exposure levels, which mark points (POI.EXPOSURE), not ways.
+// `name` is the official one the feature carries, `short` the legend's
+// and finder's form. The engine drops points below 2, as ITRS exports
+// them only from 2, so 1 is here only so a level never lacks a color.
+const EXPOSURE_LEVELS = {
+    1: { name: "Normal injury risk", short: "Normal injury risk", color: "#72bf44" },
+    2: { name: "High risk of serious injury", short: "Serious injury risk", color: "#0080c6" },
+    3: { name: "Life threatening consequences", short: "Life threatening", color: "#ee3124" },
+    4: { name: "Fatal consequences", short: "Fatal", color: "#000000" },
+};
+
 // A freeride way's key is its rating plus this suffix ("2f"), so its
 // ways get their own lanes, key row, highlight and finder mark while
 // sharing the plain rating's color and name. IMBA maps only.
@@ -1661,6 +1672,26 @@ function difficultyIconDataUrl(key) {
     return _popupIconCache[id];
 }
 
+// An exposure level's callout: the ITRS pictogram on the white plate.
+// Always white, even on a bike-only trail: the yellow backs the
+// difficulty plates only (Steve, 2026-Nov-02). The marker, its popup
+// and the legend share this one render.
+function exposureIconDataUrl(level) {
+    const def = EXPOSURE_LEVELS[level];
+    if (!def) return null;
+    const id = `exposure-${level}`;
+    if (!_popupIconCache[id]) {
+        const shape = { shape: "exposure", color: def.color, flat: true };
+        _popupIconCache[id] = platedCanvas("square",
+            (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, shape)).toDataURL();
+    }
+    return _popupIconCache[id];
+}
+
+// The plated canvas's CSS size: the plate plus the margin its shadow
+// falls into (platedCanvas).
+const PLATED_IMAGE_SIZE = RATING_ICON_SIZE + 2 * PLATE_PAD + 2 * PLATE_MARGIN;
+
 // An <img> of a key's glyph at `height` CSS px: the freeride pill is
 // wider than tall, so its width follows the canvas's aspect instead of
 // squeezing the pill into the plain glyph's square.
@@ -1757,6 +1788,37 @@ function buildDifficultyKey() {
     if (strip.children.length) strip.classList.remove("hidden");
 }
 
+// Fill in the legend under the Exposure Points row: one entry per level
+// the map's points carry (CONFIG.exposureLevels), the callout as drawn
+// on the map and its short name, under one caption in the ITRS captioned
+// style. Shown only while the row is on, as the Rating Symbols legend is.
+function buildExposureKey() {
+    const strip = document.getElementById("exposure-key");
+    if (!strip) return;
+    const levels = (CONFIG.exposureLevels || []).filter((lv) => EXPOSURE_LEVELS[lv]);
+    if (!levels.length) return;
+    strip.textContent = "";
+    const caption = document.createElement("li");
+    caption.className = "opt-key-caption";
+    caption.textContent = "Exposure";
+    strip.appendChild(caption);
+    for (const lv of levels) {
+        const li = document.createElement("li");
+        li.className = "opt-key-item";
+        const img = document.createElement("img");
+        img.className = "opt-key-glyph is-plated";
+        img.src = exposureIconDataUrl(lv);
+        img.alt = "";
+        li.appendChild(img);
+        const label = document.createElement("span");
+        label.className = "opt-key-name";
+        label.textContent = EXPOSURE_LEVELS[lv].short;
+        li.appendChild(label);
+        strip.appendChild(li);
+    }
+    strip.classList.remove("hidden");
+}
+
 function chevronIconDataUrl() {
     // Forward-pointing only: a popup has no line direction to align
     // with, the chevron just brands the row as "direction arrow".
@@ -1842,6 +1904,7 @@ const POI = Object.freeze({
     DRINKING_WATER:  "drinking_water",
     BICYCLE_REPAIR_STATION: "bicycle_repair_station",
     EVENT:           "event",   // event_mode.pois, always rendered, no toggle
+    EXPOSURE:        "exposure",  // ITRS exposure points, a warning callout
 });
 
 // Every string interpolated into an innerHTML / setHTML sink goes through
@@ -2825,6 +2888,23 @@ function decorPointLabelLayer(id, kind, mode) {
     };
 }
 
+// The rating plates' icon-size by zoom, as [zoom, scale] pairs flat in
+// MapLibre's interpolate form. Shared with the exposure callout, which
+// sizes its DOM plate to match a rating plate's at z16.
+const DIAMOND_ICON_SIZE_STOPS = [12, 0.5, 14, 0.7, 18, 1.0];
+
+function diamondIconScaleAt(zoom) {
+    const s = DIAMOND_ICON_SIZE_STOPS;
+    if (zoom <= s[0]) return s[1];
+    for (let i = 2; i < s.length; i += 2) {
+        if (zoom <= s[i]) {
+            const t = (zoom - s[i - 2]) / (s[i] - s[i - 2]);
+            return s[i - 1] + t * (s[i + 1] - s[i - 1]);
+        }
+    }
+    return s[s.length - 1];
+}
+
 function addDecorationLayers() {
     if (map.getLayer("decor-trail-name")) return;
 
@@ -2849,7 +2929,7 @@ function addDecorationLayers() {
                 "symbol-placement": "point",
                 "icon-image": ["get", "symbol"],
                 "icon-size": ["interpolate", ["linear"], ["zoom"],
-                    12, 0.5, 14, 0.7, 18, 1.0],
+                    ...DIAMOND_ICON_SIZE_STOPS],
                 "icon-rotation-alignment": "viewport",
                 // Always draw, even if a label tries to occupy the same
                 // pixels (we deconflicted the diamonds in JS so they're
@@ -3104,6 +3184,7 @@ let bicycleRepairStationMarkers = [];
 // event_mode.pois, always-on, no rider toggle. Held in its own
 // array so the proximity / toggle filter passes don't touch it.
 let eventPoiMarkers = [];
+let exposureMarkers = [];
 // One row per POI type, keyed by the POI enum, so a new type is one
 // entry here rather than an edit at every per-type switch.
 //   lsKey              localStorage key of the Options toggle
@@ -3123,6 +3204,9 @@ let eventPoiMarkers = [];
 //                      referenced because those are defined further down)
 //   showGate           the CONFIG flag that lets the type on the map at all
 //   addMarkers         creates the type's markers (loadPOIs)
+//   finder             false keeps the type out of poiIndex, so the
+//                      finder neither lists nor searches it and no p/
+//                      share link resolves to it; omitted means listed
 // Event POIs have no toggle and no proximity gate.
 const POI_TYPES = {
     [POI.TRAIL_MARKER]: {
@@ -3178,6 +3262,16 @@ const POI_TYPES = {
         toggleRowId: null, markers: eventPoiMarkers,
         fallbackName: "Event Markers", metaLabel: "event marker", proximity: null,
         showGate: "hasEventPois", addMarkers: addEventPoiMarkers,
+    },
+    // No proximity gate: a point sits on a trail by construction, and
+    // hiding one by distance would hide a warning. Not in the finder:
+    // an exposed spot is a warning on the map, not a place to go to.
+    [POI.EXPOSURE]: {
+        lsKey: "mtb.poi.exposure", defaultVisibleName: "exposure_points",
+        toggleRowId: "toggle-exposure", markers: exposureMarkers,
+        fallbackName: "Exposure", metaLabel: "exposure point", proximity: null,
+        showGate: "showExposurePoints", addMarkers: addExposureMarkers,
+        finder: false,
     },
 };
 const _poiTypeColumn = (field) => Object.fromEntries(
@@ -5330,6 +5424,14 @@ function _welcomeOptionsDescription() {
 // The key's welcome row, named like the key panel's header (keyTitle).
 // A map that mixes route rows with rating rows says both, briefly.
 function _welcomeKeyRow() {
+    const row = _welcomeKeyRowBase();
+    if (CONFIG.showExposurePoints && (CONFIG.poiCounts || {}).exposure > 0) {
+        row.desc += " Exposure points mark exposed spots.";
+    }
+    return row;
+}
+
+function _welcomeKeyRowBase() {
     const name = keyTitle();
     if (name === "Difficulty") {
         // An ITRS map names its scale, since its signs do.
@@ -6804,6 +6906,9 @@ const MARKER_DIM_TARGETS = {
         { sel: ".feature-marker-icon", props: ["backgroundColor", "borderColor"] },
         { sel: ".feature-marker-label", props: ["color", "textShadow"] },
     ],
+    // A canvas image has no color property to wash, so its filter does
+    // the same blend (washMarkerElement).
+    exposure: [{ sel: "img", props: ["filter"] }],
 };
 
 // Wash every rgb()/rgba() token inside a computed value. Plain color
@@ -6861,8 +6966,17 @@ function washMarkerElement(rootEl, type, dimmed) {
             const cs = getComputedStyle(el);
             for (const prop of props) {
                 const bright = cs[prop];
-                if (prop !== "textShadow" && !isVisibleCssColor(bright)) continue;
-                const dim = prop === "textShadow" ? washCssColorTokens(bright) : washDim(bright);
+                let dim;
+                if (prop === "filter") {
+                    // brightness(k) multiplies each channel by k, which is
+                    // washDim's black-over-color blend per pixel.
+                    dim = `brightness(${1 - SCRIM_OPACITY})`;
+                } else if (prop === "textShadow") {
+                    dim = washCssColorTokens(bright);
+                } else {
+                    if (!isVisibleCssColor(bright)) continue;
+                    dim = washDim(bright);
+                }
                 cached.push({ el, prop, bright, dim });
             }
         }
@@ -10623,6 +10737,7 @@ function buildPoiIndex() {
         if (!coords || coords.length < 2) continue;
         const type = props.poi_type;
         if (!type) continue;
+        if (POI_TYPES[type]?.finder === false) continue;
 
         // Display name. POIs vary in what they have:
         //   - parking / trailhead: name from config
@@ -10666,6 +10781,11 @@ function buildPoiIndex() {
     invalidateFinderPoiScope();
 }
 
+// Trail name -> the exposure levels of the points on it, for the
+// finder's meta line. Filled by loadPOIs, which init awaits before the
+// finder can open, so a row never renders ahead of it.
+const exposureLevelsByTrail = new Map();
+
 // ============================================================
 // POI loading
 // ============================================================
@@ -10690,9 +10810,15 @@ async function loadPOIs() {
     // Count features by type in a single pass. Trail markers merge
     // guideposts + emergency access points into one category.
     const poiCounts = {};
+    exposureLevelsByTrail.clear();
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
         poiCounts[t] = (poiCounts[t] || 0) + 1;
+        if (t === POI.EXPOSURE && f.properties.trail && EXPOSURE_LEVELS[f.properties.level]) {
+            const name = f.properties.trail;
+            if (!exposureLevelsByTrail.has(name)) exposureLevelsByTrail.set(name, new Set());
+            exposureLevelsByTrail.get(name).add(Number(f.properties.level));
+        }
     }
 
     // Read persisted toggle state. Per-layer default-on/off is
@@ -10769,6 +10895,11 @@ function poiMarkerAriaLabel(poiType, props) {
         ? (props.ref || props.name)
         : props.name;
     if (poiType === POI.EVENT) return name || "Event marker";
+    if (poiType === POI.EXPOSURE) {
+        return props.trail
+            ? `Exposure point: ${name}, on ${props.trail}`
+            : `Exposure point: ${name}`;
+    }
     const type = POI_TYPE_FALLBACK_NAME[poiType] || "Place";
     return name ? `${type}: ${name}` : type;
 }
@@ -11210,6 +11341,51 @@ function addFeatureMarkers(addToMap) {
         },
         addToMap,
         targetArray: featureMarkers,
+    });
+}
+
+// A DOM marker is one size at every zoom, which is what a callout wants:
+// it matches a rating plate where the rider reads plates closely (z16)
+// and stays legible zoomed out, where the plates shrink.
+const EXPOSURE_MARKER_ZOOM = 16;
+
+// ITRS exposure points: the level's pictogram on its plate, centered on
+// the node like a rating plate on its line, so it is unambiguous where
+// the exposed spot is. The plate image is the whole marker, so the type
+// takes none of .poi-marker's chip styling.
+function addExposureMarkers(addToMap) {
+    const px = Math.round(PLATED_IMAGE_SIZE * diamondIconScaleAt(EXPOSURE_MARKER_ZOOM) * 10) / 10;
+    createPoiMarkers({
+        poiType: POI.EXPOSURE,
+        className: "exposure-marker",
+        contentFn: (el, props) => {
+            const url = exposureIconDataUrl(props.level);
+            if (!url) return;
+            const img = document.createElement("img");
+            img.src = url;
+            img.alt = "";
+            img.draggable = false;
+            img.style.width = `${px}px`;
+            img.style.height = `${px}px`;
+            el.appendChild(img);
+        },
+        popupHtmlFn: (p) => {
+            const def = EXPOSURE_LEVELS[p.level];
+            const name = p.name || (def && def.name) || "Exposure";
+            const url = exposureIconDataUrl(p.level);
+            const icon = url
+                ? `<img width="24" height="24" style="flex:none;margin:-3px 0;" src="${url}" alt="">`
+                : "";
+            const meta = p.trail
+                ? `exposure point \u00b7 on ${escapeHtml(p.trail)}`
+                : "exposure point";
+            return `<div class="popup-title" style="display:flex;align-items:center;gap:6px;">${icon}<span>${escapeHtml(name)}</span></div>`
+                + `<div style="font-size:12px;color:var(--sheet-text-muted);">${meta}</div>`;
+        },
+        popupMaxWidth: "240px",
+        popupClass: "popup-exposure",
+        addToMap,
+        targetArray: exposureMarkers,
     });
 }
 
@@ -12198,7 +12374,7 @@ function setupFloatingChrome() {
     // recompute after the marker visibility flips.
     for (const type of [POI.TRAIL_MARKER, POI.FEATURE, POI.PARKING, POI.TRAILHEAD,
                         POI.HUB, POI.TOILET, POI.DRINKING_WATER,
-                        POI.BICYCLE_REPAIR_STATION]) {
+                        POI.BICYCLE_REPAIR_STATION, POI.EXPOSURE]) {
         const t = POI_TYPES[type];
         wirePeekToggle(t.toggleRowId, t.lsKey,
                 isDefaultVisible(t.defaultVisibleName), (on) => {
@@ -12223,6 +12399,12 @@ function setupFloatingChrome() {
             }
             _onPoiToggleChange(type);
         }, t.defaultVisibleName, !!t.proximity);
+    }
+    // The legend fills only where the row can show; loadPOIs hid the
+    // row on a map with no points, and a forced row stays hidden.
+    if (CONFIG.showExposurePoints && !document.getElementById("toggle-exposure")
+            ?.classList.contains("hidden")) {
+        buildExposureKey();
     }
 
     // Difficulty, drives the decor-diamond layer. Uses the shared
@@ -13201,7 +13383,15 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // map).
     const levels = [...new Set((t.techRatings || t.ratings || []).map(keyName))].join(", ");
     const parentText = parents.length ? routeParentsText(parents) : "";
-    const metaText = [levels, parentText].filter(Boolean).join(", ");
+    // Exposure names its levels in a list of its own, so the groups are
+    // set off by a middle dot: joined with the same commas, "Advanced,
+    // Exposure: Serious injury risk, Parent" would not say where the
+    // exposure list ends.
+    const exposures = [...(exposureLevelsByTrail.get(t.name) || [])].sort((a, b) => a - b);
+    const metaText = exposures.length
+        ? [levels, `Exposure: ${exposures.map((lv) => EXPOSURE_LEVELS[lv].short).join(", ")}`,
+            parentText].filter(Boolean).join(" \u00b7 ")
+        : [levels, parentText].filter(Boolean).join(", ");
     if (metaText) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";

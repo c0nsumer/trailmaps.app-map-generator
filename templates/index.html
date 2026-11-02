@@ -600,6 +600,19 @@
                         <ul class="opt-key-strip hidden" id="difficulty-key" aria-label="Difficulty Symbols"></ul>
                     </div>
 
+                    <!-- Exposure points (ITRS maps only): a callout at each
+                         exposed spot, with its level legend under the row,
+                         filled by app.js's buildExposureKey() from
+                         CONFIG.exposureLevels. loadPOIs hides the row on a
+                         map with no exposure points, which is every IMBA map.
+                         No swatch, as on the Rating Symbols row: the legend
+                         is the swatch. -->
+                    <div class="opt-row opt-toggle-row opt-toggle-row-haskey" id="toggle-exposure" data-poi="exposure" data-on="true">
+                        <span class="opt-toggle-row-label">Exposure Points</span>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Exposure Points"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
+                        <ul class="opt-key-strip hidden" id="exposure-key" aria-label="Exposure Points"></ul>
+                    </div>
+
                     <!-- Labels - segmented control on the right (Routes
                          / Trails / None). mdi:label icon for visual
                          identity matching neighboring rows. -->
