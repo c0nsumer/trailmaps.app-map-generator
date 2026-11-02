@@ -164,9 +164,7 @@ A map reads one scale, set by `difficulty_scale` in its config. On an ITRS map,
 a way tagged only with `mtb:scale:imba` is unrated, and the reverse. The
 ITRS tags are per-way like the IMBA tag: tags on the route relation are
 ignored. The ITRS names, colors, and symbols are listed in
-[Configuration](configuration.md#itrs-ratings). To tag ITRS ratings in bulk
-from the ITRS app's exports, see
-[c0nsumer/itrs-to-osm](https://github.com/c0nsumer/itrs-to-osm).
+[Configuration](configuration.md#itrs-ratings).
 
 The IMBA-rating scale, condensed:
 
