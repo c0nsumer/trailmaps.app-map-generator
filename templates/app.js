@@ -1701,16 +1701,18 @@ function difficultyIconDataUrl(key) {
 }
 
 // An exposure level's callout: the ITRS pictogram on the white plate
-// with the tip below it. Always white, even on a bike-only trail: the
-// yellow backs the difficulty plates only (Steve, 2026-Nov-02). The
-// marker and the legend share this one render.
-function exposureIconDataUrl(level) {
+// with the tip below it (the marker), or on the plain square plate
+// (the legend, where a column of tips only touched the next row and
+// the "right here" cue belongs to the map; Steve, 2026-Nov-02). Always
+// white, even on a bike-only trail: the yellow backs the difficulty
+// plates only.
+function exposureIconDataUrl(level, plate = "callout") {
     const def = EXPOSURE_LEVELS[level];
     if (!def) return null;
-    const id = `exposure-${level}`;
+    const id = `exposure-${level}-${plate}`;
     if (!_popupIconCache[id]) {
         const shape = { shape: "exposure", color: def.color, flat: true };
-        _popupIconCache[id] = platedCanvas("callout",
+        _popupIconCache[id] = platedCanvas(plate,
             (ctx) => drawDifficultyShape(ctx, RATING_ICON_SIZE, shape)).toDataURL();
     }
     return _popupIconCache[id];
@@ -1835,7 +1837,7 @@ function buildExposureKey() {
     strip.textContent = "";
     keyStripCaption(strip, "Exposure");
     for (const lv of levels) {
-        keyStripItem(strip, exposureIconDataUrl(lv), EXPOSURE_LEVELS[lv].name, "is-plated");
+        keyStripItem(strip, exposureIconDataUrl(lv, "square"), EXPOSURE_LEVELS[lv].name, "is-plated");
     }
     const note = document.createElement("li");
     note.className = "opt-key-note";
@@ -10801,11 +10803,6 @@ function buildPoiIndex() {
     invalidateFinderPoiScope();
 }
 
-// Trail name -> the exposure levels of the points on it, for the
-// finder's meta line. Filled by loadPOIs, which init awaits before the
-// finder can open, so a row never renders ahead of it.
-const exposureLevelsByTrail = new Map();
-
 // ============================================================
 // POI loading
 // ============================================================
@@ -10830,15 +10827,9 @@ async function loadPOIs() {
     // Count features by type in a single pass. Trail markers merge
     // guideposts + emergency access points into one category.
     const poiCounts = {};
-    exposureLevelsByTrail.clear();
     for (const f of poisData.features) {
         const t = f.properties.poi_type;
         poiCounts[t] = (poiCounts[t] || 0) + 1;
-        if (t === POI.EXPOSURE && f.properties.trail && EXPOSURE_LEVELS[f.properties.level]) {
-            const name = f.properties.trail;
-            if (!exposureLevelsByTrail.has(name)) exposureLevelsByTrail.set(name, new Set());
-            exposureLevelsByTrail.get(name).add(Number(f.properties.level));
-        }
     }
 
     // Read persisted toggle state. Per-layer default-on/off is
@@ -13387,18 +13378,11 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     // trail with plain and freeride stretches of one rating would name
     // it twice.
     // The levels named are the technical ones (techRatings on an ITRS
-    // map).
+    // map). Exposure is not listed: it belongs to spots, not the trail,
+    // and the callouts on the map say where (Steve, 2026-Nov-02).
     const levels = [...new Set((t.techRatings || t.ratings || []).map(keyName))].join(", ");
     const parentText = parents.length ? routeParentsText(parents) : "";
-    // Exposure names its levels in a list of its own, so the groups are
-    // set off by a middle dot: joined with the same commas, "Advanced,
-    // Exposure: Serious injury risk, Parent" would not say where the
-    // exposure list ends.
-    const exposures = [...(exposureLevelsByTrail.get(t.name) || [])].sort((a, b) => a - b);
-    const metaText = exposures.length
-        ? [levels, `Exposure: ${exposures.map((lv) => EXPOSURE_LEVELS[lv].name).join(", ")}`,
-            parentText].filter(Boolean).join(" \u00b7 ")
-        : [levels, parentText].filter(Boolean).join(", ");
+    const metaText = [levels, parentText].filter(Boolean).join(", ");
     if (metaText) {
         const meta = document.createElement("span");
         meta.className = "finder-row-meta";

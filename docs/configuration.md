@@ -699,15 +699,16 @@ under Rating Symbols. It is one On/Off pill. It starts on when
 `exposure_points` to it, or the row starts off. While it is on, a
 legend lists the levels the map carries by their full ITRS names ("High risk
 of serious injury", "Life threatening consequences", "Fatal consequences"),
-one per line, closed by the note "(...of a fall off the trail.)". The finder
-meta line uses the same full names. ITRS asks that the names never be
-shortened. The row is hidden on IMBA maps and on a map with no exposure
+one per line, closed by the note "(...of a fall off the trail.)". The legend
+draws the plate without the map marker's tip. ITRS asks that the names never
+be shortened. The row is hidden on IMBA maps and on a map with no exposure
 points. The rider's choice is stored per map (`mtb.poi.exposure`). In
 `default_visible` and `forced_visible`, the layer name is `exposure_points`.
 
-The tap popup has a **Difficulty** row. The finder's meta line names a trail's
-exposure levels, taken from the points on that trail. The Options key strip
-for Rating Symbols lists the technical levels under a "Difficulty" caption.
+The tap popup has a **Difficulty** row. The finder's trail rows name the
+technical levels only; exposure belongs to spots, and the callouts on the map
+say where. The Options key strip for Rating Symbols lists the technical levels
+under a "Difficulty" caption.
 
 ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
 A way counts as bike-only when `bicycle` is `yes`, `designated`, or

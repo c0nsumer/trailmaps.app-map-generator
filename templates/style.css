@@ -1045,16 +1045,15 @@ body::after {
     object-fit: contain;
 }
 
-/* A plated image (the exposure callout) carries its plate's shadow
- * margin, so at the glyph's 15px its pictogram would read at two thirds
- * the size of its neighbors. Drawn larger, its 24px glyph box lands at
- * the 15px the others take, and the negative margin keeps the item to
- * the same footprint: 15 * PLATED_IMAGE_SIZE (36) / 24 = 22.5. The
- * callout's tip (6 of 42 px tall) hangs into the row gap below. */
+/* A plated image (the exposure legend's plate) carries its plate's
+ * shadow margin, so at the glyph's 15px its pictogram would read at two
+ * thirds the size of its neighbors. Drawn larger, its 24px glyph box
+ * lands at the 15px the others take, and the negative margin keeps the
+ * item to the same footprint: 15 * PLATED_IMAGE_SIZE (36) / 24 = 22.5. */
 .opt-key-glyph.is-plated {
     width: 22.5px;
-    height: auto;
-    margin: -3.75px -3.75px -7.5px;
+    height: 22.5px;
+    margin: -3.75px;
 }
 
 /* The freeride pill is twice as wide as tall: at the plain glyph's
