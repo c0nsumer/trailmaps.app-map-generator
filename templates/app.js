@@ -927,10 +927,13 @@ const SCHEMES = {
         }, {
             id: "exposure", prop: "itrs_exposure", keyPrefix: "x",
             levels: {
-                "1": { name: "Normal injury risk", shape: "exposure", color: "#72bf44", flat: true, image: "itrs-x1" },
-                "2": { name: "High risk of serious injury", shape: "exposure", color: "#0080c6", flat: true, image: "itrs-x2" },
-                "3": { name: "Life threatening consequences", shape: "exposure", color: "#ee3124", flat: true, image: "itrs-x3" },
-                "4": { name: "Fatal consequences", shape: "exposure", color: "#000000", flat: true, image: "itrs-x4" },
+                // `short` is the Options key strip's form, where the
+                // full ITRS phrase wrapped a two-column legend; the
+                // popup and the key card keep the full name.
+                "1": { name: "Normal injury risk", short: "Normal injury risk", shape: "exposure", color: "#72bf44", flat: true, image: "itrs-x1" },
+                "2": { name: "High risk of serious injury", short: "Serious injury risk", shape: "exposure", color: "#0080c6", flat: true, image: "itrs-x2" },
+                "3": { name: "Life threatening consequences", short: "Life threatening", shape: "exposure", color: "#ee3124", flat: true, image: "itrs-x3" },
+                "4": { name: "Fatal consequences", short: "Fatal", shape: "exposure", color: "#000000", flat: true, image: "itrs-x4" },
             },
         }],
     },
@@ -1270,9 +1273,7 @@ function isWideSymbol(sym) {
 // At full size the plate is a POI marker's chip: 26px, 4px corners
 // (--poi-marker-size, --poi-marker-radius) and the markers' soft drop
 // shadow (--poi-marker-map-shadow, light scheme), so it reads as their
-// sibling. The Options Difficulty swatch (.difficulty-swatch) draws the
-// same plate in CSS, at its own 28px with the diamond scaled to match;
-// change them together.
+// sibling.
 const PLATE_PAD = 1;              // 24px glyph + 1 a side = 26px plate
 const PLATE_RADIUS = 4;
 const PLATE_FILL = "#fff";
@@ -1813,34 +1814,39 @@ function buildDifficultyKey() {
         li.appendChild(label);
         strip.appendChild(li);
     };
-    const addBreak = () => {
-        const brk = document.createElement("li");
-        brk.className = "opt-key-break";
-        brk.setAttribute("aria-hidden", "true");
-        strip.appendChild(brk);
+    // Captions head each group on an ITRS map, where the row says
+    // Ratings and the legend has to say which: Difficulty, Exposure,
+    // Access. An IMBA map's strip is one group under a row already
+    // named Difficulty, so it runs uncaptioned.
+    const addCaption = (text) => {
+        if (!EXPOSURE_ASPECT) return;
+        const li = document.createElement("li");
+        li.className = "opt-key-caption";
+        li.textContent = text;
+        strip.appendChild(li);
     };
+    if (keys.length) addCaption("Difficulty");
     for (const key of keys) {
         const url = difficultyIconDataUrl(key);
         if (url) addItem(url, keyName(key), false);
     }
     const exposureItems = exposureKeys.filter((key) => isRatedKey(key));
     if (exposureItems.length) {
-        if (strip.children.length) addBreak();
+        addCaption("Exposure");
         for (const key of exposureItems) {
-            addItem(difficultyIconDataUrl(key), keyName(key), false);
-            strip.lastChild.classList.add("is-long");
+            const def = SCHEME_KEYS.get(key).def;
+            addItem(difficultyIconDataUrl(key), def.short || def.name, false);
         }
     }
-    // ITRS: what the yellow plate means, once, on its own line. The
+    // ITRS: what the yellow plate means, once, under Access. The
     // plate is the entry's mark, as the bare pill is the Freeride
     // entry's, so the name does not call it yellow: the tap lift is
     // yellow too, and naming the color invited reading one as the other.
     if (strip.children.length && !SCHEME.freeride && CONFIG.hasBikeOnlyTrails) {
-        addBreak();
+        addCaption("Access");
         addItem(bikeOnlySwatchDataUrl(), "Bike-only trail", false);
     }
     if (strip.children.length && freerideRatings.some((n) => isRatedKey(String(n)))) {
-        addBreak();
         addItem(glyphCanvas(FREERIDE_ICON_W, FREERIDE_ICON_H,
             (ctx) => drawFreerideOval(ctx, null)).toDataURL(), "Freeride", true);
     }

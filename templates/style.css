@@ -958,19 +958,36 @@ body::after {
 .opt-key-strip {
     /* Forces its own line inside the wrapping row. */
     flex: 0 0 100%;
-    display: flex;
-    flex-wrap: wrap;
-    /* Centered legend rather than indented under the row's label: a
-     * full rating set (imba 1-4, or more) can fill the row's width,
-     * and the earlier 40px label-alignment indent left "Extremely
-     * Difficult" pressed against the row's right edge. Centering
-     * splits the slack symmetrically, and wrapped lines read as a
-     * legend rather than a ragged left-aligned list. */
-    justify-content: center;
-    gap: 4px 14px;
-    margin: 2px 0 0;
-    padding: 0;
+    /* A two-column legend, left-aligned under the row's label (the
+     * 8px no-swatch indent), a caption per group on an ITRS map. It
+     * was a centered wrap of glyph-and-name pairs; the ITRS exposure
+     * names made ragged lines of it, and a legend reads better as a
+     * grid (Steve, 2026-Nov-01, from mocked samples). Two columns fit
+     * the longest IMBA name ("Extremely Difficult") at phone width. */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    justify-items: start;
+    align-items: center;
+    gap: 3px 12px;
+    margin: 6px 0 0;
+    padding: 0 0 0 8px;
     list-style: none;
+}
+
+/* Group captions (Difficulty, Exposure, Access), styled as the key
+ * card's header so the two legends read as kin. */
+.opt-key-caption {
+    grid-column: 1 / -1;
+    margin-top: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sheet-text-muted);
+}
+
+.opt-key-caption:first-child {
+    margin-top: 0;
 }
 
 /* Rows carrying a key strip wrap so the strip lands on its own line.
@@ -994,11 +1011,6 @@ body::after {
  * keeps to one line where the strip has room; on a strip narrower than
  * one name, the name wraps beside its pictogram instead of overflowing
  * the sheet. */
-.opt-key-item.is-long {
-    max-width: 100%;
-    white-space: normal;
-}
-
 .opt-key-glyph {
     flex: 0 0 auto;
     width: 15px;
@@ -1038,14 +1050,6 @@ body::after {
 
 .has-freeride .finder-row-poi-swatch {
     margin: 0 4px;
-}
-
-/* Forces the freeride entry onto its own line: a zero-height item that
- * spans the strip, so a centered wrap can't pull it up among the
- * ratings it modifies. */
-.opt-key-break {
-    flex: 0 0 100%;
-    height: 0;
 }
 
 .opt-key-name {
@@ -1769,28 +1773,6 @@ body::after {
  * its own (white on dark = high contrast); the outline (from
  * .layer-swatch base) gives it edge in light mode where the white
  * blends with the sheet. */
-/* The map's difficulty plate (platedRatingCanvas) is a 26px chip with
- * an 18px diamond, tip to tip. This chip is 28px (.opt-toggle-row
- * .layer-swatch), so its diamond scales to 18 * 28/26 = 19.4px tip to
- * tip, a 13.71px square rotated: the symbol fills the chip in the same
- * proportion on the map and in Options. */
-.difficulty-swatch {
-    background: #fff;
-}
-.difficulty-swatch::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 13.71px;
-    height: 13.71px;
-    background: #111;
-    border: 1px solid #000;
-    transform: translate(-50%, -50%) rotate(45deg);
-    box-sizing: border-box;
-    pointer-events: none;
-}
-
 /* ----- Finder rows --------------------------------------------------
  * The Search overlay (.search-overlay-*) draws the chrome; these
  * per-row classes style the result rows app.js builds dynamically. */
@@ -4299,10 +4281,6 @@ body.modal-open .qr-overlay.is-open {
     background: transparent;
     border: 1.5px solid var(--swatch-off);
     box-shadow: none;
-}
-.opt-toggle-row[data-on="false"] .difficulty-swatch::before {
-    background: transparent;
-    border-color: var(--swatch-off);
 }
 
 /* MapLibre attribution lives at bottom-left (added to the map via

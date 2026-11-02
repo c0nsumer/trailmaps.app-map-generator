@@ -631,9 +631,10 @@ its plates carry both ratings and the bike-only ground. First-visit visibility i
 `default_visible` (include `difficulty` to default on; otherwise off). The
 rider's choice persists in localStorage (`mtb.difficulty`). If no trail in the
 map carries an `mtb:scale:imba` value, the toggle is hidden entirely, since
-there is nothing to display. The key strip under the toggle lists the plain symbol for every rating
-on the map, whether plain or freeride ways carry it. If the map has rated
-freeride ways, a second line shows an empty orange oval named "Freeride".
+there is nothing to display. The key strip under the toggle is a two-column
+legend. It lists the plain symbol for every rating on the map, whether plain or
+freeride ways carry it. If the map has rated freeride ways, a last entry shows
+an empty orange oval named "Freeride".
 That entry is the only place the app uses the word: everywhere else, the oval
 stands for itself next to the plain rating name.
 
@@ -679,15 +680,16 @@ Exposure 1 never draws on the map. It shows in the tap popup only.
 
 The tap popup has a **Difficulty** row and an **Exposure** row. The Exposure
 row names every level, including 1. The finder's meta line names a trail's
-exposure levels from 2 up. The Options key strip lists the technical levels,
-then exposure levels 2 to 4.
+exposure levels from 2 up. The Options key strip lists the technical levels
+under a "Difficulty" caption, then exposure levels 2 to 4 under "Exposure",
+with short names ("Serious injury risk", "Life threatening", "Fatal").
 
 ITRS marks bike-only trails with a yellow plate (`#ffeb33`) behind the symbol.
 A way counts as bike-only when `bicycle` is `yes`, `designated`, or
 `permissive`, `foot=no` is tagged, and `horse` is none of those three values.
 An absent `horse` tag counts as not allowed. A way with no access tags keeps the white
 plate. When any way qualifies, the key strip adds a "Bike-only trail" entry
-marked with the yellow plate, and the tap popup has an **Access: Bike only**
+under an "Access" caption, marked with the yellow plate, and the tap popup has an **Access: Bike only**
 row. IMBA maps never paint a plate yellow.
 
 There is no freeride oval on an ITRS map, because ITRS has no freeride
