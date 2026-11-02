@@ -842,19 +842,20 @@
                         </div>
                     </div>
 
-                    <!-- Current Trail: the "You are on" chip and the
-                         blue glow under the trail the rider is on, both
-                         of which ride Locate. A noun like its neighbors
-                         (Appearance, Units): "Show ..." read as a row
-                         of Trails and Places. The help line says why the
-                         row does nothing while Locate is off. Hidden by
-                         app.js under show_current_trail: false. -->
+                    <!-- Highlight Current Trail: the "You are on" chip
+                         and the blue glow under the trail the rider is
+                         on, both of which ride Locate. Named for what it
+                         turns on, like the toggle rows above it; it was
+                         the noun "Current Trail" until Steve asked what
+                         that meant (2026-Nov-01). The help line says why
+                         the row does nothing while Locate is off. Hidden
+                         by app.js under show_current_trail: false. -->
                     <div class="opt-row opt-toggle-row" id="toggle-current-trail" data-on="true">
                         <span class="opt-toggle-row-text">
-                            <span class="opt-toggle-row-label">Current Trail</span>
-                            <span class="opt-toggle-row-help" id="current-trail-help">Names and highlights the trail you're on while Locate is on.</span>
+                            <span class="opt-toggle-row-label">Highlight Current Trail</span>
+                            <span class="opt-toggle-row-help" id="current-trail-help">Only while Locate is on.</span>
                         </span>
-                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Current Trail" aria-describedby="current-trail-help"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
+                        <button type="button" class="opt-toggle-pill" role="switch" aria-checked="true" aria-label="Highlight Current Trail" aria-describedby="current-trail-help"><span class="opt-toggle-pill-opt">On</span><span class="opt-toggle-pill-opt">Off</span></button>
                     </div>
 
                     <!-- Units for everything the app computes: route
