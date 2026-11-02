@@ -962,8 +962,10 @@ body::after {
 .opt-key-strip {
     /* Forces its own line inside the wrapping row. */
     flex: 0 0 100%;
-    /* A two-column legend, left-aligned under the row's label (the
-     * 8px no-swatch indent), a caption per group on an ITRS map. It
+    /* A two-column legend one indent step in from the row's label
+     * (the 8px no-swatch indent plus 20px), so it reads as the row's
+     * contents and not as its sibling; a caption per group on an ITRS
+     * map. It
      * was a centered wrap of glyph-and-name pairs; the ITRS exposure
      * names made ragged lines of it, and a legend reads better as a
      * grid (Steve, 2026-Nov-01, from mocked samples). Two columns fit
@@ -978,7 +980,7 @@ body::after {
     align-items: center;
     gap: 3px 28px;
     margin: 2px 0 0;
-    padding: 0 0 10px 8px;
+    padding: 0 0 10px 28px;
     list-style: none;
 }
 
