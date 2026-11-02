@@ -806,7 +806,11 @@ body::after {
  * sits visually as a group under each label. */
 .opt-section-header {
     display: block;
-    padding: 16px 16px 6px 16px;
+    /* Tight: with Trails, Places and Preferences there are three of
+     * these on a phone, and the old 16/6 padding plus the section's
+     * own padding put ~58 px between one group's last row and the
+     * next group's first; now ~24 px (Steve, 2026-Nov-01). */
+    padding: 8px 16px 2px 16px;
     margin: 0;
     background: transparent;
     border: none;
@@ -815,7 +819,7 @@ body::after {
 }
 
 .opt-section-body {
-    padding: 0 8px 4px 8px;
+    padding: 0 8px;
 }
 
 /* ----- Options-overlay toggle rows (full-width buttons) ------------
@@ -1273,12 +1277,12 @@ body::after {
 /* ----- Sheet expanded area ----------------------------------------- */
 .opt-section {
     border-top: 1px solid var(--sheet-divider);
-    padding: 12px 0;
+    padding: 4px 0;
 }
 
 .opt-section:first-child {
     border-top: none;
-    padding-top: 8px;
+    padding-top: 2px;
 }
 
 .opt-section-title {
@@ -1287,7 +1291,7 @@ body::after {
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--sheet-text-muted);
-    margin: 0 0 8px 0;
+    margin: 0 0 4px 0;
 }
 
 .opt-row {
