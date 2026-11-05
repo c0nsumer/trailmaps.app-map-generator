@@ -1286,10 +1286,18 @@ function calloutPath(ctx, x, y, w, h, r) {
 // marker's own shape, the callout the square with a tip below it (the
 // canvas grows by the tip; the tip's point sits PLATE_MARGIN above the
 // canvas bottom).
+//
+// The pill gets no pad: its plate follows its outline, so the pad and
+// the pill's own 2 px inset merged into a 2.5 px white ring that read
+// as a heavy border next to the one-way arrows' halo (Steve,
+// 2026-Nov-04). The inset alone leaves 1.5 px, the arrows' width. A
+// square plate around a diamond reads as a plate, not a ring, so the
+// plain glyphs keep theirs.
 function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
     const [bw, bh] = PLATE_BOXES[shape];
-    const pw = bw + 2 * PLATE_PAD;
-    const ph = bh + 2 * PLATE_PAD;
+    const pad = shape === "pill" ? 0 : PLATE_PAD;
+    const pw = bw + 2 * pad;
+    const ph = bh + 2 * pad;
     const m = PLATE_MARGIN;
     const tip = shape === "callout" ? PLATE_TIP_H : 0;
     return glyphCanvas(pw + 2 * m, ph + 2 * m + tip, (ctx) => {
@@ -1305,7 +1313,7 @@ function platedCanvas(shape, drawInner, fill = PLATE_FILL) {
         ctx.fillStyle = fill;
         ctx.fill();
         ctx.restore();
-        ctx.translate(m + PLATE_PAD, m + PLATE_PAD);
+        ctx.translate(m + pad, m + pad);
         drawInner(ctx);
     });
 }
