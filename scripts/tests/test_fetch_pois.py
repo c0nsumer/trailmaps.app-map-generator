@@ -214,3 +214,13 @@ def test_the_local_osm_path_yields_the_fixture_nodes(tmp_path):
     config.pop("difficulty_scale")
     fc = fetch_pois(config, str(tmp_path / "pois2.geojson"), cache_dir=str(tmp_path / "c"))
     assert not [f for f in fc["features"] if f["properties"]["poi_type"] == "exposure"]
+
+
+@pytest.mark.parametrize("access, kept", [
+    (None, True), ("yes", True), ("customers", True), ("private", False)])
+def test_private_toilets_are_left_out(access, kept):
+    tags = {"amenity": "toilets"}
+    if access:
+        tags["access"] = access
+    osm = {"elements": [{"type": "node", "id": 1, "lat": 46.0, "lon": -88.0, "tags": tags}]}
+    assert _types(osm=osm) == (["toilet"] if kept else [])
