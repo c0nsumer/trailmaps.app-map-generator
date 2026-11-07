@@ -216,11 +216,15 @@ def test_the_local_osm_path_yields_the_fixture_nodes(tmp_path):
     assert not [f for f in fc["features"] if f["properties"]["poi_type"] == "exposure"]
 
 
+@pytest.mark.parametrize("amenity, ptype", [
+    ("toilets", "toilet"),
+    ("drinking_water", "drinking_water"),
+    ("bicycle_repair_station", "bicycle_repair_station")])
 @pytest.mark.parametrize("access, kept", [
-    (None, True), ("yes", True), ("customers", True), ("private", False)])
-def test_private_toilets_are_left_out(access, kept):
-    tags = {"amenity": "toilets"}
+    (None, True), ("yes", True), ("customers", True), ("private", False), ("no", False)])
+def test_amenities_nobody_may_use_are_left_out(amenity, ptype, access, kept):
+    tags = {"amenity": amenity}
     if access:
         tags["access"] = access
     osm = {"elements": [{"type": "node", "id": 1, "lat": 46.0, "lon": -88.0, "tags": tags}]}
-    assert _types(osm=osm) == (["toilet"] if kept else [])
+    assert _types(osm=osm) == ([ptype] if kept else [])

@@ -48,9 +48,11 @@ def fetch_pois_from_osm(bbox, cache_dir=None, refresh=False, itrs=False, standar
       - guideposts (tourism=information + information=guidepost)
       - emergency access points (highway=emergency_access_point)
       - tourism attractions (tourism=attraction)
-      - toilets (amenity=toilets), access=private dropped at build
+      - toilets (amenity=toilets)
       - drinking water (amenity=drinking_water)
       - bicycle repair stations (amenity=bicycle_repair_station)
+
+    The three amenities drop access=private|no at build, in _is_open_amenity.
 
     Each maps to a distinct ``poi_type`` in the output GeoJSON; runtime
     toggle visibility per category.
@@ -85,11 +87,12 @@ out center;
     return overpass_query(q, cache_dir, label="POIs", refresh=refresh)
 
 
-def _is_public_toilet(tags):
-    """amenity=toilets, less access=private. This is a filter on the response,
-    not on the Overpass query: the query text is the cache key, so a filter
-    there would refetch every map, and the access tag is already cached."""
-    return tags.get("amenity") == "toilets" and tags.get("access") != "private"
+def _is_open_amenity(tags, amenity):
+    """The amenity, less access=private|no: a rider cannot use it. access=customers
+    stays, since a rider can stop and buy something. This is a filter on the
+    response, not on the Overpass query: the query text is the cache key, so a
+    filter there would refetch every map, and the access tag is already cached."""
+    return tags.get("amenity") == amenity and tags.get("access") not in ("private", "no")
 
 
 def _dedup_osm_pois(features):
@@ -359,7 +362,7 @@ def build_pois_geojson(
                 }
             )
         elif tags.get("amenity") == "toilets":
-            if not show_toilets or not _is_public_toilet(tags):
+            if not show_toilets or not _is_open_amenity(tags, "toilets"):
                 continue
             features.append(
                 {
@@ -372,7 +375,7 @@ def build_pois_geojson(
                 }
             )
         elif tags.get("amenity") == "drinking_water":
-            if not show_drinking_water:
+            if not show_drinking_water or not _is_open_amenity(tags, "drinking_water"):
                 continue
             features.append(
                 {
@@ -385,7 +388,9 @@ def build_pois_geojson(
                 }
             )
         elif tags.get("amenity") == "bicycle_repair_station":
-            if not show_bicycle_repair_stations:
+            if not show_bicycle_repair_stations or not _is_open_amenity(
+                tags, "bicycle_repair_station"
+            ):
                 continue
             features.append(
                 {
@@ -541,18 +546,11 @@ def fetch_pois(config_or_path, output_path, cache_dir="cache", refresh=False):
         if e.get("tags", {}).get("tourism") == "attraction"
         and e.get("tags", {}).get("highway") != "emergency_access_point"
     )
-    toilet_count = sum(
-        1 for e in osm_data.get("elements", []) if _is_public_toilet(e.get("tags", {}))
-    )
-    water_count = sum(
-        1
-        for e in osm_data.get("elements", [])
-        if e.get("tags", {}).get("amenity") == "drinking_water"
-    )
+    elements = osm_data.get("elements", [])
+    toilet_count = sum(1 for e in elements if _is_open_amenity(e.get("tags", {}), "toilets"))
+    water_count = sum(1 for e in elements if _is_open_amenity(e.get("tags", {}), "drinking_water"))
     repair_count = sum(
-        1
-        for e in osm_data.get("elements", [])
-        if e.get("tags", {}).get("amenity") == "bicycle_repair_station"
+        1 for e in elements if _is_open_amenity(e.get("tags", {}), "bicycle_repair_station")
     )
     console.detail(
         f"Found {marker_count} trail markers (guideposts + emergency access points) in OSM"
