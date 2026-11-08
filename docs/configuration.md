@@ -1174,8 +1174,9 @@ about:
 The framework-supplied rows and sections, always shown:
 
 - **App** row: `v<N> (<date>)`: the engine's commit count as of the last
-  commit that touched `templates/`, plus that commit's date. The version
-  only advances when the shipped app code changes. The row is omitted when
+  commit that touched `templates/` or `scripts/vendor_libs.py`, plus that
+  commit's date. The version only advances when the shipped app code or a
+  pinned library changes. The row is omitted when
   the build can't consult git (eg: a tarball checkout).
 - **Map config** row: `<date HH:MM>`: the newest mtime of the config YAML and
   the per-map assets it references (logo, icon, additional logos, custom-route

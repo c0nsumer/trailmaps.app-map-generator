@@ -104,8 +104,9 @@ def _engine_app_version():
     """Return the engine's app version as ("<count>", "YYYY-MM-DD").
 
     <count> is the repo's commit count as of the last commit that touched
-    templates/ (the shipped app code), and the date is that commit's
-    commit date. Keying off templates/ rather than HEAD means the version
+    templates/ or scripts/vendor_libs.py (the shipped app code and the
+    pinned libraries it runs on), and the date is that commit's commit
+    date. Keying off those paths rather than HEAD means the version
     only advances when the app a rider runs actually changes - a
     scripts-only engine commit leaves every map's app.js bytes (and
     therefore the content-hashed CACHE_VERSION) untouched, so installed
@@ -130,7 +131,9 @@ def _engine_app_version():
         return proc.stdout.strip() if proc.returncode == 0 else ""
 
     try:
-        commit, _, date = _git("log", "-1", "--format=%H|%cs", "--", "templates/").partition("|")
+        commit, _, date = _git(
+            "log", "-1", "--format=%H|%cs", "--", "templates/", "scripts/vendor_libs.py"
+        ).partition("|")
         if not (commit and date):
             return "", ""
         count = _git("rev-list", "--count", commit)
@@ -643,7 +646,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # Engine app version (bare commit count, commit date), shown in the
     # About modal's App row as "v294 (2026-07-17)". See
     # _engine_app_version for the derivation and why it keys off
-    # templates/ instead of HEAD. Empty strings (git unavailable) make
+    # templates/ and scripts/vendor_libs.py instead of HEAD. Empty strings (git unavailable) make
     # the runtime omit the row.
     config_obj["appVersion"], config_obj["appVersionDate"] = _engine_app_version()
     config_obj["hasClipEndpoints"] = bool(config.get("_has_clip_endpoints"))
