@@ -38,6 +38,8 @@ def _mtimes(out):
     found = {}
     for base, _dirs, files in os.walk(out):
         for fname in files:
+            if fname == build.BUILD_MARKER:
+                continue  # never served, so its mtime moving changes no ETag
             path = os.path.join(base, fname)
             found[os.path.relpath(path, out)] = os.stat(path).st_mtime_ns
     return found

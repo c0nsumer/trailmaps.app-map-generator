@@ -401,8 +401,16 @@ def download_vendor_libs(output_dir, cache_dir):
 
         if not os.path.exists(cached):
             console.info(f"Downloading {filename}...")
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
+            try:
+                resp = requests.get(url, timeout=30)
+                resp.raise_for_status()
+            except requests.RequestException as e:
+                console.error(
+                    f"could not download vendor/{filename} from {url} "
+                    f"({type(e).__name__}). The machine may be offline. A first build, "
+                    "or one after a library bump, needs the network once to fill "
+                    f"{vendor_cache}; later builds reuse it.")
+                sys.exit(1)
             # Checked before it touches the cache, so a bad download is
             # never left behind to be trusted on existence later.
             _check_vendor_hash(filename, resp.content, cached)
@@ -649,6 +657,16 @@ PRECOMPRESS_EXTENSIONS = (
 PRECOMPRESS_MIN_BYTES = 1024
 
 
+# Written as the very last step of a build and removed as the first, so its
+# presence means the output dir is a finished build. tools/build_and_deploy.sh
+# refuses to rsync a dir without it: a rebuild killed midway leaves new,
+# empty, or truncated files beside the previous index.html and sw.js, which
+# are all the deploy guard could otherwise see. The .sig suffix is what keeps
+# it off the server, out of the service worker's precache, and out of
+# precompression (see _is_build_only_artifact).
+BUILD_MARKER = "build-complete.sig"
+
+
 def _is_build_only_artifact(rel_path):
     """True for files generated only for the build's own bookkeeping that must
     never reach the server: signature sidecars (.sig), the pre-enrichment
@@ -810,6 +828,13 @@ def precompress_assets(output_dir, cache_dir=None):
         console.warn("brotli unavailable - wrote gzip sidecars only")
 
 
+def _as_list(value):
+    """The value when it is a list, else an empty one. load_config runs
+    before the validator, so a wrong-typed value (a number, true) must
+    pass through here for the validator to report, not crash the loop."""
+    return value if isinstance(value, list) else []
+
+
 def load_config(config_path):
     """Load and return a map config, resolving user-supplied asset paths
     to absolute on-disk paths relative to the config file's directory.
@@ -839,14 +864,14 @@ def load_config(config_path):
         if key in config:
             config[key] = _resolve(config[key])
 
-    for entry in config.get("custom_routes") or []:
+    for entry in _as_list(config.get("custom_routes")):
         if isinstance(entry, dict) and "geometry" in entry:
             entry["geometry"] = _resolve(entry["geometry"])
 
     # Secondary brand images (event + sponsor logos) live alongside the
     # config like `logo:`/`icon:`; resolve each path so copy_assets sees
     # an absolute source.
-    for entry in config.get("additional_logos") or []:
+    for entry in _as_list(config.get("additional_logos")):
         if isinstance(entry, dict) and "path" in entry:
             entry["path"] = _resolve(entry["path"])
 
@@ -854,13 +879,13 @@ def load_config(config_path):
     # later fold into config["custom_routes"] sees absolute paths.
     em = config.get("event_mode")
     if isinstance(em, dict):
-        for entry in em.get("routes") or []:
+        for entry in _as_list(em.get("routes")):
             if isinstance(entry, dict) and "geometry" in entry:
                 entry["geometry"] = _resolve(entry["geometry"])
         # event_mode.gpx.routes[].file: curator-supplied .gpx assets.
         em_gpx = em.get("gpx")
         if isinstance(em_gpx, dict):
-            for entry in em_gpx.get("routes") or []:
+            for entry in _as_list(em_gpx.get("routes")):
                 if isinstance(entry, dict) and "file" in entry:
                     entry["file"] = _resolve(entry["file"])
 
@@ -1076,7 +1101,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
             ids = config.get(key) or []
             if ids:
                 console.info(f"  {key}: {ids}")
-    custom = config.get("custom_routes") or []
+    custom = _as_list(config.get("custom_routes"))
     if custom:
         console.info(f"  custom_routes ({len(custom)}):")
         for entry in custom:
@@ -1136,7 +1161,7 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
             console.info(f"{key}: (none)")
         else:
             console.info(f"{key}: {_display_path(path)}")
-    extra_logos = config.get("additional_logos") or []
+    extra_logos = _as_list(config.get("additional_logos"))
     for i, entry in enumerate(extra_logos):
         if not isinstance(entry, dict):
             continue
@@ -1417,7 +1442,7 @@ def _event_mode_prepass(config):
     # relations-side pass runs in inject_config_into_template later.
     if config.get("event_mode"):
         em = config["event_mode"] or {}
-        em_routes_count = len(em.get("routes") or [])
+        em_routes_count = len(_as_list(em.get("routes")))
         em_featured_count = len(em.get("featured") or [])
         bg_summary = _event_mode_background_style(config)
         msg = (
@@ -1504,7 +1529,7 @@ def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
     with open(trails_path, "w", encoding="utf-8") as f:
         json.dump(trails_geojson, f, separators=(",", ":"))
     ship(config, os.path.basename(trails_path))
-    custom_count = len(config.get("custom_routes") or [])
+    custom_count = len(_as_list(config.get("custom_routes")))
     bits = []
     if enriched:
         bits.append(
@@ -1521,7 +1546,50 @@ def _stage_enrich(config, trails_geojson, trails_path, cache_dir):
         console.detail(f"Enriched {os.path.basename(trails_path)} with {' and '.join(bits)}")
 
 
+def _positions(coords):
+    """Every [lon, lat, ...] position in a GeoJSON coordinates value,
+    whatever its nesting (LineString, MultiLineString, ...)."""
+    if coords and isinstance(coords[0], (int, float)):
+        yield coords
+    else:
+        for part in coords:
+            yield from _positions(part)
+
+
+def _check_bbox_holds_trails(config, trails_geojson):
+    """Exit when a configured bbox or pan_bbox holds none of the trails.
+
+    Lat/lon and lon/lat both pass the range checks across much of the
+    world, so a swapped bbox validates, then builds a blank map (and
+    fetches tiles) for the wrong place. This judges the config against
+    the loaded data, not the OSM data. A bbox that merely clips the
+    trails passes: one vertex inside is enough.
+    """
+    pts = [(p[0], p[1]) for f in trails_geojson.get("features", [])
+           for p in _positions((f.get("geometry") or {}).get("coordinates") or [])]
+    if not pts:
+        return  # nothing loaded to compare with; the empty case is reported elsewhere
+    for key in ("bbox", "pan_bbox"):
+        b = config.get(key)
+        if not b:
+            continue
+        if any(b[0] <= lon <= b[2] and b[1] <= lat <= b[3] for lon, lat in pts):
+            continue
+        swapped = [b[1], b[0], b[3], b[2]]
+        looks_swapped = any(swapped[0] <= lon <= swapped[2] and swapped[1] <= lat <= swapped[3]
+                            for lon, lat in pts)
+        hint = (f" The values look swapped (latitude first); try {swapped}."
+                if looks_swapped else " Check the values against where the trails are.")
+        console.error(
+            f"{key} {b} contains none of this map's trails. {key} is "
+            f"[west, south, east, north], longitude first.{hint}")
+        sys.exit(1)
+
+
 def _stage_bbox(config, trails_geojson):
+    # Judged before the computed bbox below exists, so it only ever sees
+    # what the curator wrote.
+    _check_bbox_holds_trails(config, trails_geojson)
     # Compute bbox from trail geometry if not specified in config
     if "bbox" not in config:
         config["bbox"] = compute_bbox_from_trails(trails_geojson)
@@ -1638,25 +1706,29 @@ def _do_basemap(config, refresh, extract_stale, refresh_paths, trails_geojson,
 
 
 def _do_terrain(config, terrain_path, terrain_sig):
+    had_file = os.path.exists(terrain_path)
+    old_sig = _load_signature(terrain_path)
     # Old sidecar first: it vouched for the previous file and
     # must not survive to vouch for an interrupted regen.
     _clear_signature(terrain_path)
     if fetch_terrain(config, terrain_path):
         _save_signature(terrain_path, terrain_sig)
-    elif os.path.exists(terrain_path):
-        # Terrain failure is soft (the build continues and the
-        # runtime's HEAD-probe disables hillshade when the file
-        # is absent) - but regen was triggered because the
-        # PREVIOUS file no longer matches this build's
-        # bbox/zoom. Fetches are atomic, so what's on disk is
-        # that stale wrong-extent file; leaving it would ship
-        # it with exit code 0 and precache it on every phone.
-        os.remove(terrain_path)
-        console.warn(
-            "terrain regen failed; removed the previous "
-            "terrain.pmtiles (wrong extent) - hillshade is "
-            "disabled until a build fetches terrain successfully"
-        )
+    elif had_file:
+        # The extract writes a temp name and renames on success, so a
+        # failed one leaves the previous archive untouched. Keep it and
+        # its signature: the signature still names what that file is, and
+        # it keeps the next build retrying the regen. Then fail like a
+        # failed basemap extract: exiting 0 would let a deploy mirror a
+        # tree whose hillshade is stale or about to be dropped.
+        if old_sig is not None:
+            _save_signature(terrain_path, old_sig)
+        console.error(
+            f"terrain extract failed; kept the previous {os.path.basename(terrain_path)} "
+            "as it was. Check the network and rerun the build.")
+        sys.exit(1)
+    # No earlier file: the map never had hillshade, so the soft
+    # failure (warning already printed, build ships without it) loses
+    # nothing a deploy could drop.
 
 
 class _TileNote(NamedTuple):
@@ -2007,6 +2079,10 @@ def main(argv=None, prog=None):
         return
 
     os.makedirs(output_dir, exist_ok=True)
+    # Before any other write: from here until the last step, the dir is
+    # not a finished build.
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(os.path.join(output_dir, BUILD_MARKER))
     # Read before any stage writes; see stable_mtimes for why.
     prior_files = stable_mtimes.snapshot(output_dir)
 
@@ -2089,9 +2165,8 @@ def main(argv=None, prog=None):
     # Tell the runtime whether terrain.pmtiles exists in this build, so
     # it can skip the HEAD probe (one serialized RTT before any trail
     # layer is created on every cold load). Checked AFTER the fetch step
-    # above: extraction may have just written the file, a show_terrain
-    # flip may have just removed it, and a soft terrain-fetch failure
-    # removes a stale wrong-extent file. A --no-terrain build serving an
+    # above: extraction may have just written the file or a show_terrain
+    # flip may have just removed it. A --no-terrain build serving an
     # archive left by a previous build still reads True, matching what
     # the runtime's probe would have concluded.
     config["_has_terrain"] = os.path.exists(terrain_path)
@@ -2116,6 +2191,9 @@ def main(argv=None, prog=None):
         "derive_accent": derive_accent_paths,
         "precompress": precompress_paths,
     }, trails_fetch_ran)
+
+    with open(os.path.join(output_dir, BUILD_MARKER), "w", encoding="utf-8") as f:
+        f.write("complete\n")
 
     total = print_summary(output_dir)
     if not console.is_verbose():

@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 import cache_manifest
 import console
 import requests
+from urllib3.exceptions import NewConnectionError
 
 # Single canonical Overpass endpoint. The bare `overpass-api.de` host
 # load-balances across the lz4 and z backends, which is what we want; we
@@ -106,6 +107,24 @@ class PartialResponseError(Exception):
     it as success. We raise this instead so the caller retries and never
     caches the partial result.
     """
+
+
+def cannot_connect(exc):
+    """True when no TCP connection was ever made: name resolution failed,
+    connection refused, no route, or a dead proxy. Retrying cannot help
+    that on any schedule short of the network coming back. A timeout, a
+    reset on an open connection, and every HTTP status stay retryable.
+    """
+    pending, seen = [exc], set()
+    while pending:
+        e = pending.pop()
+        if not isinstance(e, BaseException) or id(e) in seen:
+            continue
+        seen.add(id(e))
+        if isinstance(e, NewConnectionError):  # NameResolutionError subclasses it
+            return True
+        pending += [getattr(e, "reason", None), e.__cause__, *e.args]
+    return False
 
 
 def cache_path(query_str, cache_dir):
@@ -310,6 +329,19 @@ def query(query_str, cache_dir=None, label="", require_elements=False, refresh=F
             last_error = e
             console.info(f"  {server}: {e}")
         except (requests.RequestException, ValueError) as e:
+            if attempt == 0 and isinstance(e, requests.ConnectionError) and cannot_connect(e):
+                # Nothing is cached for this query (a hit returned above)
+                # and the host cannot be reached, so the 9.75 minutes of
+                # backoff would only delay the same failure.
+                console.blank()
+                console.error(
+                    f"cannot reach {server} to fetch the data{label_suffix}: the machine "
+                    "appears to be offline or the host is unreachable "
+                    f"({type(e).__name__}).")
+                console.info(
+                    "An offline build needs the cache from an earlier build of this map "
+                    f"({cache_dir or 'no cache directory set'}). Reconnect and build once to fill it.")
+                sys.exit(1)
             last_error = e
             console.info(f"  {server}: {type(e).__name__}: {e}")
 

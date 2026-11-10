@@ -13,6 +13,7 @@ Usage as standalone:
 """
 
 import argparse
+import math
 import os
 import re
 import sys
@@ -73,7 +74,16 @@ def parse_osm_file(osm_path):
     key = (path, st.st_size, st.st_mtime_ns)
     if key in _parse_memo:
         return _parse_memo[key]
-    parsed = _parse_osm_file(path)
+    try:
+        parsed = _parse_osm_file(path)
+    except (ET.ParseError, KeyError, ValueError) as e:
+        # A truncated JOSM save, an empty file, or another format under
+        # the .osm name. The raw exception names neither file nor cause.
+        reason = f"missing attribute {e}" if isinstance(e, KeyError) else str(e)
+        console.error(
+            f"cannot read {path} as OSM XML: {reason}. "
+            "Re-export or re-save the file from JOSM.")
+        sys.exit(1)
     _parse_memo.clear()
     _parse_memo[key] = parsed
     return parsed
@@ -96,6 +106,8 @@ def _parse_osm_file(osm_path):
             node_id = int(elem.attrib["id"])
             lon = float(elem.attrib["lon"])
             lat = float(elem.attrib["lat"])
+            if not (math.isfinite(lon) and math.isfinite(lat)):
+                raise ValueError(f"node {node_id} has a non-finite coordinate")
             tags = {tag.attrib["k"]: tag.attrib["v"] for tag in elem.findall("tag")}
             nodes[node_id] = (lon, lat, tags)
 

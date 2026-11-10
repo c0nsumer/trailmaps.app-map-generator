@@ -6,11 +6,45 @@ build.py keeps its richer load_config, which resolves every per-map
 asset path.
 """
 
+import collections.abc
 import os
 import sys
 
 import console
 import yaml
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that rejects a repeated key in one mapping.
+
+    PyYAML keeps the last value silently, so an uncommented template line
+    whose key is already set further down changes nothing and nobody
+    notices. Every other safe_load behavior is unchanged.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        first_line = {}
+        for key_node, _value_node in node.value:
+            if not isinstance(key_node, yaml.ScalarNode) or key_node.tag.endswith(":merge"):
+                continue
+            key = self.construct_object(key_node, deep=True)
+            line = key_node.start_mark.line + 1
+            if not isinstance(key, collections.abc.Hashable):
+                continue  # the base class reports an unhashable key
+            if key in first_line:
+                # No mark on purpose: parse_config_yaml appends the
+                # position, and both lines are already in the message.
+                raise yaml.constructor.ConstructorError(
+                    None, None,
+                    f"key {key!r} is set twice (lines {first_line[key]} and {line}); "
+                    "keep one")
+            first_line[key] = line
+        return super().construct_mapping(node, deep)
+
+
+def safe_load_config(stream):
+    """yaml.safe_load, plus the duplicate-key check above."""
+    return yaml.load(stream, Loader=_UniqueKeyLoader)  # noqa: S506 (SafeLoader subclass)
 
 
 class ConfigReadError(Exception):
@@ -29,9 +63,14 @@ def parse_config_yaml(config_path):
     """
     try:
         with open(config_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+            config = safe_load_config(f)
     except OSError as e:
         raise ConfigReadError(f"cannot read config {config_path}: {e.strerror or e}") from e
+    except UnicodeDecodeError as e:
+        raise ConfigReadError(
+            f"{config_path}: not valid UTF-8 at byte {e.start}; "
+            "re-save the file as UTF-8"
+        ) from e
     except yaml.YAMLError as e:
         mark = getattr(e, "problem_mark", None)
         where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""

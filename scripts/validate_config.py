@@ -334,6 +334,16 @@ def _check_type(report, where, value, expected):
     return True
 
 
+def _not_in(value, allowed):
+    """True when ``value`` is not one of the strings in ``allowed``.
+
+    A bare ``value not in allowed`` raises TypeError for a list or dict
+    value (unhashable), which would turn a wrong-typed key into a traceback
+    instead of the validator's message.
+    """
+    return not (isinstance(value, str) and value in allowed)
+
+
 def _is_int(value):
     """True for a real int; YAML `true`/`false` load as bool, a subclass of int."""
     return isinstance(value, int) and not isinstance(value, bool)
@@ -505,7 +515,7 @@ def _validate_types(report, config):
 
 
 def _validate_enums(report, config):
-    if "default_labels" in config and config["default_labels"] not in VALID_LABELS:
+    if "default_labels" in config and _not_in(config["default_labels"], VALID_LABELS):
         report.err(
             "default_labels",
             f"must be one of {sorted(VALID_LABELS)}, got {config['default_labels']!r}",
@@ -513,7 +523,7 @@ def _validate_enums(report, config):
 
     if "forced_labels" in config:
         v = config["forced_labels"]
-        if v not in VALID_LABELS:
+        if _not_in(v, VALID_LABELS):
             report.err("forced_labels", f"must be one of {sorted(VALID_LABELS)}, got {v!r}")
         else:
             # Cross-check against show_trails - locking the rider into
@@ -529,14 +539,14 @@ def _validate_enums(report, config):
                     "'none', or remove show_trails: false.",
                 )
 
-    if "color_by" in config and config["color_by"] not in VALID_COLOR_BY:
+    if "color_by" in config and _not_in(config["color_by"], VALID_COLOR_BY):
         report.err(
             "color_by", f"must be one of {sorted(VALID_COLOR_BY)}, got {config['color_by']!r}"
         )
 
     if (
         "difficulty_scale" in config
-        and config["difficulty_scale"] not in VALID_DIFFICULTY_SCALES
+        and _not_in(config["difficulty_scale"], VALID_DIFFICULTY_SCALES)
     ):
         report.err(
             "difficulty_scale",
@@ -544,7 +554,7 @@ def _validate_enums(report, config):
             f"got {config['difficulty_scale']!r}",
         )
 
-    if "marker_shape" in config and config["marker_shape"] not in VALID_MARKER_SHAPES:
+    if "marker_shape" in config and _not_in(config["marker_shape"], VALID_MARKER_SHAPES):
         report.err(
             "marker_shape",
             f"must be one of {sorted(VALID_MARKER_SHAPES)}, got {config['marker_shape']!r}",
@@ -552,7 +562,7 @@ def _validate_enums(report, config):
 
     if (
         "default_color_scheme" in config
-        and config["default_color_scheme"] not in VALID_COLOR_SCHEMES
+        and _not_in(config["default_color_scheme"], VALID_COLOR_SCHEMES)
     ):
         report.err(
             "default_color_scheme",
@@ -581,6 +591,16 @@ def _validate_geometry(report, config):
                     report.err(bbox_key, f"west ({w}) must be < east ({e})")
                 if s >= n:
                     report.err(bbox_key, f"south ({s}) must be < north ({n})")
+
+    b, pb = config.get("bbox"), config.get("pan_bbox")
+    if _valid_bbox(b) and _valid_bbox(pb) and (
+            pb[2] < b[0] or pb[0] > b[2] or pb[3] < b[1] or pb[1] > b[3]):
+        swapped = [pb[1], pb[0], pb[3], pb[2]]
+        hint = (" The values look swapped: write [west, south, east, north], longitude first."
+                if _valid_bbox(swapped) and not (swapped[2] < b[0] or swapped[0] > b[2]
+                                                 or swapped[3] < b[1] or swapped[1] > b[3])
+                else " The order is [west, south, east, north], longitude first.")
+        report.err("pan_bbox", f"does not overlap bbox, so the map could not show its own area.{hint}")
 
     # pan_padding: negative values would shrink maxBounds below bbox which
     # makes no sense; huge values (>5) mean the pan envelope is 10× the
@@ -650,10 +670,37 @@ def _is_dash_pattern(p):
 DASH_PATTERN_RULE = "must be [dash, gap]: two numbers >= 0, not both 0 (e.g. [2, 2])"
 
 
-def _check_lonlat(report, where, c):
+def _valid_bbox(b):
+    return (isinstance(b, list) and len(b) == 4 and all(_is_number(x) for x in b)
+            and b[0] < b[2] and b[1] < b[3])
+
+
+def _pan_envelope(config):
+    """The area the map can show, as far as the config alone says: an
+    explicit pan_bbox, else bbox grown by pan_padding the way build.py's
+    expand_bbox_for_pan does it (keep the two in step). None when the
+    config gives no usable bbox; a bbox computed from the trails later
+    cannot be known here."""
+    if _valid_bbox(config.get("pan_bbox")):
+        return config["pan_bbox"]
+    b = config.get("bbox")
+    if not _valid_bbox(b):
+        return None
+    pp = config.get("pan_padding", 0.5)
+    pad = max(b[2] - b[0], b[3] - b[1]) * (pp if _is_number(pp) and pp >= 0 else 0.5)
+    return [b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad]
+
+
+def _inside(box, lon, lat):
+    return box[0] <= lon <= box[2] and box[1] <= lat <= box[3]
+
+
+def _check_lonlat(report, where, c, envelope=None):
     """Shared [lon, lat] coordinate-pair check (shape + world-range).
     Used by every point-shaped config entry (trailheads / parking /
-    hubs / event_mode.pois)."""
+    hubs / event_mode.pois). With ``envelope`` (see _pan_envelope), a
+    point outside it is an error too: the map cannot pan there, so the
+    marker would silently never appear."""
     if not (isinstance(c, list) and len(c) == 2 and all(_is_number(x) for x in c)):
         report.err(where, f"must be [lon, lat] numbers, got {c!r}")
         return
@@ -662,6 +709,12 @@ def _check_lonlat(report, where, c):
         report.err(where, f"longitude must be in [-180,180]: {lon}")
     if not -90 <= lat <= 90:
         report.err(where, f"latitude must be in [-90,90]: {lat}")
+    if envelope and not _inside(envelope, lon, lat):
+        hint = (" The values look swapped: this is [lon, lat], longitude first."
+                if _inside(envelope, lat, lon) else "")
+        report.err(where, f"{c} is outside the area this map can show (bbox/pan_bbox "
+                          f"[west, south, east, north] = {[round(x, 4) for x in envelope]}), "
+                          f"so the marker would never appear.{hint}")
 
 
 def _validate_colors(report, config):
@@ -707,7 +760,7 @@ def _validate_colors(report, config):
                     "default_trail_color.pattern",
                     f"{DASH_PATTERN_RULE}, got {dtc['pattern']!r}",
                 )
-            if "cap" in dtc and dtc["cap"] not in VALID_LINE_CAPS:
+            if "cap" in dtc and _not_in(dtc["cap"], VALID_LINE_CAPS):
                 report.err(
                     "default_trail_color.cap",
                     f"must be one of {sorted(VALID_LINE_CAPS)}, got {dtc['cap']!r}",
@@ -835,7 +888,7 @@ def _validate_dashed_relations(report, config):
             _reject_unknown_keys(report, where, spec, {"pattern", "cap", "colors"})
             if "pattern" in spec and not _is_dash_pattern(spec["pattern"]):
                 report.err(f"{where}.pattern", f"{DASH_PATTERN_RULE}, got {spec['pattern']!r}")
-            if "cap" in spec and spec["cap"] not in VALID_LINE_CAPS:
+            if "cap" in spec and _not_in(spec["cap"], VALID_LINE_CAPS):
                 report.err(
                     f"{where}.cap", f"must be one of {sorted(VALID_LINE_CAPS)}, got {spec['cap']!r}"
                 )
@@ -892,7 +945,8 @@ def _validate_point_lists(report, config):
             if "coordinates" not in item:
                 report.err(where, "missing required 'coordinates' [lon, lat]")
             else:
-                _check_lonlat(report, f"{where}.coordinates", item["coordinates"])
+                _check_lonlat(report, f"{where}.coordinates", item["coordinates"],
+                              _pan_envelope(config))
             if "name" in item and not isinstance(item["name"], str):
                 report.err(f"{where}.name", f"expected str, got {type(item['name']).__name__}")
             if "directions_url" in allowed and "directions_url" in item:
@@ -946,7 +1000,7 @@ def _asset_paths(config):
     the per-entry validators, so they are skipped here."""
     for key in ("logo", "icon", "osm_file"):
         p = config.get(key)
-        if p:
+        if p and isinstance(p, str):
             yield key, p
 
     em = config.get("event_mode")
@@ -1581,7 +1635,7 @@ def _validate_event_mode(report, config):
                     "event_mode.background_style.pattern",
                     f"{DASH_PATTERN_RULE}, got {bg['pattern']!r}",
                 )
-            if "cap" in bg and bg["cap"] not in VALID_LINE_CAPS:
+            if "cap" in bg and _not_in(bg["cap"], VALID_LINE_CAPS):
                 report.err(
                     "event_mode.background_style.cap",
                     f"must be one of {sorted(VALID_LINE_CAPS)}, got {bg['cap']!r}",
@@ -1615,7 +1669,8 @@ def _validate_event_mode(report, config):
                 if "coordinates" not in entry:
                     report.err(f"{where}.coordinates", "required: [lon, lat] numbers")
                 else:
-                    _check_lonlat(report, f"{where}.coordinates", entry["coordinates"])
+                    _check_lonlat(report, f"{where}.coordinates", entry["coordinates"],
+                                  _pan_envelope(config))
                 # description optional string
                 if "description" in entry and not isinstance(entry["description"], str):
                     report.err(

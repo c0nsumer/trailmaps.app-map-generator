@@ -64,6 +64,7 @@ import yaml
 # generation when false.`).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "scripts"))
+from config_io import safe_load_config  # noqa: E402
 from validate_config import _RETIRED_KEYS, KNOWN_KEYS  # noqa: E402
 
 KEY_NAMES = set(KNOWN_KEYS.keys())
@@ -318,11 +319,18 @@ def _assert_same_data(production_path, output_path):
     data as the original. Anything else deletes the output and aborts
     - the tool physically cannot hand back a config that behaves
     differently."""
-    with open(production_path, encoding="utf-8") as f:
-        original = yaml.safe_load(f)
+    # The engine's loader, so a repeated key is named here instead of
+    # surfacing as "would change parsed values".
+    try:
+        with open(production_path, encoding="utf-8") as f:
+            original = safe_load_config(f)
+    except (yaml.YAMLError, UnicodeDecodeError) as e:
+        os.remove(output_path)
+        sys.exit(f"ERROR: {production_path} is not a valid config ({e}) - "
+                 "aborted, no file written")
     try:
         with open(output_path, encoding="utf-8") as f:
-            cleaned = yaml.safe_load(f)
+            cleaned = safe_load_config(f)
     except yaml.YAMLError as e:
         # The reordering produced output that doesn't even PARSE (e.g.
         # an anchor's alias moved above its definition). This used to

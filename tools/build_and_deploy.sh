@@ -369,11 +369,14 @@ for name in "${configs[@]}"; do
             continue
         fi
         # rsync --delete mirrors whatever is there, so an interrupted
-        # first build would replace the live map with a partial tree.
-        # A build that never reached its template and PWA stages has
-        # no index.html or sw.js.
-        if ! $DRY_RUN && { [ ! -f "${build_dir}/index.html" ] || [ ! -f "${build_dir}/sw.js" ]; }; then
-            echo "ERROR: ${build_dir} is not a finished build (no index.html or sw.js)" >&2
+        # build would replace the live map with a partial tree. A first
+        # build killed midway has no index.html or sw.js, but a rebuild
+        # killed midway leaves the previous ones beside new, empty, or
+        # truncated files. build.py removes build-complete.sig first and
+        # writes it last, so only a finished build has it.
+        if ! $DRY_RUN && { [ ! -f "${build_dir}/build-complete.sig" ] \
+                || [ ! -f "${build_dir}/index.html" ] || [ ! -f "${build_dir}/sw.js" ]; }; then
+            echo "ERROR: ${build_dir} is not a finished build (no build-complete.sig, index.html, or sw.js); rebuild it" >&2
             failed+=("$name")
             continue
         fi
@@ -392,11 +395,11 @@ for name in "${configs[@]}"; do
             continue
         fi
         # Build-only cache artifacts (trails.src.geojson, every .sig
-        # sidecar, and .tmp atomic-write leftovers) are never fetched at
-        # runtime, so they don't belong on the server. Exclude them from
-        # the transfer; --delete-excluded also purges any that earlier
-        # deploys left behind, so the server tree carries only runtime
-        # files. Keep these patterns in sync with
+        # sidecar including build-complete.sig, and .tmp atomic-write
+        # leftovers) are never fetched at runtime, so they don't belong
+        # on the server. Exclude them from the transfer;
+        # --delete-excluded also purges any that earlier deploys left
+        # behind, so the server tree carries only runtime files. Keep these patterns in sync with
         # _is_build_only_artifact() in scripts/build.py.
         if $DRY_RUN; then
             echo "[dry-run] rsync -avz --delete --delete-excluded --exclude='*.sig' --exclude='*.src.geojson' --exclude='*.tmp' ${build_dir}/ ${DEPLOY_DEST}/${slug}/"
