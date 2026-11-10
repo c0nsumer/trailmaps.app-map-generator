@@ -22,6 +22,10 @@ support HTTP Range requests for PMTiles. Caddy, nginx, and Apache all do. No
 special CORS or rewrite rules are needed; a standard `file_server` config is
 sufficient.
 
+Serve it over HTTPS. Without it the map draws, but Locate, offline use, and
+Install don't work. The map can live at any path (eg: `example.org/maps/pinehollow/`),
+as nothing in it is tied to the site root.
+
 `scripts/build.py` produces production-quality output by default; no flag is
 needed. The output includes minified `app.js` / `style.css`, a content-hashed
 service worker, and a trimmed font set:
@@ -213,6 +217,13 @@ snippet), as the browser will block whatever the policy doesn't list:
 - A web font from a CDN: host the font files with the map, or add the CSS
   host to `style-src` and the font host to `font-src`.
 - An inline `<style>` block: move it to a `.css` file.
+
+The same goes for a host or proxy that changes pages on the way out. A feature
+that injects scripts (eg: Cloudflare's Rocket Loader, email obfuscation, or
+auto-injected analytics, or a host's banner or snippet injection) gets blocked
+by the policy. One that rewrites the page's own inline scripts changes their
+hashes, and the map stops booting. Turn those features off for the map's path.
+Plain file serving is unaffected.
 
 Two things to keep in mind when editing the tag. A rebuild writes a fresh one,
 so the edit has to be reapplied after each build (a script that patches the

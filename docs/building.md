@@ -26,8 +26,15 @@ hosting the output, see [`deployment.md`](deployment.md).
 - Python 3.11 or newer (tested through 3.14) with
   `pip install -r requirements.txt`. Versions are pinned for
   reproducible builds; see the file header for upgrade notes.
-- [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI:
-  `go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest`.
+- [`pmtiles`](https://github.com/protomaps/go-pmtiles) CLI, a Go binary.
+  Download the one for your platform from the
+  [go-pmtiles releases](https://github.com/protomaps/go-pmtiles/releases)
+  and put it on your PATH (eg: `~/.local/bin`). If you have a Go toolchain,
+  `go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest` works too.
+  It puts the binary in `~/go/bin`, which the build also checks if the
+  binary isn't on your PATH. The Python `pmtiles` package in
+  `requirements.txt` is a different thing and doesn't provide this CLI.
+  The versions tested here are pmtiles 1.31 and tippecanoe 2.53.
 - [`tippecanoe`](https://github.com/felt/tippecanoe), which also
   provides `tile-join`. The build needs both to generate the basemap's
   path, service-road and minor-street lines.
@@ -318,6 +325,11 @@ python scripts/serve.py build/example
 This is the fastest way to test changes without a production deploy.
 The server listens on all interfaces, so a phone on the same network can
 open it at this machine's address.
+That's plain HTTP on a LAN address, though, and browsers only allow
+geolocation, service workers, and PWA install on HTTPS or on `localhost`.
+So the phone shows the map, but Locate, offline use, and Install don't
+work, and the error Locate shows may blame permissions. To test those,
+deploy to an HTTPS host (see [`deployment.md`](deployment.md)).
 The server honors Range requests properly so PMTiles work end-to-end.
 
 ## Convenience wrapper: build_and_deploy.sh
@@ -538,6 +550,24 @@ To refresh trail data without touching tiles:
 python scripts/build.py configs/example/example.yaml --refresh-trails --no-basemap --no-terrain
 ```
 
+### When trails change
+
+If you edited OSM (a new trail, a changed tag), wait a few minutes for
+Overpass to catch up. Then run the build with `--refresh-trails`:
+
+```bash
+python scripts/build.py configs/<slug>/<slug>.yaml --refresh-trails
+```
+
+That queries Overpass again for the trails and regenerates the basemap's path
+lines. It doesn't re-download the basemap or terrain tiles. If you changed
+POIs (guideposts, toilets, etc), add `--refresh-pois`. `--refresh` re-fetches
+everything, tiles included, and is rarely needed. Then upload `build/<slug>/`
+again. Riders are offered the update the next time they open the map.
+
+Keep `cache/` and `build/` between builds. A build on another machine starts
+with an empty cache and downloads everything again.
+
 ### Build and data dates
 
 The About modal shows the App version date, the Map config date, and
@@ -550,7 +580,7 @@ Instead of fetching data from the Overpass API, you can build maps
 from a local `.osm` XML file. This is useful for:
 
 - Non-public trail data maintained locally in JOSM.
-- Offline map generation without internet access.
+- Offline map generation without internet access (see the note below).
 - Testing edits before uploading to OpenStreetMap.
 
 Add `osm_file` to your config. The path resolves relative to the
@@ -568,10 +598,19 @@ child relations (when any entry is a super-relation), every member
 way, and all referenced nodes with coordinates. This is the default
 when saving from JOSM.
 
+Trails and POIs then come from the file, with no Overpass queries. The
+basemap and terrain tiles still download on the first build. After that,
+rebuilds are offline. For a build with no network at all, add
+`--no-basemap --no-terrain`.
+
 All other config options (`clipped_relations`, `winter_relations`,
 `summer_relations`, `emergency_access_relations`, `dashed_relations`,
 etc.) work the same way: they reference IDs found in the file instead
 of Overpass.
+
+Objects you haven't uploaded have negative IDs in JOSM. Use them as they
+are (eg: `relations: [-100]`). JOSM can renumber them when you save, so if a
+build says a relation is missing, check the IDs in the config first.
 
 ### Downloading from Overpass
 

@@ -84,6 +84,9 @@ python scripts/serve.py build/example
 # Open http://localhost:8090
 ```
 
+The `pmtiles` CLI is a separate Go binary. The Python `pmtiles` package that
+`requirements.txt` installs is a different thing and doesn't provide it.
+
 A first-ever build of a new map takes ~5 to 10 minutes (downloads basemap,
 terrain, vendor libraries). Subsequent rebuilds with cached data finish in under 30
 seconds. See [`docs/building.md`](docs/building.md) for the full pipeline, CLI
@@ -146,7 +149,13 @@ separate private orchestrator that drives this engine as a CLI tool.
 ## Creating a new basic map with PWA support
 
 1. Map your trails in OpenStreetMap as route relations under a relation or
-   super-relation (or pick an existing one).
+   super-relation (or pick an existing one). To check whether your trails are
+   in one, click a trail on openstreetmap.org with the Query Features tool,
+   open the way it lists, and look under "Part of". Follow the relation link:
+   the number in `openstreetmap.org/relation/12666899` is the ID you put in
+   `relations:`.
+   If your trails are only ways, group them into a route relation first. See
+   [`docs/osm-mapping.md`](docs/osm-mapping.md#trail-system-structure-relations).
 2. Create `configs/<slug>/`. A matching folder and slug is the convention the
    `build_and_deploy.sh` wrapper expects; the engine itself only requires the
    slug to be `[a-z0-9_-]+`. Copy
