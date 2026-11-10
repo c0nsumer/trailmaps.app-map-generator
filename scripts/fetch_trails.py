@@ -324,7 +324,13 @@ def merge_consecutive_ways(ways_dict, way_relation_ids, itrs=False):
     visited = set()
     merged_segments = []
 
-    for start_way_id in ways_dict:
+    # Chains start from the lowest way id and take the lowest-id candidate at
+    # each step, so the fusion depends only on the ways and their signatures,
+    # never on a relation's member order. Two relations that share a trail
+    # must fuse it identically, or the runtime (which keys a run by its way
+    # ids and end points) counts the trail's ground once per distinct fusion.
+    # Way ids are unique ints, so the order is total.
+    for start_way_id in sorted(ways_dict):
         if start_way_id in visited:
             continue
         visited.add(start_way_id)
@@ -352,7 +358,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids, itrs=False):
             ]
             if not candidates:
                 break
-            next_way_id = candidates[0]
+            next_way_id = min(candidates)
             next_coords = ways_dict[next_way_id]["coords"]
             # Check orientation: if the next way starts at our end, append as-is
             if tuple(next_coords[0]) == end_node:
@@ -381,7 +387,7 @@ def merge_consecutive_ways(ways_dict, way_relation_ids, itrs=False):
             ]
             if not candidates:
                 break
-            prev_way_id = candidates[0]
+            prev_way_id = min(candidates)
             prev_coords = ways_dict[prev_way_id]["coords"]
             # Check orientation: if the previous way ends at our start, prepend
             if tuple(prev_coords[-1]) == start_node:
@@ -412,6 +418,10 @@ def merge_consecutive_ways(ways_dict, way_relation_ids, itrs=False):
             }
         )
 
+    # Emit in the order the relation lists its ways (first member of each
+    # segment), as before, so unaffected maps keep their feature order.
+    position = {wid: i for i, wid in enumerate(ways_dict)}
+    merged_segments.sort(key=lambda seg: min(position[w] for w in seg["way_ids"]))
     return merged_segments
 
 

@@ -100,6 +100,40 @@ def test_a_way_digitized_backward_is_flipped_to_fuse():
     assert seg["coords"] == [[0, 0], [1, 0], [2, 0]]
 
 
+def _fused(ways, order):
+    """Fusion of ``ways`` as one relation listing them in ``order``."""
+    listed = {wid: ways[wid] for wid in order}
+    segs = merge_consecutive_ways(listed, {wid: {10, 11} for wid in listed})
+    return sorted((s["way_ids"], s["coords"]) for s in segs)
+
+
+def test_a_shared_ring_fuses_the_same_way_in_any_member_order():
+    # Two relations list the halves of a loop in opposite order. Each must
+    # fuse the pair identically, or the runtime sees two runs for one trail.
+    ways = {1: _way((0, 0), (1, 1), (0, 2), name="Ring"),
+            2: _way((0, 2), (-1, 1), (0, 0), name="Ring")}
+    assert _fused(ways, [1, 2]) == _fused(ways, [2, 1])
+
+
+def test_a_shared_wye_fuses_the_same_way_in_any_member_order():
+    # Three same-named ways meet at one node; which pair fuses must not
+    # depend on which way a relation lists first.
+    ways = {1: _way((0, 0), (1, 0), name="Wye"),
+            2: _way((1, 0), (2, 1), name="Wye"),
+            3: _way((1, 0), (2, -1), name="Wye")}
+    results = {repr(_fused(ways, order))
+               for order in ([1, 2, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1], [2, 1, 3])}
+    assert len(results) == 1
+
+
+def test_a_one_way_chain_keeps_its_direction_in_any_member_order():
+    ways = {1: _way((0, 0), (1, 0), oneway="yes"),
+            2: _way((1, 0), (2, 0), oneway="yes")}
+    for order in ([1, 2], [2, 1]):
+        (seg,) = merge_consecutive_ways({w: ways[w] for w in order}, {1: {10}, 2: {10}})
+        assert seg["coords"] == [[0, 0], [1, 0], [2, 0]]
+
+
 def test_a_name_change_splits_the_segment():
     ways = {1: _way((0, 0), (1, 0), name="A"), 2: _way((1, 0), (2, 0), name="B")}
     segs = merge_consecutive_ways(ways, {1: {10}, 2: {10}})

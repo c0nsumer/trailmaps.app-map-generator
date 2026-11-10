@@ -75,7 +75,9 @@ def _clear_signature(output_path):
 #      its own sidecar line, so the two compare directly (2026-11-01)
 #   8: itrs_exposure leaves the features and the merge signature, so
 #      exposure-only splits merge back (2026-Nov-02)
-TRAILS_BASE_FORMAT = 8
+#   9: ways fuse from the lowest way id, so a shared trail fuses the same
+#      way under every relation (2026-Nov-10)
+TRAILS_BASE_FORMAT = 9
 
 
 def _trails_fetch_fingerprint(config):
