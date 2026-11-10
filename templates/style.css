@@ -141,11 +141,10 @@
      * is what --fab-edge looks like on the surface. */
     --popup-edge: color-mix(in srgb, var(--popup-bg) 75%, black);
     /* Hairline around color-bar / dot swatches so a light trail color
-     * stays visible against a light row. Single value, no dark override:
-     * in dark mode a pale swatch already separates from the sheet on its
-     * own, and the chip variants carry a white border that does the job.
-     * Unifies a stray 0.15 on .highlight-chip-swatch with the 0.25 its
-     * five siblings used. */
+     * stays visible against a light row. The dark scheme flips it to a
+     * light hairline for the mirror case, a black or dark brown trail
+     * color on a dark row. Unifies a stray 0.15 on .highlight-chip-swatch
+     * with the 0.25 its five siblings used. */
     --swatch-hairline: 0 0 0 1px rgba(0, 0, 0, 0.25);
     /* Corner radius for the thin line/bar route swatches (finder rows,
      * popup, route panel, highlight chip's line variant). Five call sites
@@ -351,6 +350,10 @@
     --fab-edge: rgba(255, 255, 255, 0.3);
     --popup-edge: color-mix(in srgb, var(--popup-bg) 70%, white);
     --swatch-outline: rgba(255, 255, 255, 0.18);
+    /* The trail color itself is the sign's color and never changes, so a
+     * black swatch gets a light edge here, at the dark map casing's
+     * strength, where a dark one would vanish into the sheet. */
+    --swatch-hairline: 0 0 0 1px rgba(255, 255, 255, 0.3);
     /* Accent: swap to the lightened dark-mode shade + its on-accent
      * text, and flip --accent-strong to brighten (toward white) since
      * the dark shade is already light. The base vars (--accent-light /
