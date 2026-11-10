@@ -347,6 +347,32 @@ self.addEventListener("activate", (event) => {
     backgroundPrecache();
 });
 
+// Every PRECACHE_URL as the absolute URL its cache entry is stored
+// under. cache.add resolves the relative entries against this worker's
+// own URL, and sw.js ships next to index.html, so the same resolution
+// here matches for a map at the origin root and in a subdirectory.
+const PRECACHE_HREFS = new Set(
+    SW_CONFIG.PRECACHE_URLS.map((u) => new URL(u, self.location).href)
+);
+const PAGE_HREF = new URL("./", self.location).href;
+const INDEX_HREF = new URL("index.html", self.location).href;
+
+// The precache entry that answers this URL, or null when the path is
+// not precached. The query string is dropped: these are static files,
+// so a query never changes the bytes, and the app reads its share state
+// from the fragment, never the query. Matching the full URL made a
+// link that Facebook decorated with ?fbclid= (or ?utm_*=) miss the
+// precached page offline, and stored a fresh copy of the file for
+// every distinct query online. index.html by name is the page, which
+// the build precaches only as "./". An exact lookup on the stripped URL
+// is used instead of ignoreSearch, which makes the browser compare
+// every entry in the cache on each request.
+function precacheKey(url) {
+    const bare = url.origin + url.pathname;
+    const key = bare === INDEX_HREF ? PAGE_HREF : bare;
+    return PRECACHE_HREFS.has(key) ? key : null;
+}
+
 // ============================================================
 // Fetch - cache-first for same-origin, with Range request
 // support for PMTiles files
@@ -432,10 +458,15 @@ self.addEventListener("fetch", (event) => {
     // last resort when the network fetch itself fails: a slightly
     // stale asset beats a dead page for a rider who updated moments
     // before losing signal.
+    //
+    // A precached file is looked up and stored under its precache key,
+    // not the request: see precacheKey for why the query string goes.
+    // Everything else keeps its full URL, query included.
+    const key = precacheKey(url) || event.request;
     event.respondWith(
         (async () => {
             const cache = await caches.open(CACHE_NAME);
-            const cached = await cache.match(event.request);
+            const cached = await cache.match(key);
             if (cached) return cached;
             const networkReq = new Request(event.request, { cache: "no-cache" });
             try {
@@ -448,15 +479,20 @@ self.addEventListener("fetch", (event) => {
                 if (
                     response &&
                     response.status === 200 &&
-                    response.type === "basic"
+                    response.type === "basic" &&
+                    // A followed redirect (a server canonicalizing
+                    // index.html to "./") must not become the page's
+                    // entry: a navigation answered with a redirected
+                    // response is a network error.
+                    !(typeof key === "string" && response.redirected)
                 ) {
                     const clone = response.clone();
-                    cache.put(event.request, clone)
+                    cache.put(key, clone)
                         .catch(() => { /* best effort */ });
                 }
                 return response;
             } catch (err) {
-                const stale = await caches.match(event.request);
+                const stale = await caches.match(key);
                 if (stale) return stale;
                 throw err;
             }
