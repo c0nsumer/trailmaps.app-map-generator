@@ -3601,8 +3601,12 @@ let _applyingPendingView = false;
 
 // The map's canonical view is fitBounds(CONFIG.bbox) with this padding:
 // what a clean URL opens on. There is no control that returns to it:
-// rotation and pitch are off and panning is bounded (maxBounds), so a
-// pinch out reaches the same view.
+// rotation and pitch are off and a pinch out stops at the pan wall.
+// maxBounds keeps the whole viewport inside panBbox, so the wall is
+// also a zoom floor, and on a portrait phone it clamps this fit too
+// (the trails land a few px from the side edges instead of 50). That
+// is kept on purpose: a slightly clipped home view beats a more
+// zoomed-out one.
 const HOME_VIEW_PADDING = 50;
 
 // Apply a highlight that was parsed from an incoming share link.
@@ -4349,10 +4353,13 @@ async function init() {
     // Default: `bounds` uses the tight CONFIG.bbox so the initial
     // view frames the trails snugly. `maxBounds` uses CONFIG.panBbox
     // (built from bbox + pan_padding) so the user has room to pan
-    // for context, maxBounds clamps the map CENTER, not the
-    // viewport edge, and the basemap/terrain PMTiles are extracted
-    // to match panBbox so real tiles fill the full pannable
-    // envelope.
+    // for context, and the basemap/terrain PMTiles are extracted to
+    // match panBbox so real tiles fill the full pannable envelope.
+    // maxBounds keeps the whole VIEWPORT inside panBbox (no blank
+    // tiles past the extract), which also floors the zoom: where the
+    // bounds fit wants a wider view than panBbox allows (a wide map on
+    // a portrait phone), MapLibre clamps it. Kept on purpose, see
+    // HOME_VIEW_PADDING.
     //
     // Share-link / saved-view override: when a #share= hash was
     // consumed above (or a fresh saved view was read), we use explicit
@@ -9853,8 +9860,44 @@ function fitToRouteOrTrail({ routeId, trailName, colorKey }) {
     if (!hasCoords) return;
     map.fitBounds(
         [[minLng, minLat], [maxLng, maxLat]],
-        { padding: 60, duration: 500, maxZoom: 16 }
+        { padding: keyCardFitPadding(60), duration: 500, maxZoom: 16 }
     );
+}
+
+// The expanded key card stays open after a row tap, and on a phone it
+// covers up to half the screen, so a uniform pad lands the line the
+// rider asked for behind the card they tapped. Fit into the larger of
+// the two free rectangles the card leaves (above it, or beside it) by
+// growing that one side; that is the bottom on a portrait phone and the
+// side in landscape, with no width rule. Too little room either way,
+// or no expanded card, keeps the uniform pad unchanged.
+const KEY_CARD_FIT_MARGIN = 12;
+const KEY_CARD_FIT_MIN_PX = 160;
+
+function keyCardFitPadding(pad) {
+    const wrap = document.getElementById("route-panel");
+    const card = document.getElementById("route-panel-card");
+    if (!wrap || !card || wrap.classList.contains("hidden")
+        || wrap.classList.contains("is-collapsed")
+        || wrap.classList.contains("no-key")) return pad;
+    const c = card.getBoundingClientRect();
+    const m = map.getContainer().getBoundingClientRect();
+    if (c.width === 0 || c.height === 0 || c.left >= m.right || c.right <= m.left
+        || c.top >= m.bottom || c.bottom <= m.top) return pad;
+    // The card is docked bottom-right: its extent runs from its top
+    // (or left) edge to the container's bottom (or right) edge, the
+    // dock gap included.
+    const bottom = m.bottom - c.top + KEY_CARD_FIT_MARGIN;
+    const right = m.right - c.left + KEY_CARD_FIT_MARGIN;
+    const aboveW = m.width - 2 * pad, aboveH = m.height - pad - bottom;
+    const besideW = m.width - pad - right, besideH = m.height - 2 * pad;
+    const useAbove = aboveW * aboveH >= besideW * besideH;
+    const w = useAbove ? aboveW : besideW;
+    const h = useAbove ? aboveH : besideH;
+    if (w < KEY_CARD_FIT_MIN_PX || h < KEY_CARD_FIT_MIN_PX) return pad;
+    return useAbove
+        ? { top: pad, right: pad, bottom: Math.max(pad, bottom), left: pad }
+        : { top: pad, right: Math.max(pad, right), bottom: pad, left: pad };
 }
 
 function showHighlightChip({ label, color, stats, line, glyph, glyphFreeride, poiType, markerLabel }) {
