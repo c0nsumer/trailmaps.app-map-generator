@@ -6095,12 +6095,16 @@ function buildAboutModalContent() {
     credit("Basemap tiles \u00a9 ",
         "https://protomaps.com",
         "Protomaps",
-        " (BSD).");
+        " (BSD-3-Clause).");
     if (CONFIG.showTerrain) {
-        credit("Terrain tiles \u00a9 ",
-            "https://mapterhorn.com",
+        // Mapterhorn joins about 150 open elevation sources under
+        // their own licenses (public domain for the USGS data, CC BY
+        // and similar for many others), so the credit links its
+        // per-source list instead of naming a few.
+        credit("Terrain tiles by ",
+            "https://mapterhorn.com/attribution",
             "Mapterhorn",
-            " (Aggregates public-domain elevation sources; USGS 3DEP, EU-DEM, JAXA AW3D30, etc.).");
+            ", built from open elevation data (see its source list for each provider and license).");
         // Same gate as the terrain credit: contour lines are derived
         // from those tiles, so they exist exactly when terrain does.
         // The BSD notice matters here: the minified vendor file ships
@@ -6141,6 +6145,12 @@ function buildAboutModalContent() {
     credit("Map labels and UI text rendered with fonts under the ",
         "https://openfontlicense.org/",
         "SIL Open Font License",
+        ".");
+    // The bundled libraries mostly ship without a license header, so
+    // the build writes their full texts into one file beside them.
+    credit("Full license texts for the bundled libraries: ",
+        "vendor/LICENSES.txt",
+        "LICENSES.txt",
         ".");
 }
 

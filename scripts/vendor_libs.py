@@ -63,3 +63,24 @@ VENDOR_SHA256 = {
     "uqr.mjs": "7f0e61c2f13bb3724edee7bfb876e13c54ac9ee4fcfa283c9fa93cfb1241c325",
     "maplibre-gl-lanes.js": "80aca0d4531c1056f69faa4508115f7b02f5c2327613a72cc67691ebd633872b",
 }
+
+# The license text for every file above, by file under assets/licenses/.
+# MIT and BSD-3-Clause both ask that the copyright notice and the license
+# travel with copies, most of these files ship without a header, and each
+# built map is a copy. The build joins the texts into vendor/LICENSES.txt
+# (the About panel links to it). A library added above without an entry
+# here fails the tests, so a new one cannot ship without its notice.
+VENDOR_LICENSES = {
+    "maplibre-gl.css": "maplibre-gl.txt",
+    "maplibre-gl.mjs": "maplibre-gl.txt",
+    "maplibre-gl-shared.mjs": "maplibre-gl.txt",
+    "maplibre-gl-worker.mjs": "maplibre-gl.txt",
+    "pmtiles.js": "pmtiles.txt",
+    "basemaps.js": "protomaps-basemaps.txt",
+    "maplibre-contour.js": "maplibre-contour.txt",
+    "uqr.mjs": "uqr.txt",
+    "maplibre-gl-lanes.js": "maplibre-gl-lanes.txt",
+}
+
+# The name vendor/ ships the joined texts under.
+VENDOR_LICENSES_FILE = "LICENSES.txt"

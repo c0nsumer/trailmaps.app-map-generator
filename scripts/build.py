@@ -72,7 +72,7 @@ from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates, ship, url_path
 from validate_config import validate_config
-from vendor_libs import VENDOR_LIBS, VENDOR_SHA256
+from vendor_libs import VENDOR_LIBS, VENDOR_LICENSES, VENDOR_LICENSES_FILE, VENDOR_SHA256
 
 # ---------------------------------------------------------------------------
 # Coordinate precision for the rendered trails.geojson
@@ -376,6 +376,29 @@ def _check_vendor_hash(filename, data, cached):
         sys.exit(1)
 
 
+def _write_vendor_licenses(vendor_dst):
+    """Write vendor/LICENSES.txt: each bundled library's license text.
+
+    One section per license file, headed by the vendor files it covers,
+    in VENDOR_LIBS order so the output is the same on every build.
+    """
+    licenses_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "assets", "licenses")
+    covers = {}
+    for filename in VENDOR_LIBS:
+        covers.setdefault(VENDOR_LICENSES[filename], []).append(filename)
+    parts = [
+        "License texts for the open-source libraries bundled in vendor/.\n"
+        "The map's About panel credits each of them.\n"
+    ]
+    for license_file, filenames in covers.items():
+        with open(os.path.join(licenses_dir, license_file), encoding="utf-8") as f:
+            text = f.read().strip("\n")
+        rule = "=" * 72
+        parts.append(f"{rule}\n{', '.join(filenames)}\n{rule}\n\n{text}\n")
+    with open(os.path.join(vendor_dst, VENDOR_LICENSES_FILE), "w", encoding="utf-8") as f:
+        f.write("\n".join(parts))
+
+
 def download_vendor_libs(output_dir, cache_dir):
     """Download CDN dependencies to vendor/ for offline use.
 
@@ -437,6 +460,8 @@ def download_vendor_libs(output_dir, cache_dir):
             os.remove(path)
             console.detail(f"Removed stale vendor cache entry {name}")
 
+    _write_vendor_licenses(vendor_dst)
+
     bundled = len(VENDOR_LIBS)
 
     # The same walk ships anything else left in vendor/ by an earlier
@@ -444,7 +469,7 @@ def download_vendor_libs(output_dir, cache_dir):
     # 1 MB, became three .mjs files with MapLibre 6) the old file would
     # otherwise ride along to every phone for as long as the build
     # directory lives. Precompressed siblings go with their file.
-    expected = set(VENDOR_LIBS)
+    expected = {*VENDOR_LIBS, VENDOR_LICENSES_FILE}
     for name in os.listdir(vendor_dst):
         base = name
         for ext in (".br", ".gz"):

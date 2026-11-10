@@ -58,9 +58,9 @@ This is the framework that generates most of the maps at
 - [MapLibre GL JS](https://maplibre.org) for vector + raster rendering
   (BSD-3-Clause).
 - [PMTiles](https://docs.protomaps.com/pmtiles/) for self-hosted tile delivery
-  without a tile server (BSD).
+  without a tile server (BSD-3-Clause).
 - [Protomaps basemap](https://protomaps.com) for the default vector basemap
-  (BSD; built from OpenStreetMap data).
+  (BSD-3-Clause; built from OpenStreetMap data).
 - [Overpass API](https://overpass-api.de/) for fetching OSM trail relations at
   build time.
 - Python 3.11 or newer (tested through 3.14) for the build pipeline.
@@ -244,7 +244,7 @@ components, with their licenses and origins.
 |---|---|---|
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors | Trail data, basemap source data | ODbL 1.0 |
 | [Protomaps](https://protomaps.com) (basemap tiles + JS) | Self-hosted vector basemap delivery | BSD-3-Clause (code), CC0 + ODbL (data) |
-| [Mapterhorn](https://mapterhorn.com) | Terrain DEM aggregation (USGS 3DEP, EU-DEM, JAXA AW3D30) | Public-domain inputs aggregated under permissive license |
+| [Mapterhorn](https://mapterhorn.com) | Terrain tiles, built from about 150 open elevation sources (eg: USGS 3DEP, Copernicus GLO-30) | Varies by source: public domain for the USGS data, CC BY 4.0 and similar elsewhere. See [its source list](https://mapterhorn.com/attribution) |
 | [MapLibre GL JS](https://maplibre.org) | Vector + raster map rendering | BSD-3-Clause |
 | [maplibre-contour](https://github.com/onthegomap/maplibre-contour) | In-browser contour lines from the terrain tiles | BSD-3-Clause |
 | [maplibre-gl-lanes](https://github.com/c0nsumer/maplibre-gl-lanes) | Routes that share a path drawn as ordered parallel lanes | MIT |
@@ -267,6 +267,10 @@ They carry ITRS's own terms, and this project uses them with permission. The
 MIT license covers the code. If you build a map with `difficulty_scale: itrs`,
 the About modal credit line must stay: "The ITRS - International Trail Rating
 System is used with permission from Mischa Crumbach and Edoardo Melchiori."
+
+Every built map carries the full license texts of its bundled JavaScript
+libraries in `vendor/LICENSES.txt`, linked from the About modal. The texts live
+in `assets/licenses/`.
 
 If you re-deploy this framework, please preserve the in-app About modal credits
 unchanged: every component above earned its place by either being free

@@ -67,6 +67,8 @@ def vendor(tmp_path, monkeypatch):
     good = b"console.log('ok');\n"
     monkeypatch.setattr(build, "VENDOR_LIBS", {"lib.js": "https://example.invalid/lib.js"})
     monkeypatch.setattr(build, "VENDOR_SHA256", {"lib.js": hashlib.sha256(good).hexdigest()})
+    # Any real license text will do: this test is about the hash check.
+    monkeypatch.setattr(build, "VENDOR_LICENSES", {"lib.js": "uqr.txt"})
     tag = hashlib.sha256(b"https://example.invalid/lib.js").hexdigest()[:8]
     cache = tmp_path / "cache"
     cached = cache / "vendor" / f"lib.js.{tag}"
