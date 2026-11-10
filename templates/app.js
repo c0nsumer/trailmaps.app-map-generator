@@ -4266,7 +4266,12 @@ async function init() {
 
         function runFetch(resource, options, settle) {
             realFetch(resource, options)
-                .then(settle.resolve, settle.reject)
+                .then(settle.resolve, (err) => {
+                    // An abort is a tile that scrolled away; anything
+                    // else is a link that cannot reach the archive.
+                    if (!err || err.name !== "AbortError") noteOfflineGap();
+                    settle.reject(err);
+                })
                 .finally(() => {
                     active--;
                     dequeueNext();
@@ -14391,8 +14396,13 @@ function rebuildBasemapLayers() {
 // The boundary is SW_SILENT_SWAP_WINDOW_MS from page load. An update
 // whose core files aren't ready within it either found the rider
 // already invested in the session or a connection too slow to swap
-// seamlessly; both cases get the explicit toast (which also means
-// nobody is ever left stale with NO indication).
+// seamlessly; both cases get the explicit toast, but only once the new
+// worker's core files are cached (offerUpdateWhenReady). The toast used
+// to appear on the clock, and the connections too slow to finish in
+// time were exactly the ones where its Reload swapped onto a near-empty
+// cache: the new page with the old app.js, or a page that never loaded.
+// Until the core is in, the rider keeps the working version with no
+// prompt, since there is nothing yet they could act on.
 //
 // CACHE_VERSION (content-hashed at build time) ticks on any deploy,
 // code, data, PMTiles, icons, so this fires for any rebuild.
@@ -14451,56 +14461,94 @@ if ("serviceWorker" in navigator) {
             }, {
                 label: "Reload",
                 primary: true,
-                onClick: () => {
-                    // Reload immediately on the next controllerchange
-                    // (which fires when the waiting SW activates after
-                    // skipWaiting). Use a one-shot listener so we
-                    // don't double-reload if controllerchange fires
-                    // again later.
-                    let reloaded = false;
-                    navigator.serviceWorker.addEventListener(
-                        "controllerchange",
-                        () => {
-                            if (reloaded) return;
-                            reloaded = true;
-                            reloadForUpdate();
-                        },
-                        { once: true }
-                    );
-                    if (reg.waiting) {
-                        reg.waiting.postMessage({ type: "SKIP_WAITING" });
-                    } else {
-                        // Edge case: registration.waiting cleared
-                        // between toast-show and click. Just reload,
-                        // the page will pick up whatever SW is
-                        // active.
-                        reloadForUpdate();
-                    }
-                },
+                onClick: () => { applySwUpdateNow(reg); },
             }],
         });
     }
 
-    // Ask a specific worker (the WAITING one, not the controller)
-    // whether its core files are cached. Resolves false on timeout or
-    // any error: false just means "poll again / fall back to the
-    // toast", so it can never cause a swap onto a cold cache. The
-    // timeout covers a worker the browser terminated, which never
-    // answers.
-    function querySwCoreStatus(sw) {
+    // The toast's Reload. The worker swaps only if its cache still
+    // holds the core (it checks again, see skipWaitingIfReady in
+    // sw.js), so a tap can never trade a working map for a broken one.
+    async function applySwUpdateNow(reg) {
+        const sw = reg.waiting;
+        if (!sw) {
+            // registration.waiting cleared between toast-show and
+            // click: another tab applied it. Reloading picks up the
+            // active version.
+            reloadForUpdate();
+            return;
+        }
+        // One-shot, so a later controllerchange can't reload again.
+        let reloaded = false;
+        const onControllerChange = () => {
+            if (reloaded) return;
+            reloaded = true;
+            reloadForUpdate();
+        };
+        navigator.serviceWorker.addEventListener(
+            "controllerchange", onControllerChange, { once: true });
+        const answer = await askSw(sw, "SKIP_WAITING");
+        if (answer && answer.applied) return;
+        // Not swapped: the rider keeps this version, and the toast comes
+        // back once the update is really ready. Disarmed so a swap that
+        // lands later can't reload the page out from under them.
+        navigator.serviceWorker.removeEventListener(
+            "controllerchange", onControllerChange);
+        _hasShownUpdateToast = false;
+        showToast("Update still downloading. You'll be asked again when it's ready.");
+        offerUpdateWhenReady(reg);
+    }
+
+    // Post a message to a specific worker (the WAITING one, not the
+    // controller) and resolve its reply, or null on timeout or any
+    // error. Callers treat null as "not ready", so it can never cause a
+    // swap onto a cold cache. The timeout covers a worker the browser
+    // terminated, which never answers.
+    function askSw(sw, type) {
         return new Promise((resolve) => {
             try {
                 const channel = new MessageChannel();
-                const timer = setTimeout(() => resolve(false), 3000);
+                const timer = setTimeout(() => resolve(null), 3000);
                 channel.port1.onmessage = (e) => {
                     clearTimeout(timer);
-                    resolve(!!(e.data && e.data.coreComplete));
+                    resolve(e.data || null);
                 };
-                sw.postMessage({ type: "CORE_STATUS" }, [channel.port2]);
+                sw.postMessage({ type }, [channel.port2]);
             } catch (_) {
-                resolve(false);
+                resolve(null);
             }
         });
+    }
+
+    async function querySwCoreStatus(sw) {
+        const answer = await askSw(sw, "CORE_STATUS");
+        return !!(answer && answer.coreComplete);
+    }
+
+    // Quiet wait for the waiting worker's core files, then the toast.
+    // Each poll also restarts that worker's precache if it stopped (a
+    // dead or stalled link ends a run), so an update interrupted by bad
+    // signal finishes on its own once signal returns. Ends when the
+    // worker leaves the waiting slot (applied by another tab or by the
+    // browser).
+    const SW_READY_POLL_MS = 10000;
+    let _offerUpdatePolling = false;
+    async function offerUpdateWhenReady(reg) {
+        if (_offerUpdatePolling) return;
+        _offerUpdatePolling = true;
+        try {
+            for (;;) {
+                const sw = reg.waiting;
+                if (!sw) return;
+                if (await querySwCoreStatus(sw)) {
+                    showSwUpdateToast(reg);
+                    return;
+                }
+                await new Promise((r) => setTimeout(r, SW_READY_POLL_MS));
+            }
+        } finally {
+            _offerUpdatePolling = false;
+        }
     }
 
     // The silent path: show the "Updating map" bar, poll the waiting
@@ -14585,10 +14633,10 @@ if ("serviceWorker" in navigator) {
             }
         } catch (_) {
             // Unexpected failure in the polling machinery: fall
-            // through to the explicit toast below.
+            // through to the explicit offer below.
         }
         if (window.__hideMapUpdating) window.__hideMapUpdating();
-        showSwUpdateToast(reg);
+        offerUpdateWhenReady(reg);
     }
 
     function watchForSwUpdate(reg) {
@@ -14621,7 +14669,7 @@ if ("serviceWorker" in navigator) {
                 if (Date.now() - _pageLoadedAt < SW_SILENT_SWAP_WINDOW_MS) {
                     trySilentSwap(reg);
                 } else {
-                    showSwUpdateToast(reg);
+                    offerUpdateWhenReady(reg);
                 }
             });
         };
@@ -14644,6 +14692,15 @@ if ("serviceWorker" in navigator) {
             if (now - _lastSwUpdateCheck < 60000) return;
             _lastSwUpdateCheck = now;
             reg.update().catch(() => { /* offline, try again later */ });
+            // The same moment resumes a precache that a dropped link
+            // ended (sw.js ends a run on a network failure).
+            if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
+        });
+        // Signal back: resume at once rather than at the next load, so
+        // a first visit cut short finishes saving while the rider still
+        // has signal.
+        window.addEventListener("online", () => {
+            if (reg.active) reg.active.postMessage({ type: "RESUME_PRECACHE" });
         });
     }
 
@@ -14759,6 +14816,54 @@ function _queryPrecacheStatus() {
         }
     });
 }
+
+// The one cue on the map itself. A rider who lost signal before the
+// first precache finished gets trails on an empty basemap, and nothing
+// else says why; the About row knows, but nobody opens About to ask.
+// Triggered by going offline or a tile archive fetch failing (a dead
+// link often still reports online), and shown only when the active
+// worker says this map is not fully saved. Once per page load: it
+// explains the blank, it doesn't need repeating per failed tile.
+// Persistent (with the auto-dismiss button) because it lands while the
+// map is loading, when a 4 s toast is easily missed.
+let _offlineGapState = "unchecked"; // "checking" | "shown" | "saved"
+
+async function noteOfflineGap() {
+    if (_offlineGapState !== "unchecked") return;
+    _offlineGapState = "checking";
+    const status = await _queryPrecacheStatus();
+    if (status && (status.complete || !status.totalBytes)) {
+        _offlineGapState = "saved";
+        return;
+    }
+    if (!status) {
+        // No worker answer yet (first visit, still activating): a later
+        // failure asks again.
+        _offlineGapState = "unchecked";
+        return;
+    }
+    _offlineGapState = "shown";
+    showToast(
+        "This map isn't fully saved for offline use. "
+            + "Saving finishes when you're back online.",
+        { persistent: true }
+    );
+    // Keeps the toast's promise without a reload. The "online" event is
+    // not enough: a link that died while still reporting online never
+    // sends one. sw.js ends a run on the first network failure, so each
+    // nudge costs one failed request while the link stays down.
+    const nudge = setInterval(async () => {
+        const sw = navigator.serviceWorker.controller;
+        if (sw) sw.postMessage({ type: "RESUME_PRECACHE" });
+        const now = await _queryPrecacheStatus();
+        if (now && now.complete) clearInterval(nudge);
+    }, 30000);
+}
+
+window.addEventListener("offline", noteOfflineGap);
+// Opened with no signal at all: no "offline" event will come. Deferred
+// past script evaluation, as showToast's state is declared further down.
+if (!navigator.onLine) setTimeout(noteOfflineGap, 0);
 
 // Every state is spelled out rather than hiding the row on doubt: a
 // rider troubleshooting "why doesn't offline work?" on a map they

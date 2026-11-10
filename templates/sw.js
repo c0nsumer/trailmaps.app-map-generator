@@ -91,7 +91,7 @@ const PRECACHE_DONE_URL = "__precache-complete__";
 let _precacheRunning = false;
 
 async function backgroundPrecache() {
-    // Sequential cache.add (not cache.addAll) so we trickle through
+    // Sequential precacheOne (not cache.addAll) so we trickle through
     // the connection one request at a time, leaving bandwidth for
     // foreground MapLibre fetches. cache: "no-cache" forces
     // revalidation against the server via conditional GET - Caddy
@@ -130,13 +130,18 @@ async function backgroundPrecache() {
         for (const url of SW_CONFIG.PRECACHE_URLS) {
             try {
                 if (await cache.match(url)) continue; // resume: already cached
-                await cache.add(new Request(url, { cache: "no-cache" }));
+                await precacheOne(cache, url);
             } catch (e) {
-                // Best-effort. A single failed asset (network blip,
-                // stale URL after deploy, etc.) shouldn't abort the
-                // rest of the precache. Log so it's visible in DevTools
-                // when debugging offline coverage gaps.
                 console.warn("SW backgroundPrecache failed:", url, e);
+                // A server answer (404 for a stale URL after a deploy)
+                // costs only that file, so carry on. A network failure
+                // or a stall means the link is down, and every later
+                // file would fail the same way (a stall costing
+                // PRECACHE_IDLE_MS each), so end the run here; the next
+                // trigger (page load, the page's "online" and
+                // foreground pings, a waiting worker's CORE_STATUS
+                // polls) resumes from the first gap.
+                if (!(e instanceof PrecacheHttpError)) break;
             }
         }
         // Mark complete only when every URL is really present - a
@@ -160,6 +165,92 @@ async function backgroundPrecache() {
     } finally {
         _precacheRunning = false;
     }
+}
+
+// A precache fetch whose bytes stopped arriving for this long is
+// abandoned. On the "reported but dead" cellular link a request can
+// hang without ever failing, and a hung run holds _precacheRunning, so
+// nothing could ever retry it. The timer measures silence, not total
+// time, so a 30 MB archive on a slow but live link still finishes.
+const PRECACHE_IDLE_MS = 30000;
+
+class PrecacheHttpError extends Error {}
+
+// cache.add, plus the idle abort above. The body is streamed into
+// cache.put rather than buffered, so a tile archive never sits whole in
+// memory. An aborted or failed body rejects the put and stores nothing,
+// so a half-downloaded file can never pass for a cached one.
+async function precacheOne(cache, url) {
+    const ctrl = new AbortController();
+    let timer = null;
+    const arm = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => ctrl.abort(), PRECACHE_IDLE_MS);
+    };
+    arm();
+    try {
+        const response = await fetch(
+            new Request(url, { cache: "no-cache", signal: ctrl.signal })
+        );
+        // Same acceptance as cache.add: a full, successful response only.
+        if (!response.ok || response.status === 206) {
+            throw new PrecacheHttpError(`HTTP ${response.status}`);
+        }
+        arm();
+        let body = null;
+        if (response.body) {
+            const reader = response.body.getReader();
+            body = new ReadableStream({
+                async pull(controller) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        controller.close();
+                        return;
+                    }
+                    arm();
+                    controller.enqueue(value);
+                },
+                cancel(reason) {
+                    return reader.cancel(reason);
+                },
+            });
+        }
+        await cache.put(
+            url,
+            new Response(body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+            })
+        );
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// "Core" is every PRECACHE_URL except the .pmtiles archives: what a
+// page from this build must get from THIS cache to boot and draw (the
+// page, app code, styles, the vendor modules, trail and POI data,
+// glyphs, sprites). Tile archives are left out because the Range and
+// HEAD handlers may answer from the previous version's archive, which
+// is harmless; a page, its code, or its data from another build is not.
+// Sticky once true: entries are never removed from a live cache.
+let _coreVerified = false;
+
+async function coreComplete() {
+    if (_coreVerified) return true;
+    const cache = await caches.open(CACHE_NAME);
+    if (await cache.match(PRECACHE_DONE_URL)) {
+        _coreVerified = true;
+        return true;
+    }
+    const pmtiles = new Set(SW_CONFIG.PMTILES_FILES);
+    for (const url of SW_CONFIG.PRECACHE_URLS) {
+        if (pmtiles.has(url)) continue;
+        if (!(await cache.match(url))) return false;
+    }
+    _coreVerified = true;
+    return true;
 }
 
 // Delete previous versions' caches. Deferred until (a) this worker is
@@ -190,12 +281,19 @@ async function cleanupOldCaches() {
     ) {
         return;
     }
+    // A tab still running from a previous cache (see servingCacheFor)
+    // keeps it; a later trigger (the next page load's RESUME_PRECACHE)
+    // deletes it once that tab is gone.
+    const inUse = new Set();
+    for (const [id, name] of _clientCaches) {
+        if (name !== CACHE_NAME && (await self.clients.get(id))) inUse.add(name);
+    }
     const keys = await caches.keys();
     await Promise.all(
         keys
             .filter(
                 (k) =>
-                    (OWN_CACHE_RE.test(k) && k !== CACHE_NAME) ||
+                    (OWN_CACHE_RE.test(k) && k !== CACHE_NAME && !inUse.has(k)) ||
                     LEGACY_CACHE_RE.test(k)
             )
             .map((k) => caches.delete(k))
@@ -208,14 +306,23 @@ async function cleanupOldCaches() {
 // SKIP_WAITING is posted to this worker (the waiting one) by two
 // paths in app.js: the silent swap (after CORE_STATUS confirms this
 // cache's core files are present) and the rider tapping "Reload" on
-// the mid-session update toast. Either way we call skipWaiting() so
-// this version becomes active; the page then observes
-// `controllerchange` on navigator.serviceWorker and reloads itself.
-// Without this handshake, the new SW would stay in the "waiting"
-// state until every page using the old SW closed.
+// the mid-session update toast. We call skipWaiting() so this version
+// becomes active; the page then observes `controllerchange` on
+// navigator.serviceWorker and reloads itself. Without this handshake,
+// the new SW would stay in the "waiting" state until every page using
+// the old SW closed.
+//
+// Honored only once this cache holds the core. The page asks first,
+// but the worker is the one that knows its cache, and pages from
+// builds before this check post SKIP_WAITING unconditionally: an
+// unguarded swap onto a cold cache gave a rider on a weak link the new
+// page with the old app.js, or a page that never finished loading. A
+// refused request keeps the old version in charge and resumes this
+// precache. The answer goes back on the transferred port when there
+// is one, so the page can tell "applied" from "not ready yet".
 self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "SKIP_WAITING") {
-        self.skipWaiting();
+        event.waitUntil(skipWaitingIfReady(event.ports && event.ports[0]));
     }
     // Core-readiness query for the silent update swap (see the PWA
     // update block in app.js). The page polls the WAITING worker with
@@ -244,38 +351,36 @@ self.addEventListener("message", (event) => {
     }
 });
 
+async function skipWaitingIfReady(port) {
+    let ready = false;
+    try {
+        ready = await coreComplete();
+        if (ready) await self.skipWaiting();
+    } catch (e) {
+        console.warn("SW skipWaitingIfReady failed:", e);
+        ready = false;
+    }
+    if (port) port.postMessage({ type: "SKIP_WAITING", applied: ready });
+    if (!ready) backgroundPrecache();
+}
+
 // Answer a CORE_STATUS query: are all non-.pmtiles precache URLs in
 // this worker's cache? Resolves false on any doubt; the page treats
-// false as "keep waiting" and falls back to the update toast when its
-// grace window expires, so a wrong false costs a prompt, never a
-// broken swap.
+// false as "keep waiting" and offers the update only once it reads
+// true, so a wrong false delays an update, never breaks a swap.
 async function reportCoreStatus(port) {
-    let coreComplete = false;
+    let ready = false;
     try {
-        const cache = await caches.open(CACHE_NAME);
-        if (await cache.match(PRECACHE_DONE_URL)) {
-            // Full precache verified - core is a subset.
-            coreComplete = true;
-        } else {
-            const pmtiles = new Set(SW_CONFIG.PMTILES_FILES);
-            coreComplete = true;
-            for (const url of SW_CONFIG.PRECACHE_URLS) {
-                if (pmtiles.has(url)) continue;
-                if (!(await cache.match(url))) {
-                    coreComplete = false;
-                    break;
-                }
-            }
-        }
+        ready = await coreComplete();
     } catch (e) {
         console.warn("SW reportCoreStatus failed:", e);
     }
-    port.postMessage({ type: "CORE_STATUS", coreComplete });
+    port.postMessage({ type: "CORE_STATUS", coreComplete: ready });
     // A waiting worker's install-time run can be cut short by the
     // browser terminating it, and RESUME_PRECACHE goes only to the
     // active worker, so the page's polling is what resumes this one.
     // Re-entrancy guarded: a run already in progress is left alone.
-    if (!coreComplete) backgroundPrecache();
+    if (!ready) backgroundPrecache();
 }
 
 // Answer a PRECACHE_STATUS query with byte-weighted progress.
@@ -339,12 +444,16 @@ async function reportPrecacheStatus(port) {
 // last version's archives. cleanupOldCaches() deletes them only once
 // the new precache verifies complete.
 self.addEventListener("activate", (event) => {
-    event.waitUntil(self.clients.claim());
+    const remembered = rememberOpenClients()
+        .catch((e) => console.warn("SW rememberOpenClients failed:", e));
+    event.waitUntil(remembered.then(() => self.clients.claim()));
     // Resume any precache the install-time run didn't finish (the
     // worker may have been terminated mid-list while this version sat
     // waiting). Fire-and-forget OUTSIDE waitUntil - activation must
-    // not block on a ~20 MB background fill.
-    backgroundPrecache();
+    // not block on a ~20 MB background fill. After the open tabs are
+    // recorded: a precache already complete goes straight to cleanup,
+    // which must see which previous cache those tabs still run from.
+    remembered.then(() => backgroundPrecache());
 });
 
 // Every PRECACHE_URL as the absolute URL its cache entry is stored
@@ -462,11 +571,23 @@ self.addEventListener("fetch", (event) => {
     // A precached file is looked up and stored under its precache key,
     // not the request: see precacheKey for why the query string goes.
     // Everything else keeps its full URL, query included.
-    const key = precacheKey(url) || event.request;
+    //
+    // The last-resort fallback to old caches is for files outside the
+    // precache list only (glyph ranges, anything cached on fetch). A
+    // precached file from another version's cache is exactly how a page
+    // from one build ended up running another build's app.js; those
+    // files instead come from the one cache servingCacheFor picked for
+    // the page.
+    const precached = precacheKey(url);
+    const key = precached || event.request;
     event.respondWith(
         (async () => {
             const cache = await caches.open(CACHE_NAME);
-            const cached = await cache.match(key);
+            const serving = await servingCacheFor(event);
+            const cached =
+                (serving !== CACHE_NAME &&
+                    (await caches.match(key, { cacheName: serving }))) ||
+                (await cache.match(key));
             if (cached) return cached;
             const networkReq = new Request(event.request, { cache: "no-cache" });
             try {
@@ -492,13 +613,88 @@ self.addEventListener("fetch", (event) => {
                 }
                 return response;
             } catch (err) {
-                const stale = await caches.match(key);
+                const stale = !precached && (await caches.match(key));
                 if (stale) return stale;
                 throw err;
             }
         })()
     );
 });
+
+// Which cache answers a page's precached files, decided once per page
+// at its navigation and kept for that page's later requests, so a page
+// and everything it loads come from one build.
+//
+// Normally this worker's own cache. The exception is a worker that
+// became active before its core arrived: the browser promotes a waiting
+// worker on its own once every old tab has closed (the rider swiped the
+// app away mid-update and reopened it at the trailhead), with no core
+// check. A page then served from this cache would get the new page and
+// whatever subset of new files had landed. Instead it runs whole from
+// the newest previous version whose precache verified complete, which
+// cleanupOldCaches keeps until this version's precache completes; the
+// next load after that runs the new version.
+//
+// The choice lives in worker memory, so it is lost when the browser
+// stops an idle worker, and the page's later requests then take a
+// fresh decision. That can only move a page from the previous cache to
+// this one once this core is complete, and a page has fetched its page,
+// code, and data at boot by then.
+const _clientCaches = new Map();
+
+async function servingCacheFor(event) {
+    const id =
+        event.request.mode === "navigate"
+            ? event.resultingClientId
+            : event.clientId;
+    if (event.request.mode !== "navigate" && id && _clientCaches.has(id)) {
+        return _clientCaches.get(id);
+    }
+    let name = CACHE_NAME;
+    try {
+        if (!(await coreComplete())) name = (await previousCompleteCache()) || name;
+    } catch (e) {
+        console.warn("SW servingCacheFor failed:", e);
+    }
+    if (id) rememberClientCache(id, name);
+    return name;
+}
+
+function rememberClientCache(id, name) {
+    _clientCaches.set(id, name);
+    // Bounded: entries for closed tabs are dropped oldest-first.
+    if (_clientCaches.size > 50) {
+        _clientCaches.delete(_clientCaches.keys().next().value);
+    }
+}
+
+// The newest previous version's cache whose precache verified
+// complete, or null.
+async function previousCompleteCache() {
+    const older = (await caches.keys()).filter(
+        (k) => OWN_CACHE_RE.test(k) && k !== CACHE_NAME
+    );
+    // caches.keys() lists in creation order: newest last.
+    for (const k of older.reverse()) {
+        if (await caches.match(PRECACHE_DONE_URL, { cacheName: k })) return k;
+    }
+    return null;
+}
+
+// Tabs already open when this version activates were loaded by the
+// previous one, and clients.claim() hands them to this worker. Only the
+// tab whose Reload applied the update reloads; the others keep running
+// the previous build, so their later requests (a sprite on a theme
+// switch, the QR module) keep coming from the previous cache.
+async function rememberOpenClients() {
+    const previous = await previousCompleteCache();
+    if (!previous) return;
+    const open = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+    });
+    for (const c of open) rememberClientCache(c.id, previous);
+}
 
 // ============================================================
 // Range request handler for PMTiles
