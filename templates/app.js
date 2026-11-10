@@ -9980,6 +9980,7 @@ function highlightPoiSet(pois, label) {
         map.flyTo({
             center: [p.lng, p.lat],
             zoom: Math.max(map.getZoom(), 15),
+            offset: keyCardFlyOffset(60),
             duration: 700,
         });
     } else {
@@ -9996,12 +9997,13 @@ function highlightPoiSet(pois, label) {
             map.flyTo({
                 center: [minLng, minLat],
                 zoom: Math.max(map.getZoom(), 15),
+                offset: keyCardFlyOffset(60),
                 duration: 700,
             });
         } else {
             map.fitBounds(
                 [[minLng, minLat], [maxLng, maxLat]],
-                { padding: 80, maxZoom: 16, duration: 700 },
+                { padding: keyCardFitPadding(80), maxZoom: 16, duration: 700 },
             );
         }
     }
@@ -10171,6 +10173,21 @@ function keyCardFitPadding(pad) {
     return useAbove
         ? { top: pad, right: pad, bottom: Math.max(pad, bottom), left: pad }
         : { top: pad, right: Math.max(pad, right), bottom: pad, left: pad };
+}
+
+// A single point has no bounds to fit, so the same free rectangle
+// becomes an offset: the point lands at that rectangle's center rather
+// than the map's, which an open card on a phone covers. `offset`, not
+// `padding`, because flyTo's padding stays on the transform and would
+// shift every later camera move (Locate, the next fit). No expanded
+// card keeps a zero offset, the camera it had before. Callers pass the
+// route fit's 60, not the POI set's 80: a point needs no margin for its
+// own extent, and at 80 a 320x568 phone's free rectangle falls under
+// KEY_CARD_FIT_MIN_PX and the point stays under the card.
+function keyCardFlyOffset(pad) {
+    const p = keyCardFitPadding(pad);
+    if (typeof p === "number") return [0, 0];
+    return [(p.left - p.right) / 2, (p.top - p.bottom) / 2];
 }
 
 function showHighlightChip({ label, color, stats, line, glyph, glyphFreeride, poiType, markerLabel }) {
