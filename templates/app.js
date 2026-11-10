@@ -15226,8 +15226,8 @@ async function noteOfflineGap() {
     }
     _offlineGapState = "shown";
     showToast(
-        "This map isn't fully saved for offline use. "
-            + "Saving finishes when you're back online.",
+        "This map didn't finish saving for offline use. "
+            + "Saving will resume when you are back online.",
         { persistent: true }
     );
     // Keeps the toast's promise without a reload. The "online" event is
