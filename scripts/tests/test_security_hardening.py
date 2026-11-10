@@ -1,9 +1,12 @@
 """Hardening for data that reaches the built site or the build machine:
-OSM colours, pinned vendor libraries, SVG logos, event GPX files, and
-curator text that looks like an engine placeholder. All offline."""
+OSM colours, pinned vendor libraries, SVG logos, event GPX files,
+curator text that looks like an engine placeholder, and the page's
+Content-Security-Policy. All offline."""
 
+import base64
 import hashlib
 import os
+from html.parser import HTMLParser
 
 import pytest
 from conftest import MINIMAL_CONFIG
@@ -198,3 +201,68 @@ def test_title_with_engine_placeholder_stays_literal():
     assert "<title>A __COLOR_SCHEME_BOOTSTRAP__ __BRAND_IMG_DIMS__ \"q\"</title>" in html
     assert html.count('getItem("') == 1  # one bootstrap script
     assert 'id="brand-title">A __COLOR_SCHEME_BOOTSTRAP__ __BRAND_IMG_DIMS__ &quot;q&quot;<' in html
+
+
+# --- Content-Security-Policy meta -------------------------------------------
+
+
+class _InlineScripts(HTMLParser):
+    """Inline script bodies and tag order, as an HTML parser splits them."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.bodies, self.tags, self.csp = [], [], None
+        self._open = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        self.tags.append(tag)
+        if tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy":
+            self.csp = attrs["content"]
+            self.tags[-1] = "csp"
+        if tag == "script" and "src" not in attrs:
+            self._open = []
+
+    def handle_data(self, data):
+        if self._open is not None:
+            self._open.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self._open is not None:
+            self.bodies.append("".join(self._open))
+            self._open = None
+
+
+ODD_CONFIG = {
+    **MINIMAL_CONFIG,
+    "title": "Ö'\"<b>&amp;</script><script>alert(1)</script> 🚵 Trails",
+    "name": "</script>\"'<!--",
+    "welcome": {"body": "Ünïcødé <script>x</script> --> \"q\" 'q'\n\nmore"},
+}
+
+
+@pytest.mark.parametrize("minify", [False, True])
+@pytest.mark.parametrize("config", [MINIMAL_CONFIG, ODD_CONFIG], ids=["minimal", "odd"])
+def test_csp_meta_hashes_every_inline_script_of_the_final_page(tmp_path, config, minify):
+    template = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "index.html")
+    with open(template, encoding="utf-8") as f:
+        html = _process_index_html(f.read(), dict(config))
+    (tmp_path / "index.html").write_text(html, encoding="utf-8")
+    if minify:
+        build._minify_assets(str(tmp_path), [("index.html", "html")])
+    build._add_csp_meta(str(tmp_path))
+
+    page = _InlineScripts()
+    page.feed((tmp_path / "index.html").read_text(encoding="utf-8"))
+    assert page.csp and page.bodies
+    script_src = next(d for d in page.csp.split("; ") if d.startswith("script-src "))
+    hashes = [t for t in script_src.split()[1:] if t.startswith("'sha256-")]
+    expected = [
+        "'sha256-" + base64.b64encode(hashlib.sha256(b.encode()).digest()).decode() + "'"
+        for b in page.bodies
+    ]
+    assert hashes == expected
+    assert "'unsafe-inline'" not in script_src and "'unsafe-eval'" not in script_src
+    # A meta policy covers only what follows it.
+    assert page.tags.index("csp") < min(page.tags.index(t) for t in ("script", "link", "style")
+                                        if t in page.tags)

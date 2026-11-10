@@ -1098,7 +1098,7 @@ def copy_templates(config, output_dir, trails_geojson):
     project_root = os.path.dirname(SCRIPTS_DIR)
     templates_dir = os.path.join(project_root, "templates")
 
-    for filename in ["index.html", "app.js", "style.css"]:
+    for filename in ["index.html", "app.js", "style.css", "maplibre-global.mjs", "uqr-global.mjs"]:
         src = os.path.join(templates_dir, filename)
         if not os.path.exists(src):
             console.warn(f"Template not found: {src}")

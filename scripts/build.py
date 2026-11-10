@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import base64
 import concurrent.futures
 import contextlib
 import functools
@@ -115,6 +116,8 @@ def _round_geojson_precision(geojson, ndigits=COORD_PRECISION):
 
 MINIFY_TARGETS = [
     ("app.js", "rjsmin"),
+    ("maplibre-global.mjs", "rjsmin"),
+    ("uqr-global.mjs", "rjsmin"),
     ("style.css", "rcssmin"),
     ("index.html", "html"),
 ]
@@ -200,6 +203,71 @@ def _strip_html_comments(chunk):
         chunk,
         flags=re.S,
     )
+
+
+# A comment is consumed whole so a `<script` inside one is not mistaken for a
+# tag, and a script body is consumed whole so a `<!--` inside one is not
+# mistaken for a comment: the same split the HTML parser makes. A body ends
+# at the first `</script`, as it does for the parser.
+_CSP_SCAN_RE = re.compile(
+    r"<!--.*?-->|<script\b(?P<attrs>[^>]*)>(?P<body>.*?)</script", re.S | re.I
+)
+_CHARSET_META = '<meta charset="utf-8">'
+
+# The hashes join script-src in _add_csp_meta. frame-ancestors, report-uri,
+# and sandbox are ignored in a meta policy, and clubs may embed maps, so
+# framing is left to the host's headers.
+_CSP_DIRECTIVES = (
+    # The lanes plugin starts its worker from a blob: URL.
+    "worker-src 'self' blob:",
+    # Safari before 15.5 has no worker-src and falls back to child-src
+    # (then default-src 'none'), which would block every worker there.
+    "child-src 'self' blob:",
+    "style-src 'self'",
+    # MapLibre and the popup rows set style= attributes.
+    "style-src-attr 'unsafe-inline'",
+    # Canvas-drawn rating icons and the CSS/MapLibre control icons are
+    # data: URLs.
+    "img-src 'self' data:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "manifest-src 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+)
+
+
+def _add_csp_meta(output_dir):
+    """Write a Content-Security-Policy meta tag into the built index.html.
+
+    Runs on the final page, after every substitution and after
+    minification, and hashes the inline scripts' bytes as they stand
+    there, so no template or minifier change can leave a stale hash.
+    Text mode turns CRLF into LF on read, as the HTML parser does before
+    the browser hashes a script. The meta goes right after the charset
+    meta so it precedes every script and stylesheet; the orchestrator's
+    later string edits (the OG block, meta content, the title) touch no
+    script, so the hashes survive them.
+    """
+    path = os.path.join(output_dir, "index.html")
+    with open(path, encoding="utf-8") as f:
+        html = f.read()
+    hashes = []
+    for m in _CSP_SCAN_RE.finditer(html):
+        if m.group("attrs") is None or re.search(r"\bsrc\s*=", m.group("attrs"), re.I):
+            continue
+        digest = hashlib.sha256(m.group("body").encode("utf-8")).digest()
+        hashes.append(f"'sha256-{base64.b64encode(digest).decode('ascii')}'")
+    policy = "; ".join(
+        ("default-src 'none'", " ".join(["script-src 'self'", *hashes]), *_CSP_DIRECTIVES)
+    )
+    if html.count(_CHARSET_META) != 1:
+        console.error(f"index.html: expected one {_CHARSET_META} to place the CSP after")
+        sys.exit(1)
+    meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}">'
+    html = html.replace(_CHARSET_META, f"{_CHARSET_META}\n    {meta}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
 
 
 def _minify_assets(output_dir, targets=None):
@@ -1792,6 +1860,7 @@ def _stage_templates(config, args, output_dir, cache_dir, trails_geojson):
         console.step("Minifying assets...", detail=True)
         _minify_assets(output_dir)
         console.blank(detail=True)
+    _add_csp_meta(output_dir)
 
     # CDN deps served locally for offline use.
     console.step("Bundling vendor libraries...", detail=True)
