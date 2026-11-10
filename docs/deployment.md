@@ -9,6 +9,7 @@ worker over the long term.
 - [Quick deploy: any static file server](#quick-deploy-any-static-file-server)
 - [Deploying by other means](#deploying-by-other-means)
 - [Caddy configuration](#caddy-configuration)
+- [Content Security Policy](#content-security-policy)
 - [Service worker update cadence](#service-worker-update-cadence)
 - [PWA and offline support](#pwa-and-offline-support)
 - [PMTiles and HTTP Range requests](#pmtiles-and-http-range-requests)
@@ -177,6 +178,56 @@ served as `text/javascript`, and a sane TTL on everything else. The three
 security headers and the SVG policy are recommended, and none of them changes
 how the map behaves. The vendored MapLibre and uqr scripts are module
 scripts. A browser refuses them when the server sends another MIME type.
+
+## Content Security Policy
+
+The trail data comes from OpenStreetMap, which anyone can edit, and every map
+on a site shares one origin. The app escapes everything it shows, but if that
+ever failed, a script injected through one map's data would run with whatever
+a rider had granted the site (location, mostly). So the build writes a
+Content Security Policy into each map's `index.html` as a `<meta>` tag, right
+after the charset:
+
+- Scripts: the map's own files, plus the page's four inline scripts by SHA-256
+  hash. Nothing from another host, no `eval`.
+- Fetches, fonts, and the manifest: the map's own origin only.
+- Images: the map's own origin, plus `data:` URLs (the rating icons and the
+  map control icons).
+- Workers: the map's own origin, plus `blob:` (the lanes plugin starts its
+  worker that way).
+- Styles: the map's own stylesheets, plus `style=` attributes (MapLibre and
+  the popups set them).
+- No `<base>`, no form posts.
+
+You don't need to do anything for this to work. The build computes the hashes
+from the finished page, so they're right for every map and every rebuild.
+
+It matters when you add something to a built page yourself (eg: an analytics
+snippet), as the browser will block whatever the policy doesn't list:
+
+- An inline script: put it in a file next to `index.html` and load it with
+  `<script src>`. (Or add its hash to `script-src`. Chrome prints the hash in
+  the console when it blocks the script.)
+- A script or beacon on another host: add that host to `script-src` and
+  `connect-src`, and to `img-src` if it uses a tracking pixel.
+- A web font from a CDN: host the font files with the map, or add the CSS
+  host to `style-src` and the font host to `font-src`.
+- An inline `<style>` block: move it to a `.css` file.
+
+Two things to keep in mind when editing the tag. A rebuild writes a fresh one,
+so the edit has to be reapplied after each build (a script that patches the
+build output is the usual way). And a `Content-Security-Policy` header sent by
+your server is applied on top of the tag: it can tighten the policy, but it
+can't loosen it.
+
+The tag doesn't cover framing (a meta policy can't carry `frame-ancestors`),
+so whether other sites may embed the map is up to your server's headers. It
+also doesn't cover an SVG opened by its own URL, which is what the `@svg`
+block in the Caddy config is for.
+
+As of this writing (2026-Nov-10) this is tested in Chromium only. Firefox
+before 108 doesn't know `style-src-attr` and would block the `style=`
+attributes, which breaks the popup layout there.
 
 ## Service worker update cadence
 
