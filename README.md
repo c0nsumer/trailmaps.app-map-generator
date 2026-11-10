@@ -41,8 +41,8 @@ This is the framework that generates most of the maps at
   bicycle repair stations as configurable POI layers; direction arrows on
   one-way ways; per-route dash patterns; per-trail difficulty symbols on the
   IMBA or ITRS scale (ITRS adds exposure points and bike-only trails).
-- Compass heading indicator: on devices with a compass, the Locate dot grows
-  a small cone showing which way the rider is facing. The app reads the device
+- Compass heading indicator: on devices with a compass, the Locate dot gets
+  a small pointer showing which way the rider is facing. The app reads the device
   compass, falling back to the direction field each GPS fix already carries.
   On iOS this sits behind its own permission prompt, asked once during the
   Locate tap. All readings stay on the device and the app keeps no location

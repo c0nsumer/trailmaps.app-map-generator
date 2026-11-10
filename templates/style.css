@@ -190,10 +190,10 @@
      * trail mark. app.js keeps its own copy as TAP_GLOW_COLOR (map layers
      * cannot read a CSS variable); change both together. */
     --highlight-yellow: #ffec00;
-    /* The rider's dot on the map, its heading cone and off-screen
+    /* The rider's dot on the map, its heading pointer and off-screen
      * arrow, and the "you" mark on the trail chip. app.js keeps its own
      * copy as HERE_GLOW_COLOR for the on-trail glow (map layers cannot
-     * read a CSS variable), and the heading cone's data-URL SVG below
+     * read a CSS variable), and the heading pointer's data-URL SVG below
      * carries a third, as %233498db; change all three together. */
     --user-dot: #3498db;
     /* The same dot when its position is old (no fix, or a geolocation
@@ -2953,7 +2953,7 @@ body::after {
 
 /* The vendor's pulse ran for the whole ride and kept the page drawing
  * frames at the display rate while nothing moved. Liveness is the dot's
- * color (blue live, gray stale) and the heading cone. */
+ * color (blue live, gray stale) and the heading pointer. */
 .maplibregl-user-location-dot::before {
     display: none;
 }
@@ -2978,16 +2978,15 @@ body::after {
     z-index: 3;
 }
 
-/* ----- Compass heading wedge ---------------------------------------
- * Translucent cone fanning out from the user-location dot, rotated
- * to the device compass heading by app.js (see the compass-heading
- * block there). The marker ROOT (.compass-wedge, which MapLibre also
- * tags .maplibregl-marker and positions via inline transform) stays
- * transform-free; the cone child does the rotating via the
+/* ----- Heading pointer ---------------------------------------------
+ * A small triangle that orbits the user-location dot, rotated to the
+ * GPS course or the device compass heading by app.js (see the
+ * compass-heading block there). The marker ROOT (.compass-wedge, which
+ * MapLibre also tags .maplibregl-marker and positions via inline
+ * transform) stays transform-free; the child does the rotating via the
  * --wedge-heading custom property, so MapLibre's positioning writes
- * never clobber the rotation. z-index 1 slots the cone above POI
- * markers but under the dot (z-2), so the dot always reads as the
- * anchor point of the fan. */
+ * never clobber the rotation. z-index 1 slots the pointer above POI
+ * markers but under the dot (z-2). */
 .compass-wedge {
     width: 0;
     height: 0;
@@ -3005,14 +3004,18 @@ body::after {
     width: 56px;
     height: 56px;
     margin: -28px 0 0 -28px;
-    /* ~45° sector centered on 12 o'clock in the dot's blue (a copy of
-     * --user-dot: a data URL cannot read a variable), inside the
-     * dot's own white ring. The ring is what keeps the cone readable:
-     * a rider faces along the trail, so the cone lies on the on-trail
-     * glow (the same blue) and on blue lanes, where a bare translucent
-     * fill vanished. An SVG because a conic-gradient cannot be
-     * stroked. */
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Cpath d='M28,28 L17.9,3 A27,27 0 0,1 38.1,3 Z' fill='%233498db' fill-opacity='0.55' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+    /* An equilateral triangle (12 px sides) pointing at 12 o'clock,
+     * 3 px clear of the dot's white ring, its base an arc concentric
+     * with the dot so the gap stays even. Steve picked it from the
+     * marker lab (2026-Nov-10) over the earlier translucent cone, which
+     * lay as a block on the trail ahead. The gap keeps the dot and
+     * pointer from reading as a map pin when it points down. The fill
+     * is a copy of --user-dot (a data URL cannot read a variable); the
+     * white edge is what keeps it readable on the on-trail glow and on
+     * blue lanes, where the fill alone vanishes. */
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Cpath d='M28,5.79 L34,16.19 A13.25,13.25 0 0,0 22,16.19 Z' fill='%233498db' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+    /* A soft shadow like the one under the dot's ring, for pale ground. */
+    filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.35));
     transform: rotate(var(--wedge-heading, 0deg));
     /* Short ease keeps the sweep smooth between ~12 Hz updates; the
      * JS side feeds an unwrapped angle so this can never animate the
