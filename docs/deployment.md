@@ -119,16 +119,15 @@ mytrailmaps.com {
         precompressed br gzip
     }
 
+    # nosniff keeps a browser from guessing a file's type. The referrer
+    # policy keeps the map's path out of requests to other sites. The
+    # permissions policy limits geolocation to this site's own pages.
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(self)"
     }
-
-    # Revalidate the entry point and service worker on every load so new
-    # builds are picked up promptly. (Both `/` and `/index.html` are listed
-    # because Caddy's path matcher is exact.)
-
-    @nocache path / /index.html /sw.js
-    header @nocache Cache-Control "no-cache"
 
     # Cache static assets for a day: long enough for a ride, short enough that
     # rebuilds propagate. app.js and style.css keep stable filenames, so a
@@ -147,6 +146,20 @@ mytrailmaps.com {
     # Development / map testing: no caching.
     # header @immutable Cache-Control "no-store"
 
+    # Revalidate the entry point and service worker on every load so new
+    # builds are picked up promptly. The `*/` forms cover a map served
+    # from a subdirectory (`/ramba/`, `/ramba/index.html`, `/ramba/sw.js`).
+    # This block must come after @immutable: sw.js matches `*.js` too, and
+    # the later header wins.
+    @nocache path / /index.html */ */index.html */sw.js
+    header @nocache Cache-Control "no-cache"
+
+    # An SVG opened by its own URL is a document, and a script inside it
+    # would run on this site. The map only loads SVGs as images, so they
+    # need no script.
+    @svg path *.svg
+    header @svg Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+
     handle_errors {
         respond "{err.status_code} {err.status_text}"
     }
@@ -159,8 +172,10 @@ mytrailmaps.com {
 
 The same logical setup translates directly to nginx or Apache. The required
 pieces are HTTPS, Range request support on `.pmtiles`, `Cache-Control: no-cache`
-on `index.html` and `sw.js`, `.mjs` files served as `text/javascript`, and a
-sane TTL on everything else. The vendored MapLibre and uqr scripts are module
+on every map's `index.html` and `sw.js` (in a subdirectory too), `.mjs` files
+served as `text/javascript`, and a sane TTL on everything else. The three
+security headers and the SVG policy are recommended, and none of them changes
+how the map behaves. The vendored MapLibre and uqr scripts are module
 scripts. A browser refuses them when the server sends another MIME type.
 
 ## Service worker update cadence
