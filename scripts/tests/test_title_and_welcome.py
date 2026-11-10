@@ -184,7 +184,7 @@ def _index_html():
 
 def test_index_always_ships_the_share_row_and_sheet():
     out = _process_index_html(_index_html(), dict(MINIMAL_CONFIG))
-    for needle in ('id="share-btn"', 'id="qr-overlay"', 'id="qr-share-link"', "uqr-global.mjs"):
+    for needle in ('id="share-btn"', 'id="qr-overlay"', 'id="qr-share-link"'):
         assert needle in out
 
 

@@ -33,8 +33,8 @@ VENDOR_LIBS = {
     "maplibre-contour.js": "https://unpkg.com/maplibre-contour@0.1.1/dist/index.min.js",
     # QR code encoder for the Options Share sheet (renderQrSheet in
     # app.js): ES module, about 27 KB, MIT, Project Nayuki's generator
-    # as packaged by Anthony Fu. index.html imports it and sets
-    # window.uqr; the QR row stays hidden when it is missing.
+    # as packaged by Anthony Fu. app.js imports it on the sheet's first
+    # open; the code box stays hidden when it cannot load.
     "uqr.mjs": "https://unpkg.com/uqr@0.1.3/dist/index.mjs",
     # Draws every route, so a page without it cannot start. The
     # classic-script build (global maplibreLanes) with its workers

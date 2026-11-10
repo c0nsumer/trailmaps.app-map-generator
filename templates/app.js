@@ -3933,21 +3933,50 @@ function shareBaseUrl() {
 // so the two never disagree, and the URL is printed under the code so
 // the person holding the phone can see what it opens. Medium error correction and
 // a four-module quiet zone, black on white, so a screenshot still scans.
+//
+// The encoder loads on the first open, not at boot: most visits never
+// open the sheet. vendor/ is precached, so this works offline once the
+// map is saved. If the load fails (offline before the save finished,
+// or the file is missing) the code box hides and the sheet keeps the
+// URL and its Share / Copy link button; the next open tries again.
+// The browser remembers a failed module URL for the page's life, so a
+// retry adds a query. The service worker ignores the query, so the
+// retry still finds the precached file.
+let qrEncoder = null;
+let qrEncoderTries = 0;
+function loadQrEncoder() {
+    if (!qrEncoder) {
+        const query = qrEncoderTries ? `?retry=${qrEncoderTries}` : "";
+        qrEncoderTries++;
+        qrEncoder = import(`./vendor/uqr.mjs${query}`).catch(() => {
+            qrEncoder = null;
+            return null;
+        });
+    }
+    return qrEncoder;
+}
+
 function renderQrSheet() {
     const box = document.getElementById("qr-code");
     const text = document.getElementById("qr-url");
-    if (!box || !text || !window.uqr) return;
+    if (!box || !text) return;
     const url = buildShareUrl();
-    box.innerHTML = window.uqr.renderSVG(url, {
-        ecc: "M", border: 4, pixelSize: 1, whiteColor: "#fff", blackColor: "#000",
-    });
-    const svg = box.querySelector("svg");
-    if (svg) {
-        svg.removeAttribute("width");
-        svg.removeAttribute("height");
-        svg.setAttribute("shape-rendering", "crispEdges");
-    }
     text.textContent = url;
+    loadQrEncoder().then((uqr) => {
+        // A later open may have moved on to another view meanwhile.
+        if (text.textContent !== url) return;
+        box.classList.toggle("hidden", !uqr);
+        if (!uqr) return;
+        box.innerHTML = uqr.renderSVG(url, {
+            ecc: "M", border: 4, pixelSize: 1, whiteColor: "#fff", blackColor: "#000",
+        });
+        const svg = box.querySelector("svg");
+        if (svg) {
+            svg.removeAttribute("width");
+            svg.removeAttribute("height");
+            svg.setAttribute("shape-rendering", "crispEdges");
+        }
+    });
 }
 
 // Build the human-readable share-sheet title, appears as email
@@ -4048,10 +4077,7 @@ function setupShareButton(openShareSheet) {
     const btn = document.getElementById("share-btn");
     if (!btn) return;
     btn.classList.remove("hidden");
-    // The sheet needs the encoder module; without it the row still
-    // shares the link directly.
-    const sheet = window.uqr && openShareSheet;
-    btn.addEventListener("click", sheet ? openShareSheet : shareCurrentView);
+    btn.addEventListener("click", openShareSheet || shareCurrentView);
     const link = document.getElementById("qr-share-link");
     if (link) {
         link.textContent = navigator.share ? "Share link" : "Copy link";

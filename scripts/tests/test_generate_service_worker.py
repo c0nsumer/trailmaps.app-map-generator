@@ -140,6 +140,20 @@ def test_index_html_precached_only_as_root_seed(tmp_path):
     assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
 
 
+def test_mask_icon_deploys_but_is_not_precached(tmp_path):
+    # Only macOS Safari pinned tabs ask for it, so riders do not each
+    # download it on install. A new icon must still move the version.
+    root = str(tmp_path)
+    icon = "icons/safari-pinned-tab.svg"
+    _make_tree(root, {icon: b"<svg/>"})
+    v1, _ = _generate(root, shipped=SHIPPED | {icon})
+    assert icon not in v1["PRECACHE_URLS"]
+    assert icon not in v1["PRECACHE_BYTES"]
+    _make_tree(root, {icon: b"<svg>new</svg>"})
+    v2, _ = _generate(root, shipped=SHIPPED | {icon})
+    assert v1["CACHE_VERSION"] != v2["CACHE_VERSION"]
+
+
 def test_unrecorded_files_neither_precached_nor_hashed(tmp_path):
     # Files the build did not record - the orchestrator's social card and
     # poster, a logo an earlier build wrote - never cost a rider bandwidth,

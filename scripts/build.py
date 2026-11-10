@@ -117,7 +117,6 @@ def _round_geojson_precision(geojson, ndigits=COORD_PRECISION):
 MINIFY_TARGETS = [
     ("app.js", "rjsmin"),
     ("maplibre-global.mjs", "rjsmin"),
-    ("uqr-global.mjs", "rjsmin"),
     ("style.css", "rcssmin"),
     ("index.html", "html"),
 ]
@@ -537,6 +536,11 @@ def generate_service_worker(config, output_dir):
         # twice and double-count it in the readiness total. It stays in
         # all_files so the hash tracks its bytes.
         if rel_url == "index.html":
+            continue
+        # Only macOS Safari's pinned tabs ask for the mask icon, and it
+        # can run past 100 KB. It still deploys and counts in the hash;
+        # a browser that wants it gets it through cache-on-fetch.
+        if rel_url == "icons/safari-pinned-tab.svg":
             continue
         if rel_url.endswith(".pmtiles"):
             pmtiles_files.append(rel_url)

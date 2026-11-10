@@ -113,8 +113,10 @@ def test_precache_covers_every_built_file(tmp_path):
             built.add(rel)
     built -= {"sw.js", *STRAYS}
     built = {f for f in built if not f.endswith((".sig", ".src.geojson", ".tmp"))}
-    # The page precaches as "./"; glyphs past Basic Latin cache on fetch.
+    # The page precaches as "./"; glyphs past Basic Latin and the pinned-
+    # tab mask icon cache on fetch.
     built.discard("index.html")
+    built.discard("icons/safari-pinned-tab.svg")
     built = {f for f in built
              if not (f.startswith("fonts/") and f.endswith(".pbf")
                      and not f.endswith("/0-255.pbf"))}
