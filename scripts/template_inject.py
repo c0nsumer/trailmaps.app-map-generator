@@ -35,6 +35,7 @@ from logo import (
     resolve_icon_source,
     resolve_logo_source,
 )
+from osm_parser import plain_css_color
 from pmtiles_util import EXTRACT_MINZOOM
 from validate_config import (
     DEFAULT_FIRST_VISIT_LAYERS,
@@ -514,6 +515,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
         color_override = relation_colors.get(route_id)
         if color_override:
             route_info["colour"] = color_override
+        elif "colour" in route_info:
+            # Also checked here: a cached trails snapshot predates the
+            # check in relation_info and is reused without a refetch.
+            route_info["colour"] = plain_css_color(route_info["colour"])
 
         # Dash pattern override
         raw = dashed_relations.get(route_id)
@@ -837,14 +842,6 @@ def _process_index_html(content, config):
     # keeping the engine output identical for every consumer.
     page_title = config.get("title") or config.get("name") or "Trail Map"
     title_text = _html_escape(page_title, quote=False)
-    content = re.sub(
-        r"<title>.*?</title>",
-        # Callable replacement: a title containing a backslash
-        # escape (\1, \g) would be read as a group reference in
-        # a plain replacement string.
-        lambda _m: f"<title>{title_text}</title>",
-        content,
-    )
 
     # Open Graph + Twitter Card metadata. Always-on (no gate) -
     # benefits search engines and the Share-button preview cards
@@ -870,10 +867,7 @@ def _process_index_html(content, config):
         og_description = og_title
     # html.escape with quote=True turns " into &quot; so the
     # value is safe inside the `content="..."` attribute.
-    content = content.replace("__OG_TITLE__", _html_escape(og_title, quote=True))
-    content = content.replace(
-        "__OG_DESCRIPTION__", _html_escape(og_description, quote=True)
-    )
+    # (Substituted at the end of this function: see there.)
 
     # Strip the GPX download FAB + sheet when the map has no
     # event_mode.gpx entries (the common case), so non-event
@@ -891,7 +885,7 @@ def _process_index_html(content, config):
     # fallback when the image is missing) AND the brand-title
     # span text (shown when no logo is configured at all). Same
     # value as the OG title.
-    content = content.replace("__BRAND_TITLE__", _html_escape(page_title, quote=True))
+    # (Also substituted at the end of this function.)
 
     # Brand-img CLS-prevention dimensions. process_logo() stashes
     # the actual written pixel dimensions on config["_brand_img_dims"]
@@ -1074,7 +1068,29 @@ def _process_index_html(content, config):
         )
     elif not config.get("_has_pinned_tab"):
         content = re.sub(r"\n\s*<link rel=\"mask-icon\"[^>]*>", "", content)
-    return content
+
+    # Curator text goes in last, in one pass. Substituted earlier, a
+    # title or welcome body containing one of the engine's own
+    # __PLACEHOLDER__ tokens (or "logo.webp") would be rewritten by the
+    # later steps, splicing engine markup into the page.
+    curator_text = {
+        "OG_TITLE": _html_escape(og_title, quote=True),
+        "OG_DESCRIPTION": _html_escape(og_description, quote=True),
+        "BRAND_TITLE": _html_escape(page_title, quote=True),
+    }
+    content = re.sub(
+        r"__(OG_TITLE|OG_DESCRIPTION|BRAND_TITLE)__",
+        lambda m: curator_text[m.group(1)],
+        content,
+    )
+    return re.sub(
+        r"<title>.*?</title>",
+        # Callable replacement: a title containing a backslash
+        # escape (\1, \g) would be read as a group reference in
+        # a plain replacement string.
+        lambda _m: f"<title>{title_text}</title>",
+        content,
+    )
 
 
 def copy_templates(config, output_dir, trails_geojson):

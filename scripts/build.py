@@ -71,7 +71,7 @@ from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates, ship, url_path
 from validate_config import validate_config
-from vendor_libs import VENDOR_LIBS
+from vendor_libs import VENDOR_LIBS, VENDOR_SHA256
 
 # ---------------------------------------------------------------------------
 # Coordinate precision for the rendered trails.geojson
@@ -294,6 +294,21 @@ def _copy_vendor_script(src, dst):
     shutil.copystat(src, dst)
 
 
+def _check_vendor_hash(filename, data, cached):
+    """Exit the build unless `data` matches the pinned SHA-256 for `filename`."""
+    expected = VENDOR_SHA256[filename]
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        console.error(
+            f"vendor/{filename} does not match its pinned SHA-256 "
+            f"(expected {expected}, got {actual}). Delete {cached} to "
+            "refetch it. If it still mismatches, the pin in "
+            "scripts/vendor_libs.py or the upstream file changed: verify "
+            "the file against the npm registry before updating the pin."
+        )
+        sys.exit(1)
+
+
 def download_vendor_libs(output_dir, cache_dir):
     """Download CDN dependencies to vendor/ for offline use.
 
@@ -320,6 +335,9 @@ def download_vendor_libs(output_dir, cache_dir):
             console.info(f"Downloading {filename}...")
             resp = requests.get(url, timeout=30)
             resp.raise_for_status()
+            # Checked before it touches the cache, so a bad download is
+            # never left behind to be trusted on existence later.
+            _check_vendor_hash(filename, resp.content, cached)
             # Cache entries are trusted on existence alone, so the file
             # must appear complete or not at all.
             tmp = cached + ".tmp"
@@ -332,6 +350,9 @@ def download_vendor_libs(output_dir, cache_dir):
                     os.remove(tmp)
                 raise
             downloaded += 1
+        else:
+            with open(cached, "rb") as f:
+                _check_vendor_hash(filename, f.read(), cached)
 
         _copy_vendor_script(cached, dst)
 

@@ -8,6 +8,7 @@ imported lazily inside process_logo so the engine still runs without it.
 import os
 import re
 import shutil
+import xml.etree.ElementTree as ET
 
 import console
 
@@ -103,6 +104,39 @@ def resolve_logo_source(config):
         return logo_path if os.path.isfile(logo_path) else ""
     icon_path = config.get("icon") or ""
     return icon_path if icon_path and os.path.isfile(icon_path) else ""
+
+
+def svg_script_problem(path):
+    """Why this SVG must not ship, or None when it is clean.
+
+    An SVG is copied into the build unchanged. Inside the page it sits in
+    an <img>, where script does not run, but opened directly it is a
+    document on the map's own origin and its script runs there. So an SVG
+    that carries script, an event handler, a foreignObject, or a
+    javascript: link is refused. The file is parsed with the same expat
+    XML parser the .osm loader uses, and elements and attributes are read
+    case-insensitively with namespaces stripped, so a prefix or odd casing
+    cannot hide one.
+    """
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError) as e:
+        return f"is not a readable XML document ({e})"
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        name = el.tag.rsplit("}", 1)[-1].lower()
+        if name in ("script", "foreignobject"):
+            return f"contains a <{name}> element"
+        for attr, val in el.attrib.items():
+            attr = attr.rsplit("}", 1)[-1].lower()
+            if attr.startswith("on"):
+                return f"contains the event-handler attribute {attr}="
+            # Any attribute, not only href: an <animate> or <set> can
+            # write a javascript: URL into a link through `to`/`values`.
+            if "javascript:" in re.sub(r"[\x00-\x20]", "", val).lower():
+                return f"contains a javascript: URL in {attr}="
+    return None
 
 
 def _copy_svg_with_intrinsic_size(source_path, output_path):

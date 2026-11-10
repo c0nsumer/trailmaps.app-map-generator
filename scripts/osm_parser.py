@@ -14,10 +14,12 @@ Usage as standalone:
 
 import argparse
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 
 import console
+from validate_config import HEX_COLOR_RE, NAMED_COLOR_RE
 
 # The POI categories both fetch paths collect: (tags that must all match,
 # whether a way counts too). Mappers often trace an amenity's building
@@ -128,6 +130,27 @@ def _parse_osm_file(osm_path):
     return nodes, ways, relations
 
 
+# A color function's arguments may hold only numbers and separators, so
+# `url(...)` and anything else that makes a CSS value fetch or chain
+# declarations cannot ride in on an OSM tag.
+_COLOR_FUNC_RE = re.compile(r"(?:rgb|rgba|hsl|hsla)\([0-9., %/]{1,60}\)", re.IGNORECASE)
+
+
+def plain_css_color(value):
+    """The value when it is a plain CSS color, else None.
+
+    OSM `colour` is world-editable and reaches CSS `background` in the
+    app, where `url(http://host/x.png)` would make every viewer's browser
+    call that host. A rejected value is dropped quietly so the default
+    color applies.
+    """
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    if HEX_COLOR_RE.fullmatch(value) or NAMED_COLOR_RE.fullmatch(value):
+        return value
+    return value if _COLOR_FUNC_RE.fullmatch(value) else None
+
+
 def relation_info(rel_id, tags):
     """The standard five-field relation info dict every downstream stage
     consumes (merging, GeoJSON building, enrichment).
@@ -142,7 +165,7 @@ def relation_info(rel_id, tags):
         "name": tags.get("name") or f"Route {rel_id}",
         # None when OSM has no colour tag - runtime layered fallback:
         # relation_colors → default_trail_color → #808080 build-time default.
-        "colour": tags.get("colour"),
+        "colour": plain_css_color(tags.get("colour")),
         "ref": tags.get("ref", ""),
         "seasonal": tags.get("seasonal", ""),
     }

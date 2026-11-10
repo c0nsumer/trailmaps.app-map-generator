@@ -22,9 +22,11 @@ import difflib
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 
 import console
 from config_io import ConfigReadError, parse_config_yaml
+from logo import svg_script_problem
 
 # ----------------------------------------------------------------------
 # Schema
@@ -266,13 +268,15 @@ def match_day_token(token):
 # dashed_relations[..], event_mode.background_style).
 VALID_LINE_CAPS = {"butt", "round", "square"}
 
-HEX_COLOR_RE = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+# Matched with fullmatch, never `^...$` with match: `$` also accepts a
+# trailing newline.
+HEX_COLOR_RE = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 # Colors can also be CSS named colors. We don't enumerate the full set -
 # instead we accept anything matching a tame ASCII identifier alongside
 # the hex form. This is permissive on purpose: CSS color names are stable
 # and a typo like "wite" would render as transparent at the browser, not
 # crash the build. The hex check above is the high-value catch.
-NAMED_COLOR_RE = re.compile(r"^[a-zA-Z]+$")
+NAMED_COLOR_RE = re.compile(r"[a-zA-Z]+")
 
 
 # ----------------------------------------------------------------------
@@ -342,7 +346,7 @@ def _is_number(value):
 def _is_color(value):
     if not isinstance(value, str):
         return False
-    return bool(HEX_COLOR_RE.match(value) or NAMED_COLOR_RE.match(value))
+    return bool(HEX_COLOR_RE.fullmatch(value) or NAMED_COLOR_RE.fullmatch(value))
 
 
 # ----------------------------------------------------------------------
@@ -965,6 +969,20 @@ def _asset_paths(config):
                 yield f"{prefix}[{i}].{field}", p
 
 
+# Keys whose .svg file is copied into the build as shipped bytes.
+_SVG_SHIPPED_KEYS = {"logo", "icon", "additional_logos"}
+
+
+def _is_gpx_file(path):
+    """True when the file parses as XML with a <gpx> root. Uses the same
+    expat parser as the .osm loader; a GPX is small."""
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return False
+    return isinstance(root.tag, str) and root.tag.rsplit("}", 1)[-1].lower() == "gpx"
+
+
 def _validate_paths(report, config, config_dir):
     """Asset path existence. Every path _asset_paths yields (logo, icon,
     osm_file, additional_logos, custom_routes and event_mode.routes
@@ -984,6 +1002,17 @@ def _validate_paths(report, config, config_dir):
         full = _full(p)
         if not os.path.isfile(full):
             report.err(key, f"file not found: {p} (resolved to {full})")
+        elif full.lower().endswith(".svg") and key.split("[")[0] in _SVG_SHIPPED_KEYS:
+            problem = svg_script_problem(full)
+            if problem:
+                report.err(
+                    key,
+                    f"{p}: SVG {problem}. The build copies SVGs unchanged, and a "
+                    "directly opened SVG runs its script on the map's origin; "
+                    "export a plain SVG without script",
+                )
+        elif key.startswith("event_mode.gpx.routes[") and not _is_gpx_file(full):
+            report.err(key, f"{p}: not a GPX file (the root element must be <gpx>)")
 
 
 def _collect_osm_relation_ids(config):
@@ -1702,6 +1731,12 @@ def _validate_event_gpx(report, gpx):
             report.err(f"{where}.file", f"required: non-empty path string, got {p!r}")
             continue
         base = os.path.basename(p)
+        if not base.lower().endswith(".gpx"):
+            report.err(
+                f"{where}.file",
+                f"{base!r}: expected a .gpx file. The build publishes this "
+                "file as is, so only GPX is accepted",
+            )
         if base.lower().endswith((".gz", ".br")):
             report.err(
                 f"{where}.file",
@@ -1893,7 +1928,7 @@ def _validate_legacy_keys(report, config):
 
 def _validate_slug(report, config):
     slug = config.get("slug")
-    if isinstance(slug, str) and not re.match(r"^[a-z0-9_-]+$", slug):
+    if isinstance(slug, str) and not re.fullmatch(r"[a-z0-9_-]+", slug):
         report.err("slug", f"must match [a-z0-9_-]+ (lowercase, no spaces): got {slug!r}")
 
 

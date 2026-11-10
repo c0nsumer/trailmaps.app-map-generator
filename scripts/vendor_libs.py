@@ -44,3 +44,22 @@ VENDOR_LIBS = {
     # the dash phase fixed to the map.
     "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.4.1/dist/maplibre-gl-lanes.js",
 }
+
+# SHA-256 of each file above, checked after a download and on every cache
+# read. The bytes are the app, and unpkg is the only party vouching for
+# them; these were also checked against the npm registry tarballs (its
+# dist.integrity), an independent source. To bump a pin, change the URL
+# AND the hash here together: fetch the new file, compare it against the
+# registry tarball for that version, then paste its `sha256sum`. A build
+# fails on any mismatch, so a forgotten hash cannot ship quietly.
+VENDOR_SHA256 = {
+    "maplibre-gl.css": "8e2dbbab312dc57656fbb76e9fa5308c75c9d7c7ba5808a7d55bcdb64cc813fa",
+    "maplibre-gl.mjs": "454e0bbb16c721cfbf952a92ff3e4362130346ed59a5bff56ae5d6fbebb651f7",
+    "maplibre-gl-shared.mjs": "0996a0ff2ecb2807afc3f053992539ff7fe45c1678a02304b2b33120136f81f3",
+    "maplibre-gl-worker.mjs": "7d5ebf88ec25a72cc48cc320d374f41d921e5105d2f1fc774d463a4b68164227",
+    "pmtiles.js": "36bcbe1ba97cc07b3fc90cee9cba11729b04e25ec8790cf65a0787d5b38e091b",
+    "basemaps.js": "551864f01da1bfe3005e99987197f22f56d0c35f9a10fa1727a889e2434af16d",
+    "maplibre-contour.js": "055e45d0a76aaeaaf5a96765b8ce524abba3272456be75e715081e235ebd1262",
+    "uqr.mjs": "7f0e61c2f13bb3724edee7bfb876e13c54ac9ee4fcfa283c9fa93cfb1241c325",
+    "maplibre-gl-lanes.js": "80aca0d4531c1056f69faa4508115f7b02f5c2327613a72cc67691ebd633872b",
+}
