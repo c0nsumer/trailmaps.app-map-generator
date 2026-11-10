@@ -4301,6 +4301,17 @@ body.modal-open .qr-overlay.is-open {
     max-height: min(60dvh, 480px);
 }
 
+/* A phone held sideways is about 390 px tall, and 60% of that left the
+ * QR code some 50 px square: about a pixel per module, which no camera
+ * reads. On a short screen the Share sheet may take nearly the whole
+ * height instead (the 40 px keeps a strip of map and the card's bottom
+ * margin at wider widths), so the code stays big enough to scan. */
+@media (max-height: 500px) {
+    .qr-overlay-panel {
+        max-height: calc(100dvh - 40px);
+    }
+}
+
 .gpx-overlay.is-open .gpx-overlay-panel,
 .qr-overlay.is-open .qr-overlay-panel {
     transform: translateY(0);
