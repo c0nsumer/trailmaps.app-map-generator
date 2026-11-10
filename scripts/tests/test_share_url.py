@@ -33,6 +33,7 @@ FUNCTIONS = [
     "spotKey",
     "sharedSpotKey",
     "parseSpotKey",
+    "seasonButton",
 ]
 
 # Each case sets the stub state, then either builds a link and consumes
@@ -45,7 +46,9 @@ const results = [];
 for (const c of src.cases) {
     const ctx = {
         URL,
-        document: { querySelector: () => null },
+        // Only a winter case has a season switch to find.
+        document: { querySelector: (q) => (c.winter && q.includes("season-field") ? {} : null) },
+        seasonMode: c.winter ? "winter" : "summer",
         isRouteMode: () => true,
         map: { getCenter: () => ({ lng: c.lng, lat: c.lat }), getZoom: () => c.zoom },
         highlight: c.highlight || null,
@@ -110,6 +113,8 @@ def test_valid_links_round_trip():
         {**base, "highlight": {"kind": "rating", "key": ""}},
         {**base, "spot": {"anchor": [-87.123456, 45.678912], "name": "Bob's / Loop"}},
         {**base, "spot": {"anchor": [-87.123456, 45.678912], "name": None}},
+        {**base, "winter": True, "highlight": {"kind": "route", "key": "12345"}},
+        {**base, "winter": True},
     ]
     expected = [
         {"kind": "trail", "key": "Bob's / Loop"},
@@ -118,10 +123,13 @@ def test_valid_links_round_trip():
         {"kind": "rating", "key": ""},
         {"kind": "spot", "key": "45.67891,-87.12346/Bob's / Loop"},
         {"kind": "spot", "key": "45.67891,-87.12346"},
+        {"kind": "route", "key": "12345"},
+        None,
     ]
-    for res, want in zip(_run(cases), expected, strict=True):
+    for c, res, want in zip(cases, _run(cases), expected, strict=True):
         assert res["view"] == {
             "center": [-87.12345, 45.67891], "zoom": 14.5, "highlight": want,
+            "season": "winter" if c.get("winter") else "summer",
         }
         assert res["stripped"]
 
@@ -146,5 +154,7 @@ def test_unusable_links_open_the_default_view(hash_):
 ])
 def test_malformed_spot_keeps_the_view_and_drops_the_highlight(hash_):
     [res] = _run([{"hash": hash_, "lng": 0, "lat": 0, "zoom": 0}])
-    assert res["view"] == {"center": [-87, 45], "zoom": 14, "highlight": None}
+    assert res["view"] == {
+        "center": [-87, 45], "zoom": 14, "highlight": None, "season": "summer",
+    }
     assert res["stripped"]

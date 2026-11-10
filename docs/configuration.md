@@ -1366,6 +1366,7 @@ The highlight, if any, is one token and its value after the camera, as `#share=<
 | `t/` | A trail | The trail name |
 | `p/` | A POI, a name group, or a POI category | The finder row's reference |
 | `s/` | A tapped spot | The section and anchor point the rider tapped |
+| `w/` | Nothing: it opens the map in its winter season | No value. It sits right after the camera, before any highlight token, eg: `<lon>/w/r/<id>`. A link without it opens in summer, unless only winter shows what it highlights. A map with no season switch ignores it |
 
 The map never writes its position to the address bar. The **Share this map**
 action builds a position link on demand, and only when the visitor chooses to

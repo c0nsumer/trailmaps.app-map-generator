@@ -196,6 +196,9 @@
      * read a CSS variable), and the heading cone's data-URL SVG below
      * carries a third, as %233498db; change all three together. */
     --user-dot: #3498db;
+    /* The same dot when its position is old (no fix, or a geolocation
+     * error). */
+    --user-dot-stale: #8e8e93;
     /* Everything else that says Locate is the dot's blue, so the button
      * that starts tracking, the chip that reports it and the dot itself
      * read as one thing. On chrome it must carry contrast the ringed dot
@@ -2939,6 +2942,20 @@ body::after {
 
 .maplibregl-user-location-dot {
     background-color: var(--user-dot);
+}
+
+/* The rule above would otherwise keep a stale dot blue: gray is what
+ * says the position is old (an error, or no fix for a while). Two
+ * classes, so it wins over the rule above without depending on order. */
+.maplibregl-user-location-dot.maplibregl-user-location-dot-stale {
+    background-color: var(--user-dot-stale);
+}
+
+/* The vendor's pulse ran for the whole ride and kept the page drawing
+ * frames at the display rate while nothing moved. Liveness is the dot's
+ * color (blue live, gray stale) and the heading cone. */
+.maplibregl-user-location-dot::before {
+    display: none;
 }
 
 /* Push the user-location marker (dot + accuracy circle) above POI

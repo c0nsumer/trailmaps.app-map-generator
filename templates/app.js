@@ -3459,6 +3459,8 @@ function onDeviceOrientation(e) {
 // rider's compass takes over before the wedge hides, instead of a
 // hide/re-show blink.
 const WEDGE_COURSE_FRESH_MS = 2500;
+// Compass changes smaller than this leave the cone where it is.
+const WEDGE_COMPASS_DEADZONE_DEG = 2.5;
 function applyWedgeHeading(heading, fromCourse) {
     const now = performance.now();
     if (fromCourse) {
@@ -3488,6 +3490,18 @@ function applyWedgeHeading(heading, fromCourse) {
     // 359 → 0 seam.
     const cur = ((_wedgeAngleCss % 360) + 360) % 360;
     const dd = ((_wedgeHeading - cur + 540) % 360) - 180;
+    // A still phone's compass wanders a degree or two, and writing each
+    // wobble kept the cone repainting at ~12 Hz for nothing. Measured
+    // from the heading on screen, not the last reading, so a slow turn
+    // still moves once it adds up; a real turn passes at once. The
+    // course never waits (see above). A steady heading is not a
+    // missing one, so the stale-hide timer is still fed.
+    if (!fromCourse && Math.abs(dd) < WEDGE_COMPASS_DEADZONE_DEG
+            && _wedgeMarker && _wedgeMarker._map) {
+        clearTimeout(_wedgeStaleTimer);
+        _wedgeStaleTimer = setTimeout(hideCompassWedge, 3000);
+        return;
+    }
     _wedgeAngleCss += dd;
     if (_wedgeEl) {
         _wedgeEl.style.setProperty("--wedge-heading",
@@ -3633,8 +3647,9 @@ function applyPendingShareHighlight() {
         if (h.kind === "route") {
             // h.key is the OSM relation ID (or custom-route ID), matching
             // the keys of CONFIG.routes. Verify before calling: only a
-            // route-mode relation has lanes of its own to lift.
-            if (isRouteMode(h.key)) {
+            // route-mode relation has lanes of its own to lift, and only
+            // a drawn one has lanes at all (highlightRoute does not ask).
+            if (isRouteMode(h.key) && visibleRoutes.has(h.key)) {
                 highlightRoute(h.key);
             }
         } else if (h.kind === "trail") {
@@ -3667,10 +3682,83 @@ function applyPendingShareHighlight() {
             // answer a query, so a miss here waits for the next build
             // (retryPendingSpot) instead of giving up.
             const spot = parseSpotKey(h.key);
-            if (spot && !openSpot(spot)) _pendingSpot = spot;
+            if (spot && spotOnVisibleTrail(spot) && !openSpot(spot)) _pendingSpot = spot;
         }
     } finally {
         _applyingPendingView = false;
+    }
+}
+
+// Whether what a pending highlight names is on the map right now, by
+// the same tests the apply step and the finder use. Synchronous with
+// visibleRoutes after an immediate visibility pass.
+function shareTargetShown(h) {
+    if (h.kind === "route") return visibleRoutes.has(h.key);
+    if (h.kind === "trail") return !!longestVisibleTrailRun(h.key);
+    if (h.kind === "rating") return keyRatings().includes(h.key);
+    if (h.kind === "poi") return poiRefMembers(h.key).length > 0;
+    if (h.kind === "spot") {
+        const spot = parseSpotKey(h.key);
+        return !!spot && spotOnVisibleTrail(spot);
+    }
+    return false;
+}
+
+// A spot's trail is drawn within openSpot's 30 px reach of its anchor.
+// The centerline stands in for the lane, which a season flip has not
+// rebuilt yet when this is asked.
+function spotOnVisibleTrail({ anchor, name }) {
+    const [lon, lat] = anchor;
+    const metersPerPx = 40075016.686 * Math.cos(lat * Math.PI / 180)
+        / (512 * Math.pow(2, map.getZoom()));
+    return minDistanceToFeatures(lon, lat, (p) => isVisibleTrail(p)
+        && (p.trail_name || null) === name) <= 30 * metersPerPx;
+}
+
+// The season control's button for `season`, or null on a map with no
+// season switch (setupFloatingChrome hides its row there).
+function seasonButton(season) {
+    return document.querySelector(
+        `#season-field:not(.hidden) .opt-segmented-btn[data-value="${season}"]`);
+}
+
+// Flip an Options control the way a tap does, so its own handler keeps
+// the stored setting, the key, places and labels in step, then run the
+// visibility pass now rather than after the next paint: the link checks
+// below read what it produces.
+function pressForShareLink(el) {
+    el.click();
+    applyVisibilityChange(true);
+}
+
+function setSeasonForShareLink(season) {
+    if (season !== seasonMode) pressForShareLink(seasonButton(season));
+}
+
+// A share link opens in the season it was sent from, before its
+// highlight is applied, so a winter route or a place by a groomed loop
+// is lit on the receiver's map instead of a dimmed map with nothing on
+// it. A link with no season letter is the default season. When the
+// target is hidden there but the other season shows it (a link made
+// before links carried the season), the receiver gets that season; a
+// target neither season shows opens plain, as any stale link does. A
+// route that only the Emergency row hides turns that row on. A map
+// with no season switch has no season to honor.
+function applyShareSeason(linkSeason) {
+    const h = _pendingShareHighlight;
+    const wanted = h && highlightHasKey(h) ? h : null;
+    if (seasonButton(linkSeason)) {
+        setSeasonForShareLink(linkSeason);
+        if (wanted && !shareTargetShown(wanted)) {
+            setSeasonForShareLink(linkSeason === "winter" ? "summer" : "winter");
+            if (!shareTargetShown(wanted)) setSeasonForShareLink(linkSeason);
+        }
+    }
+    if (wanted && wanted.kind === "route" && !visibleRoutes.has(wanted.key)
+            && CONFIG.routes[wanted.key] && CONFIG.routes[wanted.key].emergency) {
+        const pill = document.querySelector(
+            '#toggle-emergency-routes:not(.hidden)[data-on="false"] .opt-toggle-pill');
+        if (pill) pressForShareLink(pill);
     }
 }
 
@@ -3799,6 +3887,9 @@ function buildShareUrl() {
     const lat = c.lat.toFixed(5);
     const lon = c.lng.toFixed(5);
     let path = `share=${zoom}/${lat}/${lon}`;
+    // The receiver opens in the sender's season (applyShareSeason), so a
+    // winter route or a place by a groomed loop is on their map too.
+    if (seasonMode === "winter" && seasonButton("winter")) path += "/w";
     const h = currentViewHighlight();
     if (h) {
         // Unrated ("") travels as a word: an empty last segment would
@@ -3978,8 +4069,9 @@ function isViewInRange(lon, lat, zoom) {
         && Number.isFinite(zoom) && zoom >= 0 && zoom <= 24;
 }
 
-// Parse a "#share=zoom/lat/lon[/r/<routeId>|/t/<trailName>|/s/<spotKey>|/d/<rating>|/p/<poiRef>]"
-// hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null} or
+// Parse a "#share=zoom/lat/lon[/w][/r/<routeId>|/t/<trailName>|/s/<spotKey>|/d/<rating>|/p/<poiRef>]"
+// hash and return {center: [lon, lat], zoom, highlight: {kind, key} | null,
+// season: "summer" | "winter"} or
 // null if no share hash is present / parseable. Side effect: strips
 // any share hash, parseable or not, from the URL via
 // history.replaceState so that
@@ -4007,10 +4099,19 @@ function consumeShareHash() {
     const lat = parseFloat(parts[1]);
     const lon = parseFloat(parts[2]);
     if (!isViewInRange(lon, lat, zoom)) return null;
+    // A link sent from the winter season carries "w" right after the
+    // camera (buildShareUrl), ahead of any highlight, so it can never
+    // be read as a kind letter. No letter is the default season.
+    let season = "summer";
+    let at = 3;
+    if (parts[3] === "w") {
+        season = "winter";
+        at = 4;
+    }
     let highlight = null;
-    if (parts.length >= 5) {
-        const kindCode = parts[3];
-        const keyEnc = parts.slice(4).join("/"); // tolerate slashes in names
+    if (parts.length >= at + 2) {
+        const kindCode = parts[at];
+        const keyEnc = parts.slice(at + 1).join("/"); // tolerate slashes in names
         // A truncated percent-escape (chat apps and SMS clients cut
         // long URLs mid-escape) makes decodeURIComponent throw, and
         // this runs synchronously inside init(): unguarded, one bad
@@ -4040,6 +4141,7 @@ function consumeShareHash() {
         center: [lon, lat],
         zoom,
         highlight,
+        season,
     };
 }
 
@@ -4594,6 +4696,43 @@ async function init() {
         },
         trackUserLocation: true,
     });
+    // MapLibre 6.10's GeolocateControl keeps a module-level count of
+    // its watches that trigger() decrements on the way off but its
+    // PERMISSION_DENIED path does not. After one denial every later
+    // start believes a second control shares the watch: it asks
+    // watchPosition for {maximumAge: 600000, timeout: 0} (no high
+    // accuracy, fixes up to ten minutes old) and drops every TIMEOUT.
+    // Two local guards, re-verify both on vendor upgrades as for
+    // _updateCamera: the control's own positionOptions go to every
+    // watch, and a denial first turns the control off through
+    // trigger(), the path that decrements the count, before its own
+    // denial handling runs. From BACKGROUND, trigger() would re-center
+    // instead, so the state is moved to its error twin first (the
+    // control's own off states; see dropLocateLock for _watchState).
+    //
+    // The same wrapper drops a fix older than the newest one this watch
+    // has shown: a cached position the OS replays on resume would put
+    // the dot back where the rider was and count as a fresh fix.
+    const geo = navigator.geolocation;
+    if (geo && typeof geo.watchPosition === "function") {
+        const watchPosition = geo.watchPosition.bind(geo);
+        geo.watchPosition = (onFix, onError) => {
+            let newest = -Infinity;
+            return watchPosition((pos) => {
+                if (pos && pos.timestamp < newest) return;
+                newest = pos ? pos.timestamp : newest;
+                onFix(pos);
+            }, (err) => {
+                if (err && err.code === 1 && geolocate._watchState !== "OFF") {
+                    if (geolocate._watchState === "BACKGROUND") {
+                        geolocate._watchState = "BACKGROUND_ERROR";
+                    }
+                    geolocate.trigger();
+                }
+                onError(err);
+            }, geolocate.options.positionOptions);
+        };
+    }
     map.addControl(geolocate, "top-left");
     geolocateControl = geolocate;  // expose to updateLocationIndicator
     attachOffScreenIndicatorHandler();
@@ -4683,8 +4822,59 @@ async function init() {
         queueMicrotask(() => map.stop());
     });
 
+    // A watch can go quiet with no error at all: a pocketed phone, a
+    // dead spot, a page the OS suspended. With nothing to say so, the
+    // dot and the chip kept claiming a position minutes old. So a fix
+    // that is this old is treated as lost, exactly as a geolocation
+    // error is (gray dot, chip to unknown), until the next fix clears
+    // it the way the control does after an error.
+    //
+    // The timer runs only after a fix that was moving. A phone standing
+    // still may send no further fix at all, and its last one is still
+    // where the rider is: graying the dot at every rest stop would say
+    // the GPS failed when it had not. Silence after a moving fix is the
+    // case that matters, since the rider has gone on and the dot has
+    // not. A return from a hidden page is checked either way: the phone
+    // may have traveled in a pocket.
+    const LOCATE_STALE_MS = 30000;
+    const LOCATE_MOVING_MPS = 1;
+    let lastFixAt = 0;
+    let lastFixMoving = false;
+    let staleTimer = null;
+    function markFixStale() {
+        staleTimer = null;
+        map.getContainer().querySelector(".maplibregl-user-location-dot")
+            ?.classList.add("maplibregl-user-location-dot-stale");
+        trailChipLostFix();
+    }
+    function armFixStale(ms) {
+        clearTimeout(staleTimer);
+        staleTimer = setTimeout(markFixStale, ms);
+    }
+    function stopFixStale() {
+        clearTimeout(staleTimer);
+        staleTimer = null;
+        lastFixAt = 0;
+    }
+    // A suspended page runs no timers, so the age is checked against
+    // the clock on the way back.
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden || !lastFixAt || !userLocation) return;
+        const age = Date.now() - lastFixAt;
+        if (age >= LOCATE_STALE_MS) markFixStale();
+        else if (lastFixMoving) armFixStale(LOCATE_STALE_MS - age);
+    });
+
     geolocate.on("geolocate", (e) => {
         dropLocateLock();
+        lastFixAt = Date.now();
+        lastFixMoving = Number.isFinite(e.coords.speed) && e.coords.speed > LOCATE_MOVING_MPS;
+        if (lastFixMoving) {
+            armFixStale(LOCATE_STALE_MS);
+        } else {
+            clearTimeout(staleTimer);
+            staleTimer = null;
+        }
         userLocation = [e.coords.longitude, e.coords.latitude];
         updateLocationIndicator();
         userAccuracy = e.coords.accuracy;
@@ -4827,6 +5017,7 @@ async function init() {
         // panned but is still being tracked".
         if (state === "idle" || state === "disabled") {
             userLocation = null;
+            stopFixStale();
             _locateActivationZoomPending = false;
             _followLostWithContext = false;
             updateLocationIndicator();
@@ -5040,6 +5231,7 @@ async function init() {
             // exists (e.g. the map has been rebuilt since the link was
             // shared and the relation changed).
             finish("share link", () => {
+                if (shareState) applyShareSeason(shareState.season);
                 if (_pendingShareHighlight) applyPendingShareHighlight();
                 // A shared view opens without a camera move, so no
                 // moveend stores it, and a reload that fires no hide
@@ -9346,6 +9538,25 @@ function _parsePoiRef(ref) {
     return null;
 }
 
+// The POIs a share descriptor names, limited to the ones the finder
+// would list: a link reaches the highlight without the finder's scope
+// test, so without it a place by a hidden (winter) trail got a chip
+// and no marker.
+function poiRefMembers(ref) {
+    const parsed = _parsePoiRef(ref);
+    if (!parsed) return [];
+    let members;
+    if (parsed.mode === "single") {
+        members = poiIndex.filter((p) => p.uid === parsed.uid);
+    } else if (parsed.mode === "group") {
+        members = poiIndex.filter((p) => p.type === parsed.type && p.name === parsed.name
+            && (parsed.chip === undefined || trailMarkerIdentity(p) === parsed.chip));
+    } else { // category
+        members = poiIndex.filter((p) => p.type === parsed.type);
+    }
+    return members.filter(_isPoiInSearchScope);
+}
+
 // Re-create a POI highlight from a share descriptor, resolving it
 // against the LIVE poiIndex (so a rebuilt map highlights its current
 // members). Best-effort: silently no-ops if nothing matches, a stale
@@ -9353,23 +9564,15 @@ function _parsePoiRef(ref) {
 // Mirrors the route/trail stale-link handling in applyPendingShareHighlight.
 function highlightPoiByRef(ref) {
     const parsed = _parsePoiRef(ref);
-    if (!parsed) return;
+    const members = poiRefMembers(ref);
+    if (!members.length) return;
     if (parsed.mode === "single") {
-        const entry = poiIndex.find((p) => p.uid === parsed.uid);
-        if (entry) highlightPoi(entry);
+        highlightPoi(members[0]);
         return;
     }
-    let members;
-    let name;
-    if (parsed.mode === "group") {
-        members = poiIndex.filter((p) => p.type === parsed.type && p.name === parsed.name
-            && (parsed.chip === undefined || trailMarkerIdentity(p) === parsed.chip));
-        name = parsed.name;
-    } else { // category
-        members = poiIndex.filter((p) => p.type === parsed.type);
-        name = POI_TYPE_FALLBACK_NAME[parsed.type] || parsed.type;
-    }
-    if (!members.length) return;
+    const name = parsed.mode === "group"
+        ? parsed.name
+        : POI_TYPE_FALLBACK_NAME[parsed.type] || parsed.type;
     if (members.length === 1) {
         // The set collapsed to one (data changed since the link was made,
         // or the category now has a lone member), highlight it as a
