@@ -814,6 +814,7 @@ def inject_config_into_template(template_content, config, trails_geojson):
     config_obj["accentDark"] = accent_palette.get("dark")
     config_obj["onAccentLight"] = accent_palette.get("onLight")
     config_obj["onAccentDark"] = accent_palette.get("onDark")
+    config_obj["linkLight"] = accent_palette.get("link")
 
     # Per-type POI counts (computed from pois.geojson at build
     # time - see _poi_counts stash). Drives the dynamic Welcome
@@ -945,6 +946,7 @@ def _process_index_html(content, config):
         ("--accent-dark", _accent_palette.get("dark")),
         ("--on-accent-light", _accent_palette.get("onLight")),
         ("--on-accent-dark", _accent_palette.get("onDark")),
+        ("--link-color-light", _accent_palette.get("link")),
     ):
         if _av_val:
             accent_js += (

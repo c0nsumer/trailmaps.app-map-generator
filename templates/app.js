@@ -63,7 +63,7 @@ const MAX_ZOOM = 18;
     // FAB pressed state, etc.). The build derives a 4-value palette, a
     // deep light-mode shade + a lightened dark-mode shade, each with its
     // best on-accent text color, so the accent reads correctly in
-    // BOTH schemes. We set the four BASE vars here (not --accent
+    // BOTH schemes, plus a link shade. We set the BASE vars here (not --accent
     // directly); style.css maps --accent / --on-accent from them per
     // [data-color-scheme], so the scheme toggle switches the accent for
     // free with no re-injection. Setting --accent inline would pin it
@@ -72,6 +72,7 @@ const MAX_ZOOM = 18;
     if (CONFIG.accentDark)    root.style.setProperty("--accent-dark",      CONFIG.accentDark);
     if (CONFIG.onAccentLight) root.style.setProperty("--on-accent-light",  CONFIG.onAccentLight);
     if (CONFIG.onAccentDark)  root.style.setProperty("--on-accent-dark",   CONFIG.onAccentDark);
+    if (CONFIG.linkLight)     root.style.setProperty("--link-color-light", CONFIG.linkLight);
 })();
 
 // ============================================================
@@ -3211,6 +3212,9 @@ let bicycleRepairStationMarkers = [];
 // array so the proximity / toggle filter passes don't touch it.
 let eventPoiMarkers = [];
 let exposureMarkers = [];
+// The marker whose card is open, so Escape can close it and hand focus
+// back to the marker.
+let _openPoiCardMarker = null;
 // One row per POI type, keyed by the POI enum, so a new type is one
 // entry here rather than an edit at every per-type switch.
 //   lsKey              localStorage key of the Options toggle
@@ -7302,7 +7306,28 @@ async function readJsonOk(resp, arm) {
     return JSON.parse(await new Blob(chunks).text());
 }
 
+// The POI file downloads beside the trails (index.html starts both),
+// and its body is read from when loadTrails starts, so the POIs are in
+// hand, or failed, by the time loadPOIs asks: it no longer waits for a
+// request that only began once the trails were done.
+let _poisLoad = null;
+
+function startPoisLoad() {
+    const early = window.__poisRequest;
+    window.__poisRequest = null;
+    const load = early
+        ? early.then((r) => readJsonOk(r, window.__poisTimer.arm))
+            .finally(window.__poisTimer.done)
+        : fetchWithTimeout("pois.geojson", undefined, undefined, readJsonOk);
+    // loadPOIs reports a failure. If the trails fail first, boot stops
+    // before it asks, and this keeps that from surfacing as an
+    // unhandled rejection.
+    load.catch(() => {});
+    return load;
+}
+
 async function loadTrails() {
+    _poisLoad = startPoisLoad();
     // trails.geojson is required, if it 404s or fails to parse, the
     // app has nothing to render. Fail loudly with a visible message
     // instead of letting downstream addSource calls die opaquely.
@@ -10907,7 +10932,9 @@ async function loadPOIs() {
     // gated types, updatePoiToggleVisibility) auto-hide the relevant
     // toggle rows.
     try {
-        poisData = await fetchWithTimeout("pois.geojson", undefined, undefined, readJsonOk);
+        const load = _poisLoad || startPoisLoad();
+        _poisLoad = null;
+        poisData = await load;
     } catch (e) {
         console.warn("loadPOIs: pois.geojson failed to load:", e);
         showToast("POI data failed to load. Markers won't show.");
@@ -11022,8 +11049,11 @@ function createPoiMarkers({ poiType, className, labelFn, contentFn,
 
         // MapLibre labels every marker "Map marker" unless the element
         // already has an aria-label, and markers with a popup are Tab
-        // stops, so name them for what they are.
+        // stops, so name them for what they are. MapLibre sets a role
+        // on its default marker only: one with a card is a button, one
+        // without (an exposure callout) a picture, and not a Tab stop.
         el.setAttribute("aria-label", poiMarkerAriaLabel(poiType, props));
+        el.setAttribute("role", popupHtmlFn ? "button" : "img");
 
         const marker = new maplibregl.Marker({ element: el, anchor, offset }).setLngLat(coords);
 
@@ -11051,6 +11081,21 @@ function createPoiMarkers({ poiType, className, labelFn, contentFn,
                 className: popupClass || "",
             }).setHTML(popupHtmlFn(props, coords));
             marker.setPopup(popup);
+            // MapLibre's Enter/Space handler is a keypress listener that
+            // setPopup adds and Marker.addTo drops (addTo starts with
+            // remove()), so a marker added after its popup never had
+            // one. This one is on the element and outlives add/remove;
+            // preventDefault also stops a keypress, so the two can never
+            // both toggle.
+            el.addEventListener("keydown", (e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();
+                if (!e.repeat) marker.togglePopup();
+            });
+            popup.on("open", () => { _openPoiCardMarker = marker; });
+            popup.on("close", () => {
+                if (_openPoiCardMarker === marker) _openPoiCardMarker = null;
+            });
         }
 
         if (addToMap) marker.addTo(map);
@@ -12185,6 +12230,20 @@ function setupFloatingChrome() {
             closeTrailPopup();
             return;
         }
+        // A POI card opened from its marker closes the same way, and a
+        // keyboard user's focus goes back to the marker it came from. A
+        // highlighted POI's card is left to the highlight step below,
+        // which closes it along with the highlight in one press.
+        const cardMarker = _openPoiCardMarker;
+        if (cardMarker && !_highlightedPois.some((p) => findPoiMarker(p) === cardMarker)) {
+            const el = cardMarker.getElement();
+            const popup = cardMarker.getPopup();
+            const focusInCard = popup && popup.getElement()
+                && popup.getElement().contains(document.activeElement);
+            popup.remove();
+            if (focusInCard && el.isConnected) el.focus();
+            return;
+        }
         // Both the route/trail highlight and the POI highlight set
         // count as "something to dismiss." clearHighlight() handles
         // both, so a single Esc press reliably clears whatever's lit.
@@ -12910,6 +12969,54 @@ function foldSearchText(s) {
     return String(s || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+// Punctuation is folded too, two ways, because a rider skipping it
+// types either nothing ("Dons Ditch", "laketolake") or a space ("lake
+// to lake"), and iOS smart punctuation turns a typed apostrophe curly.
+// Each side yields a punctuation-dropped and a punctuation-as-space
+// form; a match in any pairing counts.
+function searchForms(s) {
+    const f = foldSearchText(s);
+    const tidy = (x) => x.replace(/\s+/g, " ").trim();
+    return [tidy(f.replace(/[\p{P}\p{S}]+/gu, "")), tidy(f.replace(/[\p{P}\p{S}]+/gu, " "))];
+}
+
+// Folded forms of the typed query, or null for an empty one. A query
+// of punctuation alone keeps its plain fold so it can still match.
+function searchQuery(raw) {
+    const q = (raw || "").trim();
+    if (!q) return null;
+    const forms = searchForms(q).filter(Boolean);
+    return forms.length ? forms : [foldSearchText(q)];
+}
+
+// How a name matches the query: 0 the whole name starts with it, 1 a
+// word in it does, 2 it is somewhere inside, -1 no match. The finder
+// lists lower ranks first so "ke" puts Keweenaw ahead of Berry Picker.
+function searchRank(text, q) {
+    if (!q) return 0;
+    let best = -1;
+    for (const tf of searchForms(text)) {
+        for (const qf of q) {
+            let r = -1;
+            if (tf.startsWith(qf)) r = 0;
+            else if ((" " + tf).includes(" " + qf)) r = 1;
+            else if (tf.includes(qf)) r = 2;
+            if (r >= 0 && (best < 0 || r < best)) best = r;
+        }
+    }
+    return best;
+}
+
+// Keeps the items that match, best rank first, each rank in the order
+// it came (Array.prototype.sort is stable).
+function rankedMatches(items, q, rankOf) {
+    if (!q) return items;
+    return items.map((item) => [item, rankOf(item)])
+        .filter(([, r]) => r >= 0)
+        .sort((a, b) => a[1] - b[1])
+        .map(([item]) => item);
+}
+
 // The list only matters while the search sheet is up, but boot and
 // every visibility, Color, or units change asked for a rebuild with
 // the sheet closed (on NTN at 4x CPU, ~80 ms a season flip, most of it
@@ -12943,6 +13050,7 @@ function buildFinderList() {
 
     const input = document.getElementById("finder-input");
     const query = foldSearchText((input && input.value || "").trim());
+    const q = searchQuery(input && input.value);
     const showTrails = CONFIG.showTrails !== false;
 
     list.innerHTML = "";
@@ -12989,11 +13097,9 @@ function buildFinderList() {
     refreshTrailLengths();
 
     const matchedRoutes = !includeRoutes ? []
-        : (query ? routes.filter((r) => foldSearchText(r.name).includes(query))
-                 : routes);
+        : rankedMatches(routes, q, (r) => searchRank(r.name, q));
     const matchedTrails = !includeTrails ? []
-        : (query ? trails.filter((t) => foldSearchText(t.name).includes(query))
-                 : trails);
+        : rankedMatches(trails, q, (t) => searchRank(t.name, q));
     // POIs follow a hybrid rule: search shows a POI iff it's within
     // the type's proximity threshold of any visible trail. Toggle-
     // hidden POIs STAY searchable (the rider chose to hide the
@@ -13004,8 +13110,7 @@ function buildFinderList() {
     // proximity scan is far too expensive to run per keystroke.
     const inScopePois = finderPoisInScope();
     const matchedPois = !includePois ? []
-        : (query ? inScopePois.filter((p) => {
-            const name = foldSearchText(p.name);
+        : (q ? inScopePois.filter((p) => {
             const typeLabel = foldSearchText(POI_TYPE_META_LABEL[p.type]);
             // ref matches too: a named guidepost keeps its ref as the
             // on-map bubble label, so riders search by either. Known
@@ -13013,9 +13118,8 @@ function buildFinderList() {
             // name, so the match reason is invisible until selection
             // highlights the bubble. If that confuses riders, render
             // named markers as `name (ref)` in the result row.
-            const ref = foldSearchText(p.ref);
-            return name.includes(query) || typeLabel.includes(query)
-                || (ref !== "" && ref.includes(query));
+            return searchRank(p.name, q) >= 0 || typeLabel.includes(query)
+                || (p.ref != null && p.ref !== "" && searchRank(p.ref, q) >= 0);
         })
                  : inScopePois);
 
@@ -13254,7 +13358,15 @@ function groupPoisForFinder(matchedPois, query) {
     // sort, so the two blocks read as category sections first,
     // name-only matches below.
     const remainingGrouped = groupPoisByName(remaining);
-    out.push(...remainingGrouped);
+    // A name or ref match ranks as the trail rows do.
+    const sq = searchQuery(query);
+    const poiRank = (item) => {
+        const rs = [searchRank(item.name, sq)];
+        if (!item.isGroup && item.ref) rs.push(searchRank(item.ref, sq));
+        const hits = rs.filter((r) => r >= 0);
+        return hits.length ? Math.min(...hits) : 2;
+    };
+    out.push(...rankedMatches(remainingGrouped, sq, poiRank));
 
     return out;
 }
@@ -13462,7 +13574,8 @@ function routeParentsText(parents) {
 // mark, then its visible route-mode parents (`parents`), as a routes
 // map lists them. Reads the entry's refreshTrailRatings stamp.
 function appendDifficultyTrailRowContent(row, t, parents) {
-    row.appendChild(ratingMarkEl(t.rating || "", "finder-row-glyph", "finder-row-swatch"));
+    const mark = ratingMarkEl(t.rating || "", "finder-row-glyph", "finder-row-swatch");
+    row.appendChild(mark);
 
     const name = document.createElement("span");
     name.className = "finder-row-name";
@@ -13487,6 +13600,8 @@ function appendDifficultyTrailRowContent(row, t, parents) {
     const keys = sortColorKeys([...new Set((t.ratings || [])
         .map((k) => isFreerideKey(k) ? k.slice(0, -FREERIDE_KEY_SUFFIX.length) : k))])
         .filter((k) => isRatedKey(k));
+    // Without a run, the mark is the row's only rating, so it speaks.
+    if (keys.length <= 1 && mark.tagName === "IMG") mark.alt = keyName(t.rating);
     if (keys.length > 1) {
         const run = document.createElement("span");
         run.className = "finder-row-levels";
@@ -13521,7 +13636,8 @@ function ratingMarkEl(rating, glyphClass, swatchClass) {
     glyph.className = glyphClass;
     if (isFreerideKey(rating)) glyph.classList.add("is-freeride");
     glyph.src = difficultyIconDataUrl(rating);
-    // Decorative: the name beside it carries the meaning.
+    // Decorative by default: a key row's name beside it carries the
+    // meaning. A finder row with no other rating sets its own alt.
     glyph.alt = "";
     return glyph;
 }

@@ -174,7 +174,11 @@
     --on-accent-dark: #14140f;
     --accent: var(--accent-light);
     --on-accent: var(--on-accent-light);
-    --link-color: var(--accent);
+    /* Link text gets its own light-scheme shade: the build darkens a
+     * pale accent just far enough to read on the sheet (--link-color-
+     * light, set beside the four base vars), while fills and focus
+     * rings keep the accent itself. Unset means the accent passes. */
+    --link-color: var(--link-color-light, var(--accent));
     /* Pressed/hover emphasis. Light mode deepens toward black;
      * color-mix(in srgb, X 75%, black) darkens X by 25%. The dark
      * scheme flips this to brighten toward white (mixing an already-
@@ -361,6 +365,8 @@
      * from :root; only the active mapping changes here. */
     --accent: var(--accent-dark);
     --on-accent: var(--on-accent-dark);
+    /* The dark shade is already lightened to AA on the sheet. */
+    --link-color: var(--accent);
     --accent-strong: color-mix(in srgb, var(--accent) 75%, white);
 
     /* On-map POI markers need a stronger shadow against dark
@@ -1930,6 +1936,10 @@ body::after {
 }
 
 .finder-row-meta {
+    /* A trail row's route list gives way before the name: the name is
+     * what the rider searched for. Its huge shrink weight takes nearly
+     * all of the squeeze until it is gone, then the name shrinks. */
+    flex: 0 1000 auto;
     font-size: 12px;
     color: var(--sheet-text-muted);
     overflow: hidden;
@@ -2891,6 +2901,18 @@ body::after {
     text-decoration: none;
     font-size: 12px;
     font-weight: 500;
+    position: relative;
+}
+
+/* The link is the last line of its popup and only 20 px tall. An
+ * invisible hit area brings the tap target to 44 px without moving
+ * anything: 10 px down is the popup's bottom padding (the content box
+ * clips below that), the rest goes up into the gap and the bottom of
+ * the title, which is not tappable. */
+.popup-directions::before {
+    content: "";
+    position: absolute;
+    inset: -14px 0 -10px 0;
 }
 
 .popup-directions:hover {
@@ -4279,16 +4301,28 @@ body.modal-open .qr-overlay.is-open {
     align-items: center;
     gap: 12px;
     padding: 16px 16px 20px;
+    /* The panel's height cap still holds, so on a short or landscape
+     * screen the body gives up height and the code (the only item
+     * allowed to shrink) takes the cut. The link and the button keep
+     * their size and stay on screen. */
+    flex: 0 1 auto;
+    min-height: 0;
 }
 .qr-code {
-    width: min(70vw, 280px);
+    /* Sized by height, width following, so the code shrinks square when
+     * the body is squeezed. Where there is room this is the same
+     * min(70vw, 280px) square as before. */
+    height: min(70vw, 280px);
+    aspect-ratio: 1;
+    flex: 0 1 auto;
+    min-height: 0;
     background: #fff;
     border-radius: var(--radius-control);
     line-height: 0;
 }
 .qr-code svg {
     width: 100%;
-    height: auto;
+    height: 100%;
     display: block;
 }
 .qr-share-link {

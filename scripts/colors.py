@@ -50,7 +50,8 @@ def _rgb_to_hex(rgb):
     return "#{:02X}{:02X}{:02X}".format(*rgb)
 
 
-def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_boost=0.0):
+def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_boost=0.0,
+                         step=0.025):
     """Darken an RGB triple in HSL-space until it hits target_contrast
     against `against` (white by default - the assumption is white text
     on accent background). Returns the (possibly modified) triple.
@@ -64,11 +65,11 @@ def _darken_for_contrast(rgb, target_contrast=4.5, against=(255, 255, 255), sat_
     """
     r, g, b = (c / 255.0 for c in rgb)
     h, lightness, s = colorsys.rgb_to_hls(r, g, b)
-    for _ in range(40):
+    for _ in range(round(1 / step)):
         rgb = tuple(int(round(c * 255)) for c in colorsys.hls_to_rgb(h, lightness, s))
         if _contrast_ratio(rgb, against) >= target_contrast:
             return rgb
-        lightness -= 0.025
+        lightness -= step
         if sat_boost:
             s = min(1.0, s + sat_boost)
         if lightness < 0:
@@ -143,6 +144,10 @@ _ON_ACCENT_DARK = "#14140F"
 # shade must read against. Matches --sheet-bg in style.css's dark block.
 _DARK_SHEET_BG = (28, 28, 30)
 
+# The light sheet is 98% white, so over the dimmed map it composites to
+# about #fafafa: the darkest surface a light-scheme link sits on.
+_LIGHT_SHEET_FLOOR = (250, 250, 250)
+
 # Vividness tuning, applied only on the "auto" light shade: deepen past
 # the AA floor and gently saturate, so an accent that would sit right at
 # 4.5 reads vivid rather than muddy-gray. Raw picks that already clear
@@ -201,8 +206,12 @@ def _palette_from_base(base_rgb, darken_light):
       sheet. Derived from the same base (not the darkened light shade)
       so the two lightness adjustments don't compound.
     - on-accent: #fff or near-black per shade, whichever contrasts more.
+    - link: the light shade as link text. A light shade that is too pale
+      to read as text on the light sheet is darkened just far enough;
+      fills, focus rings and pills keep the light shade itself. The dark
+      scheme needs no link shade: its accent is already lightened to AA.
 
-    Returns {"light", "dark", "onLight", "onDark"} as hex strings.
+    Returns {"light", "dark", "onLight", "onDark", "link"} as hex strings.
     """
     if darken_light:
         # Auto path: deepen + saturate for vividness.
@@ -215,11 +224,19 @@ def _palette_from_base(base_rgb, darken_light):
     else:
         light_rgb = base_rgb
     dark_rgb = _lighten_for_contrast(base_rgb, target_contrast=4.5, against=_DARK_SHEET_BG)
+    link_rgb = light_rgb
+    if _contrast_ratio(light_rgb, _LIGHT_SHEET_FLOOR) < 4.5:
+        # Fine steps: the link should land just past AA, not a coarse
+        # step darker than the club's color needs to be.
+        link_rgb = _darken_for_contrast(
+            light_rgb, target_contrast=4.5, against=_LIGHT_SHEET_FLOOR, step=0.005,
+        )
     return {
         "light": _rgb_to_hex(light_rgb),
         "dark": _rgb_to_hex(dark_rgb),
         "onLight": _best_text_color(light_rgb),
         "onDark": _best_text_color(dark_rgb),
+        "link": _rgb_to_hex(link_rgb),
     }
 
 

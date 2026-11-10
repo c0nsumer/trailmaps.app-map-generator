@@ -97,6 +97,21 @@ def test_vividness_skips_verbatim_light_shade():
     assert p["light"] == "#489820"
 
 
+def test_link_shade_darkens_only_a_pale_light_shade():
+    # A pale explicit accent (ramba's lime) keeps its fill but gets a link
+    # shade that reads AA on the light sheet and no darker than it needs;
+    # an accent that already passes is its own link.
+    floor = (250, 250, 250)
+    p = _palette_from_base(_hex_to_rgb("#79AF13"), darken_light=False)
+    assert p["light"] == "#79AF13"
+    link = _hex_to_rgb(p["link"])
+    assert _contrast_ratio(link, floor) >= 4.5
+    assert _contrast_ratio(link, floor) < 4.7
+    for ok in ("#1D6FA5", "#005088"):
+        q = _palette_from_base(_hex_to_rgb(ok), darken_light=False)
+        assert q["link"] == q["light"] == ok
+
+
 def test_darken_sat_boost_keeps_saturation():
     # With a sat boost the deepened colour's saturation is >= the base's
     # (vivid, not greyed out), and it still clears the target.
@@ -153,7 +168,7 @@ def test_resolve_palette_unset_uses_framework_default(tmp_path):
     # palette (never None), with the default used verbatim for the light
     # shade, and no warning (unset is the quiet default, not a request).
     p = resolve_accent_palette({}, str(tmp_path))
-    assert set(p) == {"light", "dark", "onLight", "onDark"}
+    assert set(p) == {"light", "dark", "onLight", "onDark", "link"}
     assert p["light"] == "#1D6FA5"
 
 

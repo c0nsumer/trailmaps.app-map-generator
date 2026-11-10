@@ -119,10 +119,12 @@
          basemap with no trails. -->
     <script src="vendor/maplibre-gl-lanes.js" defer></script>
 
-    <!-- Start the trails.geojson download now, overlapping it with the
-         vendor JS download/parse instead of waiting for app.js to run
-         loadTrails(), which consumes this request instead of issuing
-         its own. An early fetch() rather than <link rel="preload">:
+    <!-- Start the trails.geojson and pois.geojson downloads now,
+         overlapping them with the vendor JS download/parse instead of
+         waiting for app.js: loadTrails() consumes these requests (it
+         starts reading both bodies) instead of issuing its own. Every
+         build writes a pois.geojson, an empty one when no layer is on,
+         so the early POI request never 404s. An early fetch() rather than <link rel="preload">:
          Safari never matches an as=fetch preload to a later fetch()
          (with or without `crossorigin`), so it downloads the file
          twice in parallel. Chromium dedupes the preload, but a shared
@@ -132,21 +134,29 @@
          __trailsTimer.arm and clears it with .done after parsing, so a
          stall aborts while a slow download sharing a weak link with
          the scripts and tiles still completes. The rejection handler marks a failure as handled here;
-         loadTrails() still sees it and shows the error toast. -->
+         loadTrails() (loadPOIs() for the POIs) still sees it and shows
+         the error toast. -->
     <script>
     (function () {
-        var controller = new AbortController();
-        var timer;
-        function arm() {
-            clearTimeout(timer);
-            timer = setTimeout(function () { controller.abort(); }, 20000);
+        function early(url) {
+            var controller = new AbortController();
+            var timer;
+            function arm() {
+                clearTimeout(timer);
+                timer = setTimeout(function () { controller.abort(); }, 20000);
+            }
+            function done() { clearTimeout(timer); }
+            arm();
+            var request = fetch(url, { signal: controller.signal });
+            request.catch(done);
+            return { request: request, timer: { arm: arm, done: done } };
         }
-        function done() { clearTimeout(timer); }
-        arm();
-        var request = fetch('trails.geojson', { signal: controller.signal });
-        request.catch(done);
-        window.__trailsRequest = request;
-        window.__trailsTimer = { arm: arm, done: done };
+        var trails = early('trails.geojson');
+        window.__trailsRequest = trails.request;
+        window.__trailsTimer = trails.timer;
+        var pois = early('pois.geojson');
+        window.__poisRequest = pois.request;
+        window.__poisTimer = pois.timer;
     })();
     </script>
 
@@ -492,10 +502,12 @@
                 <button type="button" class="search-filter-chip" data-filter="trail" role="tab" aria-selected="false">Trails</button>
                 <button type="button" class="search-filter-chip" data-filter="poi" role="tab" aria-selected="false">Places</button>
             </div>
+            <!-- Ahead of the list, which still takes the sheet's height when
+                 empty, so "No matches." sits where the first row would. -->
+            <p class="search-overlay-empty hidden" id="finder-empty" role="status">No matches.</p>
             <div class="search-overlay-results" id="finder-list" role="listbox" aria-label="Routes, trails, and places">
                 <!-- Rows rendered by app.js -->
             </div>
-            <p class="search-overlay-empty hidden" id="finder-empty" role="status">No matches.</p>
         </div>
     </div>
 
