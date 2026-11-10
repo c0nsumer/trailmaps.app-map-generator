@@ -3023,16 +3023,18 @@ button.highlight-chip::after {
     width: 56px;
     height: 56px;
     margin: -28px 0 0 -28px;
-    /* An equilateral triangle (12 px sides) pointing at 12 o'clock,
+    /* An equilateral triangle (16 px sides) pointing at 12 o'clock,
      * 3 px clear of the dot's white ring, its base an arc concentric
-     * with the dot so the gap stays even. Steve picked it from the
+     * with the dot so the gap stays even. 16 px because the white edge
+     * disappears on pale ground, and the blue left showing should be
+     * about as wide as the dot (12 px read small on a phone). Steve picked it from the
      * marker lab (2026-Nov-10) over the earlier translucent cone, which
      * lay as a block on the trail ahead. The gap keeps the dot and
      * pointer from reading as a map pin when it points down. The fill
      * is a copy of --user-dot (a data URL cannot read a variable); the
      * white edge is what keeps it readable on the on-trail glow and on
      * blue lanes, where the fill alone vanishes. */
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Cpath d='M28,5.79 L34,16.19 A13.25,13.25 0 0,0 22,16.19 Z' fill='%233498db' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 56'%3E%3Cpath d='M28,3.58 L36,17.44 A13.25,13.25 0 0,0 20,17.44 Z' fill='%233498db' stroke='%23fff' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
     /* A soft shadow like the one under the dot's ring, for pale ground. */
     filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.35));
     transform: rotate(var(--wedge-heading, 0deg));
