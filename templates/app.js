@@ -3167,6 +3167,10 @@ if (!eventTrailLabelsAvailable() && labelMode === "trails") labelMode = "routes"
 
 // Bucket-model state
 let seasonMode = LS.get("mtb.seasonMode", "summer"); // "summer" | "winter"
+// Any other stored value (a damaged entry, a future version's) matches
+// neither bucket and would hide every route until the rider found the
+// season control.
+if (seasonMode !== "winter") seasonMode = "summer";
 let emergencyOn = LS.get("mtb.emergencyOn", isDefaultVisible("emergency"));
 
 // Single-highlight invariant: at most one route OR rating highlighted.
@@ -5959,7 +5963,7 @@ function vectorBasemapSource() {
     // the rider out of the map (loses zoom/pan/highlight/geolocate
     // state, and is genuinely disorienting in standalone PWA mode
     // where there's no browser back button visible).
-    const ATTR_LINK_ATTRS = 'target="_blank" rel="noopener"';
+    const ATTR_LINK_ATTRS = 'target="_blank" rel="noopener noreferrer"';
     const attrParts = [
         `&copy; <a href="https://www.openstreetmap.org/copyright" ${ATTR_LINK_ATTRS}>OpenStreetMap</a>`,
         `&copy; <a href="https://protomaps.com" ${ATTR_LINK_ATTRS}>Protomaps</a>`,
@@ -9938,7 +9942,10 @@ function showHighlightChip({ label, color, stats, line, glyph, glyphFreeride, po
             next = document.createElement("span");
             next.className = "highlight-chip-swatch";
             next.setAttribute("aria-hidden", "true");
-            next.style.background = color;
+            // backgroundColor, not the background shorthand: a route
+            // color can come from an OSM tag, and the shorthand accepts
+            // url(), which would make the browser fetch from any host.
+            next.style.backgroundColor = color;
         }
         swatch.replaceWith(next);
     }
@@ -10963,7 +10970,7 @@ const isSafari = /Safari/.test(navigator.userAgent) &&
 // and must be http(s); anything else falls back to the computed link.
 function directionsLink(coords, directionsUrl) {
     if (directionsUrl && _isSafeExternalUrl(directionsUrl, ["http:", "https:"])) {
-        return `<a class="popup-directions" href="${escapeHtml(directionsUrl)}" target="_blank" rel="noopener">Get Directions &rarr;</a>`;
+        return `<a class="popup-directions" href="${escapeHtml(directionsUrl)}" target="_blank" rel="noopener noreferrer">Get Directions &rarr;</a>`;
     }
     if (directionsUrl) {
         console.warn(`directionsLink: rejected directions_url, expected http(s)://, got ${JSON.stringify(directionsUrl)}`);
@@ -10972,7 +10979,7 @@ function directionsLink(coords, directionsUrl) {
     const url = isSafari
         ? `https://maps.apple.com/?daddr=${lat},${lon}`
         : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
-    return `<a class="popup-directions" href="${url}" target="_blank" rel="noopener">Get Directions &rarr;</a>`;
+    return `<a class="popup-directions" href="${url}" target="_blank" rel="noopener noreferrer">Get Directions &rarr;</a>`;
 }
 
 // "Trailhead: Main", "Toilets", "Trail Marker: 12". Trail markers
@@ -13289,7 +13296,8 @@ function routeSwatchEl(r, className) {
     if (!isDashed(r)) {
         const swatch = document.createElement("span");
         swatch.className = className;
-        swatch.style.background = r.color;
+        // backgroundColor for the reason given in showHighlightChip.
+        swatch.style.backgroundColor = r.color;
         swatch.setAttribute("aria-hidden", "true");
         return swatch;
     }
