@@ -3083,6 +3083,10 @@ body::after {
      * is smaller: 90vw (works at narrow phone widths) or 360px (a
      * nice paragraph-width on tablet/desktop). */
     max-width: min(90vw, 360px);
+    /* Without a width, a box placed at left: 50% shrinks to fit the
+     * half of the viewport right of that line, so the cap above never
+     * applied on a phone and a sentence wrapped to seven lines. */
+    width: max-content;
     box-shadow: var(--elev-floating);
     /* Sits above the about / welcome modals (z=100). The SW-update
      * toast in particular needs to surface on top of the welcome
