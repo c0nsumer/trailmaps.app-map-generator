@@ -42,6 +42,7 @@ sys.path.insert(0, SCRIPTS_DIR)
 import basemap_paths
 import cache_manifest
 import console
+import stable_mtimes
 from cache_signatures import (
     BASE_FORMAT_CHANGED,
     SIDECAR_MISSING,
@@ -1916,6 +1917,8 @@ def main(argv=None, prog=None):
         return
 
     os.makedirs(output_dir, exist_ok=True)
+    # Read before any stage writes; see stable_mtimes for why.
+    prior_files = stable_mtimes.snapshot(output_dir)
 
     # Discard collector state a prior in-process main() call may have
     # left behind (tests invoke main() repeatedly); the stage drains
@@ -2014,6 +2017,7 @@ def main(argv=None, prog=None):
     # a basemap claim, so it must not be filed under precompress.
     overpass_basemap_paths += cache_manifest.drain()
     _stage_pwa(config, args, output_dir, cache_dir)
+    stable_mtimes.restore(prior_files)
     precompress_paths = cache_manifest.drain()
     _stage_cache_manifest(config, args, cache_dir, {
         "overpass_trails": overpass_trails_paths,
