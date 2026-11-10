@@ -14843,7 +14843,15 @@ if ("serviceWorker" in navigator) {
         navigator.serviceWorker.addEventListener(
             "controllerchange", onControllerChange, { once: true });
         const answer = await askSw(sw, "SKIP_WAITING");
-        if (answer && answer.applied) return;
+        // No answer is not a refusal. The worker answers before it
+        // waits on activation, so silence means it was slow to start or
+        // lost the message, which says nothing about its cache, and it
+        // gates the swap on that cache itself. Read as "not ready", the
+        // silence re-offered the update at once (the core was already
+        // complete), so every Reload brought back the same prompt. The
+        // reload stays armed for when activation lands, and the next
+        // load offers the update again if it never does.
+        if (!answer || answer.applied) return;
         // Not swapped: the rider keeps this version, and the toast comes
         // back once the update is really ready. Disarmed so a swap that
         // lands later can't reload the page out from under them.
@@ -14856,9 +14864,11 @@ if ("serviceWorker" in navigator) {
 
     // Post a message to a specific worker (the WAITING one, not the
     // controller) and resolve its reply, or null on timeout or any
-    // error. Callers treat null as "not ready", so it can never cause a
-    // swap onto a cold cache. The timeout covers a worker the browser
-    // terminated, which never answers.
+    // error. A null CORE_STATUS reads as "not ready", so it can never
+    // start a swap; a null SKIP_WAITING leaves the decision with the
+    // worker, which gates the swap on its own cache either way. The
+    // timeout covers a worker the browser terminated, which never
+    // answers.
     function askSw(sw, type) {
         return new Promise((resolve) => {
             try {

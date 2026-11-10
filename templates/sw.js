@@ -87,10 +87,27 @@ const PRECACHE_DONE_URL = "__precache-complete__";
 
 // Re-entrancy guard: install / activate / page pings can overlap
 // (e.g. a RESUME_PRECACHE message arriving while the install-time
-// run is mid-list) - one runner at a time is enough.
-let _precacheRunning = false;
+// run is mid-list) - one runner at a time is enough. A trigger that
+// arrives mid-run gets the running run's promise, so a caller that
+// needs the run's outcome (a deferred SKIP_WAITING, below) can wait on
+// it instead of seeing an immediate return.
+let _precacheRun = null;
 
-async function backgroundPrecache() {
+// Reload taps from pages that cannot hear "not ready yet" (see
+// skipWaitingIfReady), by client id, honored once the core lands if
+// one of those pages is still open.
+const _skipWaitingFor = new Set();
+
+function backgroundPrecache() {
+    if (!_precacheRun) {
+        _precacheRun = runPrecache().finally(() => {
+            _precacheRun = null;
+        });
+    }
+    return _precacheRun;
+}
+
+async function runPrecache() {
     // Sequential precacheOne (not cache.addAll) so we trickle through
     // the connection one request at a time, leaving bandwidth for
     // foreground MapLibre fetches. cache: "no-cache" forces
@@ -115,8 +132,6 @@ async function backgroundPrecache() {
     // verification pass confirms every URL is present is the
     // completion sentinel written, which makes subsequent triggers a
     // single cache.match.
-    if (_precacheRunning) return;
-    _precacheRunning = true;
     try {
         const cache = await caches.open(CACHE_NAME);
         if (await cache.match(PRECACHE_DONE_URL)) {
@@ -131,6 +146,12 @@ async function backgroundPrecache() {
             try {
                 if (await cache.match(url)) continue; // resume: already cached
                 await precacheOne(cache, url);
+                // The core lands before the tile archives at the tail,
+                // which on a slow link take minutes more; a deferred
+                // Reload applies at the first moment it safely can.
+                if (_skipWaitingFor.size && (await coreComplete())) {
+                    await skipWaitingForDeferred();
+                }
             } catch (e) {
                 console.warn("SW backgroundPrecache failed:", url, e);
                 // A server answer (404 for a stale URL after a deploy)
@@ -162,14 +183,12 @@ async function backgroundPrecache() {
         // Storage itself failed (quota, private mode). Every caller
         // fires and forgets, so log here; the next trigger retries.
         console.warn("SW backgroundPrecache aborted:", e);
-    } finally {
-        _precacheRunning = false;
     }
 }
 
 // A precache fetch whose bytes stopped arriving for this long is
 // abandoned. On the "reported but dead" cellular link a request can
-// hang without ever failing, and a hung run holds _precacheRunning, so
+// hang without ever failing, and a hung run holds _precacheRun, so
 // nothing could ever retry it. The timer measures silence, not total
 // time, so a 30 MB archive on a slow but live link still finishes.
 const PRECACHE_IDLE_MS = 30000;
@@ -317,12 +336,17 @@ async function cleanupOldCaches() {
 // builds before this check post SKIP_WAITING unconditionally: an
 // unguarded swap onto a cold cache gave a rider on a weak link the new
 // page with the old app.js, or a page that never finished loading. A
-// refused request keeps the old version in charge and resumes this
-// precache. The answer goes back on the transferred port when there
-// is one, so the page can tell "applied" from "not ready yet".
+// request that comes too early keeps the old version in charge and
+// resumes this precache. The answer goes back on the transferred port
+// when there is one, so the page can tell "applied" from "not ready
+// yet"; a request with no port is deferred until the core is in (see
+// skipWaitingIfReady for why).
 self.addEventListener("message", (event) => {
     if (event.data && event.data.type === "SKIP_WAITING") {
-        event.waitUntil(skipWaitingIfReady(event.ports && event.ports[0]));
+        event.waitUntil(skipWaitingIfReady(
+            event.ports && event.ports[0],
+            event.source && event.source.id
+        ));
     }
     // Core-readiness query for the silent update swap (see the PWA
     // update block in app.js). The page polls the WAITING worker with
@@ -351,17 +375,85 @@ self.addEventListener("message", (event) => {
     }
 });
 
-async function skipWaitingIfReady(port) {
+async function skipWaitingIfReady(port, clientId) {
     let ready = false;
     try {
         ready = await coreComplete();
-        if (ready) await self.skipWaiting();
     } catch (e) {
         console.warn("SW skipWaitingIfReady failed:", e);
-        ready = false;
     }
-    if (port) port.postMessage({ type: "SKIP_WAITING", applied: ready });
-    if (!ready) backgroundPrecache();
+    if (ready) {
+        // Answer first, then wait. Chrome resolves skipWaiting() only
+        // once activation starts, and activation waits for the old
+        // worker's in-flight requests to finish (a tile fetch on a slow
+        // link, however long that takes). Awaited before the reply,
+        // that delay ran past the page's 3 s timeout, which it read as
+        // "not ready": it said the update was still downloading, asked
+        // again a moment later, and every Reload went the same way
+        // until the old worker went quiet. "applied" means the swap is
+        // committed; the page's controllerchange reload follows when it
+        // lands.
+        const skipping = self.skipWaiting();
+        if (port) port.postMessage({ type: "SKIP_WAITING", applied: true });
+        try {
+            await skipping;
+        } catch (e) {
+            console.warn("SW skipWaiting failed:", e);
+        }
+        return;
+    }
+    if (port) {
+        // This page hears "not ready": it tells the rider and asks
+        // again once the core is in, so the choice stays with them.
+        port.postMessage({ type: "SKIP_WAITING", applied: false });
+        backgroundPrecache();
+        return;
+    }
+    // No port: a page from a build before this check (the deployed
+    // fleet's; this build's silent swap posts without one too, but only
+    // after CORE_STATUS said yes). Its toast comes on a clock, not on
+    // the core, and its Reload arms a one-shot controllerchange reload
+    // and does nothing else, so a refusal left the tap dead, and every
+    // refresh brought the same toast back a minute later, for as long
+    // as the core took. So the tap is kept: the swap happens the
+    // moment the core is cached (checked after each file in
+    // runPrecache), and that page reloads onto a warm cache. Kept only
+    // while that page is open (a refreshed or closed page has no reload
+    // armed, and its next load decides for itself) and only for the run
+    // in progress: a run a dead link ends drops it, so a swap can't land
+    // on the rider long after the tap; that page's next toast asks
+    // again. The waitUntil this runs under keeps the worker alive for
+    // the run.
+    if (!clientId) {
+        // No page to keep the tap for, but the download still resumes,
+        // as it does on every other "not ready".
+        backgroundPrecache();
+        return;
+    }
+    _skipWaitingFor.add(clientId);
+    const run = backgroundPrecache();
+    // A run already in progress may have cached the last core file
+    // between the check above and the add, and it checks only after
+    // its next file, which can be a multi-MB archive.
+    if (await coreComplete().catch(() => false)) await skipWaitingForDeferred();
+    await run;
+    _skipWaitingFor.delete(clientId);
+}
+
+// The deferred Reload taps above, once the core is in: swap if one of
+// the pages that asked is still open. Not awaited past skipWaiting's
+// call: its promise settles only when activation starts (see
+// skipWaitingIfReady), and the archives should keep downloading
+// meanwhile.
+async function skipWaitingForDeferred() {
+    const ids = [..._skipWaitingFor];
+    _skipWaitingFor.clear();
+    for (const id of ids) {
+        if (await self.clients.get(id)) {
+            self.skipWaiting().catch((e) => console.warn("SW skipWaiting failed:", e));
+            return;
+        }
+    }
 }
 
 // Answer a CORE_STATUS query: are all non-.pmtiles precache URLs in
