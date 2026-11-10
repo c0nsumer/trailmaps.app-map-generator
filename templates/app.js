@@ -2808,16 +2808,17 @@ function computeDecorations() {
 // twice per toggle (updateTrailDisplay + updateMarkerProximity). Two
 // mechanisms keep it to one real pass:
 //
-//   - Boot gate: the FIRST pass is deferred to map.once("idle") (see
-//     loadTrails) so basemap + trail lines paint before the placer
-//     runs. Calls arriving earlier (setupFloatingChrome →
-//     applyVisibilityChange runs inside style.load, before that idle)
-//     are dropped, so the placer never runs on the critical path.
+//   - Boot gate: the FIRST pass is deferred to map idle or 1.5 s,
+//     whichever comes first (see loadTrails), so basemap + trail lines
+//     paint before the placer runs. Calls arriving earlier
+//     (setupFloatingChrome → applyVisibilityChange runs inside
+//     style.load) are dropped, so the placer never runs on the
+//     critical path.
 //   - rAF coalescing: after boot, back-to-back calls within one frame
 //     collapse into a single recompute on the next frame. State reads
 //     (visibleRoutes, obstacle cache, toggles) happen inside the rAF
 //     callback, so the pass always sees the final state of the burst.
-let _decorationsReady = false;   // flipped by loadTrails' map.once("idle")
+let _decorationsReady = false;   // flipped by loadTrails at idle or 1.5 s, whichever is first
 let _decorationsScheduled = false;
 
 function updateDecorationsSource() {
@@ -4593,6 +4594,17 @@ async function init() {
         if (_locateActivationZoomPending) {
             _locateActivationZoomPending = false;
             zoom = Math.max(zoom, LOCATE_ACTIVATION_ZOOM);
+        } else if (_followUserOnGeolocate && !map.isMoving()) {
+            // An ease to the center the map already has still animates
+            // and repaints for its full duration, so a rider standing
+            // still in follow mode kept the map rendering every frame.
+            // Measured against the current center, not the last fix, so
+            // skipped fixes cannot add up to drift. Follow mode only:
+            // there the movestart filter passes the ease with no side
+            // effect, so skipping it loses nothing.
+            const here = map.project(map.getCenter());
+            const fix = map.project(center);
+            if (Math.hypot(fix.x - here.x, fix.y - here.y) < 1) return;
         }
         map.easeTo({ center, zoom }, { geolocateSource: true });
     };
@@ -7225,7 +7237,7 @@ function routeSwatchModel(info) {
 // Trail data loading
 // ============================================================
 
-// fetch() with a hard timeout. The browser's own network timeout can
+// fetch() with an inactivity timeout. The browser's own network timeout can
 // run to a minute or more, and on "reported but dead" cellular a
 // request can hang that whole time, leaving an awaiting data loader
 // stalled with no error and no UI feedback (blank map, no toast). An
@@ -7233,16 +7245,45 @@ function routeSwatchModel(info) {
 // and the caller's catch can surface its "failed to load" toast. A
 // cache hit served by the service worker resolves instantly and never
 // reaches the timeout, so this only ever bites a genuine network
-// stall. 20 s is generous enough not to abort a slow-but-real download
-// of these (small) GeoJSON files; bump it if a map's data grows large.
-async function fetchWithTimeout(resource, ms = 20000, options = {}) {
+// stall.
+// Headers can arrive and the body then stall (signal lost mid-download),
+// so a caller that reads the body passes `read`, which re-arms the abort
+// on every chunk: it fires after `ms` with no bytes, never on a slow
+// download that keeps progressing. A whole-download deadline would fail
+// a healthy map on a weak link, where these files share the line with
+// app.js, MapLibre and the tiles. Without `read` only the wait for
+// headers is bounded.
+async function fetchWithTimeout(resource, ms = 20000, options = {}, read = null) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ms);
+    let timer = null;
+    const arm = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => controller.abort(), ms);
+    };
+    arm();
     try {
-        return await fetch(resource, { ...options, signal: controller.signal });
+        const resp = await fetch(resource, { ...options, signal: controller.signal });
+        return read ? await read(resp, arm) : resp;
     } finally {
         clearTimeout(timer);
     }
+}
+
+// Reads the body chunk by chunk so `arm` can restart the inactivity
+// timer on each one (see fetchWithTimeout).
+async function readJsonOk(resp, arm) {
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+    if (!resp.body) return resp.json();
+    arm();
+    const reader = resp.body.getReader();
+    const chunks = [];
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        arm();
+    }
+    return JSON.parse(await new Blob(chunks).text());
 }
 
 async function loadTrails() {
@@ -7255,11 +7296,10 @@ async function loadTrails() {
         // fresh instead of re-reading a consumed body.
         const early = window.__trailsRequest;
         window.__trailsRequest = null;
-        const resp = await (early || fetchWithTimeout("trails.geojson"));
-        if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-        }
-        routesData = await resp.json();
+        routesData = early
+            ? await early.then((r) => readJsonOk(r, window.__trailsTimer.arm))
+                .finally(window.__trailsTimer.done)
+            : await fetchWithTimeout("trails.geojson", undefined, undefined, readJsonOk);
     } catch (e) {
         console.error("loadTrails: trails.geojson failed to load:", e);
         showToast("Map data failed to load. Try reloading the page.");
@@ -7278,8 +7318,8 @@ async function loadTrails() {
     // probe-fetch.
     if (CONFIG.hasClipEndpoints) {
         try {
-            const clipResp = await fetchWithTimeout("clip_endpoints.geojson");
-            if (clipResp.ok) clipEndpointsData = await clipResp.json();
+            clipEndpointsData = await fetchWithTimeout(
+                "clip_endpoints.geojson", undefined, undefined, readJsonOk);
         } catch (_) {
             clipEndpointsData = null;
         }
@@ -7323,7 +7363,7 @@ async function loadTrails() {
     // placement algorithm.
     //
     // Initial data is empty; the first computeDecorations() pass is
-    // deferred to map.once('idle', …) below so the basemap + trail
+    // deferred (idle or a timer, below) so the basemap + trail
     // lines paint immediately and the decoration overlay arrives in
     // the next frame. computeDecorations() is 50-200ms on dense maps
     // (4-pass placement + collision-checked label clipping); pulling
@@ -7337,10 +7377,17 @@ async function loadTrails() {
     // setupFloatingChrome's applyVisibilityChange inside style.load)
     // were dropped by the gate, this is the single first pass, off
     // the first-paint critical path. See updateDecorationsSource.
-    map.once("idle", () => {
+    // Idle waits for every tile in view, hillshade and contour DEM
+    // included, which on a weak link is tens of seconds of unlabeled
+    // trails; the timer caps that wait while still keeping the pass
+    // out of the frames that first draw the trails.
+    const openDecorations = () => {
+        if (_decorationsReady) return;
         _decorationsReady = true;
         updateDecorationsSource();
-    });
+    };
+    map.once("idle", openDecorations);
+    setTimeout(openDecorations, 1500);
 
     // Continuation arrowheads for clipped relations
     if (clipEndpointsData) {
@@ -10805,11 +10852,7 @@ async function loadPOIs() {
     // gated types, updatePoiToggleVisibility) auto-hide the relevant
     // toggle rows.
     try {
-        const resp = await fetchWithTimeout("pois.geojson");
-        if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-        }
-        poisData = await resp.json();
+        poisData = await fetchWithTimeout("pois.geojson", undefined, undefined, readJsonOk);
     } catch (e) {
         console.warn("loadPOIs: pois.geojson failed to load:", e);
         showToast("POI data failed to load. Markers won't show.");

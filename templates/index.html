@@ -130,18 +130,26 @@
          (with or without `crossorigin`), so it downloads the file
          twice in parallel. Chromium dedupes the preload, but a shared
          request is one download in every engine. The 20s abort matches
-         fetchWithTimeout's default and, like it, covers only the wait
-         for response headers. The rejection handler marks a failure
-         as handled here; loadTrails() still sees it and shows the
-         error toast. -->
+         fetchWithTimeout's default and, like it, is an inactivity
+         timeout: loadTrails() re-arms it per body chunk through
+         __trailsTimer.arm and clears it with .done after parsing, so a
+         stall aborts while a slow download sharing a weak link with
+         the scripts and tiles still completes. The rejection handler marks a failure as handled here;
+         loadTrails() still sees it and shows the error toast. -->
     <script>
     (function () {
         var controller = new AbortController();
-        var timer = setTimeout(function () { controller.abort(); }, 20000);
+        var timer;
+        function arm() {
+            clearTimeout(timer);
+            timer = setTimeout(function () { controller.abort(); }, 20000);
+        }
+        function done() { clearTimeout(timer); }
+        arm();
         var request = fetch('trails.geojson', { signal: controller.signal });
-        request.then(function () { clearTimeout(timer); },
-                     function () { clearTimeout(timer); });
+        request.catch(done);
         window.__trailsRequest = request;
+        window.__trailsTimer = { arm: arm, done: done };
     })();
     </script>
 
