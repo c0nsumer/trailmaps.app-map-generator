@@ -382,6 +382,26 @@ def _check_vendor_hash(filename, data, cached):
         sys.exit(1)
 
 
+# Map-root files an earlier engine version wrote and this one does not.
+# A rebuild reuses its output dir (the trails base and the signatures
+# live there), so a dropped file would otherwise sit beside the new
+# build and deploy with it, unreferenced. Named one by one, never a
+# sweep of "everything the build did not write": an orchestrator keeps
+# its own files in the same dir (a poster, share images). Add a name
+# here whenever an output file is retired.
+RETIRED_OUTPUTS = ("uqr-global.mjs",)
+
+
+def _remove_retired_outputs(output_dir):
+    """Delete RETIRED_OUTPUTS, and their precompressed siblings."""
+    for name in RETIRED_OUTPUTS:
+        for ext in ("", ".br", ".gz"):
+            path = os.path.join(output_dir, name + ext)
+            if os.path.isfile(path):
+                os.remove(path)
+                console.detail(f"Removed {name + ext}, which this engine version no longer writes")
+
+
 def _write_vendor_licenses(vendor_dst):
     """Write vendor/LICENSES.txt: each bundled library's license text.
 
@@ -2132,6 +2152,7 @@ def main(argv=None, prog=None):
     # not a finished build.
     with contextlib.suppress(FileNotFoundError):
         os.remove(os.path.join(output_dir, BUILD_MARKER))
+    _remove_retired_outputs(output_dir)
     # Read before any stage writes; see stable_mtimes for why.
     prior_files = stable_mtimes.snapshot(output_dir)
 

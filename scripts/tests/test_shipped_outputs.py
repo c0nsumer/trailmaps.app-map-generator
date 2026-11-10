@@ -126,3 +126,19 @@ def test_precache_covers_every_built_file(tmp_path):
     assert sorted(sw_config["PMTILES_FILES"]) == sorted(ARCHIVES)
     for name in STRAYS:
         assert name not in precache
+
+
+def test_retired_outputs_are_removed_and_strangers_kept(tmp_path):
+    # A file this engine stopped writing must not ride along from an older
+    # build in the same dir; a file the engine never wrote is not its to
+    # delete.
+    import build
+
+    for name in build.RETIRED_OUTPUTS:
+        for ext in ("", ".br", ".gz"):
+            (tmp_path / (name + ext)).write_bytes(b"old")
+    for name in STRAYS:
+        (tmp_path / name).write_bytes(b"not an engine output")
+    build._remove_retired_outputs(str(tmp_path))
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(STRAYS)
+
