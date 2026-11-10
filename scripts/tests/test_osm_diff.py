@@ -519,3 +519,18 @@ def test_a_snapshot_from_before_itrs_reports_no_change():
     assert "itrs_difficulty" not in old["properties"]
     after = _snap([_itrs_feature("2", "3")])
     assert diff_snapshots(_snap([old]), after)["tag_changes"] == []
+
+
+def test_a_doubtful_direction_change_reports_nothing():
+    # Old ends sit at 0 and 10 (units of 0.001 deg lon); new ends at 6 and 4.
+    # The reversed pairing is closer (8 vs 12) but does not win by half
+    # (16 vs 12), so the diff stays quiet rather than guess.
+    def line(a, b):
+        return [[-87.60 + a * 0.001, 46.50], [-87.60 + b * 0.001, 46.50]]
+
+    before = _snap([_feature([10], line(0, 10), trail="Flow", oneway="yes")])
+    after = _snap([_feature([10], line(6, 4), trail="Flow", oneway="yes")])
+    assert diff_snapshots(before, after)["tag_changes"] == []
+    # A clear reversal of the same line still reports.
+    clear = _snap([_feature([10], line(10, 0), trail="Flow", oneway="yes")])
+    assert len(diff_snapshots(before, clear)["tag_changes"]) == 1

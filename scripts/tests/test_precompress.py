@@ -103,3 +103,16 @@ def test_cached_sidecars_are_reused_and_match_a_fresh_compress(tmp_path, monkeyp
         with open(os.path.join(second, "app", "lib.js" + ext), "rb") as a, \
                 open(os.path.join(fresh, "lib.js" + ext), "rb") as b:
             assert a.read() == b.read()
+
+
+def test_incompressible_text_files_gain_no_sidecar(tmp_path):
+    # Random bytes grow when compressed; a sidecar bigger than the original
+    # would cost riders bytes. Checked on the first build (miss) and on a
+    # second one that finds the store entry (hit).
+    root = str(tmp_path / "site")
+    cache = str(tmp_path / "cache")
+    _plant(root, "noise.json", os.urandom(4096))
+    for _ in range(2):
+        precompress_assets(root, cache_dir=cache)
+        assert not os.path.exists(os.path.join(root, "noise.json.gz"))
+        assert not os.path.exists(os.path.join(root, "noise.json.br"))

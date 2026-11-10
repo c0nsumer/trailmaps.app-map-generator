@@ -4,6 +4,8 @@ empty trails file and failing later on the bounding box. The usual
 cause is a JOSM save renumbering its negative ids."""
 
 
+import json
+
 import pytest
 from fetch_trails import fetch_trails
 
@@ -203,3 +205,17 @@ def test_overpass_repeat_m_matches_the_file(tmp_path, monkeypatch):
                                          cache_dir=str(tmp_path / "c"))
     assert via_api["metadata"]["routes"] == via_file["metadata"]["routes"]
     assert via_api["metadata"]["routes"]["40"]["repeat_m"] > 0
+
+
+def test_winter_relations_reaches_the_children_of_a_listed_super(tmp_path):
+    # Super-relation 2 is replaced by its child 20 at fetch time, so the
+    # seasonal tag has to land on the child. Route 10 is outside the list.
+    osm = tmp_path / "t.osm"
+    osm.write_text(_osm_text(), encoding="utf-8")
+    config = {"name": "M", "slug": "m", "relations": [1], "winter_relations": [2],
+              "osm_file": str(osm)}
+    fetch_trails(config, str(tmp_path / "t.geojson"), cache_dir=str(tmp_path / "c"))
+    routes = json.loads((tmp_path / "t.geojson").read_text())["metadata"]["routes"]
+    assert sorted(routes) == ["10", "20"]
+    assert routes["20"]["seasonal"] == "winter"
+    assert routes["10"]["seasonal"] != "winter"

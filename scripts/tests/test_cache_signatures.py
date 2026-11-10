@@ -155,3 +155,11 @@ def test_a_sidecar_from_before_the_format_line_is_a_format_change(tmp_path):
         f.write("{}")
     _save_signature(path, "trails-fp=0123456789abcdef\ntrails-content=" + _trails_content_hash(path))
     assert _trails_needs_refetch(path, CONFIG) == (True, BASE_FORMAT_CHANGED)
+
+
+def test_fingerprint_changes_with_the_difficulty_scale():
+    # The scale decides whether the ITRS fields join the merge signature, so
+    # flipping it must re-derive the base. Unset means imba.
+    base = _trails_fetch_fingerprint(CONFIG)
+    assert _trails_fetch_fingerprint(dict(CONFIG, difficulty_scale="itrs")) != base
+    assert _trails_fetch_fingerprint(dict(CONFIG, difficulty_scale="imba")) == base

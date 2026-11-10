@@ -7,6 +7,7 @@ Run from repo root:
 import os
 
 import cache_manifest
+import pytest
 from colors import (
     _LIGHT_TARGET_CONTRAST,
     _best_text_color,
@@ -198,3 +199,12 @@ def test_derive_accent_records_cache_path_and_explicit_hex_records_nothing(tmp_p
 
     resolve_accent_palette({"accent_color": "#005088"}, cache_dir)
     assert cache_manifest.drain() == []
+
+
+def test_relative_luminance_weights_each_channel():
+    # Rec. 709 weights on a fully saturated channel (linearized value 1.0).
+    # Green carries the most weight and blue the least, so swapping two
+    # weights moves these.
+    assert _relative_luminance((255, 0, 0)) == pytest.approx(0.2126)
+    assert _relative_luminance((0, 255, 0)) == pytest.approx(0.7152)
+    assert _relative_luminance((0, 0, 255)) == pytest.approx(0.0722)

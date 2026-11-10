@@ -231,3 +231,45 @@ def test_custom_route_itrs_properties_are_empty(tmp_path):
     props = trails["features"][0]["properties"]
     assert props["itrs_difficulty"] == "" and "itrs_exposure" not in props
     assert props["bike_only"] is False
+
+
+# --- season buckets -------------------------------------------------------
+# Summer is the default; winter and emergency routes are not summer unless
+# summer_relations opts them back in. A wrong flag shows riders the wrong
+# season's trails.
+
+def _buckets(config, seasonal=""):
+    g = _fc()
+    g["metadata"]["routes"]["12562142"]["seasonal"] = seasonal
+    _enrich_trails_geojson(config, g)
+    info = g["metadata"]["routes"]["12562142"]
+    return info["summer"], info["winter"], info["emergency"]
+
+
+def test_an_unlisted_route_is_summer_only():
+    assert _buckets({}) == (True, False, False)
+
+
+def test_the_osm_seasonal_winter_tag_makes_a_winter_route():
+    assert _buckets({}, seasonal="winter") == (False, True, False)
+
+
+def test_winter_relations_makes_a_winter_route_that_is_not_summer():
+    assert _buckets({"winter_relations": [12562142]}) == (False, True, False)
+
+
+def test_emergency_relations_makes_an_emergency_route_that_is_not_summer():
+    assert _buckets({"emergency_access_relations": [12562142]}) == (False, False, True)
+
+
+def test_summer_relations_opts_a_winter_route_back_into_summer():
+    cfg = {"winter_relations": [12562142], "summer_relations": [12562142]}
+    assert _buckets(cfg) == (True, True, False)
+    assert _buckets({"summer_relations": [12562142]}, seasonal="winter") == (True, True, False)
+
+
+def test_a_super_relation_in_a_season_list_reaches_its_children():
+    # _fc() expands super-relation 999 to route 12562142.
+    assert _buckets({"winter_relations": [999]}) == (False, True, False)
+    assert _buckets({"emergency_access_relations": [999]}) == (False, False, True)
+    assert _buckets({"winter_relations": [999], "summer_relations": [999]}) == (True, True, False)

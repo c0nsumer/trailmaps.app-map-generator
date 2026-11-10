@@ -280,3 +280,21 @@ def test_overpass_query_records_path_on_hit_and_miss(tmp_path, monkeypatch):
     miss_path = os.path.join(cache_dir, f"overpass_{h2}.json")
     assert cache_manifest.drain() == [miss_path]
     assert os.path.exists(miss_path)
+
+
+def test_a_reuse_build_keeps_the_previous_trails_claims(tmp_path):
+    # A build that skipped the trails fetch recorded no Overpass entries, but
+    # those cached responses are what lets a deleted build/<slug>/ rebuild
+    # offline. They must stay claimed and on disk.
+    import argparse
+
+    import build
+
+    cache_dir = str(tmp_path)
+    path_a = _plant(cache_dir, OP_A)
+    cache_manifest.save(cache_dir, "mymap", _cats(cache_dir, trails=[OP_A]))
+    args = argparse.Namespace(no_basemap=False, precompress=True)
+    build._stage_cache_manifest({"slug": "mymap"}, args, cache_dir, _cats(cache_dir),
+                                trails_fetch_ran=False)
+    assert cache_manifest.load(cache_dir, "mymap")["overpass_trails"] == [OP_A]
+    assert os.path.exists(path_a)

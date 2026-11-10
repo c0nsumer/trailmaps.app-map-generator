@@ -5,7 +5,9 @@ feature, where a line is cut at the map edge, and which direction a
 one-way arrow points.
 """
 
+import pytest
 from fetch_trails import (
+    _compass_bearing,
     _expand_through_supers,
     _is_bike_only,
     _is_freeride,
@@ -349,3 +351,18 @@ def test_itrs_tags_reach_the_feature_properties(tmp_path):
     assert sorted(p["itrs_difficulty"] for p in props) == ["", "2"]
     assert all("itrs_exposure" not in p for p in props)
     assert all(p["imba_difficulty"] == "" for p in props)
+
+
+# --- _compass_bearing -----------------------------------------------------
+
+def test_compass_bearing_cardinals():
+    assert _compass_bearing([0, 0], [0, 1]) == pytest.approx(0.0)
+    assert _compass_bearing([0, 0], [1, 0]) == pytest.approx(90.0)
+    assert _compass_bearing([0, 0], [0, -1]) == pytest.approx(180.0)
+    assert _compass_bearing([0, 0], [-1, 0]) == pytest.approx(270.0)
+
+
+def test_compass_bearing_scales_longitude_by_cos_of_latitude():
+    # One degree north and one east at ~60.5 N: east is only cos(60.5 deg)
+    # = 0.4924 as long as north, so atan2(0.4924, 1) = 26.22 degrees, not 45.
+    assert _compass_bearing([0, 60], [1, 61]) == pytest.approx(26.2167, abs=0.001)
