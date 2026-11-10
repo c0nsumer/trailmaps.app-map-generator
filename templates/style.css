@@ -653,6 +653,25 @@ body::after {
     max-width: calc(100vw - 136px);
 }
 
+/* The clear chip is 30 px tall and undoes a highlight on every ride,
+ * often with gloves. An invisible band brings the tap target to 44 px
+ * without moving anything. Vertical only: the chip is already wide,
+ * and the 8 px between its side and the FAB columns stays the FABs'.
+ * Up into the 12 px top inset, down onto the map. Not on the trail
+ * chip, which is a readout and should not take more of the map. */
+button.highlight-chip {
+    position: relative;
+}
+button.highlight-chip::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+}
+
 /* The trail chip's dock: the bottom band the attribution and the
  * routes panel sit in, the chip centered across its 48 px (the docked
  * panel's FAB height). Full width with a centered child for the reason
@@ -4041,6 +4060,19 @@ body.fabs-labeled .fab-label {
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
+    position: relative;
+}
+
+/* The chips are 28 px tall. An invisible hit area fills the row's
+ * 8 px padding above and below (44 px) and meets the next chip halfway
+ * across the 6 px gap, so neighbors never share a point. It stops at
+ * the row's padding edge: the row scrolls sideways, so anything past
+ * that would be clipped, or make the row scroll up and down. */
+.search-filter-chip::after {
+    content: "";
+    position: absolute;
+    /* Measured from the padding box, inside the chip's 1 px border. */
+    inset: -9px -4px;
 }
 
 .search-filter-chip[aria-selected="true"] {
