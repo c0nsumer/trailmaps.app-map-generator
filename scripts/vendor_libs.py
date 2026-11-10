@@ -82,5 +82,12 @@ VENDOR_LICENSES = {
     "maplibre-gl-lanes.js": "maplibre-gl-lanes.txt",
 }
 
+# Bundled work that is not a vendor/ file but asks the same: heading to
+# license file. The UI icons are Material Design Icons paths, inline in
+# index.html and app.js, and Apache 2.0 asks for a copy of the license.
+EXTRA_LICENSES = {
+    "Material Design Icons (the UI icons, inline in the page)": "material-design-icons.txt",
+}
+
 # The name vendor/ ships the joined texts under.
 VENDOR_LICENSES_FILE = "LICENSES.txt"

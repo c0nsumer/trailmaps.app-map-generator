@@ -6148,7 +6148,7 @@ function buildAboutModalContent() {
         ".");
     // The bundled libraries mostly ship without a license header, so
     // the build writes their full texts into one file beside them.
-    credit("Full license texts for the bundled libraries: ",
+    credit("Full license texts for the bundled libraries and icons: ",
         "vendor/LICENSES.txt",
         "LICENSES.txt",
         ".");

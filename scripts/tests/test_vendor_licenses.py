@@ -2,7 +2,7 @@
 
 import os
 
-from vendor_libs import VENDOR_LIBS, VENDOR_LICENSES, VENDOR_LICENSES_FILE
+from vendor_libs import EXTRA_LICENSES, VENDOR_LIBS, VENDOR_LICENSES, VENDOR_LICENSES_FILE
 
 import build
 
@@ -19,13 +19,14 @@ def test_every_vendor_lib_names_a_license_text():
 
 
 def test_no_unused_license_text():
-    assert set(os.listdir(LICENSES_DIR)) == set(VENDOR_LICENSES.values())
+    used = {*VENDOR_LICENSES.values(), *EXTRA_LICENSES.values()}
+    assert set(os.listdir(LICENSES_DIR)) == used
 
 
 def test_licenses_file_holds_every_text(tmp_path):
     build._write_vendor_licenses(str(tmp_path))
     joined = (tmp_path / VENDOR_LICENSES_FILE).read_text(encoding="utf-8")
-    for filename, license_file in VENDOR_LICENSES.items():
+    for filename, license_file in {**VENDOR_LICENSES, **EXTRA_LICENSES}.items():
         assert filename in joined
         with open(os.path.join(LICENSES_DIR, license_file), encoding="utf-8") as f:
             assert f.read().strip("\n") in joined

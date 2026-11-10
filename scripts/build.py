@@ -72,7 +72,13 @@ from pmtiles_util import BASEMAP_MAXZOOM, EXTRACT_MINZOOM, TERRAIN_MAXZOOM
 from tagging_report import report_tagging_quality
 from template_inject import copy_assets, copy_templates, ship, url_path
 from validate_config import validate_config
-from vendor_libs import VENDOR_LIBS, VENDOR_LICENSES, VENDOR_LICENSES_FILE, VENDOR_SHA256
+from vendor_libs import (
+    EXTRA_LICENSES,
+    VENDOR_LIBS,
+    VENDOR_LICENSES,
+    VENDOR_LICENSES_FILE,
+    VENDOR_SHA256,
+)
 
 # ---------------------------------------------------------------------------
 # Coordinate precision for the rendered trails.geojson
@@ -380,21 +386,24 @@ def _write_vendor_licenses(vendor_dst):
     """Write vendor/LICENSES.txt: each bundled library's license text.
 
     One section per license file, headed by the vendor files it covers,
-    in VENDOR_LIBS order so the output is the same on every build.
+    in VENDOR_LIBS order so the output is the same on every build. The
+    EXTRA_LICENSES sections (bundled work outside vendor/) follow.
     """
     licenses_dir = os.path.join(os.path.dirname(SCRIPTS_DIR), "assets", "licenses")
     covers = {}
     for filename in VENDOR_LIBS:
         covers.setdefault(VENDOR_LICENSES[filename], []).append(filename)
     parts = [
-        "License texts for the open-source libraries bundled in vendor/.\n"
+        "License texts for the open-source libraries and icons bundled with this map.\n"
         "The map's About panel credits each of them.\n"
     ]
-    for license_file, filenames in covers.items():
+    sections = [(", ".join(filenames), license_file) for license_file, filenames in covers.items()]
+    sections.extend(EXTRA_LICENSES.items())
+    for heading, license_file in sections:
         with open(os.path.join(licenses_dir, license_file), encoding="utf-8") as f:
             text = f.read().strip("\n")
         rule = "=" * 72
-        parts.append(f"{rule}\n{', '.join(filenames)}\n{rule}\n\n{text}\n")
+        parts.append(f"{rule}\n{heading}\n{rule}\n\n{text}\n")
     with open(os.path.join(vendor_dst, VENDOR_LICENSES_FILE), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
 
@@ -2106,6 +2115,17 @@ def main(argv=None, prog=None):
     if args.dry_run:
         _print_dry_run_summary(config, args, output_dir, cache_dir)
         return
+
+    # A missing tool should stop the build here, not after the trail
+    # fetch a minute in (the basemap step checks again where it uses
+    # them). Before the marker comes off below, so a build that cannot
+    # start leaves a finished one standing.
+    if not args.no_basemap:
+        try:
+            basemap_paths.require_tools()
+        except basemap_paths.BasemapPathsError as e:
+            console.error(str(e))
+            sys.exit(1)
 
     os.makedirs(output_dir, exist_ok=True)
     # Before any other write: from here until the last step, the dir is

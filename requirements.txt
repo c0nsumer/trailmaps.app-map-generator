@@ -13,8 +13,10 @@
 #
 # OS-level dependencies (NOT installed by pip):
 #   - pmtiles CLI (Go binary), for basemap/terrain PMTiles extraction.
-#     Install via Homebrew: `brew install pmtiles` (macOS), or build from
-#     https://github.com/protomaps/go-pmtiles releases.
+#     Download a release from
+#     https://github.com/protomaps/go-pmtiles/releases and put it on PATH,
+#     or `go install github.com/protomaps/go-pmtiles/cmd/pmtiles@latest`.
+#     It is not the Python `pmtiles` package pinned below.
 #   - tippecanoe and tile-join, for the generated basemap path and street
 #     lines. Install via Homebrew: `brew install tippecanoe` (macOS), or
 #     `apt install tippecanoe` (Debian, Ubuntu).
