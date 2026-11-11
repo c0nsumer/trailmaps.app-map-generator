@@ -6145,12 +6145,9 @@ function buildAboutModalContent() {
         "https://openfontlicense.org/",
         "SIL Open Font License",
         ".");
-    // The bundled libraries mostly ship without a license header, so
-    // the build writes their full texts into one file beside them.
-    credit("Full license texts for the bundled libraries and icons: ",
-        "vendor/LICENSES.txt",
-        "LICENSES.txt",
-        ".");
+    // No link to vendor/LICENSES.txt here. The licenses ask that their
+    // texts travel with the copy, which the file beside the libraries
+    // does; a link pulled the rider off the map into a tab of raw text.
 }
 
 // ============================================================

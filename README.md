@@ -272,7 +272,8 @@ the About modal credit line must stay: "The ITRS - International Trail Rating
 System is used with permission from Mischa Crumbach and Edoardo Melchiori."
 
 Every built map carries the full license texts of its bundled JavaScript
-libraries and UI icons in `vendor/LICENSES.txt`, linked from the About modal. The texts live
+libraries and UI icons in `vendor/LICENSES.txt`, beside the libraries. The About modal names each
+library and its license but does not link the file. The texts live
 in `assets/licenses/`.
 
 If you re-deploy this framework, please preserve the in-app About modal credits
