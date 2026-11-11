@@ -7564,9 +7564,14 @@ async function loadTrails() {
         // fresh instead of re-reading a consumed body.
         const early = window.__trailsRequest;
         window.__trailsRequest = null;
+        // An index.html from before the timer existed can meet this
+        // file (a first visit cut off after the page was cached, then a
+        // deploy): it starts the request but has no timer to re-arm.
+        // Its own 20 s abort has already been cleared at headers.
+        const timer = window.__trailsTimer || { arm() {}, done() {} };
         routesData = early
-            ? await early.then((r) => readJsonOk(r, window.__trailsTimer.arm))
-                .finally(window.__trailsTimer.done)
+            ? await early.then((r) => readJsonOk(r, timer.arm))
+                .finally(timer.done)
             : await fetchWithTimeout("trails.geojson", undefined, undefined, readJsonOk);
     } catch (e) {
         console.error("loadTrails: trails.geojson failed to load:", e);
