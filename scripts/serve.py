@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import errno
 import io
 import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -101,7 +102,13 @@ def main():
     os.chdir(args.directory)
     # Threaded: a PMTiles map sends many Range requests in parallel, and
     # one idle preconnect would otherwise block all of them.
-    server = ThreadingHTTPServer(("", args.port), RangeRequestHandler)
+    try:
+        server = ThreadingHTTPServer(("", args.port), RangeRequestHandler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        console.error(f"Port {args.port} is in use. Pick another with --port.")
+        raise SystemExit(1) from None
     console.step(
         f"Serving {os.path.abspath('.')} on all interfaces, port {args.port} "
         f"(http://localhost:{args.port} on this machine)")

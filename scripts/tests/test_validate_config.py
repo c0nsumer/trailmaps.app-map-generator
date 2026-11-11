@@ -234,6 +234,24 @@ def test_hub_colors_validated():
     assert any("hub_border_color" in e for e in _errors(hub_border_color="#zzzzzz"))
 
 
+def test_color_names_checked_against_the_css_set():
+    errs = _errors(relation_colors={12345678: "notacolor"})
+    assert any("relation_colors" in e and "'notacolor'" in e and "hex color" in e for e in errs)
+    # Case-insensitive, and the same check covers the other color keys.
+    assert _errors(relation_colors={12345678: "RebeccaPurple"}) == []
+    assert any("hub_color" in e for e in _errors(hub_color="wite"))
+    assert any("default_trail_color" in e for e in _errors(default_trail_color="grayy"))
+    assert any("event_mode.poi_color" in e for e in _errors(
+        event_mode={"featured": [12345678], "poi_color": "nope"}))
+    assert _errors(hub_color="transparent") == []
+    assert _errors(hub_color="currentcolor") != []
+
+
+def test_featured_child_of_super_relation_error_explains_itself():
+    errs = _errors(event_mode={"featured": [99999999]})
+    assert any("is not present in" in e and "add the id to `relations`" in e for e in errs), errs
+
+
 def test_marker_shape_validated():
     assert any("marker_shape" in e for e in _errors(marker_shape="triangle"))
     assert _errors(marker_shape="box") == []

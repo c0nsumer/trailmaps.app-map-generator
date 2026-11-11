@@ -271,11 +271,39 @@ VALID_LINE_CAPS = {"butt", "round", "square"}
 # Matched with fullmatch, never `^...$` with match: `$` also accepts a
 # trailing newline.
 HEX_COLOR_RE = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
-# Colors can also be CSS named colors. We don't enumerate the full set -
-# instead we accept anything matching a tame ASCII identifier alongside
-# the hex form. This is permissive on purpose: CSS color names are stable
-# and a typo like "wite" would render as transparent at the browser, not
-# crash the build. The hex check above is the high-value catch.
+# Config colors can also be CSS named colors: the 148 names of CSS Color
+# Module Level 4. A word outside the set (a typo like "wite") would
+# otherwise validate and then draw gray, so config values check against
+# the set. `transparent` is also accepted, since a marker border or
+# background can reasonably be clear. `currentcolor` is not: MapLibre
+# paints have no inherited color to resolve it against.
+CSS_COLOR_NAMES = frozenset({
+    "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque", "black",
+    "blanchedalmond", "blue", "blueviolet", "brown", "burlywood", "cadetblue", "chartreuse",
+    "chocolate", "coral", "cornflowerblue", "cornsilk", "crimson", "cyan", "darkblue",
+    "darkcyan", "darkgoldenrod", "darkgray", "darkgreen", "darkgrey", "darkkhaki",
+    "darkmagenta", "darkolivegreen", "darkorange", "darkorchid", "darkred", "darksalmon",
+    "darkseagreen", "darkslateblue", "darkslategray", "darkslategrey", "darkturquoise",
+    "darkviolet", "deeppink", "deepskyblue", "dimgray", "dimgrey", "dodgerblue", "firebrick",
+    "floralwhite", "forestgreen", "fuchsia", "gainsboro", "ghostwhite", "gold", "goldenrod",
+    "gray", "green", "greenyellow", "grey", "honeydew", "hotpink", "indianred", "indigo",
+    "ivory", "khaki", "lavender", "lavenderblush", "lawngreen", "lemonchiffon", "lightblue",
+    "lightcoral", "lightcyan", "lightgoldenrodyellow", "lightgray", "lightgreen", "lightgrey",
+    "lightpink", "lightsalmon", "lightseagreen", "lightskyblue", "lightslategray",
+    "lightslategrey", "lightsteelblue", "lightyellow", "lime", "limegreen", "linen", "magenta",
+    "maroon", "mediumaquamarine", "mediumblue", "mediumorchid", "mediumpurple",
+    "mediumseagreen", "mediumslateblue", "mediumspringgreen", "mediumturquoise",
+    "mediumvioletred", "midnightblue", "mintcream", "mistyrose", "moccasin", "navajowhite",
+    "navy", "oldlace", "olive", "olivedrab", "orange", "orangered", "orchid", "palegoldenrod",
+    "palegreen", "paleturquoise", "palevioletred", "papayawhip", "peachpuff", "peru", "pink",
+    "plum", "powderblue", "purple", "rebeccapurple", "red", "rosybrown", "royalblue",
+    "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell", "sienna", "silver",
+    "skyblue", "slateblue", "slategray", "slategrey", "snow", "springgreen", "steelblue", "tan",
+    "teal", "thistle", "tomato", "turquoise", "violet", "wheat", "white", "whitesmoke",
+    "yellow", "yellowgreen",
+})
+# The loose letters-only shape stays for osm_parser, which screens OSM
+# `colour` tags only for safety (this generator does not validate OSM data).
 NAMED_COLOR_RE = re.compile(r"[a-zA-Z]+")
 
 
@@ -353,10 +381,17 @@ def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+_COLOR_HINT = "(use a CSS color name or a hex color)"
+
+
 def _is_color(value):
     if not isinstance(value, str):
         return False
-    return bool(HEX_COLOR_RE.fullmatch(value) or NAMED_COLOR_RE.fullmatch(value))
+    return bool(
+        HEX_COLOR_RE.fullmatch(value)
+        or value.lower() in CSS_COLOR_NAMES
+        or value.lower() == "transparent"
+    )
 
 
 # ----------------------------------------------------------------------
@@ -746,7 +781,7 @@ def _validate_colors(report, config):
     if dtc is not None:
         if isinstance(dtc, str):
             if not _is_color(dtc):
-                report.err("default_trail_color", f"not a valid color: {dtc!r}")
+                report.err("default_trail_color", f"not a valid color: {dtc!r} {_COLOR_HINT}")
         elif isinstance(dtc, dict):
             # The dict form's full shape is consumed by the injector
             # (color / pattern / cap → CONFIG.defaultTrail*). All three
@@ -754,7 +789,7 @@ def _validate_colors(report, config):
             # silently yield the default gray.
             _reject_unknown_keys(report, "default_trail_color", dtc, {"color", "pattern", "cap"})
             if "color" in dtc and not _is_color(dtc["color"]):
-                report.err("default_trail_color.color", f"not a valid color: {dtc['color']!r}")
+                report.err("default_trail_color.color", f"not a valid color: {dtc['color']!r} {_COLOR_HINT}")
             if "pattern" in dtc and not _is_dash_pattern(dtc["pattern"]):
                 report.err(
                     "default_trail_color.pattern",
@@ -770,7 +805,7 @@ def _validate_colors(report, config):
     if isinstance(rc, dict):
         for rid, color in rc.items():
             if not _is_color(color):
-                report.err(f"relation_colors[{rid}]", f"not a valid color: {color!r}")
+                report.err(f"relation_colors[{rid}]", f"not a valid color: {color!r} {_COLOR_HINT}")
 
 
 def _validate_relation_id_dicts(report, config):
@@ -1153,7 +1188,7 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
     if color is None:
         report.err(f"{where}.color", "required: hex or CSS named color")
     elif not _is_color(color):
-        report.err(f"{where}.color", f"not a valid color: {color!r}")
+        report.err(f"{where}.color", f"not a valid color: {color!r} {_COLOR_HINT}")
 
     # Required: geometry (path existence checked in _validate_paths)
     geom = entry.get("geometry")
@@ -1598,7 +1633,9 @@ def _validate_event_mode(report, config):
                         where,
                         f"OSM relation id {ref} is not present in "
                         f"`relations`, `clipped_relations`, or any "
-                        f"of the *_relations bucket lists",
+                        f"of the *_relations bucket lists. A child of a "
+                        f"listed super-relation does not count, so add "
+                        f"the id to `relations` too",
                     )
                 continue
             if isinstance(ref, str):
@@ -1628,7 +1665,7 @@ def _validate_event_mode(report, config):
             )
             if "color" in bg and not _is_color(bg["color"]):
                 report.err(
-                    "event_mode.background_style.color", f"not a valid color: {bg['color']!r}"
+                    "event_mode.background_style.color", f"not a valid color: {bg['color']!r} {_COLOR_HINT}"
                 )
             if "pattern" in bg and not _is_dash_pattern(bg["pattern"]):
                 report.err(
@@ -1695,7 +1732,7 @@ def _validate_event_mode(report, config):
     # poi_color: optional CSS color (hex or named). Default: deep red.
     pc = em.get("poi_color")
     if pc is not None and not _is_color(pc):
-        report.err("event_mode.poi_color", f"not a valid color: {pc!r}")
+        report.err("event_mode.poi_color", f"not a valid color: {pc!r} {_COLOR_HINT}")
 
     # gpx: optional downloadable-GPX block. Each entry offers one .gpx
     # file in the runtime's download sheet. Currently only curator-

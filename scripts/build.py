@@ -17,6 +17,7 @@ import concurrent.futures
 import contextlib
 import functools
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -32,6 +33,21 @@ if sys.version_info < (3, 11):  # noqa: UP036 - runtime gate FOR older Pythons
     sys.exit(
         f"map-generator requires Python 3.11+ (running {sys.version.split()[0]}). "
         "See README.md / docs/building.md."
+    )
+
+# A missing venv would otherwise surface as a raw ModuleNotFoundError from
+# whichever sibling module imports a third-party package first. This is the
+# one choke point both entry points share (map_generator imports this file),
+# and find_spec checks without importing. Only the packages imported at
+# module load are listed: the rest (brotli, the minifiers, the font
+# trimmer's tile readers) import lazily and have their own fallbacks.
+_REQUIRED_MODULES = ("requests", "yaml", "PIL", "shapely")
+_missing = [m for m in _REQUIRED_MODULES if importlib.util.find_spec(m) is None]
+if _missing:
+    sys.exit(
+        f"Python packages are missing ({', '.join(_missing)}). "
+        "Activate the venv first: source .venv/bin/activate "
+        "(one-time setup: pip install -r requirements.txt)"
     )
 
 import requests
