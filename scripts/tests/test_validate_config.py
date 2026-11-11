@@ -247,6 +247,18 @@ def test_color_names_checked_against_the_css_set():
     assert _errors(hub_color="currentcolor") != []
 
 
+def test_line_colors_must_be_opaque():
+    # A clear fill lets the casing show through, so a line draws gray
+    # instead of vanishing. Marker fills keep both forms.
+    for bad in ("transparent", "#F0C04080"):
+        assert any("relation_colors" in e for e in _errors(relation_colors={12345678: bad})), bad
+        assert any("default_trail_color" in e for e in _errors(default_trail_color=bad)), bad
+        assert _errors(marker_color=bad) == [], bad
+    assert _errors(relation_colors={12345678: "#F0C040"}) == []
+    # Nine letters, like the hex-with-alpha form, but a plain name.
+    assert _errors(relation_colors={12345678: "royalblue"}) == []
+
+
 def test_featured_child_of_super_relation_error_explains_itself():
     errs = _errors(event_mode={"featured": [99999999]})
     assert any("is not present in" in e and "add the id to `relations`" in e for e in errs), errs

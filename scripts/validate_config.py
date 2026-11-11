@@ -274,9 +274,10 @@ HEX_COLOR_RE = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 # Config colors can also be CSS named colors: the 148 names of CSS Color
 # Module Level 4. A word outside the set (a typo like "wite") would
 # otherwise validate and then draw gray, so config values check against
-# the set. `transparent` is also accepted, since a marker border or
-# background can reasonably be clear. `currentcolor` is not: MapLibre
-# paints have no inherited color to resolve it against.
+# the set. `transparent` is also accepted for marker colors: a clear
+# chip with a border and text is a real look. Line colors refuse it
+# (_is_line_color). `currentcolor` is never accepted: MapLibre paints
+# have no inherited color to resolve it against.
 CSS_COLOR_NAMES = frozenset({
     "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque", "black",
     "blanchedalmond", "blue", "blueviolet", "brown", "burlywood", "cadetblue", "chartreuse",
@@ -382,6 +383,7 @@ def _is_number(value):
 
 
 _COLOR_HINT = "(use a CSS color name or a hex color)"
+_LINE_COLOR_HINT = "(use a CSS color name or a #RGB / #RRGGBB hex color; a line color cannot be transparent)"
 
 
 def _is_color(value):
@@ -392,6 +394,17 @@ def _is_color(value):
         or value.lower() in CSS_COLOR_NAMES
         or value.lower() == "transparent"
     )
+
+
+def _is_line_color(value):
+    """A color for a drawn line: opaque only. A clear or part-clear fill
+    does not hide a line, it lets the casing under it show through, so
+    `transparent` and #RRGGBBAA draw a gray or muddy line that nobody
+    asked for. Marker fills keep _is_color: a clear chip with a border
+    and text is a real look."""
+    if not isinstance(value, str) or not _is_color(value):
+        return False
+    return value.lower() != "transparent" and not (value.startswith("#") and len(value) == 9)
 
 
 # ----------------------------------------------------------------------
@@ -780,16 +793,19 @@ def _validate_colors(report, config):
     dtc = config.get("default_trail_color")
     if dtc is not None:
         if isinstance(dtc, str):
-            if not _is_color(dtc):
-                report.err("default_trail_color", f"not a valid color: {dtc!r} {_COLOR_HINT}")
+            if not _is_line_color(dtc):
+                report.err("default_trail_color", f"not a valid color: {dtc!r} {_LINE_COLOR_HINT}")
         elif isinstance(dtc, dict):
             # The dict form's full shape is consumed by the injector
             # (color / pattern / cap → CONFIG.defaultTrail*). All three
             # need validating - a typo'd `colour:` would otherwise
             # silently yield the default gray.
             _reject_unknown_keys(report, "default_trail_color", dtc, {"color", "pattern", "cap"})
-            if "color" in dtc and not _is_color(dtc["color"]):
-                report.err("default_trail_color.color", f"not a valid color: {dtc['color']!r} {_COLOR_HINT}")
+            if "color" in dtc and not _is_line_color(dtc["color"]):
+                report.err(
+                    "default_trail_color.color",
+                    f"not a valid color: {dtc['color']!r} {_LINE_COLOR_HINT}",
+                )
             if "pattern" in dtc and not _is_dash_pattern(dtc["pattern"]):
                 report.err(
                     "default_trail_color.pattern",
@@ -804,8 +820,10 @@ def _validate_colors(report, config):
     rc = config.get("relation_colors")
     if isinstance(rc, dict):
         for rid, color in rc.items():
-            if not _is_color(color):
-                report.err(f"relation_colors[{rid}]", f"not a valid color: {color!r} {_COLOR_HINT}")
+            if not _is_line_color(color):
+                report.err(
+                    f"relation_colors[{rid}]", f"not a valid color: {color!r} {_LINE_COLOR_HINT}"
+                )
 
 
 def _validate_relation_id_dicts(report, config):
@@ -932,12 +950,12 @@ def _validate_dashed_relations(report, config):
                 if (
                     not isinstance(c, list)
                     or not (1 <= len(c) <= 2)
-                    or not all(_is_color(x) for x in c)
+                    or not all(_is_line_color(x) for x in c)
                 ):
                     report.err(
                         f"{where}.colors",
                         f"must be a list of 1-2 valid colors "
-                        f"(e.g. ['#000000', '#ffffff']), got {c!r}",
+                        f"(e.g. ['#000000', '#ffffff']), got {c!r} {_LINE_COLOR_HINT}",
                     )
         else:
             report.err(where, f"expected list or dict, got {type(spec).__name__}")
@@ -1187,8 +1205,8 @@ def _validate_custom_route_entry(report, where, entry, seen_ids, osm_ids):
     color = entry.get("color")
     if color is None:
         report.err(f"{where}.color", "required: hex or CSS named color")
-    elif not _is_color(color):
-        report.err(f"{where}.color", f"not a valid color: {color!r} {_COLOR_HINT}")
+    elif not _is_line_color(color):
+        report.err(f"{where}.color", f"not a valid color: {color!r} {_LINE_COLOR_HINT}")
 
     # Required: geometry (path existence checked in _validate_paths)
     geom = entry.get("geometry")
@@ -1663,9 +1681,10 @@ def _validate_event_mode(report, config):
             _reject_unknown_keys(
                 report, "event_mode.background_style", bg, _BACKGROUND_STYLE_ALLOWED
             )
-            if "color" in bg and not _is_color(bg["color"]):
+            if "color" in bg and not _is_line_color(bg["color"]):
                 report.err(
-                    "event_mode.background_style.color", f"not a valid color: {bg['color']!r} {_COLOR_HINT}"
+                    "event_mode.background_style.color",
+                    f"not a valid color: {bg['color']!r} {_LINE_COLOR_HINT}",
                 )
             if "pattern" in bg and not _is_dash_pattern(bg["pattern"]):
                 report.err(

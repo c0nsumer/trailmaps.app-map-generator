@@ -226,7 +226,7 @@ concern, handled by `default_visible` in the [Display](#display) section.
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `relation_colors` | No | `{}` | Map of relation ID to color (hex or a CSS color name). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
+| `relation_colors` | No | `{}` | Map of relation ID to color (hex or a CSS color name). Line colors must be opaque, so `transparent` and the `#RRGGBBAA` form are rejected here, in `default_trail_color`, and in `dashed_relations` colors (a clear fill does not hide a line; the casing under it still draws). On a route-mode relation it overrides the OSM `colour` tag and colors the whole route. On a difficulty-mode relation the entry is ignored, and the build warns. |
 | `relation_names` | No | `{}` | Map of relation ID to display name. Overrides the OSM `name` tag everywhere the route name appears: routes panel, on-map route labels, popups, search, alphabetical panel ordering. Useful when the OSM name is formally correct but unwieldy on a map (eg: renaming "Pontiac Lake Recreation Area Mountain Bike Trail" to "Mountain Bike Trail"). Keys must be *leaf* route relation IDs. When a super-relation is listed in `relations:`, rename its child routes rather than the parent. If you key the parent, the build warns and lists the child IDs. Applied at build time post-cache: adding, changing, or removing an override takes effect on the next plain rebuild, no `--refresh-trails` refetch needed. Custom routes are unaffected; they set `name` inline. |
 | `dashed_relations` | No | `{}` | Map of relation ID to dash config. See [Dash patterns](#dash-patterns). |
 | `color_by` | No | `"route"` | The default color mode for every relation. `"route"` colors a relation's lanes by its route color, with parallel lanes where routes share a trail. `"difficulty"` colors ways by their own rating on the map's `difficulty_scale`, one lane per way. `color_by_route` and `color_by_difficulty` list the exceptions. See [Color modes](#color-modes) for the keys that change meaning, are ignored, or are rejected. |
@@ -269,7 +269,7 @@ row).
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `marker_color` | No | `"#795548"` | Trail-marker chip fill (merged guideposts + emergency-access points). |
+| `marker_color` | No | `"#795548"` | Trail-marker chip fill (merged guideposts + emergency-access points). The fill colors for markers, parking, trailheads, and hubs also accept `transparent`, which leaves a clear chip with only its border and text. |
 | `marker_text_color` | No | `"white"` | Trail-marker glyph color. Applies to the `ref` or `name` text on the chip, and to the `#` on the Options key. A marker with neither value renders as an empty chip. |
 | `marker_border_color` | No | `"white"` | Trail-marker outer halo border color. |
 | `marker_shape` | No | `"box"` | Trail-marker chip shape: `box` (rounded rect), `pill`, `circle`, or `diamond`. `box` and `pill` size the chip to fit the ref text. A short ref (`"23"`) renders `pill` as a true circle; a longer ref (`"EAP-1"`) renders it as a rounded pill. `circle` and `diamond` are fixed-size and 1:1 for every marker, and truncate the ref text to the first two characters to fit (`"EAP-1"` shows `"EA"`). `diamond` is a square rotated 45 degrees with sharp points. All four shapes use the same `marker_color`, `marker_text_color`, and `marker_border_color`. |
