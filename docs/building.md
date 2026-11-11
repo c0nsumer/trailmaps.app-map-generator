@@ -47,7 +47,7 @@ hosting the output, see [`deployment.md`](deployment.md).
   pinned-tab SVG icon generation.
   - macOS: `brew install potrace`
   - Linux: `apt install potrace`
-  - Windows: `choco install potrace` or download from
+  - Other systems: download from
     [potrace.sourceforge.net](http://potrace.sourceforge.net/#downloading)
   - If not installed, the build skips `safari-pinned-tab.svg` with a
     warning. Everything else works normally.
@@ -529,7 +529,7 @@ OpenStreetMap), pass `--refresh`, `--refresh-trails`, or `--refresh-pois`.
 [Build options](#build-options) explains each flag.
 
 The trails base (the merged ways before enrichment) carries a format number,
-`TRAILS_BASE_FORMAT`, which is 8 now. Version 4 added the ITRS rating fields.
+`TRAILS_BASE_FORMAT`, which is 9 now. Version 4 added the ITRS rating fields.
 Version 5 added `bike_only` and limited all three to ITRS maps. Version 6
 took `direction_schedule` out of the trails fingerprint, since the fetch never
 reads it. Version 7 moved the format number out of the fingerprint and onto
@@ -538,6 +538,8 @@ older base re-derives it from the cached Overpass data, so a format bump needs
 no refetch. That re-derive leaves the OSM diff report alone, so the report
 still describes the last real refresh. Version 8 stopped reading the way tag
 `mtb:scale:itrs:exposure`, so exposure no longer splits or merges features.
+Version 9 made way merging start each chain from the lowest way id, so the
+merged lines and their direction come out the same on every fetch.
 
 The map's `difficulty_scale` is part of the trails fingerprint. If you flip it
 between `imba` and `itrs`, the next build re-derives the trails base offline

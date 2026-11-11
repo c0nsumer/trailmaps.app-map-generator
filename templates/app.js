@@ -6107,9 +6107,8 @@ function buildAboutModalContent() {
             ", built from open elevation data (see its source list for each provider and license).");
         // Same gate as the terrain credit: contour lines are derived
         // from those tiles, so they exist exactly when terrain does.
-        // The BSD notice matters here: the minified vendor file ships
-        // without its license header, so this credit is where the
-        // attribution requirement is met.
+        // The credit names the library and its license in About. The
+        // license text itself ships in vendor/LICENSES.txt.
         credit("Contour lines generated in-browser by ",
             "https://github.com/onthegomap/maplibre-contour",
             "maplibre-contour",
@@ -6119,8 +6118,8 @@ function buildAboutModalContent() {
         "https://pictogrammers.com/library/mdi/",
         "Material Design Icons",
         " by Pictogrammers (Apache 2.0).");
-    // The vendored module ships without its license header, so this
-    // credit carries the MIT attribution.
+    // The credit names the library and its license in About. The
+    // license text itself ships in vendor/LICENSES.txt.
     credit("QR codes encoded on your device by ",
         "https://github.com/unjs/uqr",
         "uqr",
@@ -6129,9 +6128,9 @@ function buildAboutModalContent() {
         "https://maplibre.org",
         "MapLibre GL JS",
         " (BSD-3-Clause).");
-    // Every map reads its tile archives through the library, and the
-    // minified vendor file ships without its license header, so this
-    // credit carries the BSD attribution.
+    // Every map reads its tile archives through the library. The credit
+    // names it and its license in About; the license text itself ships
+    // in vendor/LICENSES.txt.
     credit("Tile archives read with ",
         "https://github.com/protomaps/PMTiles",
         "PMTiles",

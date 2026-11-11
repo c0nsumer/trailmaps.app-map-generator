@@ -12,9 +12,11 @@ Contributions are welcome with that context in mind:
 
 ## Before submitting a change
 
-Run the checks from the repo root:
+Run the checks from the repo root. The first time, install the test and
+lint tools into the venv (`requirements.txt` does not include them):
 
 ```bash
+pip install pytest ruff
 python -m pytest scripts/tests/ -q   # no network needed, runs in seconds
 ruff check scripts/ tools/ map_generator/
 corepack pnpm lint                   # one-time setup: corepack pnpm install

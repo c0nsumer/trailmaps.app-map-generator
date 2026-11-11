@@ -84,6 +84,9 @@ python scripts/serve.py build/example
 # Open http://localhost:8090
 ```
 
+This project is developed and run on Linux. macOS should work. Windows is
+untested.
+
 The `pmtiles` CLI is a separate Go binary. The Python `pmtiles` package that
 `requirements.txt` installs is a different thing and doesn't provide it.
 
