@@ -14780,6 +14780,9 @@ function rebuildBasemapLayers() {
 if ("serviceWorker" in navigator) {
     const SW_SILENT_SWAP_WINDOW_MS = 60000;
     const SW_CORE_POLL_MS = 1000;
+    // How long a Reload tap shows the bar before saying the swap is
+    // slow; the same span as the silent path's fallback.
+    const SW_RELOAD_CUE_MS = 10000;
     // sessionStorage (not LS): scoped to this tab, survives exactly
     // the one auto-reload, never leaks a stale "updated!" toast into
     // tomorrow's visit.
@@ -14849,13 +14852,27 @@ if ("serviceWorker" in navigator) {
             reloadForUpdate();
             return;
         }
+        // The reload follows activation, which waits for the old worker's
+        // in-flight requests, so it can come minutes after the tap. The
+        // bar says the tap was heard; it goes when the page does.
+        if (window.__showMapUpdating) window.__showMapUpdating();
         // One-shot, so a later controllerchange can't reload again.
         let reloaded = false;
         const onControllerChange = () => {
             if (reloaded) return;
             reloaded = true;
+            clearTimeout(slowSwap);
             reloadForUpdate();
         };
+        // A long wait gets one plain word instead of a bar that runs on
+        // with no end in sight. The reload stays armed (the rider asked
+        // for it), and nothing re-offers the update: a second "Updated
+        // map available." after a tap is what read as a loop.
+        const slowSwap = setTimeout(() => {
+            if (reloaded) return;
+            if (window.__hideMapUpdating) window.__hideMapUpdating();
+            showToast("Still updating. The map will reload when it's ready.");
+        }, SW_RELOAD_CUE_MS);
         navigator.serviceWorker.addEventListener(
             "controllerchange", onControllerChange, { once: true });
         const answer = await askSw(sw, "SKIP_WAITING");
@@ -14873,6 +14890,8 @@ if ("serviceWorker" in navigator) {
         // lands later can't reload the page out from under them.
         navigator.serviceWorker.removeEventListener(
             "controllerchange", onControllerChange);
+        clearTimeout(slowSwap);
+        if (window.__hideMapUpdating) window.__hideMapUpdating();
         _hasShownUpdateToast = false;
         showToast("Update still downloading. You'll be asked again when it's ready.");
         offerUpdateWhenReady(reg);
