@@ -4574,9 +4574,9 @@ async function init() {
     // nothing shows. One worker parses tiles one at a time, which is
     // slower on a first view but always whole.
     //
-    // TODO: a WebKit bug report is being prepared and has no ID yet.
-    // Put the bugs.webkit.org ID here once it is filed, and remove this
-    // block when a Safari with the fix is the oldest one worth serving.
+    // WebKit bug 322883 (https://bugs.webkit.org/show_bug.cgi?id=322883,
+    // open as of 2026-Nov-12). TODO: remove this block when a Safari
+    // with the fix is the oldest one worth serving.
     const ua = navigator.userAgent || "";
     if (/AppleWebKit/.test(ua) && !/Chrome|Chromium|Android/.test(ua)) {
         maplibregl.setWorkerCount(1);
