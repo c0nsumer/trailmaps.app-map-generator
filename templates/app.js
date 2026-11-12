@@ -4560,6 +4560,28 @@ async function init() {
         return;
     }
 
+    // Safari (every iOS browser, and Safari on a Mac) gets one tile
+    // worker. MapLibre starts its workers together from one URL, and
+    // when WebKit is handed several workers with the same script URL in
+    // one task, only the first is controlled by the service worker
+    // (measured 2026-Nov-11 on Safari 27, iOS and macOS, 20 of 20
+    // rounds). The others' requests skip the service worker for good,
+    // so with no network their import of maplibre-gl-shared.mjs fails
+    // and they never start. MapLibre still hands the dead workers their
+    // share of tiles, which then wait forever with no request and no
+    // error, so a saved map opened offline drew with pieces of the
+    // basemap and hillshade missing. With signal the server answers and
+    // nothing shows. One worker parses tiles one at a time, which is
+    // slower on a first view but always whole.
+    //
+    // TODO: a WebKit bug report is being prepared and has no ID yet.
+    // Put the bugs.webkit.org ID here once it is filed, and remove this
+    // block when a Safari with the fix is the oldest one worth serving.
+    const ua = navigator.userAgent || "";
+    if (/AppleWebKit/.test(ua) && !/Chrome|Chromium|Android/.test(ua)) {
+        maplibregl.setWorkerCount(1);
+    }
+
     try {
         map = new maplibregl.Map(mapOptions);
     } catch (e) {
