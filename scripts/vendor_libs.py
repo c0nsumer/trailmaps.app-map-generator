@@ -42,7 +42,13 @@ VENDOR_LIBS = {
     # inside-corner bevel that ended the low-zoom lane spike, the
     # loop-removal cut anchor, every route at every overview zoom, and
     # the dash phase fixed to the map.
-    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.4.1/dist/maplibre-gl-lanes.js",
+    #
+    # The tap glow needs 1.5.0: each piece of a connector belongs to
+    # the edge on its side of the node, so a glow, a bright edge, and a
+    # color change picked by edge end on the junction. Before it a
+    # connector belonged whole to the edge it arrived from, and a
+    # tapped trail lit a few meters of its neighbor.
+    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.5.0/dist/maplibre-gl-lanes.js",
 }
 
 # SHA-256 of each file above, checked after a download and on every cache
@@ -61,7 +67,7 @@ VENDOR_SHA256 = {
     "basemaps.js": "551864f01da1bfe3005e99987197f22f56d0c35f9a10fa1727a889e2434af16d",
     "maplibre-contour.js": "055e45d0a76aaeaaf5a96765b8ce524abba3272456be75e715081e235ebd1262",
     "uqr.mjs": "7f0e61c2f13bb3724edee7bfb876e13c54ac9ee4fcfa283c9fa93cfb1241c325",
-    "maplibre-gl-lanes.js": "80aca0d4531c1056f69faa4508115f7b02f5c2327613a72cc67691ebd633872b",
+    "maplibre-gl-lanes.js": "009d710bbeadd032aab03b3e5e1aba7639bda5d237bbcd5f4c93a8793f4d8ea2",
 }
 
 # The license text for every file above, by file under assets/licenses/.
