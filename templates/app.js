@@ -7788,48 +7788,44 @@ async function loadTrails() {
             // whose 16 px arrowhead sits centered on a 40 px canvas with
             // twice MapLibre's assumed field radius, so every halo width
             // and blur here is HALF its rendered width.
-            // A bare arrow (no halo, see bareLane) grows by what the halo
-            // adds to the others' silhouette, measured rather than
-            // derived: at z13 and z15 the outlined arrow's half-coverage
-            // outline is about 3 screen px wider per side than the bare
-            // glyph at the same size, and 0.6 of icon size closes that
-            // at both zooms (headless sweep). Without it the
-            // bare arrowhead read smaller than its neighbors.
-            const bump = bareLane ? 0.6 : 0;
-            // The z10 stop keeps the arrow shrinking with the lanes,
-            // whose widths run down to z10 (TRAIL_WIDTH_STOPS): the
-            // arrowhead stays about six times the lane fill at every
-            // zoom. Held at its z12 size, it was near ten times the line
-            // on a large map's opening view.
-            // A bare arrow's bump tapers to two thirds at z10. Matching
-            // the outlined silhouette there left a solid arrowhead far
-            // heavier than the thin dashed line it ends: a pale halo
-            // adds size but little weight, solid fill adds both.
+            // Sizes and offsets below are measured, not derived (headless
+            // sweep, 2026-Nov-12): the outlined arrow's silhouette, halo
+            // included, is 9.4 px long at size 0.65, 15.3 at 1.2 and
+            // 20.8 at 1.8, still larger than an on-trail direction arrow.
+            // It was a fifth larger until Steve found it too heavy next
+            // to the lines. The z10 stop keeps it shrinking with the
+            // lanes, whose widths run down to z10 (TRAIL_WIDTH_STOPS);
+            // 0.65 is the floor, since below it the halo leaves too
+            // little fill to show the route's color.
+            // A bare arrow (no halo, see bareLane) has no halo adding to
+            // its silhouette, so it draws at a larger size to match the
+            // outlined one: 0.5 to 0.6 more closes the gap to within
+            // half a px from z12 up. At z10 it stays 0.7 px short on
+            // purpose: a solid arrowhead outweighs the thin dashed line
+            // it ends, where a pale halo adds size but little weight.
             const size = ["interpolate", ["linear"], ["zoom"],
-                10, 0.8 + bump * 2 / 3, 12, 1.2 + bump, 14, 1.65 + bump, 18, 2.4 + bump];
+                ...(bareLane
+                    ? [10, 1.05, 12, 1.35, 14, 1.8, 18, 2.4]
+                    : [10, 0.65, 12, 0.85, 14, 1.2, 18, 1.8])];
             // Push the arrowhead away from the trail's clipped end so it
             // doesn't crowd the line where it meets the bbox edge. The
             // offset is in icon pixels, times icon-size, in pre-rotation
             // icon space (Y is "up" in the asset's tip-up frame), then
-            // rotates with the bearing, so the arrow ends up shifted
-            // "outward" along the trail's continuation direction. The
-            // anchor is the canvas bottom, 14.24 icon px below the
-            // arrowhead's back, and this puts the back 4.24 icon px past
-            // the endpoint, where the old 16 px icon's [0, -2] put it
-            // (measured against it at z13 and z15).
-            // A bare arrow is bigger (bump) and has no halo reaching back
-            // toward the line, and the offset scales with the icon, so
-            // left at 10.8 its back sat visibly further from the line's
-            // end than its outlined neighbors'. Measured against the
-            // outlined arrow's back at z13 and z15 (same sweep as the
-            // bump), the bare arrow's back lands on it at these offsets,
-            // the slope between them carried to the outer stops.
-            const offset = bareLane
-                ? ["interpolate", ["linear"], ["zoom"],
-                    10, ["literal", [0, 14.2]],
-                    12, ["literal", [0, 13.9]], 14, ["literal", [0, 13.6]],
-                    18, ["literal", [0, 13.0]]]
-                : [0, 10.8];
+            // rotates with the bearing, so a SMALLER offset leaves the
+            // arrow further out along the trail's continuation. Because
+            // it scales with the icon while the halo and the lane's end
+            // do not, one offset for every zoom closed the gap at small
+            // sizes; these stops put the silhouette's back 3 px past
+            // the endpoint at z10, 3.7 at z12, 4.6 at z14 and 7.2 at
+            // z18, clear of the lane's end at each. The bare arrow's
+            // stops land its back within half a px of the outlined
+            // arrow's (same sweep).
+            const offset = ["interpolate", ["linear"], ["zoom"],
+                ...(bareLane
+                    ? [10, ["literal", [0, 13.8]], 12, ["literal", [0, 13.7]],
+                        14, ["literal", [0, 13.6]], 18, ["literal", [0, 13.1]]]
+                    : [10, ["literal", [0, 8.7]], 12, ["literal", [0, 9.4]],
+                        14, ["literal", [0, 10.3]], 18, ["literal", [0, 10.8]]])];
             // The lift's glow for this arrow: the same icon in the lift's
             // yellow under the arrow, with a halo as wide as the lane
             // halo's reach and a blur for its soft edge, the arrow's twin
