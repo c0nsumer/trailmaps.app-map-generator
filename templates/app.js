@@ -5268,6 +5268,7 @@ async function init() {
             // run after setupFloatingChrome so the FABs' main click
             // handlers are wired (our dismiss listener piggybacks).
             finish("FAB labels", setupFabLabels);
+            finish("scroll fades", setupScrollFades);
             finish("basemap label order", promoteBasemapLabels);
             finish("basemap POI suppression", suppressBasemapPois);
             finish("basemap arrow suppression", suppressBasemapOnewayArrows);
@@ -11993,6 +11994,47 @@ function setupFabLabels() {
     }
 }
 
+
+// ============================================================
+// Scroll fades. A list that happens to end cleanly at the edge of its
+// panel reads as complete, and phones hide the scrollbar until a
+// scroll is under way, so nothing says the key or Options continue.
+// Each scrolling panel fades out at an edge only while more content
+// lies past that edge (.fade-top / .fade-bottom, masks in style.css).
+// A panel that fits gets neither class and looks as it always did.
+// ============================================================
+function setupScrollFades() {
+    const panels = document.querySelectorAll(
+        ".route-panel-list, .options-overlay-body, .search-overlay-results, .gpx-overlay-list");
+    panels.forEach((el) => {
+        let queued = false;
+        const update = () => {
+            queued = false;
+            // 1 px of slack: fractional row heights leave scrollTop a
+            // hair short of the true end on some screens.
+            const more = el.scrollHeight - el.clientHeight - el.scrollTop;
+            el.classList.toggle("fade-top", el.scrollTop > 1);
+            el.classList.toggle("fade-bottom", more > 1);
+        };
+        // One measure per frame however many events arrive (a finder
+        // rebuild is hundreds of mutations).
+        const schedule = () => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(update);
+        };
+        el.addEventListener("scroll", schedule, { passive: true });
+        // The panel's own box changes when it opens (from display:
+        // none), on rotation, and with the keyboard; its content
+        // changes when rows are rebuilt or a section is shown or
+        // hidden by class. Neither observer alone sees both.
+        new ResizeObserver(schedule).observe(el);
+        new MutationObserver(schedule).observe(el, {
+            childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"],
+        });
+        schedule();
+    });
+}
 
 // ============================================================
 // Floating chrome, brand element top-left, FAB stacks on the right

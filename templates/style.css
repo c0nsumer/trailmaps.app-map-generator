@@ -4596,6 +4596,29 @@ body.modal-open .qr-overlay.is-open {
     overflow-y: auto;
 }
 
+/* ----- Scroll fades ------------------------------------------------
+ *
+ * setupScrollFades() in app.js sets .fade-top / .fade-bottom on a
+ * scrolling panel while content continues past that edge. The mask
+ * sits on the scroller's box, so it stays put while the rows move
+ * under it. 24px dims about one row: enough to read as "cut off",
+ * short enough that the row is still legible. Prefixed twins are for
+ * Safari before 15.4. */
+.fade-bottom {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+
+.fade-top {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
+    mask-image: linear-gradient(to bottom, transparent, #000 24px);
+}
+
+.fade-top.fade-bottom {
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
 /* Rows are <button>s (built by rebuildRoutePanel) - tapping one
  * highlights that route, same wiring as a finder route row. */
 .route-panel-row {
