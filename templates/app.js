@@ -150,6 +150,11 @@ const MAP_PAINT_TOKENS = {
         // outline around a colored core that shows up past ~0.6.
         trailCasing:      "rgba(0,0,0,0.5)",
         arrowHalo:        "rgba(0,0,0,0.85)",
+        // The one arrow at an end several lines share (clip-arrow-shared):
+        // the basemap's contrast ink, edged the other way so it stays
+        // crisp over terrain and labels.
+        sharedArrowFill:  "rgb(28,28,30)",
+        sharedArrowHalo:  "rgba(255,255,255,0.9)",
         // Contour lines: warm brown at moderate alpha so they read
         // as terrain annotation under the trail network, not as
         // routes. Labels keep full contrast in both schemes; a
@@ -178,6 +183,8 @@ const MAP_PAINT_TOKENS = {
         // separate cleanly.
         trailCasing:      "rgba(255,255,255,0.3)",
         arrowHalo:        "rgba(255,255,255,0.85)",
+        sharedArrowFill:  "rgb(242,242,242)",
+        sharedArrowHalo:  "rgba(0,0,0,0.85)",
         // Lower alpha than light: pale lines on a dark ground gain
         // apparent contrast; 0.25 was judged right on-device.
         contourLine:      "rgba(214,208,190,0.25)",
@@ -3125,7 +3132,7 @@ let routesData = null; // trails.geojson as loaded (filtered once in loadTrails,
 let poisData = null;
 // Continuation-arrow source data for clipped relations. Held at module
 // scope so recomputeClipEndpointVisibility() can mutate per-feature
-// `visible_count` and push the update back through setData().
+// `visible_lanes` and push the update back through setData().
 let clipEndpointsData = null;
 let visibleRoutes = new Set(); // route IDs currently shown (strings)
 // Bumped every rebuildVisibleRoutesSet(), since visibleRoutes is mutated
@@ -6632,53 +6639,40 @@ function effectiveRouteColor(routeInfo) {
     return CONFIG.defaultTrailColor;
 }
 
-// icon-halo-color for clip-arrow continuation arrowheads. The halo's
-// job is to lift the arrow off the basemap, so, like the trail casing
-// and the highlight outline, it contrasts the BASEMAP via the color
-// scheme: dark halo on the light basemap, light on the dark basemap.
-// Single-route arrows (drawn in the route's own color) take that
-// scheme halo; shared multi-route endpoints keep a fixed light halo
-// because their arrow is filled black (sharedArrowColor) and needs a
-// light edge on either basemap. Re-applied on scheme toggle by
-// applyMapPaintForScheme().
-function clipArrowHaloExpr() {
-    const t = mapPaintTokens();
-    return [
-        "case",
-        [">=", ["get", "visible_count"], 2],
-        "rgba(255,255,255,0.85)",
-        t.arrowHalo,
-    ];
-}
-
-// Per-layer icon-color for clip-arrow layers at SHARED endpoints
-// (visible_count >= 2). N identical layers paint the same pixels and
-// composite via 1 - (1-a)^N; to land on a chosen combined opacity target
-// irrespective of N, each layer needs alpha = 1 - (1-target)^(1/N).
-function sharedArrowColor() {
-    const target = 0.60;
-    const rgb = "rgba(0,0,0";
-    const alpha = (n) => (1 - Math.pow(1 - target, 1 / n)).toFixed(4);
-    return [
-        "case",
-        [">=", ["get", "visible_count"], 5], `${rgb},${alpha(5)})`,
-        [">=", ["get", "visible_count"], 4], `${rgb},${alpha(4)})`,
-        [">=", ["get", "visible_count"], 3], `${rgb},${alpha(3)})`,
-        `${rgb},${alpha(2)})`,
-    ];
-}
-
-// A clip arrow's fill (the comment at its layer in loadTrails says
-// why).
+// A route's own continuation arrow: its color on the map, or for a
+// difficulty-mode relation, whose color is not on the map, the rating
+// of the way it continues (stamped by stampClipEndpointWays), in the
+// unrated look for an unrated way. Its halo's job is to lift the arrow
+// off the basemap, so, like the trail casing and the highlight outline,
+// it contrasts the BASEMAP via the color scheme (mapPaintTokens
+// arrowHalo): dark on the light basemap, light on the dark one.
+//
+// An end that two or more differently colored lines share gets none of
+// these. It gets one neutral arrow from the clip-arrow-shared layer
+// (sharedClipArrowFilter), because any one route's color would speak
+// for that route alone. Until 2026-Nov-12 every route drew its own
+// arrow there in translucent black, stacked to 60%: it read as a
+// dimmed arrow, and a bare arrow stacked on an outlined one, which
+// differ in size, left a ghost edge.
 function clipArrowIconColor(routeId, routeInfo) {
-    return [
-        "case",
-        [">=", ["get", "visible_count"], 2],
-        sharedArrowColor(),
-        isRouteMode(routeId)
-            ? effectiveRouteColor(routeInfo)
-            : ratingMatchExpr(difficultyColor),
-    ];
+    return isRouteMode(routeId)
+        ? effectiveRouteColor(routeInfo)
+        : ratingMatchExpr(difficultyColor);
+}
+
+// Which endpoints the shared arrow covers: those where two or more
+// visible lines end (visible_lanes, stampClipEndpointVisibleCounts).
+function sharedClipArrowFilter() {
+    return [">=", ["get", "visible_lanes"], 2];
+}
+
+// Which endpoints a route's own arrow layer covers. With no highlight,
+// its endpoints that are not shared. Under a highlight the shared arrow
+// is hidden and the arrows that stay are the lifted line's own, so the
+// layer takes every one of its endpoints, in its own color.
+function routeClipArrowFilter(routeId, dim) {
+    const own = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
+    return dim ? own : ["all", own, ["!", sharedClipArrowFilter()]];
 }
 
 // Whether a color key is a rated one: a level of the map's scale
@@ -7747,36 +7741,9 @@ async function loadTrails() {
 
     // Continuation arrowheads at clipped-relation bbox endpoints.
     if (map.getSource("clip-endpoints")) {
-        for (const [routeId, routeInfo] of sortedRoutes) {
-            // Per-endpoint color logic, paired:
-            //   visible_count >= 2 (multi-route convergence) →
-            //     fill black (composited alpha via sharedArrowColor)
-            //     with a fixed light halo so the dark arrow stays
-            //     readable on either basemap.
-            //   single route →
-            //     fill with the route's actual color; halo contrasts the
-            //     basemap via the scheme (see clipArrowHaloExpr), matching
-            //     the trail casing. A difficulty-mode relation's color
-            //     is not on the map, so its arrow takes the rating of
-            //     the way it continues (stamped by
-            //     stampClipEndpointWays), in the unrated look for an
-            //     unrated way.
-            const iconCol = clipArrowIconColor(routeId, routeInfo);
-            const haloCol = clipArrowHaloExpr();
-            // A single-color dashed route draws its lanes bare, no
-            // casing (laneRouteMeta: a solid casing would show through
-            // the gaps), so its arrow draws bare too: an outlined
-            // arrowhead leaving a plain dashed line read as a different
-            // object.
-            const bareLane = isRouteMode(routeId) && laneRouteMeta()[routeId].casing === false;
-            const layout = {
-                "icon-image": "clip-arrow",
-                "icon-rotate": ["get", "bearing"],
-                "icon-rotation-alignment": "map",
-                "icon-anchor": "bottom",
-                "icon-allow-overlap": true,
-                "icon-ignore-placement": true,
-            };
+        // icon-size and icon-offset for an outlined arrow or a bare one
+        // (no halo, see bareLane below).
+        const arrowGeometry = (bareLane) => {
             // Clip-continuation arrows use the same arrowhead-with-notch
             // shape as on-trail direction arrows (drawArrow in this file)
             // so the visual vocabulary stays consistent. Sized so the
@@ -7826,6 +7793,28 @@ async function loadTrails() {
                         14, ["literal", [0, 13.6]], 18, ["literal", [0, 13.1]]]
                     : [10, ["literal", [0, 8.7]], 12, ["literal", [0, 9.4]],
                         14, ["literal", [0, 10.3]], 18, ["literal", [0, 10.8]]])];
+            return { size, offset };
+        };
+        for (const [routeId, routeInfo] of sortedRoutes) {
+            // Colors and which endpoints this layer covers: see
+            // clipArrowIconColor.
+            const iconCol = clipArrowIconColor(routeId, routeInfo);
+            const haloCol = mapPaintTokens().arrowHalo;
+            // A single-color dashed route draws its lanes bare, no
+            // casing (laneRouteMeta: a solid casing would show through
+            // the gaps), so its arrow draws bare too: an outlined
+            // arrowhead leaving a plain dashed line read as a different
+            // object.
+            const bareLane = isRouteMode(routeId) && laneRouteMeta()[routeId].casing === false;
+            const layout = {
+                "icon-image": "clip-arrow",
+                "icon-rotate": ["get", "bearing"],
+                "icon-rotation-alignment": "map",
+                "icon-anchor": "bottom",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+            };
+            const { size, offset } = arrowGeometry(bareLane);
             // The lift's glow for this arrow: the same icon in the lift's
             // yellow under the arrow, with a halo as wide as the lane
             // halo's reach and a blur for its soft edge, the arrow's twin
@@ -7838,7 +7827,7 @@ async function loadTrails() {
                 id: `clip-arrow-glow-${routeId}`,
                 type: "symbol",
                 source: "clip-endpoints",
-                filter: ["in", `|${routeId}|`, ["get", "route_ids_str"]],
+                filter: routeClipArrowFilter(routeId, false),
                 layout: {
                     ...layout,
                     "visibility": "none",
@@ -7858,7 +7847,7 @@ async function loadTrails() {
                 source: "clip-endpoints",
                 // Pipe-delimited substring match, leading/trailing `|`
                 // prevents 38467 from matching 384670.
-                filter: ["in", `|${routeId}|`, ["get", "route_ids_str"]],
+                filter: routeClipArrowFilter(routeId, false),
                 layout: {
                     ...layout,
                     "icon-size": size,
@@ -7879,6 +7868,32 @@ async function loadTrails() {
                 },
             });
         }
+        // The one arrow at a shared end, above every route's own. Always
+        // the outlined kind, whatever the lines ending there are.
+        const shared = arrowGeometry(false);
+        const tokens = mapPaintTokens();
+        map.addLayer({
+            id: "clip-arrow-shared",
+            type: "symbol",
+            source: "clip-endpoints",
+            filter: sharedClipArrowFilter(),
+            layout: {
+                "icon-image": "clip-arrow",
+                "icon-rotate": ["get", "bearing"],
+                "icon-rotation-alignment": "map",
+                "icon-anchor": "bottom",
+                "icon-allow-overlap": true,
+                "icon-ignore-placement": true,
+                "icon-size": shared.size,
+                "icon-offset": shared.offset,
+            },
+            paint: {
+                "icon-color": tokens.sharedArrowFill,
+                "icon-halo-color": tokens.sharedArrowHalo,
+                "icon-halo-width": 0.6,
+                "icon-halo-blur": 0,
+            },
+        });
     }
 
     // Tap lift (showTapLift): one soft glow directly BENEATH the lane
@@ -8938,20 +8953,26 @@ function isTruncatedTrail(name) {
     return truncatedTrailNames.has(name);
 }
 
-// Stamp `visible_count` (how many of its routes are visible) on every
-// clip-endpoint feature.
+// Stamp `visible_lanes` on every clip-endpoint feature: how many
+// differently colored lines of visible routes end there. Each visible
+// route-mode relation is its own line. The visible difficulty-mode
+// relations count once between them, since their shared way draws as
+// one lane in its rating's color and their arrows are that one color.
 function stampClipEndpointVisibleCounts() {
     for (const f of clipEndpointsData.features) {
         const ids = f.properties.route_ids || [];
         let n = 0;
+        let rated = 0;
         for (const rid of ids) {
-            if (visibleRoutes.has(rid)) n++;
+            if (!visibleRoutes.has(rid)) continue;
+            if (isRouteMode(rid)) n++;
+            else rated = 1;
         }
-        f.properties.visible_count = n;
+        f.properties.visible_lanes = n + rated;
     }
 }
 
-// Recompute `visible_count` on every clip-endpoint feature.
+// Recompute `visible_lanes` on every clip-endpoint feature.
 function recomputeClipEndpointVisibility() {
     if (!clipEndpointsData) return;
     const src = map.getSource("clip-endpoints");
@@ -9141,15 +9162,23 @@ function updateTrailDisplay() {
 // they show the lift's yellow rim
 // (the clip-arrow-glow twin under each arrow) and the arrow reads as
 // the lifted line leaving the map. Without a highlight every arrow
-// follows its route's bucket visibility and the rim is hidden. Also
-// re-applies the arrow's scheme-contrasting halo, so a scheme toggle
-// lands here (applyMapPaintForScheme).
+// follows its route's bucket visibility and the rim is hidden, and an
+// end that several lines share shows the one shared arrow in place of
+// theirs (clipArrowIconColor). Also re-applies the arrows'
+// scheme-contrasting colors, so a scheme toggle lands here
+// (applyMapPaintForScheme).
 function updateClipArrowsDim() {
     const dim = highlight != null;
     const kind = dim ? highlight.kind : null;
     const key = dim ? highlight.key : null;
     const byRating = kind === "rating";
-    const halo = clipArrowHaloExpr();
+    const tokens = mapPaintTokens();
+    const halo = tokens.arrowHalo;
+    if (map.getLayer("clip-arrow-shared")) {
+        map.setPaintProperty("clip-arrow-shared", "icon-color", tokens.sharedArrowFill);
+        map.setPaintProperty("clip-arrow-shared", "icon-halo-color", tokens.sharedArrowHalo);
+        map.setLayoutProperty("clip-arrow-shared", "visibility", dim ? "none" : "visible");
+    }
     for (const routeId of Object.keys(CONFIG.routes)) {
         const layerId = `clip-arrow-${routeId}`;
         const glowId = `clip-arrow-glow-${routeId}`;
@@ -9159,7 +9188,7 @@ function updateClipArrowsDim() {
         if (vis && dim) {
             vis = byRating ? !isRouteMode(routeId) : routeId === key;
         }
-        const routeFilter = ["in", `|${routeId}|`, ["get", "route_ids_str"]];
+        const routeFilter = routeClipArrowFilter(routeId, dim);
         const filter = byRating
             ? ["all", routeFilter, ["==", ratingMatchExpr((k) => k), key]]
             : routeFilter;
@@ -14586,6 +14615,7 @@ function placeClipArrowsAboveLanes() {
             if (map.getLayer(id)) map.moveLayer(id, "decor-chevron-fwd");
         }
     }
+    if (map.getLayer("clip-arrow-shared")) map.moveLayer("clip-arrow-shared", "decor-chevron-fwd");
 }
 
 // Where the lane layer inserts: under the one-way chevrons, the first
