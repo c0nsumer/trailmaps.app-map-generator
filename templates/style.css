@@ -4601,22 +4601,27 @@ body.modal-open .qr-overlay.is-open {
  * setupScrollFades() in app.js sets .fade-top / .fade-bottom on a
  * scrolling panel while content continues past that edge. The mask
  * sits on the scroller's box, so it stays put while the rows move
- * under it. 24px dims about one row: enough to read as "cut off",
- * short enough that the row is still legible. Prefixed twins are for
+ * under it. 40px (--scroll-fade) dims about a row and a half of the
+ * key: Steve found 24px too short to notice on a phone. Prefixed twins are for
  * Safari before 15.4. */
+.fade-top,
 .fade-bottom {
-    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+    --scroll-fade: 40px;
+}
+
+.fade-bottom {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--scroll-fade)), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--scroll-fade)), transparent);
 }
 
 .fade-top {
-    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
-    mask-image: linear-gradient(to bottom, transparent, #000 24px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade));
+    mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade));
 }
 
 .fade-top.fade-bottom {
-    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
-    mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade), #000 calc(100% - var(--scroll-fade)), transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade), #000 calc(100% - var(--scroll-fade)), transparent);
 }
 
 /* Rows are <button>s (built by rebuildRoutePanel) - tapping one
