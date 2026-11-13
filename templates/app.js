@@ -7796,8 +7796,17 @@ async function loadTrails() {
             // at both zooms (headless sweep). Without it the
             // bare arrowhead read smaller than its neighbors.
             const bump = bareLane ? 0.6 : 0;
+            // The z10 stop keeps the arrow shrinking with the lanes,
+            // whose widths run down to z10 (TRAIL_WIDTH_STOPS): the
+            // arrowhead stays about six times the lane fill at every
+            // zoom. Held at its z12 size, it was near ten times the line
+            // on a large map's opening view.
+            // A bare arrow's bump tapers to two thirds at z10. Matching
+            // the outlined silhouette there left a solid arrowhead far
+            // heavier than the thin dashed line it ends: a pale halo
+            // adds size but little weight, solid fill adds both.
             const size = ["interpolate", ["linear"], ["zoom"],
-                12, 1.2 + bump, 14, 1.65 + bump, 18, 2.4 + bump];
+                10, 0.8 + bump * 2 / 3, 12, 1.2 + bump, 14, 1.65 + bump, 18, 2.4 + bump];
             // Push the arrowhead away from the trail's clipped end so it
             // doesn't crowd the line where it meets the bbox edge. The
             // offset is in icon pixels, times icon-size, in pre-rotation
@@ -7817,6 +7826,7 @@ async function loadTrails() {
             // the slope between them carried to the outer stops.
             const offset = bareLane
                 ? ["interpolate", ["linear"], ["zoom"],
+                    10, ["literal", [0, 14.2]],
                     12, ["literal", [0, 13.9]], 14, ["literal", [0, 13.6]],
                     18, ["literal", [0, 13.0]]]
                 : [0, 10.8];
