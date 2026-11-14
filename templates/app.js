@@ -8433,6 +8433,11 @@ function initLaneRenderer() {
         // Way facts the chevron filters read. An edge ends where one of
         // these changes, and every lane feature carries them by name.
         uniformProperties: ["oneway", "trail_name", ...SCHEME_WAY_PROPS],
+        // A one-way leg's flow picks which legs a route joins at a
+        // junction: a loose end joins a leg riders can reach it from,
+        // not the straightest one. Without it an event route that
+        // passes a T twice drew its turn from the wrong side.
+        onewayProperty: "oneway",
     });
     refreshLaneGraph();
 }
@@ -8566,6 +8571,7 @@ function refreshLaneGraph() {
             routes: laneKeyMeta(difficultyVisibleFeatures),
             uniformProperties: ["oneway", "trail_name", ...SCHEME_WAY_PROPS,
                 "route_id", "reverses_by_day"],
+            onewayProperty: "oneway",
         });
     }
     const token = ++laneOrderToken;
