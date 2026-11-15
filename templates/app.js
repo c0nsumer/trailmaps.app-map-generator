@@ -8600,6 +8600,17 @@ function addLaneLayer() {
         sizes: laneStyleAt,
         casingColor: laneCasingColor(),
         onBuild: onLaneBuild,
+        // The plugin keeps a mesh while the zoom moves in by up to half
+        // a level and stretches its dashes to match, unevenly near
+        // junctions, and at the map's top zoom nothing ever rebuilt
+        // it: a dashed trail sat there with some dashes twice as long
+        // as others. So the lanes are built again for the zoom the map
+        // comes to rest on. That re-spaces every dash, and a snap read
+        // as the dashes jumping, so the old pattern dissolves into the
+        // new one. 500 ms was picked on a phone: 300 still read as a
+        // jump, 600 as lag.
+        restBuild: true,
+        dashFade: 500,
     });
     map.addLayer(laneLayer, laneLayerAnchor());
     // promoteBasemapLabels ran before the lanes existed and put the

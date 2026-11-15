@@ -53,7 +53,12 @@ VENDOR_LIBS = {
     # a route's legs join by their one-way flow, not by straightness
     # alone. An older build ignores the option, and an event route
     # that passes a T twice then draws its turn from the wrong side.
-    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.6.0/dist/maplibre-gl-lanes.js",
+    #
+    # app.js passes `restBuild` and `dashFade`, which need 1.7.0: the
+    # lanes are built again for the zoom the map rests on, and a dashed
+    # route's old pattern dissolves into the new one. An older build
+    # ignores both, and dashes sit stretched and uneven after a zoom.
+    "maplibre-gl-lanes.js": "https://unpkg.com/maplibre-gl-lanes@1.7.0/dist/maplibre-gl-lanes.js",
 }
 
 # SHA-256 of each file above, checked after a download and on every cache
@@ -72,7 +77,7 @@ VENDOR_SHA256 = {
     "basemaps.js": "551864f01da1bfe3005e99987197f22f56d0c35f9a10fa1727a889e2434af16d",
     "maplibre-contour.js": "055e45d0a76aaeaaf5a96765b8ce524abba3272456be75e715081e235ebd1262",
     "uqr.mjs": "7f0e61c2f13bb3724edee7bfb876e13c54ac9ee4fcfa283c9fa93cfb1241c325",
-    "maplibre-gl-lanes.js": "604f20b4054b796d3b257c36484798cf856b4d1e454a5fdc8b77909952e5a54c",
+    "maplibre-gl-lanes.js": "e56e6f43affcddcbfd992adde8b29ca5e1c9f5c0444dbe967cceca4fd5f4ba0f",
 }
 
 # The license text for every file above, by file under assets/licenses/.
