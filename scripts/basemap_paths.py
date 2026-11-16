@@ -51,7 +51,7 @@ from shapely.strtree import STRtree
 
 # Bump when the generated features change shape for the same input, so
 # existing basemaps regenerate.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # highway values Protomaps files under kind=path, with the min_zoom it
 # gives each (read off live Protomaps extracts, 2026-09-20). A feature
@@ -99,6 +99,13 @@ DRAWN_TOLERANCE_M = 2.0
 # road the route follows, or a side trail touching the route at a
 # junction, is near the route for a few meters and is not the route.
 DRAWN_MIN_LENGTH_M = 10.0
+# ...unless the stretch is the whole way. A route member shorter than
+# the floor (an 8 m link between two trails) lies along the route from
+# end to end and stayed on the basemap, showing through a dashed
+# route. A crossing or a junction touch is only ever part of its way,
+# so the floor still holds for those. The slack absorbs the trail
+# coordinates' rounding at a flat-cut end.
+DRAWN_WHOLE_SLACK_M = 0.1
 
 BUCKET_FLAGS = (("summer", "tm_s"), ("winter", "tm_w"), ("emergency", "tm_e"))
 
@@ -417,6 +424,9 @@ def split_by_drawn(line, covers):
     for the part no route draws.
     """
     pieces = [(line, ())]
+    # The whole way, not the piece: a leftover of an earlier bucket's
+    # cut is short without being a short way.
+    floor = min(DRAWN_MIN_LENGTH_M, line.length - DRAWN_WHOLE_SLACK_M)
     for flag, (tree, polys) in covers.items():
         nxt = []
         for piece, flags in pieces:
@@ -425,9 +435,7 @@ def split_by_drawn(line, covers):
                 nxt.append((piece, flags))
                 continue
             cover = unary_union(near)
-            inside = [
-                g for g in _lines(piece.intersection(cover)) if g.length >= DRAWN_MIN_LENGTH_M
-            ]
+            inside = [g for g in _lines(piece.intersection(cover)) if g.length >= floor]
             if not inside:
                 nxt.append((piece, flags))
                 continue

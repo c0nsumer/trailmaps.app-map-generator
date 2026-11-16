@@ -242,6 +242,36 @@ def test_a_crossing_or_a_junction_touch_is_not_a_drawn_stretch():
     assert set(_flag_lengths(features)) == {()}
 
 
+def test_a_way_shorter_than_the_floor_is_flagged_when_a_route_draws_all_of_it():
+    # Lakeshore Park, way 278929707: an 8 m link the route draws from
+    # end to end stayed on the basemap, a white line through the dashes.
+    # The route's features follow the ways, so the link is its own part.
+    link = [(0, 5), (0, 5.75)]  # about 8 m
+    ways = {
+        1: ({"highway": "path"}, [tuple(c) for c in _line((0, 0), (0, 5))]),
+        2: ({"highway": "path"}, [tuple(c) for c in _line(*link)]),
+        3: ({"highway": "path"}, [tuple(c) for c in _line((-5, 5.75), (5, 5.75))]),
+    }
+    trails = _trails(
+        [
+            _route_feature(5, _line((0, 0), (0, 5))),
+            _route_feature(6, _line(*link)),
+            _route_feature(6, _line((-5, 5.75), (5, 5.75))),
+        ],
+        {"5": SUMMER, "6": SUMMER},
+    )
+    features, _ = bp.build_features(ways, trails, BOUNDS, 9, 15, merge=False)
+    assert _pieces(features, flagged=False) == []
+    assert any(p.length < bp.DRAWN_MIN_LENGTH_M for p in _pieces(features, flagged=True))
+
+
+def test_a_short_way_a_route_only_touches_is_not_a_drawn_stretch():
+    # An 8 m spur leaving the route: under the floor, and not drawn whole.
+    ways = {1: ({"highway": "path"}, [tuple(c) for c in _line((0, 5), (1, 5))])}
+    trails = _trails([_route_feature(5, _line((0, 0), (0, 10)))], {"5": SUMMER})
+    assert bp.build_features(ways, trails, BOUNDS, 9, 15)[1]["drawn_m"] == 0
+
+
 def test_a_route_beside_a_path_does_not_flag_it():
     # 7.7 m east of the route: a sidewalk beside a road the route follows.
     ways = {1: ({"highway": "footway"}, [tuple(c) for c in _line((1, 0), (1, 10))])}
