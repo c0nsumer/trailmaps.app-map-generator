@@ -2,7 +2,7 @@
 
 import os
 
-from logo import process_logo
+from logo import aspect_mismatch, process_logo, resolve_logo_dark_source
 from PIL import Image, ImageDraw
 
 
@@ -100,3 +100,21 @@ def test_present_logo_wins_at_every_site(tmp_path, monkeypatch):
     assert inject_config(config)["logoUrl"] == "logo.webp"
     palette = resolve_accent_palette(config, str(tmp_path / "cache"))
     assert palette["light"] != FRAMEWORK_DEFAULT_ACCENT
+
+
+def test_logo_dark_resolves_only_beside_a_light_logo(tmp_path):
+    # The dark file stands in for `logo:`; it never replaces an icon
+    # shown as the logo, and a missing file resolves to nothing.
+    light, dark = tmp_path / "l.png", tmp_path / "d.png"
+    light.write_bytes(b"x")
+    dark.write_bytes(b"x")
+    assert resolve_logo_dark_source({"logo": str(light), "logo_dark": str(dark)}) == str(dark)
+    assert resolve_logo_dark_source({"icon": str(light), "logo_dark": str(dark)}) == ""
+    assert resolve_logo_dark_source({"logo": str(light), "logo_dark": str(tmp_path / "no")}) == ""
+    assert resolve_logo_dark_source({"logo": str(light)}) == ""
+
+
+def test_aspect_mismatch_needs_known_sizes_and_a_real_difference():
+    assert aspect_mismatch((400, 96), (200, 96))
+    assert not aspect_mismatch((400, 96), (398, 96))
+    assert not aspect_mismatch((400, 96), (None, None))

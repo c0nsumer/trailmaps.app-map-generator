@@ -89,6 +89,7 @@ dashed_relations:
 
 # --- Branding ---
 logo: example_logo.png
+# logo_dark: logo-dark.webp
 icon: example_icon.png
 # additional_logos:
 #   - path: sponsor.webp

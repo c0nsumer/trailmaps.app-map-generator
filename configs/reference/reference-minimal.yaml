@@ -87,6 +87,7 @@ relations:
 
 # --- Branding ---
 # logo: logo.webp
+# logo_dark: logo-dark.webp
 # icon: icon.png
 # additional_logos:
 #   - path: sponsor.webp

@@ -633,3 +633,36 @@ def test_validate_config_file_reads_the_shape_build_reads(tmp_path):
 def test_default_visible_accepts_exposure_points():
     errors = _errors(default_visible=["exposure_points"], forced_visible=["exposure_points"])
     assert [e for e in errors if "exposure_points" in e] == []
+
+
+def test_logo_dark_rules(tmp_path):
+    # A dark logo stands in for `logo:`, and the invert and a dark file
+    # are one choice, never both.
+    light, dark = tmp_path / "l.png", tmp_path / "d.png"
+    light.write_bytes(b"x")
+    dark.write_bytes(b"x")
+    assert _errors(logo=str(light), logo_dark=str(dark)) == []
+    assert any("needs `logo:`" in e for e in _errors(logo_dark=str(dark)))
+    assert any(
+        "invert_logo_dark" in e
+        for e in _errors(logo=str(light), logo_dark=str(dark), invert_logo_dark=True)
+    )
+    assert any(
+        "file not found" in e
+        for e in _errors(logo=str(light), logo_dark=str(tmp_path / "missing.png"))
+    )
+
+
+def test_additional_logo_path_dark_rules(tmp_path):
+    light, dark = tmp_path / "l.png", tmp_path / "d.png"
+    light.write_bytes(b"x")
+    dark.write_bytes(b"x")
+    entry = {"path": str(light), "path_dark": str(dark)}
+    assert _errors(additional_logos=[entry]) == []
+    assert any(
+        "invert_dark" in e for e in _errors(additional_logos=[dict(entry, invert_dark=True)])
+    )
+    assert any(
+        "file not found" in e
+        for e in _errors(additional_logos=[dict(entry, path_dark=str(tmp_path / "no.png"))])
+    )

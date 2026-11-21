@@ -919,8 +919,9 @@ def load_config(config_path):
     the slug in every path. Absolute paths in the YAML are passed through
     unchanged (useful for shared assets outside the repo).
 
-    Resolved keys: ``logo``, ``icon``, ``osm_file``, every
-    ``custom_routes[].geometry``, ``additional_logos[].path``,
+    Resolved keys: ``logo``, ``logo_dark``, ``icon``, ``osm_file``, every
+    ``custom_routes[].geometry``, ``additional_logos[].path`` and
+    ``path_dark``,
     ``event_mode.routes[].geometry`` and ``event_mode.gpx.routes[].file``.
     All other paths (``--output-dir``, vendor library URLs, etc.) stay in
     their original form, since they are repo-relative or external URLs.
@@ -934,7 +935,7 @@ def load_config(config_path):
             return path
         return path if os.path.isabs(path) else os.path.join(config_dir, path)
 
-    for key in ("logo", "icon", "osm_file"):
+    for key in ("logo", "logo_dark", "icon", "osm_file"):
         if key in config:
             config[key] = _resolve(config[key])
 
@@ -946,8 +947,9 @@ def load_config(config_path):
     # config like `logo:`/`icon:`; resolve each path so copy_assets sees
     # an absolute source.
     for entry in _as_list(config.get("additional_logos")):
-        if isinstance(entry, dict) and "path" in entry:
-            entry["path"] = _resolve(entry["path"])
+        for field in ("path", "path_dark"):
+            if isinstance(entry, dict) and field in entry:
+                entry[field] = _resolve(entry[field])
 
     # Inline event_mode.routes resolve like top-level custom_routes, so the
     # later fold into config["custom_routes"] sees absolute paths.
@@ -1229,21 +1231,23 @@ def _print_dry_run_summary(config, args, output_dir, cache_dir):
 
     # ---- Branding assets ----
     console.step("Branding assets:")
-    for key in ("logo", "icon"):
+    for key in ("logo", "logo_dark", "icon"):
         path = config.get(key) or ""
-        if not path:
-            console.info(f"{key}: (none)")
-        else:
+        if path:
             console.info(f"{key}: {_display_path(path)}")
+        elif key != "logo_dark":
+            console.info(f"{key}: (none)")
     extra_logos = _as_list(config.get("additional_logos"))
     for i, entry in enumerate(extra_logos):
         if not isinstance(entry, dict):
             continue
         path = entry.get("path") or ""
         invert = entry.get("invert_dark", False)
+        dark = entry.get("path_dark") or ""
         console.info(
             f"additional_logos[{i}]: {_display_path(path)}"
             f"{' (invert_dark: true)' if invert else ''}"
+            f"{f' (dark: {_display_path(dark)})' if dark else ''}"
         )
     console.blank()
 

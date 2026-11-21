@@ -199,6 +199,39 @@ def test_additional_logos_do_not_invert_by_default():
     assert 'src="logo-3.webp" alt="" class="brand-logo-secondary invert-dark"' in out
 
 
+def test_logo_dark_ships_a_light_dark_pair(tmp_path):
+    # style.css shows one of .logo-light / .logo-dark per color scheme.
+    logo, dark = tmp_path / "logo.png", tmp_path / "dark.png"
+    logo.write_bytes(b"x")
+    dark.write_bytes(b"x")
+    config = dict(MINIMAL_CONFIG, logo=str(logo), logo_dark=str(dark),
+                  _brand_img_dims=(200, 48), _brand_img_dark_dims=(200, 48))
+    out = _process_index_html(_index_html(), config)
+    assert 'id="brand-img" class="logo-light" width="200" height="48"' in out
+    assert 'src="logo-dark.webp"' in out
+    assert 'id="brand-img-dark" class="logo-dark" width="200" height="48"' in out
+    assert inject_config(config)["logoDarkUrl"] == "logo-dark.webp"
+
+
+def test_no_logo_dark_leaves_a_single_brand_img(tmp_path):
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"x")
+    config = dict(MINIMAL_CONFIG, logo=str(logo))
+    out = _process_index_html(_index_html(), config)
+    assert 'src="logo-dark' not in out and 'class="logo-light"' not in out
+    assert "__BRAND_IMG" not in out
+    assert inject_config(config)["logoDarkUrl"] is None
+
+
+def test_additional_logo_with_a_dark_file_ships_a_pair():
+    config = dict(MINIMAL_CONFIG, _additional_logos_rendered=[
+        {"url": "logo-2.webp", "dark_url": "logo-2-dark.webp", "invert_dark": False},
+    ])
+    out = _process_index_html(_index_html(), config)
+    assert 'src="logo-2.webp" alt="" class="brand-logo-secondary logo-light"' in out
+    assert 'src="logo-2-dark.webp" alt="" class="brand-logo-secondary logo-dark"' in out
+
+
 def test_pinned_tab_link_ships_only_with_the_svg():
     # Without potrace no safari-pinned-tab.svg is generated, so the
     # link would point at a missing (or a stale, unprecached) file.

@@ -3390,13 +3390,26 @@ button.highlight-chip::after {
     align-items: center;
 }
 
-#brand-img {
+#brand-img,
+#brand-img-dark {
     max-width: 200px;
     max-height: 48px;
     width: auto;
     height: auto;
     opacity: 0.95;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+/* Light / dark logo pair. A logo with a dark-scheme file (logo_dark:,
+ * or path_dark: on an additional logo) ships as two imgs, .logo-light
+ * and .logo-dark, and exactly one shows per scheme. Both rules hide
+ * rather than one hiding and one showing, so neither has to restate
+ * the display value its img has in the brand column or the About
+ * header. The pair covers the brand mark, the additional logos, and
+ * the About modal logo. */
+:root:not([data-color-scheme="dark"]) .logo-dark,
+[data-color-scheme="dark"] .logo-light {
+    display: none;
 }
 
 /* Desktop / laptop: bump the logo so the brand reads at a normal
@@ -3411,7 +3424,8 @@ button.highlight-chip::after {
     #brand {
         max-width: min(60vw, 320px);
     }
-    #brand-img {
+    #brand-img,
+    #brand-img-dark {
         max-width: 280px;
         max-height: 64px;
     }
@@ -3429,6 +3443,12 @@ button.highlight-chip::after {
 [data-color-scheme="dark"] #brand-img.invert-dark {
     filter: invert(1) hue-rotate(180deg)
             drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
+}
+
+/* The About modal logo sits on the sheet, where a dark mark needs the
+ * same flip; it carries no drop shadow to preserve. */
+[data-color-scheme="dark"] .about-modal-logo.invert-dark {
+    filter: invert(1) hue-rotate(180deg);
 }
 
 /* ----- Map scale (under the brand, while the map moves) ------------ *

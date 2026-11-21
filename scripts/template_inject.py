@@ -30,9 +30,11 @@ from generate_icons import generate_icons
 from inject_clip_arrow import inject_clip_arrow
 from logo import (
     DEFAULT_BRAND_CORNER_RATIO,
+    aspect_mismatch,
     logo_output_filename,
     process_logo,
     resolve_icon_source,
+    resolve_logo_dark_source,
     resolve_logo_source,
 )
 from osm_parser import plain_css_color
@@ -633,8 +635,10 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # config" row: curation moves independently of the engine (App row)
     # and the OSM fetch (Map data row). Same mtime derivation, and the
     # same fresh-clone caveat, as buildDate.
-    map_inputs = [config.get("_config_path"), config.get("logo"), config.get("icon")]
-    map_inputs += [(e or {}).get("path") for e in config.get("additional_logos") or []]
+    map_inputs = [config.get("_config_path")]
+    map_inputs += [config.get(k) for k in ("logo", "logo_dark", "icon")]
+    for e in config.get("additional_logos") or []:
+        map_inputs += [(e or {}).get("path"), (e or {}).get("path_dark")]
     map_inputs += [(e or {}).get("geometry") for e in config.get("custom_routes") or []]
 
     def _max_mtime_date(paths):
@@ -827,6 +831,12 @@ def inject_config_into_template(template_content, config, trails_geojson):
     # null whenever copy_assets would write no logo file.
     logo_source = resolve_logo_source(config)
     config_obj["logoUrl"] = logo_output_filename(logo_source) if logo_source else None
+    # The dark scheme's logo, when the map supplies one: the About modal
+    # builds its header image from these two at runtime.
+    logo_dark_source = resolve_logo_dark_source(config)
+    config_obj["logoDarkUrl"] = (
+        logo_output_filename(logo_dark_source, "logo-dark") if logo_dark_source else None
+    )
 
     config_json = json.dumps(config_obj, indent=2)
     return template_content.replace("/*__CONFIG__*/", f"const CONFIG = {config_json};")
@@ -904,12 +914,29 @@ def _process_index_html(content, config):
     # makes the brand-img the LCP image regardless of whether we
     # could determine dims. Browsers without fetchpriority support
     # ignore the attribute (no regression).
-    brand_dims = config.get("_brand_img_dims") or (None, None)
-    bw, bh = brand_dims
-    if bw and bh:
-        content = content.replace("__BRAND_IMG_DIMS__", f' width="{bw}" height="{bh}"')
+    def _dims_attr(dims):
+        w, h = dims or (None, None)
+        return f' width="{w}" height="{h}"' if w and h else ""
+
+    content = content.replace("__BRAND_IMG_DIMS__", _dims_attr(config.get("_brand_img_dims")))
+
+    # Dark-scheme logo. A map with `logo_dark:` gets a second brand img
+    # beside the first, and style.css shows one of the pair per
+    # [data-color-scheme]. Two imgs and CSS rather than <picture media>:
+    # the scheme is the rider's toggle, not only the OS preference, and
+    # the <head> bootstrap sets the attribute before first paint.
+    logo_dark_chosen = resolve_logo_dark_source(config)
+    if logo_dark_chosen:
+        dark_name = logo_output_filename(logo_dark_chosen, "logo-dark")
+        content = content.replace("__BRAND_IMG_CLASS__", ' class="logo-light"')
+        content = content.replace(
+            "__BRAND_IMG_DARK__",
+            f'\n        <img src="{dark_name}" alt="__BRAND_TITLE__" id="brand-img-dark"'
+            f' class="logo-dark"{_dims_attr(config.get("_brand_img_dark_dims"))}>',
+        )
     else:
-        content = content.replace("__BRAND_IMG_DIMS__", "")
+        content = content.replace("__BRAND_IMG_CLASS__", "")
+        content = content.replace("__BRAND_IMG_DARK__", "")
 
     # Inline color-scheme bootstrap script. Runs synchronously
     # in <head> BEFORE the stylesheet, so first paint already
@@ -1029,14 +1056,22 @@ def _process_index_html(content, config):
         tags = []
         for extra in rendered_additional:
             cls = "brand-logo-secondary"
-            if extra.get("invert_dark", False):
+            if extra.get("dark_url"):
+                # Same light/dark pair as the primary; the validator
+                # keeps a dark file and the invert apart.
+                cls += " logo-light"
+            elif extra.get("invert_dark", False):
                 cls += " invert-dark"
-            dims = ""
-            if extra.get("width") and extra.get("height"):
-                dims = f' width="{extra["width"]}" height="{extra["height"]}"'
+            dims = _dims_attr((extra.get("width"), extra.get("height")))
             tags.append(
                 f'<img src="{extra["url"]}" alt="" class="{cls}"{dims} decoding="async">'
             )
+            if extra.get("dark_url"):
+                dims = _dims_attr((extra.get("dark_width"), extra.get("dark_height")))
+                tags.append(
+                    f'<img src="{extra["dark_url"]}" alt=""'
+                    f' class="brand-logo-secondary logo-dark"{dims} decoding="async">'
+                )
         content = content.replace(
             "__ADDITIONAL_LOGOS__", "\n        " + "\n        ".join(tags) + "\n        "
         )
@@ -1152,6 +1187,28 @@ def copy_assets(config, output_dir):
         )
         ship(config, out_name)
 
+    def _process_dark(dark_src, stem, light_dims, label):
+        """Write a logo's dark-scheme file. Returns (name, (w, h))."""
+        name = logo_output_filename(dark_src, stem)
+        dims = process_logo(dark_src, os.path.join(output_dir, name))
+        ship(config, name)
+        if aspect_mismatch(light_dims, dims):
+            console.warn(
+                f"{label} is a different shape than its light logo "
+                f"({dims[0]}×{dims[1]} against {light_dims[0]}×{light_dims[1]}), "
+                "so the brand mark changes size when the color scheme toggles"
+            )
+        return name, dims
+
+    logo_dark_path = config.get("logo_dark", "")
+    logo_dark_src = resolve_logo_dark_source(config)
+    if logo_dark_path and not logo_dark_src:
+        console.warn(f"Dark logo not used (file or `logo:` missing): {logo_dark_path}")
+    if logo_dark_src:
+        _, config["_brand_img_dark_dims"] = _process_dark(
+            logo_dark_src, "logo-dark", config["_brand_img_dims"], "logo_dark"
+        )
+
     # Secondary brand images (event + sponsor logos). Each is processed
     # through the SAME pipeline as the primary logo (raster → WebP,
     # SVG → dimensioned SVG) into logo-2 / logo-3 / … and stacked under
@@ -1173,17 +1230,26 @@ def copy_assets(config, output_dir):
         out_name = f"logo-{idx}.svg" if ext == ".svg" else f"logo-{idx}.webp"
         w, h = process_logo(candidate, os.path.join(output_dir, out_name))
         ship(config, out_name)
-        rendered_additional.append(
-            {
-                "url": out_name,
-                "width": w,
-                "height": h,
-                # Per-logo dark-mode invert, default false to match
-                # invert_logo_dark on the primary: most sponsor marks are
-                # colored, and a plain dark one opts in.
-                "invert_dark": entry.get("invert_dark", False),
-            }
-        )
+        rendered = {
+            "url": out_name,
+            "width": w,
+            "height": h,
+            # Per-logo dark-mode invert, default false to match
+            # invert_logo_dark on the primary: most sponsor marks are
+            # colored, and a plain dark one opts in.
+            "invert_dark": entry.get("invert_dark", False),
+        }
+        dark = entry.get("path_dark")
+        if isinstance(dark, str) and dark:
+            if os.path.isfile(dark):
+                rendered["dark_url"], (rendered["dark_width"], rendered["dark_height"]) = (
+                    _process_dark(
+                        dark, f"logo-{idx}-dark", (w, h), f"additional_logos[{idx - 2}].path_dark"
+                    )
+                )
+            else:
+                console.warn(f"Additional dark logo not found: {dark}")
+        rendered_additional.append(rendered)
     config["_additional_logos_rendered"] = rendered_additional
 
     # Icons - generated from the resolved source image. Source resolution

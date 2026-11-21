@@ -129,6 +129,8 @@ KNOWN_KEYS = {
     "feature_ring_color": str,
     "accent_color": str,
     "logo": str,
+    # The logo shown on the dark color scheme in place of `logo:`.
+    "logo_dark": str,
     "icon": str,
     # Event and sponsor logos stacked under the primary `logo:`. Display-only:
     # they never drive icon generation, accent, About or og:image.
@@ -190,6 +192,7 @@ HANDLED_SPECIALLY = {
     "forced_visible",  # → CONFIG.forcedVisible (list; "all" expanded at build time)
     "accent_color",  # → CONFIG.accentLight/accentDark (hex; "auto" resolved from logo at build time)
     "logo",  # → CONFIG.logoUrl (after asset pipeline)
+    "logo_dark",  # → CONFIG.logoDarkUrl (after asset pipeline)
     "icon",  # → fallback for logoUrl
     "additional_logos",  # → baked into #brand HTML at build time
     #   (logo-2.webp / logo-N.svg + brand-logo-secondary imgs);
@@ -1020,11 +1023,33 @@ def _validate_additional_logos(report, config):
         - invert_dark: bool (optional, default false) - auto-invert this
           logo in dark mode. Set true for a plain dark mark that would
           vanish on the dark sheet.
+        - path_dark: str (optional) - a separate image shown on the dark
+          scheme in place of `path:`. Excludes invert_dark: the dark file
+          is already drawn for the dark sheet, and inverting it too would
+          leave the curator guessing which one wins.
+
+    The primary logo's own pair, logo_dark and invert_logo_dark, is
+    checked here as well, under the same rule.
 
     Display-only: these never drive icon/favicon generation, accent-color
     derivation, the About modal, or og:image - all of that stays keyed to
     the primary `logo:`. File existence is checked in _validate_paths.
     """
+    logo_dark = config.get("logo_dark")
+    if logo_dark and isinstance(logo_dark, str):
+        if not config.get("logo"):
+            report.err(
+                "logo_dark",
+                "needs `logo:` set too: the dark logo stands in for `logo:` on the "
+                "dark color scheme, and it never replaces an `icon:` shown as the logo",
+            )
+        if config.get("invert_logo_dark") is True:
+            report.err(
+                "logo_dark",
+                "cannot be combined with invert_logo_dark: true. Supply a dark "
+                "logo or invert the light one, not both",
+            )
+
     al = config.get("additional_logos")
     if al is None:
         return
@@ -1044,14 +1069,23 @@ def _validate_additional_logos(report, config):
                 f"{where}.invert_dark",
                 f"must be true or false, got {entry['invert_dark']!r}",
             )
-        _reject_unknown_keys(report, where, entry, {"path", "invert_dark"})
+        pd = entry.get("path_dark")
+        if "path_dark" in entry and (not isinstance(pd, str) or not pd.strip()):
+            report.err(f"{where}.path_dark", f"must be a non-empty string, got {pd!r}")
+        elif pd and entry.get("invert_dark") is True:
+            report.err(
+                f"{where}.path_dark",
+                "cannot be combined with invert_dark: true. Supply a dark logo "
+                "or invert the light one, not both",
+            )
+        _reject_unknown_keys(report, where, entry, {"path", "path_dark", "invert_dark"})
 
 
 def _asset_paths(config):
     """Yield (config key, path) for every user-supplied asset path that is
     a non-empty string. Wrong types are reported by _validate_types and
     the per-entry validators, so they are skipped here."""
-    for key in ("logo", "icon", "osm_file"):
+    for key in ("logo", "logo_dark", "icon", "osm_file"):
         p = config.get(key)
         if p and isinstance(p, str):
             yield key, p
@@ -1064,6 +1098,7 @@ def _asset_paths(config):
     # top-level custom_routes: relative to the config YAML's directory.
     for prefix, lst, field in (
         ("additional_logos", config.get("additional_logos"), "path"),
+        ("additional_logos", config.get("additional_logos"), "path_dark"),
         ("custom_routes", config.get("custom_routes"), "geometry"),
         ("event_mode.routes", em.get("routes"), "geometry"),
         ("event_mode.gpx.routes", em_gpx.get("routes"), "file"),
@@ -1077,7 +1112,7 @@ def _asset_paths(config):
 
 
 # Keys whose .svg file is copied into the build as shipped bytes.
-_SVG_SHIPPED_KEYS = {"logo", "icon", "additional_logos"}
+_SVG_SHIPPED_KEYS = {"logo", "logo_dark", "icon", "additional_logos"}
 
 
 def _is_gpx_file(path):

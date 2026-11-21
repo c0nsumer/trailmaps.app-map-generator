@@ -30,15 +30,18 @@ LOGO_DESKTOP_H = 48
 DEFAULT_BRAND_CORNER_RATIO = 7 / 26
 
 
-def logo_output_filename(source_path):
+def logo_output_filename(source_path, stem="logo"):
     """Return the filename the logo asset should be written as in the build dir.
 
     SVG sources are left as SVG (the browser scales them cleanly via CSS and
     Pillow can't rasterize them without extra deps). Everything else is
     normalized to WebP so the output is predictable for templating.
+
+    `stem` names the variant: "logo" for the primary, "logo-dark" for its
+    dark-mode file, "logo-2" / "logo-2-dark" for the additional logos.
     """
     ext = os.path.splitext(source_path)[1].lower()
-    return "logo.svg" if ext == ".svg" else "logo.webp"
+    return f"{stem}.svg" if ext == ".svg" else f"{stem}.webp"
 
 
 # Pillow-readable raster extensions used by the icon-source resolver
@@ -106,6 +109,33 @@ def resolve_logo_source(config):
     return icon_path if icon_path and os.path.isfile(icon_path) else ""
 
 
+def resolve_logo_dark_source(config):
+    """Return the primary logo's dark-mode source path, or "" if none.
+
+    `logo_dark:` when it is set, its file exists, and `logo:` itself
+    resolves. The dark file replaces the light one on the dark scheme, so
+    without a light logo there is nothing for it to stand in for. One
+    function for copy_assets, CONFIG.logoDarkUrl, and the index.html
+    brand-img-dark, for the same reason as resolve_logo_source.
+    """
+    dark = config.get("logo_dark") or ""
+    if not dark or not os.path.isfile(dark):
+        return ""
+    logo = config.get("logo") or ""
+    return dark if logo and os.path.isfile(logo) else ""
+
+
+def aspect_mismatch(light_dims, dark_dims, tolerance=0.05):
+    """True when both sizes are known and their aspect ratios differ by
+    more than `tolerance`. A dark logo of another shape resizes the brand
+    mark when the scheme toggles."""
+    (lw, lh), (dw, dh) = light_dims, dark_dims
+    if not (lw and lh and dw and dh):
+        return False
+    light, dark = lw / lh, dw / dh
+    return abs(light - dark) / light > tolerance
+
+
 def svg_script_problem(path):
     """Why this SVG must not ship, or None when it is clean.
 
@@ -170,7 +200,10 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
 
     def _copy_verbatim(dims=(None, None)):
         shutil.copy2(source_path, output_path)
-        console.detail(f"Copied logo.svg ({os.path.getsize(source_path)} bytes, vector)")
+        console.detail(
+            f"Copied {os.path.basename(output_path)} "
+            f"({os.path.getsize(source_path)} bytes, vector)"
+        )
         return dims
 
     svg_open = re.search(r"<svg\b[^>]*>", text)
@@ -255,7 +288,7 @@ def _copy_svg_with_intrinsic_size(source_path, output_path):
         return (None, None)
 
     console.detail(
-        f"Wrote logo.svg ({new_w}×{new_h} from viewBox, "
+        f"Wrote {os.path.basename(output_path)} ({new_w}×{new_h} from viewBox, "
         f"{os.path.getsize(output_path)} bytes, vector)"
     )
     return (int(round(vb_w)), int(round(vb_h)))
@@ -357,7 +390,10 @@ def process_logo(source_path, output_path, corner_ratio=None):
 
         img.save(output_path, "WEBP", quality=90, method=6)
         out_w, out_h = img.size
-        console.detail(f"Wrote logo.webp ({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)")
+        console.detail(
+            f"Wrote {os.path.basename(output_path)} "
+            f"({out_w}×{out_h}, {os.path.getsize(output_path)} bytes)"
+        )
         return (out_w, out_h)
     except Exception as e:
         console.warn(f"Failed to process logo ({e}) - copying source verbatim")

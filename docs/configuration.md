@@ -252,7 +252,7 @@ See [Direction arrows](#direction-arrows) for the full model.
 | `default_labels` | No | `"none"` | Initial label mode for first-visit riders: `"routes"` (route names), `"trails"` (trail names), or `"none"`. Defaults to `"none"`, so a fresh visit produces a clean map. If no relation is in route mode, the default is `"trails"` instead, since the trail name is the only name there is. On an event map, the default is `"routes"`. Event maps label only the featured routes' ways; see [Labels in event mode](event-mode.md#labels-in-event-mode). `"routes"` is rejected when no relation is in route mode. The rider opts into labels via the Labels segmented control. The in-UI Labels control reflects `show_trails`; the Trails option is removed when trails are hidden. |
 | `forced_labels` | No | _(unset)_ | Locks the label mode to `"routes"`, `"trails"`, or `"none"` and hides the Labels control, ignoring any persisted preference. Distinct from `default_labels`, which only seeds the initial value. Rejected at build time if it names a hidden category (`"trails"` with `show_trails: false`), or if it is `"routes"` when no relation is in route mode. |
 | `default_color_scheme` | No | `"light"` | First-visit color scheme: `"light"`, `"dark"`, or `"auto"` (follows the rider's OS `prefers-color-scheme`). Riders override via the Options Appearance control; the choice persists per-map. The correct scheme is applied before first paint, so there is no light-to-dark flash. The Protomaps basemap, trail labels, direction arrows, and POI shadows have per-scheme variants; trail line colors are scheme-independent. |
-| `invert_logo_dark` | No | `false` | Whether the brand logo auto-inverts in dark mode. If the logo is monochrome or limited-palette and needs inverting on the dark sheet, set `true`. Colorful and photographic logos look right without inversion. |
+| `invert_logo_dark` | No | `false` | Whether the brand logo auto-inverts in dark mode. If the logo is monochrome or limited-palette and needs inverting on the dark sheet, set `true`. Colorful and photographic logos look right without inversion. For a logo the invert can't handle, set `logo_dark` instead. The two can't be combined. |
 
 The bottom-right routes panel (the map's key) has no config knob for its boot state. Set `route_key: false` to remove the key. See [Routes panel](#routes-panel) below.
 
@@ -293,8 +293,9 @@ See [Logo and icon assets](#logo-and-icon-assets) for rendering specifics.
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
 | `logo` | No | : | Path (config-folder-relative) to logo image (any web format: PNG, WebP, JPEG, or SVG). A raster is resampled at build time to fit a 200x48 px box. An SVG is copied as `logo.svg`. The About modal shows the logo in a 140x56 px box. If omitted, the `icon:` source is used as the logo automatically. |
+| `logo_dark` | No | : | Path (config-folder-relative) to the logo shown on the dark color scheme in place of `logo`. Same formats and pipeline as `logo`. Needs `logo` set, and can't be combined with `invert_logo_dark: true`. See [Dark logo](#dark-logo-logo_dark). |
 | `icon` | No | : | Path (config-folder-relative) to source image (PNG / WebP, at least 256 px on the longer side) for automatic icon + PWA-manifest generation. Any aspect ratio works: non-square sources are auto-padded to square (centered, transparent background). If omitted, the `logo:` source is used as the icon source automatically, provided the logo is a Pillow-readable raster (PNG/WebP/JPEG/…). An SVG logo can't be rasterized into icons; if the logo is an SVG, set `icon:` explicitly to a raster. Most maps only need to set one of the two. |
-| `additional_logos` | No | `[]` | Secondary brand images (an event logo, one or more sponsor logos) stacked vertically **under** the primary logo in the top-left brand mark. They render top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`) and `invert_dark:` (optional, default `false`; set `true` for a plain dark mark that would vanish in dark mode). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
+| `additional_logos` | No | `[]` | Secondary brand images (an event logo, one or more sponsor logos) stacked vertically **under** the primary logo in the top-left brand mark. They render top-to-bottom in the order listed. Each entry takes `path:` (required, config-folder-relative, same image pipeline as `logo:`), `invert_dark:` (optional, default `false`; set `true` for a plain dark mark that would vanish in dark mode), and `path_dark:` (optional; a separate image for the dark color scheme, not combinable with `invert_dark: true`). Display-only: icon generation, `accent_color: auto`, the About modal image, and social-share previews all stay keyed to the primary `logo:` no matter how many logos are listed here. See [Additional logos](#additional-logos-additional_logos). |
 
 If a map sets **neither** `logo:` nor `icon:`, the engine falls back to a bundled placeholder (a bicycle on the brand green). Every map still gets favicons, an installable PWA icon, and a brand mark. The on-page brand mark gets rounded corners, like the tile a home screen shows. The PWA icons stay square, because each platform masks them itself. An explicit `logo:` or `icon:` always takes precedence.
 
@@ -1253,6 +1254,30 @@ in the About modal. If neither `logo` nor `icon` is set, the engine's bundled
 placeholder becomes the icon source and therefore the logo too. The overlay
 then shows the placeholder bicycle badge rather than being hidden.
 
+### Dark logo (`logo_dark`)
+
+`invert_logo_dark: true` works well for a plain black mark, but it flips
+everything. A colored logo with black text comes out with the colors washed
+pale, and a club or sponsor with an official reversed logo would rather you
+used that. For those, supply a second file:
+
+```yaml
+logo: club-logo.png
+logo_dark: club-logo-reversed.png
+```
+
+The map shows `logo` on the light color scheme and `logo_dark` on the dark
+one, in the top-left overlay and in the About modal. The dark file goes
+through the same pipeline as `logo` and is written as `logo-dark.webp` (or
+`logo-dark.svg`).
+
+- `logo_dark` needs `logo` set. It doesn't stand in for an `icon` shown as the logo.
+- `logo_dark` and `invert_logo_dark: true` together are a validation error. Pick one.
+- Draw both files the same shape. If the aspect ratios differ by more than 5%,
+  the build warns, as the brand mark would change size when the scheme toggles.
+- Favicons, PWA icons, `accent_color: auto`, and social-share previews still
+  come from `logo` / `icon` alone.
+
 ### Icon (`icon`)
 
 The icon is a single source image used to generate all favicon and PWA icon
@@ -1302,6 +1327,7 @@ additional_logos:
   - path: event-logo.svg
     invert_dark: true              # plain dark mark; invert in dark mode
   - path: sponsor-acme.webp
+    path_dark: sponsor-acme-reversed.webp   # separate file for dark mode
 ```
 
 Each entry's `path:` goes through the same pipeline as the primary `logo:`
@@ -1311,6 +1337,9 @@ the primary logo's bounding box, rendered a touch smaller, so the stack reads
 as one consistently-scaled brand column. Each image still keeps its own aspect
 ratio inside that box. `invert_dark:` (default `false`) controls the per-logo
 dark-mode auto-invert, the same default as `invert_logo_dark` on the primary.
+`path_dark:` names a separate image for the dark color scheme instead, written
+as `logo-2-dark`, `logo-3-dark`, … (it works like [`logo_dark`](#dark-logo-logo_dark),
+and can't be combined with `invert_dark: true`).
 
 These are display-only. Favicon / PWA icon generation, `accent_color: auto`
 derivation, the About-modal image, and social-share previews are all keyed to

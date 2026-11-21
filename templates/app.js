@@ -5978,11 +5978,23 @@ function buildAboutModalContent() {
         header.querySelectorAll(".about-modal-logo").forEach((n) => n.remove());
     }
     if (CONFIG.logoUrl) {
-        const img = document.createElement("img");
-        img.src = CONFIG.logoUrl;
-        img.alt = (CONFIG.title || "Map") + " logo";
-        img.className = "about-modal-logo";
-        header.appendChild(img);
+        // Same scheme handling as the brand mark: a logo_dark: map gets
+        // the light / dark pair style.css swaps, and an
+        // invert_logo_dark: map gets the flip. The build allows only
+        // one of the two.
+        const addLogo = (src, variant) => {
+            const img = document.createElement("img");
+            img.src = src;
+            img.alt = (CONFIG.title || "Map") + " logo";
+            img.className = "about-modal-logo" + (variant ? " " + variant : "");
+            header.appendChild(img);
+        };
+        if (CONFIG.logoDarkUrl) {
+            addLogo(CONFIG.logoUrl, "logo-light");
+            addLogo(CONFIG.logoDarkUrl, "logo-dark");
+        } else {
+            addLogo(CONFIG.logoUrl, CONFIG.invertLogoDark === true ? "invert-dark" : "");
+        }
     }
 
     const about = CONFIG.about || {};

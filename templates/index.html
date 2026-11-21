@@ -276,6 +276,9 @@
            ratio before image bytes arrive). Empty string when dims
            can't be determined (Pillow missing, SVG without viewBox,
            etc.) - accept the small CLS risk over emitting wrong dims.
+         - Adds a second img, id brand-img-dark, after the first when
+           `logo_dark:` is configured, and gives the pair the logo-light
+           and logo-dark classes. style.css shows one per color scheme.
          - fetchpriority="high" is unconditional in the template: it
            tells the browser to prioritize the LCP image over deferred
            scripts, and browsers without the hint ignore it.
@@ -284,7 +287,7 @@
          the image fails to load. -->
     <div id="brand">
         <!-- Brand img start -->
-        <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img"__BRAND_IMG_DIMS__ fetchpriority="high">
+        <img src="logo.webp" alt="__BRAND_TITLE__" id="brand-img"__BRAND_IMG_CLASS____BRAND_IMG_DIMS__ fetchpriority="high">__BRAND_IMG_DARK__
         <!-- Brand img end -->
         <!-- Additional (event + sponsor) logos: the build replaces the
              placeholder with a stack of <img class="brand-logo-secondary">

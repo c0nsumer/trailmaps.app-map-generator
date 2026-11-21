@@ -231,7 +231,8 @@ relations:
 # First-visit color scheme: "light", "dark", or "auto" (follows the OS).
 # default_color_scheme: light
 
-# Auto-invert the logo in dark mode. Set true for monochrome logos.
+# Auto-invert the logo in dark mode. Set true for monochrome logos. For a logo
+# the invert cannot handle, supply a dark file with logo_dark: instead (not both).
 # invert_logo_dark: false
 
 # The bottom-right corner always shows the routes panel - the map's key. It
@@ -317,6 +318,14 @@ relations:
 # Logo image (config-folder-relative, any web format). Falls back to icon: if omitted.
 # logo: logo.webp
 
+# Logo shown on the dark color scheme in place of logo: (same formats, same
+# pipeline). For a logo with an official reversed version, or one whose colors
+# the invert_logo_dark flip would spoil. Needs logo: set, and cannot be combined
+# with invert_logo_dark: true. Draw it the same shape as logo: so the brand mark
+# keeps its size when the scheme toggles. Icons, accent_color: auto, and the
+# social-share image still come from logo: / icon: alone.
+# logo_dark: logo-dark.webp
+
 # Source image for favicons + PWA icons (PNG / WebP, 256 px+). If omitted, the
 # logo image is reused as the icon source, so most maps set only one of the two.
 # icon: icon.png
@@ -336,10 +345,13 @@ relations:
 #   - path:        (required) image file, raster or SVG, same pipeline as logo:
 #   - invert_dark: (optional, default false) auto-invert in dark mode; set true
 #                  for a plain dark mark that would vanish on the dark sheet.
+#   - path_dark:   (optional) image shown on the dark color scheme in place of
+#                  path:. Cannot be combined with invert_dark: true.
 # additional_logos:
 #   - path: event-logo.svg
 #     invert_dark: true
 #   - path: sponsor-acme.webp
+#     path_dark: sponsor-acme-reversed.webp
 
 # ============================================================
 # User-supplied points
