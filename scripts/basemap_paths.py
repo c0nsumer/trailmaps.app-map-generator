@@ -14,10 +14,8 @@ it (`tm_s` summer, `tm_w` winter, `tm_e` emergency), and the runtime
 hides a flagged stretch only while one of its buckets is on. So a
 winter-only trail is still a path on the summer map, and nothing
 shows under a route that is on. The rule (Steve, 2026-09-29): any way
-a route draws over is clipped from the basemap. A street keeps its
-name label under the route (the runtime filters the line layers, not
-the street's label); a path or service road loses its label with its
-line.
+a route draws over is clipped from the basemap, and its name label
+goes with its line (streets too since 2026-11-21).
 
 Everything else in the basemap is left exactly as Protomaps made it:
 `tile-join` strips the generated classes from the extract and folds

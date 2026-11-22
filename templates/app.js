@@ -14738,17 +14738,12 @@ function applyBasemapDrawnPathFilter() {
     };
     for (const id of BASEMAP_GENERATED_LINE_LAYERS) set(id, legacy);
     // Labels follow their line: a hidden stretch loses its name, and
-    // every path or service road the map does not draw over keeps
-    // its label. One exception: a street keeps its name under the
-    // route that hides its line. A rider on
-    // a street route navigates by the street name, and a symbol layer
-    // places the name along its own geometry whether or not any line
-    // layer draws it, so the label survives while the line goes.
-    const streetClauses = legacy.map((clause) => [
-        "any", clause,
-        ["==", "kind_detail", "residential"], ["==", "kind_detail", "unclassified"],
-    ]);
-    set("roads_labels_minor", streetClauses);
+    // every path, service road or street the map does not draw over
+    // keeps its label. Streets too (Steve, 2026-11-21): a street name
+    // set along a route with no street line under it read as a stray
+    // label, most of all through a dashed route. The street is still
+    // named on either side, where the route leaves it.
+    set("roads_labels_minor", legacy);
     set("roads_oneway", expr);
 }
 
